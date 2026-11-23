@@ -1,0 +1,13 @@
+.DS_Store
+
+# agents
+.claude/worktrees/
+
+# job
+# Jobs cache and its sidecars — disposable, rebuilt from .jobs/log
+.jobs.db*
+# This machine's replica id, identity and focus
+.jobs/local.json
+
+# Local, unchecked source material
+local/

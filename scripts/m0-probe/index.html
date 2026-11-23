@@ -1,0 +1,211 @@
+<title>Workbench Platform Probe</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one column of result rows, grouped by area; action buttons at the top. */
+:root {
+  --bg: #f6f7f8; --panel: #ffffff; --fg: #1b1e22; --muted: #5d6670; --line: #d9dde2;
+  --ok: #1f7a46; --fail: #b3261e; --wait: #8a6d00; --accent: #2a5bd7;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15171a; --panel: #1d2024; --fg: #e6e8eb; --muted: #9aa3ad; --line: #2e3339;
+  --ok: #5cc98a; --fail: #ff8a80; --wait: #e0c050; --accent: #8fb0ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15171a; --panel: #1d2024; --fg: #e6e8eb; --muted: #9aa3ad; --line: #2e3339;
+  --ok: #5cc98a; --fail: #ff8a80; --wait: #e0c050; --accent: #8fb0ff; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px; }
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 20px; margin: 0; text-wrap: balance; }
+p.lede { margin: 0; color: var(--muted); max-width: 65ch; line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel); color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.table { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+td.k { font-family: var(--mono); white-space: nowrap; }
+td.v { font-family: var(--mono); word-break: break-word; min-width: 0; }
+.ok { color: var(--ok); } .fail { color: var(--fail); } .wait { color: var(--wait); }
+</style>
+
+<main>
+  <h1>Workbench Platform Probe</h1>
+  <p class="lede">Tests what a workbench page can do inside a Claude artifact. The automatic checks run on load. The buttons test features that need a click or your consent. Results are saved to this artifact's database, where Claude reads them.</p>
+  <div class="actions">
+    <button id="b-sample" type="button">Ask Claude (with a tool)</button>
+    <button id="b-save" type="button">Save a data file</button>
+    <button id="b-download" type="button">Download a file</button>
+  </div>
+  <div class="status" id="status">Running…</div>
+  <div class="table"><table>
+    <thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  const results = {};
+  const rowsEl = document.getElementById("rows");
+  const statusEl = document.getElementById("status");
+  let db = null;
+
+  function render() {
+    rowsEl.textContent = "";
+    for (const [k, r] of Object.entries(results)) {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td"); a.className = "k"; a.textContent = k;
+      const b = document.createElement("td"); b.className = r.ok === true ? "ok" : r.ok === false ? "fail" : "wait";
+      b.textContent = r.ok === true ? "yes" : r.ok === false ? "no" : "…";
+      const c = document.createElement("td"); c.className = "v"; c.textContent = r.detail ?? "";
+      tr.append(a, b, c); rowsEl.append(tr);
+    }
+  }
+  function record(key, ok, detail) {
+    results[key] = { ok, detail: detail == null ? "" : String(detail).slice(0, 400) };
+    render();
+    persist();
+  }
+  let persistTimer = null;
+  function persist() {
+    if (!db) return;
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      db.doc("probe/results").set({ at: new Date().toISOString(), ua: navigator.userAgent, results })
+        .then(() => { statusEl.textContent = "Saved to the artifact database at " + new Date().toLocaleTimeString(); })
+        .catch((e) => { statusEl.textContent = "Could not save results: " + (e && (e.code || e.message)); });
+    }, 400);
+  }
+  async function check(key, fn) {
+    try { const d = await fn(); record(key, true, d); }
+    catch (e) { record(key, false, (e && (e.code ? e.code + ": " : "") + (e.message || e)) || "error"); }
+  }
+  const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + " timed out after " + ms + " ms")), ms))]);
+
+  async function runAuto() {
+    record("env.userAgent", true, navigator.userAgent);
+    record("env.origin", true, location.origin);
+    record("env.crossOriginIsolated", !!self.crossOriginIsolated, "SharedArrayBuffer: " + (typeof SharedArrayBuffer));
+
+    // Executing JS built at run time: the kit runs a builder chain from source text.
+    await check("js.newFunction", () => { const f = new Function("a", "b", "return a + b"); if (f(2, 3) !== 5) throw new Error("wrong"); return "new Function works"; });
+    await check("js.eval", () => { if ((0, eval)("6*7") !== 42) throw new Error("wrong"); return "indirect eval works"; });
+    await check("js.fnToString", () => {
+      const f = (self) => { if (self.up && --self.ttl === 0) self.up = false; /* kept */ };
+      const s = String(f); if (!s.includes("/* kept */")) throw new Error("comment lost: " + s); return s;
+    });
+
+    // Loading the kit's own sibling files.
+    await check("fetch.siblingJson", async () => { const r = await fetch("./data/sibling.json"); const j = await r.json(); return r.status + " " + JSON.stringify(j); });
+    await check("fetch.siblingJsText", async () => { const r = await fetch("./data/program.js"); const t = await r.text(); return r.status + " " + (r.headers.get("content-type") || "?") + " · " + t.length + " chars"; });
+    await check("import.sibling", async () => { const m = await withTimeout(import("./data/program.js"), 5000, "import"); return "exports: " + Object.keys(m).join(","); });
+    await check("import.blob", async () => {
+      const src = "export const v = 7; export const f = (x) => x * 2;";
+      const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+      const m = await withTimeout(import(url), 5000, "blob import"); return "v=" + m.v + " f(3)=" + m.f(3);
+    });
+    await check("import.dataUrl", async () => {
+      const m = await withTimeout(import("data:text/javascript,export%20const%20v%3D9"), 5000, "data import"); return "v=" + m.v;
+    });
+    await check("script.blobTag", () => new Promise((res, rej) => {
+      window.__probeBlob = null;
+      const url = URL.createObjectURL(new Blob(["window.__probeBlob = 11;"], { type: "text/javascript" }));
+      const s = document.createElement("script"); s.src = url;
+      s.onload = () => window.__probeBlob === 11 ? res("blob <script> ran") : rej(new Error("loaded but did not run"));
+      s.onerror = () => rej(new Error("blob <script> blocked")); document.head.append(s);
+      setTimeout(() => rej(new Error("timed out")), 5000);
+    }));
+
+    // Workers.
+    const workerCheck = (key, make) => check(key, () => new Promise((res, rej) => {
+      let w; try { w = make(); } catch (e) { rej(e); return; }
+      w.onmessage = (e) => { res(JSON.stringify(e.data)); w.terminate(); };
+      w.onerror = (e) => rej(new Error(e.message || "worker error")); w.postMessage("hi");
+      setTimeout(() => rej(new Error("timed out")), 5000);
+    }));
+    await workerCheck("worker.sibling", () => new Worker("./worker.js"));
+    await workerCheck("worker.blob", () => new Worker(URL.createObjectURL(new Blob(["self.onmessage=e=>self.postMessage({echo:e.data,from:'blob-worker'})"], { type: "text/javascript" }))));
+    await workerCheck("worker.module", () => new Worker(URL.createObjectURL(new Blob(["self.onmessage=e=>self.postMessage({echo:e.data,from:'module-worker'})"], { type: "text/javascript" })), { type: "module" }));
+
+    // WebAssembly.
+    const ADD = Uint8Array.from([0,0x61,0x73,0x6d,1,0,0,0,1,7,1,0x60,2,0x7f,0x7f,1,0x7f,3,2,1,0,7,7,1,3,0x61,0x64,0x64,0,0,0x0a,9,1,7,0,0x20,0,0x20,1,0x6a,0x0b]);
+    await check("wasm.inlineBytes", async () => { const r = await WebAssembly.instantiate(ADD); return "add(2,3)=" + r.instance.exports.add(2, 3); });
+    await check("wasm.compileSync", () => { const m = new WebAssembly.Module(ADD); const i = new WebAssembly.Instance(m); return "add(4,5)=" + i.exports.add(4, 5); });
+    await check("wasm.streamingSibling", async () => { const r = await WebAssembly.instantiateStreaming(fetch("./data/add.wasm")); return "add(6,7)=" + r.instance.exports.add(6, 7); });
+
+    // Graphics.
+    await check("gfx.webgl2", () => { const c = document.createElement("canvas"); const g = c.getContext("webgl2"); if (!g) throw new Error("no webgl2 context"); return g.getParameter(g.VERSION) + " · " + g.getParameter(g.SHADING_LANGUAGE_VERSION); });
+    await check("gfx.webgpu", async () => {
+      if (!navigator.gpu) throw new Error("navigator.gpu missing");
+      const a = await withTimeout(navigator.gpu.requestAdapter(), 5000, "requestAdapter"); if (!a) throw new Error("no adapter");
+      const info = a.info || {}; return "adapter: " + [info.vendor, info.architecture].filter(Boolean).join(" ") + " · features " + a.features.size;
+    });
+    await check("gfx.offscreenCanvas", () => { if (typeof OffscreenCanvas === "undefined") throw new Error("missing"); const o = new OffscreenCanvas(8, 8); return o.getContext("2d") ? "2d ok" : "no 2d"; });
+    await check("audio.context", () => { const C = window.AudioContext || window.webkitAudioContext; if (!C) throw new Error("missing"); const a = new C(); const sr = a.sampleRate; a.close(); return "sampleRate " + sr; });
+
+    // Storage.
+    await check("storage.local", () => { localStorage.setItem("probe", "1"); return localStorage.getItem("probe") === "1" ? "ok" : "no"; });
+    await check("storage.indexedDB", () => new Promise((res, rej) => { const r = indexedDB.open("probe", 1); r.onsuccess = () => { r.result.close(); res("ok"); }; r.onerror = () => rej(r.error); setTimeout(() => rej(new Error("timed out")), 5000); }));
+
+    // Speed of the host JIT, for a sense of interpreter versus emitted-code budgets.
+    await check("perf.xorshift1e7", () => {
+      let s = 1, acc = 0; const t0 = performance.now();
+      for (let i = 0; i < 1e7; i++) { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; acc += s & 1; }
+      return (performance.now() - t0).toFixed(1) + " ms (acc " + acc + ")";
+    });
+
+    // Capabilities.
+    const claude = window.claude;
+    record("cap.windowClaude", !!(claude && claude.use), claude ? "present" : "absent (not inside a Claude viewer)");
+    if (claude && claude.use) {
+      for (const name of ["sample", "db", "user", "artifact", "downloads"]) {
+        await check("cap.use." + name, async () => { const ns = await claude.use(name); if (!ns) throw new Error("null"); return "keys: " + Object.keys(ns).slice(0, 12).join(","); });
+      }
+      db = await claude.use("db");
+      if (db) {
+        persist();
+        // Claude writes probe/fromClaude from the chat; the page should see it live.
+        db.doc("probe/fromClaude").onSnapshot(
+          (snap) => record("db.liveFromClaude", snap.exists ? true : null, snap.exists ? JSON.stringify(snap.data()) : "waiting for Claude to write probe/fromClaude"),
+          (e) => record("db.liveFromClaude", false, e.code + ": " + e.message));
+      }
+      const user = await claude.use("user");
+      if (user) await check("cap.user.canEdit", async () => "isOwner " + (await user.isOwner()) + " · canEdit " + (await user.canEdit()));
+    }
+    statusEl.textContent = db ? "Automatic checks done. Saving to the artifact database…" : "Automatic checks done. No database here, so results stay on this page.";
+  }
+
+  document.getElementById("b-sample").addEventListener("click", () => check("click.sampleWithTool", async () => {
+    const sample = await window.claude?.use("sample"); if (!sample) throw new Error("sample unavailable");
+    let toolCalls = 0;
+    const tools = [{ name: "add", description: "Add two integers and return the sum.",
+      inputSchema: { type: "object", properties: { a: { type: "integer" }, b: { type: "integer" } }, required: ["a", "b"] },
+      execute: ({ a, b }) => { toolCalls++; return { sum: a + b }; } }];
+    const t0 = performance.now();
+    const r = await sample("Use the add tool to add 1234 and 4321, then reply with only the sum.", { tools, modelTier: "quick", cache: false });
+    return "tool calls " + toolCalls + " · " + (performance.now() - t0).toFixed(0) + " ms · reply: " + r.text.trim().slice(0, 80);
+  }));
+
+  document.getElementById("b-save").addEventListener("click", () => check("click.publishDataFile", async () => {
+    const artifact = await window.claude?.use("artifact"); if (!artifact) throw new Error("artifact capability unavailable");
+    const r = await artifact.publish({ "data/saved-by-page.json": JSON.stringify({ savedAt: new Date().toISOString() }) + "\n" });
+    return "version " + r.version;
+  }));
+
+  document.getElementById("b-download").addEventListener("click", () => check("click.download", async () => {
+    const downloads = await window.claude?.use("downloads"); if (!downloads) throw new Error("downloads unavailable");
+    await downloads.save({ filename: "probe.txt", data: new Blob(["probe\n"], { type: "text/plain" }) });
+    return "saved";
+  }));
+
+  runAuto();
+})();
+</script>
