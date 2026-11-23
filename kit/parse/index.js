@@ -2,7 +2,7 @@
 // against the runtime subset, and apply the fixits diagnostics offer.
 
 import { Parser } from "./parser.js";
-import { SyntaxFailure } from "./lexer.js";
+import { SyntaxFailure, LineTable } from "./lexer.js";
 import { checkSubset, SUBSET_RULES } from "./subset.js";
 
 /** @import { Diagnostic, Edit, ParseResult } from "./ast.js" */
@@ -16,17 +16,22 @@ export { checkSubset, SUBSET_RULES };
  * @returns {ParseResult}
  */
 export function parseLambda(src) {
-  const parser = new Parser(src);
   try {
-    return { ok: true, ast: parser.parseLambda(), diagnostics: [] };
+    return { ok: true, ast: new Parser(src).parseLambda(), diagnostics: [] };
   } catch (e) {
-    if (!(e instanceof SyntaxFailure)) throw e;
-    const end = Math.min(Math.max(e.end, e.start), src.length);
+    // Runaway nesting overflows the call stack; report it like any other bad input.
+    const failure = e instanceof RangeError && /call stack/i.test(e.message)
+      ? new SyntaxFailure("P001", "This is nested too deeply to parse.", "Flatten the expression with intermediate variables.", 0, src.length)
+      : e;
+    if (!(failure instanceof SyntaxFailure)) throw failure;
+    const start = failure.start;
+    const end = Math.min(Math.max(failure.end, start), src.length);
+    const lines = new LineTable(src);
     /** @type {Diagnostic} */
     const d = {
-      code: e.code, severity: "error", message: e.message, tip: e.tip,
-      loc: { start: parser.lexer.positionAt(e.start), end: parser.lexer.positionAt(end) },
-      range: [e.start, end],
+      code: failure.code, severity: "error", message: failure.message, tip: failure.tip,
+      loc: { start: lines.at(start), end: lines.at(end) },
+      range: [start, end],
     };
     return { ok: false, ast: null, diagnostics: [d] };
   }

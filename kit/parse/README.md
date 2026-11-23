@@ -29,17 +29,23 @@ if (r.ok) {
 | S101 | `while` / `do…while`: no checkable bound | |
 | S102 | `new` | |
 | S103 | `this` | |
-| S104 | Template literal | to `+` concatenation |
+| S104 | Template literal | to `+` concatenation, parenthesized where needed |
 | S105 | Optional chaining `?.` | |
 | S106 | `typeof`, `void`, `delete` | |
 | S107 | `in`, `instanceof` | |
 | S108 | Comma operator | |
 | S109 | Spread `...` | |
-| S110 | `var` | to `let` |
+| S110 | `var` | to `let`, when safe (see below) |
 | S111 | An arrow that is not a call argument (a closure) | |
 | S112 | A `for` loop with no condition | |
 | S113 | Computed object key | |
 | S114 | Default value in a parameter or pattern | |
-| S116 | Loose `==` / `!=` (a warning) | to `===` / `!==` |
+| S116 | Loose `==` / `!=` (a warning) | none: `x == null` also matches undefined |
+
+**The S110 fixit** is offered only when `let` cannot change the meaning: the `var` is a direct statement of the lambda's top-level block (not inside an `if`, loop or nested block), no name it declares is read before or in its own declarator, and no name is declared twice (a parameter counts). Otherwise S110 is still an error with its tip, and no edit.
+
+**Spans** follow ESTree. A parenthesized node's own `range` excludes its parentheses, and a parent whose first operand is parenthesized starts at the `(`. A `TemplateElement` spans only its text.
+
+**What the parser rejects that JavaScript also rejects** (as P001 unless noted): `??` mixed with `||` / `&&`, reserved words as names, parenthesized patterns, `{ k = 4 }` outside a pattern, a line break before `=>`, an arrow as an operand or callee, malformed numbers, legacy octal numbers and escapes (`010`, `"\1"`; `"\0"` is fine), assignment through `?.`, `const` without a value, a lexical declaration as a statement body, duplicate parameters and redeclarations, HTML-like comments, and nesting too deep to parse. `for…in` is P004.
 
 `node scripts/parse-corpus.js` runs the parser and check over every DMG runtime lambda.

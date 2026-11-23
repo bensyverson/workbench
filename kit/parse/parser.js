@@ -5,6 +5,9 @@
 //
 // Arrow parameters and destructuring use the "cover grammar" approach: parse as
 // an expression, then convert to a pattern once `=>` or `=` shows it was one.
+//
+// Spans follow ESTree: a parenthesized node's own range excludes its parentheses,
+// and a parent whose first operand is parenthesized starts at the `(`.
 
 import { Lexer, SyntaxFailure } from "./lexer.js";
 import { parseBlock } from "./statements.js";
@@ -12,27 +15,50 @@ import { parseBlock } from "./statements.js";
 /** @import { Token } from "./lexer.js" */
 /** @import * as A from "./ast.js" */
 
-const BINARY_PRECEDENCE = /** @type {Record<string, number>} */ ({
-  "??": 1, "||": 2, "&&": 3, "|": 4, "^": 5, "&": 6,
-  "==": 7, "!=": 7, "===": 7, "!==": 7,
-  "<": 8, ">": 8, "<=": 8, ">=": 8, instanceof: 8, in: 8,
-  "<<": 9, ">>": 9, ">>>": 9, "+": 10, "-": 10, "*": 11, "/": 11, "%": 11, "**": 12,
-});
+const BINARY_PRECEDENCE = new Map(/** @type {Array<[string, number]>} */ ([
+  ["??", 1], ["||", 2], ["&&", 3], ["|", 4], ["^", 5], ["&", 6],
+  ["==", 7], ["!=", 7], ["===", 7], ["!==", 7],
+  ["<", 8], [">", 8], ["<=", 8], [">=", 8], ["instanceof", 8], ["in", 8],
+  ["<<", 9], [">>", 9], [">>>", 9], ["+", 10], ["-", 10], ["*", 11], ["/", 11], ["%", 11], ["**", 12],
+]));
 const ASSIGN_OPS = new Set(["=", "+=", "-=", "*=", "/=", "%=", "**=", "<<=", ">>=", ">>>=", "|=", "^=", "&=", "||=", "&&=", "??="]);
 const UNARY_OPS = new Set(["!", "~", "+", "-", "typeof", "void", "delete"]);
 /** Keyword-led syntax no runtime lambda uses: parsing stops with P004. */
-export const UNSUPPORTED_STATEMENTS = /** @type {Record<string, string>} */ ({
+export const UNSUPPORTED_STATEMENTS = new Map(Object.entries({
   switch: "a switch statement", class: "a class", function: "a function declaration", try: "try/catch", throw: "throw",
   with: "with", import: "import", export: "export", yield: "yield", debugger: "debugger",
-});
-export const UNSUPPORTED_TIPS = /** @type {Record<string, string>} */ ({
+}));
+export const UNSUPPORTED_TIPS = new Map(Object.entries({
   switch: "Use if / else if chains.",
   class: "Declare types and constructs in the dialect, not inside a runtime lambda.",
   function: "Use a helper declared in the dialect (lib/), or inline the code.",
   try: "Runtime lambdas cannot catch errors; check the condition with if instead.",
   throw: "Return early instead; the kit reports runtime errors itself.",
-});
-const LITERAL_NAMES = /** @type {Record<string, boolean | null>} */ ({ true: true, false: false, null: null });
+}));
+const LITERAL_NAMES = new Map(/** @type {Array<[string, boolean | null]>} */ ([["true", true], ["false", false], ["null", null]]));
+/** Words that cannot be a variable, parameter or shorthand property name. */
+const RESERVED = new Set([
+  "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends",
+  "false", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "null", "return", "super", "switch", "this",
+  "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield",
+]);
+/** Names that may follow `async` without making it a modifier. */
+const NOT_ASYNC_MODIFIER = new Set(["in", "instanceof", "of"]);
+const ASYNC_TIP = "Runtime lambdas run within one frame; use a timer for anything that waits.";
+
+/** Every name a binding pattern declares. @param {A.Pattern | null} p @returns {string[]} */
+export function boundNames(p) {
+  if (p === null) return [];
+  switch (p.type) {
+    case "Identifier": return [p.name];
+    case "AssignmentPattern": return boundNames(p.left);
+    case "ArrayPattern": return p.elements.flatMap(boundNames);
+    case "ObjectPattern": return p.properties.flatMap((q) => boundNames(q.value));
+    default: return [];
+  }
+}
+
+/** @typedef {{ fn: boolean, lexical: Set<string>, vars: Set<string> }} Scope */
 
 export class Parser {
   /** @param {string} src */
@@ -43,8 +69,16 @@ export class Parser {
     this.tok = this.lexer.next();
     /** @type {Token} */
     this.prev = this.tok;
-    /** Nodes written inside parentheses, so `(-a) ** 2` is allowed and `-a ** 2` is not. @type {WeakSet<object>} */
-    this.parenthesized = new WeakSet();
+    /** Nodes written inside parentheses, with the outermost `(`: `(-a) ** 2` is allowed, `-a ** 2` is not, and a parent starts at the paren. @type {WeakMap<object, Token>} */
+    this.parenStart = new WeakMap();
+    /** Member and call nodes that follow a `?.`, which cannot be assigned to. @type {WeakSet<object>} */
+    this.chain = new WeakSet();
+    /** Shorthand initializers (`{ k = 4 }`) not yet turned into a pattern; any left over are errors. @type {Set<A.Property>} */
+    this.coverInits = new Set();
+    /** True while parsing a `for` head, where `in` ends the expression. */
+    this.noIn = false;
+    /** @type {Scope[]} */
+    this.scopes = [];
   }
 
   // ---------- token helpers ----------
@@ -80,12 +114,50 @@ export class Parser {
 
   /**
    * Finishes a node that started at `start` (a token or node) and ends at the last consumed token.
+   * A start node that was parenthesized begins at its `(`.
    * @template {object} T @param {{ start?: number, loc: any, range?: [number, number] }} start @param {T} props @returns {T & { loc: A.Loc, range: [number, number] }}
    */
   finish(start, props) {
-    const from = start.range ? start.range[0] : /** @type {number} */ (start.start);
-    const fromLoc = start.range ? start.loc.start : start.loc;
+    const open = this.parenStart.get(start);
+    const from = open ? open.start : start.range ? start.range[0] : /** @type {number} */ (start.start);
+    const fromLoc = open ? open.loc : start.range ? start.loc.start : start.loc;
     return { ...props, loc: { start: fromLoc, end: this.prev.endLoc }, range: [from, this.prev.end] };
+  }
+
+  /** Runs `f` with `in` allowed again, as inside the brackets of a `for` head. @template T @param {() => T} f @returns {T} */
+  withIn(f) {
+    const saved = this.noIn;
+    this.noIn = false;
+    try { return f(); } finally { this.noIn = saved; }
+  }
+
+  /** An arrow function is an assignment expression: it cannot be an operand, a test or a callee. @param {A.Node} e */
+  noArrow(e) {
+    if (e.type === "ArrowFunctionExpression" && !this.parenStart.has(e)) {
+      throw new SyntaxFailure("P001", "An arrow function cannot be used as an operand.", "Wrap the arrow function in parentheses.", e.range[0], e.range[1]);
+    }
+  }
+
+  /** @param {boolean} fn @param {string[]} [names] */
+  pushScope(fn, names = []) { this.scopes.push({ fn, lexical: new Set(), vars: new Set(names) }); }
+  popScope() { this.scopes.pop(); }
+
+  /** Records a declared name, rejecting a redeclaration JavaScript rejects. @param {string} name @param {"const" | "let" | "var"} kind @param {{ range: [number, number] }} at */
+  declare(name, kind, at) {
+    const scope = this.scopes[this.scopes.length - 1];
+    if (!scope) return;
+    const clash = () => new SyntaxFailure("P001", `"${name}" is already declared in this scope.`, "Use a different name, or assign to the existing variable.", at.range[0], at.range[1]);
+    if (kind === "var") {
+      for (let i = this.scopes.length - 1; i >= 0; i--) {
+        const s = this.scopes[i];
+        if (s.lexical.has(name)) throw clash();
+        s.vars.add(name);
+        if (s.fn) break;
+      }
+    } else {
+      if (scope.lexical.has(name) || scope.vars.has(name)) throw clash();
+      scope.lexical.add(name);
+    }
   }
 
   // ---------- entry ----------
@@ -96,8 +168,11 @@ export class Parser {
     if (first.type === "name" && first.value === "function") {
       throw new SyntaxFailure("P003", "This is a function expression, not an arrow function.", "Write it as an arrow function: (a, b) => { … }.", first.start, first.end);
     }
-    if (first.type === "name" && first.value === "async") this.unsupported("async functions", "Runtime lambdas run within one frame; use a timer for anything that waits.");
+    if (first.type === "name" && first.value === "async" && !NOT_ASYNC_MODIFIER.has(this.peek().value) && this.peek().value !== "=>") this.unsupported("async functions", ASYNC_TIP);
     const expr = this.parseAssign();
+    for (const p of this.coverInits) {
+      throw new SyntaxFailure("P001", "A default value in an object is only valid in a destructuring pattern.", "Write { k: 4 } for a value, or destructure with const { k = 4 } = obj.", p.range[0], p.range[1]);
+    }
     if (expr.type !== "ArrowFunctionExpression") {
       throw new SyntaxFailure("P003", "The source is not an arrow function.", "A runtime lambda is one arrow function, like (self, w) => { … }.", expr.range[0], expr.range[1]);
     }
@@ -120,10 +195,13 @@ export class Parser {
 
   /** @returns {A.Expression} */
   parseAssign() {
-    if (this.tok.type === "name" && this.peek().value === "=>" && !(this.tok.value in LITERAL_NAMES)) {
-      const t = this.advance();
-      const param = this.finish(t, /** @type {A.Identifier} */ ({ type: "Identifier", name: t.value }));
-      return this.parseArrowRest(t, [param]);
+    if (this.tok.type === "name" && !RESERVED.has(this.tok.value)) {
+      const next = this.peek();
+      if (next.type === "punct" && next.value === "=>" && !next.nlBefore) {
+        const t = this.advance();
+        const param = this.finish(t, /** @type {A.Identifier} */ ({ type: "Identifier", name: t.value }));
+        return this.parseArrowRest(t, [param]);
+      }
     }
     const left = this.parseConditional();
     if (this.tok.type === "punct" && ASSIGN_OPS.has(this.tok.value)) {
@@ -139,8 +217,10 @@ export class Parser {
   /** @returns {A.Expression} */
   parseConditional() {
     const test = this.parseBinary(1);
-    if (!this.eat("?")) return test;
-    const consequent = this.parseAssign();
+    if (!this.is("?")) return test;
+    this.noArrow(test);
+    this.advance();
+    const consequent = this.withIn(() => this.parseAssign());
     this.expect(":", "in a conditional expression");
     const alternate = this.parseAssign();
     return this.finish(test, { type: "ConditionalExpression", test, consequent, alternate });
@@ -151,16 +231,23 @@ export class Parser {
     let left = this.parseUnary();
     while (true) {
       const op = this.tok.value;
-      const prec = (this.tok.type === "punct" || op === "in" || op === "instanceof") ? BINARY_PRECEDENCE[op] : undefined;
-      if (prec === undefined || prec < minPrec) return left;
-      if (op === "**" && left.type === "UnaryExpression" && !this.parenthesized.has(left)) {
+      const prec = (this.tok.type === "punct" || (this.tok.type === "name" && (op === "in" || op === "instanceof"))) ? BINARY_PRECEDENCE.get(op) : undefined;
+      if (prec === undefined || prec < minPrec || (this.noIn && op === "in")) return left;
+      this.noArrow(left);
+      if (op === "**" && left.type === "UnaryExpression" && !this.parenStart.has(left)) {
         throw new SyntaxFailure("P001", `A unary "${left.operator}" cannot come directly before **.`, `Add parentheses: (${left.operator}x) ** y.`, left.range[0], this.tok.end);
       }
-      this.advance();
+      const opTok = this.advance();
       const right = this.parseBinary(op === "**" ? prec : prec + 1);
-      left = op === "||" || op === "&&" || op === "??"
-        ? this.finish(left, { type: "LogicalExpression", operator: /** @type {A.LogicalOperator} */ (op), left, right })
-        : this.finish(left, { type: "BinaryExpression", operator: /** @type {A.BinaryOperator} */ (op), left, right });
+      this.noArrow(right);
+      if (op === "||" || op === "&&" || op === "??") {
+        /** `??` cannot be mixed with `||` or `&&` without parentheses. @param {A.Expression} n */
+        const mixes = (n) => n.type === "LogicalExpression" && !this.parenStart.has(n) && (op === "??") !== (n.operator === "??");
+        if (mixes(left) || mixes(right)) throw new SyntaxFailure("P001", `"??" cannot be mixed with "||" or "&&" without parentheses.`, "Parenthesize one side: (a ?? b) || c.", opTok.start, opTok.end);
+        left = this.finish(left, { type: "LogicalExpression", operator: /** @type {A.LogicalOperator} */ (op), left, right });
+      } else {
+        left = this.finish(left, { type: "BinaryExpression", operator: /** @type {A.BinaryOperator} */ (op), left, right });
+      }
     }
   }
 
@@ -170,14 +257,17 @@ export class Parser {
     if ((t.type === "punct" || t.type === "name") && UNARY_OPS.has(t.value)) {
       this.advance();
       const argument = this.parseUnary();
+      this.noArrow(argument);
       return this.finish(t, { type: "UnaryExpression", operator: /** @type {A.UnaryOperator} */ (t.value), prefix: /** @type {true} */ (true), argument });
     }
     if (this.is("++") || this.is("--")) {
       this.advance();
-      const argument = this.simpleTarget(this.parseUnary());
+      const operand = this.parseUnary();
+      this.noArrow(operand);
+      const argument = this.simpleTarget(operand);
       return this.finish(t, { type: "UpdateExpression", operator: /** @type {"++" | "--"} */ (t.value), prefix: true, argument });
     }
-    if (t.type === "name" && t.value === "await") this.unsupported("await", "Runtime lambdas run within one frame; use a timer for anything that waits.");
+    if (t.type === "name" && t.value === "await") this.unsupported("await", ASYNC_TIP);
     const expr = this.parseCallMember();
     if ((this.is("++") || this.is("--")) && !this.tok.nlBefore) {
       const op = this.advance();
@@ -192,26 +282,36 @@ export class Parser {
     if (this.tok.type === "name" && this.tok.value === "new") {
       const t = this.advance();
       let callee = this.parsePrimary();
+      this.noArrow(callee);
       while (this.is(".") || this.is("[")) callee = this.parseMemberStep(callee, false);
       const args = this.is("(") ? this.parseArguments() : [];
       expr = this.finish(t, /** @type {A.NewExpression} */ ({ type: "NewExpression", callee, arguments: args }));
     } else expr = this.parsePrimary();
+    // An arrow function ends the expression: `() => {}` followed by `(` or `[` starts a new statement.
+    if (expr.type === "ArrowFunctionExpression" && !this.parenStart.has(expr)) return expr;
+    let inChain = false;
     while (true) {
       if (this.is(".") || this.is("[")) expr = this.parseMemberStep(expr, false);
       else if (this.is("?.")) {
         this.advance();
+        inChain = true;
         if (this.is("(")) expr = this.finish(expr, /** @type {A.CallExpression} */ ({ type: "CallExpression", callee: expr, arguments: this.parseArguments(), optional: true }));
         else expr = this.parseMemberStep(expr, true);
-      } else if (this.is("(")) expr = this.finish(expr, /** @type {A.CallExpression} */ ({ type: "CallExpression", callee: expr, arguments: this.parseArguments(), optional: false }));
-      else if (this.tok.type === "template") this.unsupported("tagged templates", "Call the function with ordinary arguments instead.");
+      } else if (this.is("(")) {
+        /** @type {A.Expression} */
+        const callee = expr;
+        expr = this.finish(expr, /** @type {A.CallExpression} */ ({ type: "CallExpression", callee, arguments: this.parseArguments(), optional: false }));
+        if (callee.type === "Identifier" && callee.name === "async" && this.is("=>")) this.unsupported("async functions", ASYNC_TIP);
+      } else if (this.tok.type === "template") this.unsupported("tagged templates", "Call the function with ordinary arguments instead.");
       else return expr;
+      if (inChain) this.chain.add(expr);
     }
   }
 
   /** One `.name` or `[expr]` step; after `?.` the dot is already consumed. @param {A.Expression} object @param {boolean} optional @returns {A.MemberExpression} */
   parseMemberStep(object, optional) {
     if (this.eat("[")) {
-      const property = this.parseExpression();
+      const property = this.withIn(() => this.parseExpression());
       this.expect("]", "to close the index");
       return this.finish(object, { type: "MemberExpression", object, property, computed: true, optional });
     }
@@ -227,10 +327,12 @@ export class Parser {
     this.expect("(");
     /** @type {Array<A.Expression | A.SpreadElement>} */
     const args = [];
-    while (!this.is(")")) {
-      args.push(this.parseSpreadOrAssign());
-      if (!this.is(")")) this.expect(",", "between arguments");
-    }
+    this.withIn(() => {
+      while (!this.is(")")) {
+        args.push(this.parseSpreadOrAssign());
+        if (!this.is(")")) this.expect(",", "between arguments");
+      }
+    });
     this.expect(")");
     return args;
   }
@@ -253,10 +355,14 @@ export class Parser {
     }
     if (t.type === "template") return this.parseTemplate();
     if (t.type === "name") {
-      if (t.value in LITERAL_NAMES) { this.advance(); return this.finish(t, /** @type {A.Literal} */ ({ type: "Literal", value: LITERAL_NAMES[t.value], raw: t.value })); }
+      if (LITERAL_NAMES.has(t.value)) { this.advance(); return this.finish(t, /** @type {A.Literal} */ ({ type: "Literal", value: /** @type {boolean | null} */ (LITERAL_NAMES.get(t.value)), raw: t.value })); }
       if (t.value === "this") { this.advance(); return this.finish(t, /** @type {A.ThisExpression} */ ({ type: "ThisExpression" })); }
-      if (t.value === "function" || t.value === "class") this.unsupported(UNSUPPORTED_STATEMENTS[t.value].replace(" declaration", " expression"), UNSUPPORTED_TIPS[t.value]);
-      if (t.value === "async" && (this.peek().value === "(" || this.peek().type === "name")) this.unsupported("async functions", "Runtime lambdas run within one frame; use a timer for anything that waits.");
+      if (t.value === "function" || t.value === "class") this.unsupported(/** @type {string} */ (UNSUPPORTED_STATEMENTS.get(t.value)).replace(" declaration", " expression"), /** @type {string} */ (UNSUPPORTED_TIPS.get(t.value)));
+      if (t.value === "async") {
+        const next = this.peek();
+        if (next.type === "name" && !next.nlBefore && !NOT_ASYNC_MODIFIER.has(next.value)) this.unsupported("async functions", ASYNC_TIP);
+      }
+      if (RESERVED.has(t.value)) this.unexpected(`"${t.value}" is a reserved word`);
       this.advance();
       return this.finish(t, /** @type {A.Identifier} */ ({ type: "Identifier", name: t.value }));
     }
@@ -271,28 +377,53 @@ export class Parser {
   parseParenOrArrow() {
     const open = this.advance();
     if (this.eat(")")) {
-      if (!this.is("=>")) this.unexpected("expected \"=>\" after ()");
+      this.expectArrow("after ()");
       return this.parseArrowRest(open, []);
     }
-    const inner = this.parseExpression();
+    /** @type {A.Expression[]} */
+    const items = [];
+    let trailingComma = false;
+    /** @type {A.Expression} */
+    const inner = this.withIn(() => {
+      items.push(this.parseAssign());
+      while (this.eat(",")) {
+        if (this.is(")")) { trailingComma = true; break; }
+        items.push(this.parseAssign());
+      }
+      return items.length > 1 ? this.finish(items[0], { type: "SequenceExpression", expressions: items }) : items[0];
+    });
     this.expect(")", "to close the parenthesis");
     if (this.is("=>")) {
-      const items = inner.type === "SequenceExpression" && !this.parenthesized.has(inner) ? inner.expressions : [inner];
+      this.expectArrow("after the parameters");
       return this.parseArrowRest(open, items.map((e) => this.toPattern(e, true)));
     }
-    this.parenthesized.add(inner);
+    if (trailingComma) this.unexpected("a trailing comma is only allowed in a parameter list, which needs \"=>\" after it");
+    this.parenStart.set(inner, open);
     return inner;
+  }
+
+  /** Checks `=>` is next and on the same line as the parameters. @param {string} context */
+  expectArrow(context) {
+    if (!this.is("=>")) this.unexpected(`expected "=>" ${context}`);
+    if (this.tok.nlBefore) this.unexpected("a line break is not allowed before \"=>\"");
   }
 
   /** Parses `=> body` given the already-parsed parameters. @param {Token} start @param {A.Pattern[]} params @returns {A.ArrowFunctionExpression} */
   parseArrowRest(start, params) {
     this.expect("=>");
-    if (this.is("{")) {
-      const body = parseBlock(this);
-      return this.finish(start, { type: "ArrowFunctionExpression", params, body, expression: false });
-    }
-    const body = this.parseAssign();
-    return this.finish(start, { type: "ArrowFunctionExpression", params, body, expression: true });
+    const names = params.flatMap(boundNames);
+    names.forEach((n, i) => {
+      if (names.indexOf(n) !== i) throw new SyntaxFailure("P001", `The parameter "${n}" is declared twice.`, "Give each parameter its own name.", start.start, this.prev.end);
+    });
+    this.pushScope(true, names);
+    try {
+      if (this.is("{")) {
+        const body = this.withIn(() => parseBlock(this, true));
+        return this.finish(start, { type: "ArrowFunctionExpression", params, body, expression: false });
+      }
+      const body = this.parseAssign();
+      return this.finish(start, { type: "ArrowFunctionExpression", params, body, expression: true });
+    } finally { this.popScope(); }
   }
 
   /** @returns {A.TemplateLiteral} */
@@ -305,10 +436,13 @@ export class Parser {
     let chunk = this.tok;
     while (true) {
       const tpl = /** @type {NonNullable<Token["template"]>} */ (chunk.template);
-      quasis.push({ type: "TemplateElement", value: { raw: tpl.raw, cooked: tpl.cooked }, tail: tpl.tail, loc: { start: chunk.loc, end: chunk.endLoc }, range: [chunk.start, chunk.end] });
+      quasis.push({
+        type: "TemplateElement", value: { raw: tpl.raw, cooked: tpl.cooked }, tail: tpl.tail,
+        loc: { start: this.lexer.lines.at(tpl.rawStart), end: this.lexer.lines.at(tpl.rawEnd) }, range: [tpl.rawStart, tpl.rawEnd],
+      });
       if (tpl.tail) break;
       this.advance();
-      expressions.push(this.parseExpression());
+      expressions.push(this.withIn(() => this.parseExpression()));
       if (!this.is("}")) this.unexpected("expected \"}\" to close ${…}");
       chunk = this.lexer.continueTemplate(this.tok);
       this.tok = chunk;
@@ -322,11 +456,13 @@ export class Parser {
     const open = this.advance();
     /** @type {Array<A.Expression | A.SpreadElement | null>} */
     const elements = [];
-    while (!this.is("]")) {
-      if (this.is(",")) { this.advance(); elements.push(null); continue; }
-      elements.push(this.parseSpreadOrAssign());
-      if (!this.is("]")) this.expect(",", "between array elements");
-    }
+    this.withIn(() => {
+      while (!this.is("]")) {
+        if (this.is(",")) { this.advance(); elements.push(null); continue; }
+        elements.push(this.parseSpreadOrAssign());
+        if (!this.is("]")) this.expect(",", "between array elements");
+      }
+    });
     this.expect("]");
     return this.finish(open, { type: "ArrayExpression", elements });
   }
@@ -336,10 +472,12 @@ export class Parser {
     const open = this.advance();
     /** @type {Array<A.Property | A.SpreadElement>} */
     const properties = [];
-    while (!this.is("}")) {
-      properties.push(this.parseProperty());
-      if (!this.is("}")) this.expect(",", "between properties");
-    }
+    this.withIn(() => {
+      while (!this.is("}")) {
+        properties.push(this.parseProperty());
+        if (!this.is("}")) this.expect(",", "between properties");
+      }
+    });
     this.expect("}");
     return this.finish(open, { type: "ObjectExpression", properties });
   }
@@ -364,6 +502,7 @@ export class Parser {
     if (this.is("(")) this.unsupported("object methods", "Use a plain property; behavior belongs in a method declared on the construct.", t);
     if (this.eat(":")) return this.finish(t, { type: "Property", key, value: this.parseAssign(), computed, shorthand: false, kind: /** @type {"init"} */ ("init"), method: /** @type {false} */ (false) });
     if (key.type !== "Identifier" || computed) this.unexpected("expected \":\" after the property name");
+    if (RESERVED.has(t.value) || LITERAL_NAMES.has(t.value)) throw new SyntaxFailure("P001", `"${t.value}" is a reserved word and cannot be a shorthand property.`, `Write ${t.value}: value.`, t.start, t.end);
     /** @type {A.Expression} */
     let value = key;
     if (this.is("=")) {
@@ -372,23 +511,34 @@ export class Parser {
       const right = this.parseAssign();
       value = this.finish(key, { type: "AssignmentExpression", operator: /** @type {"="} */ ("="), left: key, right });
     }
-    return this.finish(t, { type: "Property", key, value, computed: false, shorthand: true, kind: /** @type {"init"} */ ("init"), method: /** @type {false} */ (false) });
+    const property = this.finish(t, /** @type {A.Property} */ ({ type: "Property", key, value, computed: false, shorthand: true, kind: "init", method: false }));
+    if (value !== key) this.coverInits.add(property);
+    return property;
   }
 
   // ---------- patterns ----------
 
   /**
    * Converts a parsed expression to a binding or assignment pattern.
-   * @param {A.Expression} e @param {boolean} binding  Parameters and declarations accept only names and destructuring.
+   * @param {A.Expression | A.Pattern} e @param {boolean} binding  Parameters and declarations accept only names and destructuring.
    * @returns {A.Pattern}
    */
   toPattern(e, binding) {
+    if (this.parenStart.has(e) && (binding || (e.type !== "Identifier" && e.type !== "MemberExpression"))) {
+      throw new SyntaxFailure("P005", "A pattern cannot be parenthesized.", "Remove the parentheses around the parameter or destructuring pattern.", e.range[0], e.range[1]);
+    }
     switch (e.type) {
       case "Identifier": return e;
-      case "MemberExpression": if (!binding && !e.optional) return e; break;
+      case "MemberExpression": if (!binding && !e.optional && !this.chain.has(e)) return e; break;
+      case "AssignmentPattern":
+        return { ...e, left: this.toPattern(e.left, binding) };
       case "AssignmentExpression":
-        if (e.operator === "=") return { type: "AssignmentPattern", left: this.toPattern(/** @type {A.Expression} */ (e.left), binding), right: e.right, loc: e.loc, range: e.range };
+        if (e.operator === "=") return { type: "AssignmentPattern", left: this.toPattern(e.left, binding), right: e.right, loc: e.loc, range: e.range };
         break;
+      case "ArrayPattern":
+        return { ...e, elements: e.elements.map((el) => (el === null ? null : this.toPattern(el, binding))) };
+      case "ObjectPattern":
+        return { ...e, properties: e.properties.map((p) => ({ ...p, value: this.toPattern(p.value, binding) })) };
       case "ArrayExpression":
         return {
           type: "ArrayPattern", loc: e.loc, range: e.range,
@@ -404,6 +554,7 @@ export class Parser {
           properties: e.properties.map((p) => {
             if (p.type === "SpreadElement") this.unsupported("rest properties", "Name each property you need.", this.tokenAt(p));
             if (p.computed) this.unsupported("computed keys in destructuring", "Name each property you need.", this.tokenAt(p));
+            this.coverInits.delete(p);
             return { ...p, key: /** @type {A.Identifier | A.Literal} */ (p.key), value: this.toPattern(p.value, binding), computed: false };
           }),
         };
@@ -413,19 +564,26 @@ export class Parser {
 
   /** Targets of `++`, `--` and compound assignment: a name or a property. @param {A.Expression} e @returns {A.Identifier | A.MemberExpression} */
   simpleTarget(e) {
-    if (e.type === "Identifier" || (e.type === "MemberExpression" && !e.optional)) return e;
+    if (e.type === "Identifier" || (e.type === "MemberExpression" && !e.optional && !this.chain.has(e))) return e;
     throw new SyntaxFailure("P005", "This cannot be updated.", "Only a variable or a property can be incremented or updated, like self.ttl--.", e.range[0], e.range[1]);
   }
 
   /** A token-like span for a node, for error reporting. @param {{ range: [number, number], loc: A.Loc }} n @returns {Token} */
   tokenAt(n) { return { type: "punct", value: "", start: n.range[0], end: n.range[1], loc: n.loc.start, endLoc: n.loc.end, nlBefore: false }; }
 
-  /** A declaration target: a name, or an array or object pattern. @returns {A.Pattern} */
-  parseBindingTarget() {
+  /** A declaration target: a name, or an array or object pattern. @param {"const" | "let" | "var"} kind @returns {A.Pattern} */
+  parseBindingTarget(kind) {
     const t = this.tok;
-    if (t.type === "name") { this.advance(); return this.finish(t, /** @type {A.Identifier} */ ({ type: "Identifier", name: t.value })); }
-    if (this.is("[")) return this.toPattern(this.parseArray(), true);
-    if (this.is("{")) return this.toPattern(this.parseObject(), true);
-    return this.unexpected("expected a name or a destructuring pattern");
+    /** @type {A.Pattern} */
+    let target;
+    if (t.type === "name") {
+      if (RESERVED.has(t.value) || (t.value === "let" && kind !== "var")) this.unexpected(`"${t.value}" cannot be used as a variable name`);
+      this.advance();
+      target = this.finish(t, /** @type {A.Identifier} */ ({ type: "Identifier", name: t.value }));
+    } else if (this.is("[")) target = this.toPattern(this.parseArray(), true);
+    else if (this.is("{")) target = this.toPattern(this.parseObject(), true);
+    else return this.unexpected("expected a name or a destructuring pattern");
+    for (const name of boundNames(target)) this.declare(name, kind, target);
+    return target;
   }
 }

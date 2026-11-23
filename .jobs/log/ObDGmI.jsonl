@@ -44,3 +44,11 @@
 {"v":1,"rep":"ObDGmI","seq":44,"ts":1795470211301,"actor":"claude","type":"blocked","task":"KHQFvD","data":{"blocked_id":"KHQFvD","blocker_id":"j7H8DF"}}
 {"v":1,"rep":"ObDGmI","seq":45,"ts":1795470230184,"actor":"parserfix","type":"claimed","task":"h2Hk4N","data":{"duration":"2h","expires_at":1795477430}}
 {"v":1,"rep":"ObDGmI","seq":46,"ts":1795470689200,"actor":"oraclefix","type":"released","task":"j7H8DF","data":{"was_claimed_by":"oraclefix","was_expires_at":1795477303}}
+{"v":1,"rep":"ObDGmI","seq":47,"ts":1795470761077,"actor":"claude","type":"criterion_state","task":"j7H8DF","data":{"label":"Every probe P1–P8 in the review passes as a repo test","state":"passed","prior":"pending","short_id":"kBh"}}
+{"v":1,"rep":"ObDGmI","seq":48,"ts":1795470761093,"actor":"claude","type":"criterion_state","task":"j7H8DF","data":{"label":"Each trace field and each slot kind has a test that a mutation to it fails","state":"passed","prior":"pending","short_id":"3t0"}}
+{"v":1,"rep":"ObDGmI","seq":49,"ts":1795470761106,"actor":"claude","type":"criterion_state","task":"j7H8DF","data":{"label":"The inventory flags lambdas that use top-level bindings, and the README says so","state":"passed","prior":"pending","short_id":"mzd"}}
+{"v":1,"rep":"ObDGmI","seq":50,"ts":1795470761127,"actor":"claude","type":"done","task":"j7H8DF","data":{"note":"Landed in 6e883e1. All 8 reviewer probes (P1-P8) pass against main; 55 single-line mutations killed (agent scratch j7H8DF-mutate.sh). Inventory: 126 lambdas, 11 with topLevelRefs (presets 14, 21-23, 25, 26; the review counted 10 because its probe never ran bots).","cascade":false,"criteria_bulk_state":"passed","was_status":"available"}}
+{"v":1,"rep":"ObDGmI","seq":51,"ts":1795470761128,"actor":"claude","type":"unblocked","task":"KHQFvD","data":{"blocked_id":"KHQFvD","blocker_id":"j7H8DF","reason":"blocker_done"}}
+{"v":1,"rep":"ObDGmI","seq":52,"ts":1795470761185,"actor":"claude","type":"labeled","task":"dy4TZc","data":{"names":["reviewed"],"existing":[]}}
+{"v":1,"rep":"ObDGmI","seq":53,"ts":1795470761186,"actor":"claude","type":"labeled","task":"j7H8DF","data":{"names":["reviewed"],"existing":[]}}
+{"v":1,"rep":"ObDGmI","seq":54,"ts":1795471197314,"actor":"parserfix","type":"released","task":"h2Hk4N","data":{"was_claimed_by":"parserfix","was_expires_at":1795477430}}

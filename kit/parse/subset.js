@@ -4,6 +4,9 @@
 // fix a lambda in one pass. A dialect narrows the subset by adding rules, never
 // by removing these.
 
+import { LineTable } from "./lexer.js";
+import { boundNames } from "./parser.js";
+
 /** @import * as A from "./ast.js" */
 
 /**
@@ -21,8 +24,32 @@
 const text = (src, n) => src.slice(n.range[0], n.range[1]);
 
 /**
- * Rewrites a template literal as string concatenation. Returns no edits for a
- * template nested in another, whose edits would overlap the outer one's.
+ * Whether an expression in this position needs no parentheses around a `+` chain:
+ * the position's operator binds looser than `+`, or there is none.
+ * @param {Context} ctx
+ */
+function standsAlone(ctx) {
+  const { parent, key } = ctx;
+  if (parent === null) return true;
+  switch (parent.type) {
+    case "ArrowFunctionExpression": return key === "body";
+    case "VariableDeclarator": return key === "init";
+    case "AssignmentExpression": case "AssignmentPattern": return key === "right";
+    case "ConditionalExpression": return true;
+    case "MemberExpression": return key === "property" && parent.computed;
+    case "CallExpression": case "NewExpression": return key === "arguments";
+    case "Property": return key === "value";
+    case "ForOfStatement": return key === "right";
+    case "ReturnStatement": case "ExpressionStatement": case "IfStatement": case "WhileStatement": case "DoWhileStatement":
+    case "ArrayExpression": case "SequenceExpression": case "SpreadElement": case "TemplateLiteral": return true;
+    default: return false;
+  }
+}
+
+/**
+ * Rewrites a template literal as string concatenation, parenthesized where its
+ * position needs it. Returns no edits for a template nested in another, whose
+ * edits would overlap the outer one's.
  * @param {A.TemplateLiteral} t @param {Context} ctx @returns {A.Edit[] | undefined}
  */
 function templateToConcat(t, ctx) {
@@ -30,11 +57,58 @@ function templateToConcat(t, ctx) {
   /** @type {string[]} */
   const parts = [];
   t.quasis.forEach((q, i) => {
+    // The leading "" keeps a string `+`: `${a}${b}` is "" + (a) + (b), not a number sum.
     if (q.value.cooked !== "" || i === 0) parts.push(JSON.stringify(q.value.cooked));
     const e = t.expressions[i];
     if (e) parts.push(`(${text(ctx.src, e)})`);
   });
-  return [{ range: t.range, text: parts.join(" + ") }];
+  const joined = parts.join(" + ");
+  return [{ range: t.range, text: parts.length > 1 && !standsAlone(ctx) ? `(${joined})` : joined }];
+}
+
+/**
+ * Calls `visit` for every node under `n`, skipping the names that are not variable
+ * references: a plain property name or key, and the binding patterns of declarations and parameters.
+ * @param {A.Node} n @param {(n: A.Node) => void} visit
+ */
+function walkReferences(n, visit) {
+  visit(n);
+  for (const [key, value] of Object.entries(n)) {
+    if (key === "loc" || key === "range") continue;
+    if ((n.type === "MemberExpression" && key === "property" && !n.computed) || (n.type === "Property" && key === "key" && !n.computed)) continue;
+    if ((n.type === "VariableDeclarator" && key === "id") || (n.type === "ArrowFunctionExpression" && key === "params")) continue;
+    for (const v of Array.isArray(value) ? value : [value]) if (v && typeof v === "object" && "type" in v) walkReferences(/** @type {A.Node} */ (v), visit);
+  }
+}
+
+/**
+ * Whether turning `var` into `let` keeps the lambda's meaning: the declaration is a direct
+ * statement of the top-level block, no name it declares is read before or in its own
+ * declarator, and no name is declared a second time (including as a parameter).
+ * @param {A.VariableDeclaration} decl @param {Context} ctx
+ */
+function varToLetIsSafe(decl, ctx) {
+  const root = ctx.ancestors[0];
+  if (!root || root.type !== "ArrowFunctionExpression" || ctx.parent !== root.body) return false;
+  const names = decl.declarations.flatMap((d) => boundNames(d.id));
+  /** @type {string[]} */
+  const declared = [];
+  walkAll(root, (m) => {
+    if (m.type === "VariableDeclarator") declared.push(...boundNames(m.id));
+    if (m.type === "ArrowFunctionExpression") for (const p of m.params) declared.push(...boundNames(p));
+  });
+  if (names.some((name) => declared.filter((d) => d === name).length > 1)) return false;
+  let early = false;
+  walkReferences(root, (m) => {
+    if (m.type === "Identifier" && names.includes(m.name) && m.range[0] < decl.range[1]) early = true;
+  });
+  return !early;
+}
+
+/** Calls `visit` for every node under `n`, patterns included. @param {A.Node} n @param {(n: A.Node) => void} visit */
+function walkAll(n, visit) {
+  visit(n);
+  for (const [child] of children(n)) walkAll(child, visit);
 }
 
 /** The rules, in code order. @type {Array<{ code: string, rule: Rule }>} */
@@ -57,8 +131,9 @@ export const SUBSET_RULES = [
     ? { code: "S108", message: "The comma operator is not in the runtime subset.", tip: "Write each expression as its own statement." } : null },
   { code: "S109", rule: (n) => n.type === "SpreadElement"
     ? { code: "S109", message: "Spread (...) is not in the runtime subset.", tip: "List the elements or arguments explicitly." } : null },
-  { code: "S110", rule: (n) => n.type === "VariableDeclaration" && n.kind === "var"
-    ? { code: "S110", message: "var is not in the runtime subset.", tip: "Use let, or const if the value never changes; the fixit uses let.", edits: [{ range: [n.range[0], n.range[0] + 3], text: "let" }], range: [n.range[0], n.range[0] + 3] } : null },
+  { code: "S110", rule: (n, ctx) => n.type === "VariableDeclaration" && n.kind === "var"
+    ? { code: "S110", message: "var is not in the runtime subset.", tip: "Use let, or const if the value never changes; the fixit uses let when that cannot change the meaning.",
+      edits: varToLetIsSafe(n, ctx) ? [{ range: [n.range[0], n.range[0] + 3], text: "let" }] : undefined, range: [n.range[0], n.range[0] + 3] } : null },
   { code: "S111", rule: (n, ctx) => n.type === "ArrowFunctionExpression" && ctx.parent !== null && !(ctx.key === "arguments" && (ctx.parent.type === "CallExpression" || ctx.parent.type === "NewExpression"))
     ? { code: "S111", message: "A function defined inside a runtime lambda is a closure, which the targets cannot run.", tip: "Pass the arrow directly as a query argument (list.filter((m) => …)), or declare a helper in the dialect." } : null },
   { code: "S112", rule: (n) => n.type === "ForStatement" && n.test === null
@@ -67,15 +142,9 @@ export const SUBSET_RULES = [
     ? { code: "S113", message: "Computed object keys are not in the runtime subset.", tip: "Use a fixed key: { name: value }." } : null },
   { code: "S114", rule: (n) => n.type === "AssignmentPattern"
     ? { code: "S114", message: "Default values are not in the runtime subset.", tip: "Declare the default where the value is defined (a param or attr), or assign it with if." } : null },
-  { code: "S116", rule: (n, ctx) => {
-    if (n.type !== "BinaryExpression" || (n.operator !== "==" && n.operator !== "!=")) return null;
-    const at = ctx.src.indexOf(n.operator, n.left.range[1]);
-    return {
-      code: "S116", severity: "warning", message: `Loose equality (${n.operator}) converts types before comparing.`,
-      tip: `Use ${n.operator}= so both sides must have the same type; the fixit changes it.`,
-      edits: at >= 0 && at < n.right.range[0] ? [{ range: [at, at + n.operator.length], text: `${n.operator}=` }] : undefined,
-    };
-  } },
+  // No fixit: `x == null` also matches undefined, so `===` is a different test, not a safe rewrite.
+  { code: "S116", rule: (n) => n.type === "BinaryExpression" && (n.operator === "==" || n.operator === "!=")
+    ? { code: "S116", severity: "warning", message: `Loose equality (${n.operator}) converts types before comparing.`, tip: `Use ${n.operator}= so both sides must have the same type, after checking that is what the code means.` } : null },
 ];
 
 /** Children of a node with the property that holds each. @param {A.Node} n @returns {Array<[A.Node, string]>} */
@@ -90,17 +159,6 @@ function children(n) {
   return out;
 }
 
-/** Converts a range to a loc using the source's line breaks. @param {string} src @param {[number, number]} range @returns {A.Loc} */
-function locOf(src, range) {
-  /** @param {number} off */
-  const pos = (off) => {
-    let line = 1, start = 0;
-    for (let i = 0; i < off; i++) if (src[i] === "\n") { line++; start = i + 1; }
-    return { line, column: off - start };
-  };
-  return { start: pos(range[0]), end: pos(range[1]) };
-}
-
 /**
  * Checks a parsed lambda against the runtime subset and returns every violation, in source order.
  * @param {A.ArrowFunctionExpression} ast
@@ -111,6 +169,7 @@ function locOf(src, range) {
 export function checkSubset(ast, src, rules = SUBSET_RULES) {
   /** @type {A.Diagnostic[]} */
   const found = [];
+  const lines = new LineTable(src);
   /** @param {A.Node} node @param {A.Node[]} ancestors @param {string | null} key */
   const visit = (node, ancestors, key) => {
     const ctx = { src, ancestors, parent: ancestors[ancestors.length - 1] ?? null, key };
@@ -119,7 +178,7 @@ export function checkSubset(ast, src, rules = SUBSET_RULES) {
       if (!f) continue;
       const range = f.range ?? node.range;
       /** @type {A.Diagnostic} */
-      const d = { code: f.code, severity: f.severity ?? "error", message: f.message, tip: f.tip, loc: locOf(src, range), range };
+      const d = { code: f.code, severity: f.severity ?? "error", message: f.message, tip: f.tip, loc: { start: lines.at(range[0]), end: lines.at(range[1]) }, range };
       if (f.edits) d.edits = f.edits;
       found.push(d);
     }
