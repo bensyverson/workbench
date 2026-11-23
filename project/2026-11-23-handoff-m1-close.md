@@ -47,6 +47,14 @@
   - the passes note;
   - the backlog items dated 2026-11-23: query API, lower IR stages, range analysis, tracing front end.
 
-## In flight
+## Review of dmg-diff (done)
 
-- **A fresh reviewer is checking `scripts/dmg-diff/` (K4kgqD, in 35c4547).** It writes probes under the session scratchpad, in `review-diff/`. If it returns after this session ends, its report is lost with the session: re-dispatch a review of `scripts/dmg-diff/` and the findings doc's figures (`project/agents/review.md`). When it is clean, run `job label add K4kgqD with reviewed`.
+- **The review of `scripts/dmg-diff` found nothing serious, and every figure re-ran.** `K4kgqD` is labeled reviewed.
+- **The findings doc's H1 count was overstated.** Five lambdas hit a deliberate subset rule, not one. It is corrected in place as a marked block quote under the headline.
+- **The rest is filed as `CRTQ0c` under the Workbench Kit root**, and it is the next leaf to take:
+  - no test guards runCase's swap;
+  - an early stop counts as a match;
+  - the survey classifier has gaps;
+  - the 105-lambda figure has no committed command.
+
+  Its reproductions are written into the leaf, because the scratchpad probes may be gone.
