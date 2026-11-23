@@ -1,5 +1,13 @@
 #!/bin/sh
 # Type-check and test before every commit. Skips nothing: a red suite blocks the commit.
+# The fast suite has a 30 s budget; past it this warns (it does not block), and
+# slow tests belong in the prerelease suite (AGENTS.md, Stack).
 set -e
+budget=30
 npm run --silent typecheck
+start=$(date +%s)
 npm test --silent
+elapsed=$(( $(date +%s) - start ))
+if [ "$elapsed" -gt "$budget" ]; then
+  echo "warning: npm test took ${elapsed}s, over the ${budget}s budget. Move slow tests to a prerelease/ folder as *.prerelease.js (npm run test:prerelease)." >&2
+fi
