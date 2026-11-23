@@ -5,6 +5,7 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 import { Lowerer, dedupe } from "./lowerer.js";
 import { statements, statement, effect, inferredReturn } from "./stmt.js";
 import { check } from "./expr.js";
+import { reachable } from "./call.js";
 
 export { LOWER_CODES } from "./codes.js";
 
@@ -168,11 +169,18 @@ function infer(lambdas, results) {
     for (const e of r.emits) if (!(e.name in sigs.events)) sigs.events[e.name] = e.t;
     for (const c of r.calls) if (!(c.key in callArgs)) callArgs[c.key] = c.args;
   }
+  /** @type {Record<string, boolean>} */
+  const failed = {};
   lambdas.forEach((l, i) => {
     if (l.slot.kind !== "method") return;
     const key = `${l.slot.on}.${l.slot.key}`;
     const r = results[i];
-    sigs.methods[key] = { params: callArgs[key] ?? [], returns: r.returns, effects: r.effects };
+    const calls = [...new Set(r.calls.map((c) => c.key))];
+    sigs.methods[key] = { params: callArgs[key] ?? [], returns: r.returns, effects: r.effects, ...(calls.length ? { calls } : {}) };
+    failed[key] = !r.ok;
   });
+  for (const [key, sig] of Object.entries(sigs.methods)) {
+    if (reachable(sigs, key).some((k) => failed[k] ?? true)) sig.partial = true;
+  }
   return sigs;
 }

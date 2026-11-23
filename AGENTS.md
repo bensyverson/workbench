@@ -18,6 +18,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [kit/emit/js/README.md](kit/emit/js/README.md) — the JavaScript backend: IR kernels to slot-compatible functions, with a line map
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 - [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
+- [scripts/dmg-diff/README.md](scripts/dmg-diff/README.md) — the lowering survey over all presets, the differential run over 04–07, and planted-fault sensitivity
 
 <!-- agents:begin core@c84939 -->
 ## Working rules

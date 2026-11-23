@@ -146,13 +146,14 @@ function ifStatement(L, testNode, consequent, alternate, span) {
 }
 
 /**
- * A counted loop: `for (let i = a; i < B; i++)`, with B a constant, a param or a list's length,
- * and `i` left alone by the body.
+ * A counted loop: `for (let i = a; i < B; i++)`, with `a` an integer literal or a param,
+ * B a constant, a param or a list's length, and `i` left alone by the body. The
+ * counter then steps by one toward a bound it reaches, so the loop ends.
  * @param {Lowerer} L
  * @param {AST.ForStatement} node
  */
 function forStatement(L, node) {
-  const tip = "Count with for (let i = 0; i < n; i++), where n is a constant, a param such as w.param(\"n\"), or a list's length, and leave i alone in the body.";
+  const tip = "Count with for (let i = 0; i < n; i++), starting from an integer or a param, where n is a constant, a param such as w.param(\"n\"), or a list's length, and leave i alone in the body.";
   const init = node.init;
   const d = init?.type === "VariableDeclaration" && init.kind === "let" && init.declarations.length === 1 ? init.declarations[0] : null;
   const i = d && d.id.type === "Identifier" && d.init ? d.id.name : null;
@@ -166,6 +167,7 @@ function forStatement(L, node) {
   if (writer) { L.error("L007", writer, `The loop body changes '${i}', so its bound cannot be checked.`, tip); return; }
   L.scoped(() => {
     const start = check(L, /** @type {AST.Expression} */ (d.init), "f64", `'${i}'`);
+    if (!startOf(start)) { L.error("L007", /** @type {AST.Expression} */ (d.init), `'${i}' must start at an integer or a param for the loop's bound to be checked.`, tip); return; }
     const name = L.declare(i, "f64", "let");
     const mark = L.out.length;
     const cond = test(L, t);
@@ -185,11 +187,22 @@ function forStatement(L, node) {
 function boundOf(cond) {
   if (cond.k !== "op") return null;
   const b = cond.args[1];
-  if (b.k === "num") return `const ${b.v}`;
+  // Past 2^53, i++ stops changing i, so a larger bound is never reached.
+  if (b.k === "num") return Math.abs(b.v) <= Number.MAX_SAFE_INTEGER ? `const ${b.v}` : null;
   if (b.k === "call" && b.args[0]?.k === "str" && b.fn.endsWith(".param")) return `param ${b.args[0].v}`;
   if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
   if (b.k === "load" && b.place.owner === "Grid") return `size ${b.place.name}`;
   return null;
+}
+
+/**
+ * Whether a loop counter's start is an integer literal (possibly negated) within 2^53, or a param.
+ * @param {Expr} e
+ */
+function startOf(e) {
+  const n = e.k === "op" && e.op === "neg" ? e.args[0] : e;
+  if (n.k === "num") return Number.isSafeInteger(n.v);
+  return e.k === "call" && e.args[0]?.k === "str" && e.fn.endsWith(".param");
 }
 
 /**
@@ -231,7 +244,11 @@ function returnStatement(L, node) {
     return;
   }
   if (want === "void") {
-    L.error("L003", node.argument, `A ${L.slot.kind} returns nothing.`, "Drop the value: return;");
+    // `return w.end("x")` returns the call's undefined: the call, then a plain return.
+    const v = expr(L, node.argument);
+    if (v.t !== "void" && v.t !== "unknown") { L.error("L003", node.argument, `A ${L.slot.kind} returns nothing.`, "Drop the value: return;"); return; }
+    L.emit({ k: "do", value: v, span });
+    L.emit({ k: "return", value: null, span });
     return;
   }
   L.emit({ k: "return", value: check(L, node.argument, want, `a ${L.slot.kind}'s result`), span });

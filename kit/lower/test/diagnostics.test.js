@@ -71,6 +71,15 @@ test("L007: a loop whose bound is not a constant, a param or a declared size", (
   assert.match(d.tip, /param/);
   only("L007", "(w) => { for (let i = 0; i < 4; i++) { i = 0; } }", "timer", "World");
   assert.deepEqual(codes(lower("(w) => { for (let i = 0; i < 4; i++) w.sfx(\"pop\"); }", "timer", "World")), []);
+  const start = only("L007", "(w) => { for (let i = w.next * 1e16; i < 4; i++) w.sfx(\"pop\"); }", "timer", "World");
+  assert.equal(start.text, "w.next * 1e16");
+  assert.match(start.d.tip, /starting from an integer or a param/);
+});
+
+test("L006 also covers a callback assigning the enclosing lambda's local", () => {
+  const { d, text } = only("L006", "(w) => { let n = 0; w.board.filter((m) => (n = n + 1) > 2); }", "timer", "World");
+  assert.equal(text, "n");
+  assert.match(d.tip, /pure/);
 });
 
 test("L008: a possibly-empty reference used without a check", () => {
@@ -100,6 +109,9 @@ test("L011: a name argument that must be a literal, or names nothing declared", 
 test("L012: a subset construct lowering does not handle yet", () => {
   const { d } = only("L012", "(w) => { for (const m of w.board) m.up = false; }", "timer", "World");
   assert.match(d.message, /for…of/);
+  const index = only("L012", "(w) => { w.board[0].up = false; }", "timer", "World");
+  assert.equal(index.text, "w.board[0]");
+  assert.match(index.d.tip, /find|at\(i\)/);
 });
 
 test("L012 on a declaration still declares its names, so their uses add no L001", () => {

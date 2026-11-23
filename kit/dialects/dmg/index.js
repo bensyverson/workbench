@@ -93,8 +93,11 @@ export function dmgDialect(d) {
   const world = {
     world: value(W),
     frame: value(F64, "read frame"),
-    over: value(BOOL, "read over"),
-    oamStart: value(F64, "read oamStart"),
+    // The world proxy's set trap takes both. `over = true` ends the game (as w.end("set")),
+    // `over = false` resumes it; oamStart stores (v | 0) & 255, which is u8's
+    // truncate-then-wrap for any finite value within int32 (a non-finite one stores 0).
+    over: value(BOOL, `read ${WORLD}.over`, { type: "bool" }),
+    oamStart: value(F64, `read ${WORLD}.oamStart`, { type: "u8" }),
     input: value({ obj: "Input" }),
     rng: value({ obj: "Rng" }),
     rand: fn([F64], F64, ["rng"], { minArgs: 0 }),

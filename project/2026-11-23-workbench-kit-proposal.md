@@ -43,9 +43,13 @@ The proposal:
 
 - **L1.** The domain shaped the grammar without being asked to. Hardware limits appear as types, lints and budgets.
 - **L2.** Manuel's three ideas landed concretely: proxy diagnostics with "did you mean", fragments as mixins with conflict reports, and a mutation mode for agents.
+
+  > **Corrected 2026-11-23 (M1):** there is no "mutation mode". The agent's lab API has a `mutate(fn)` function, which writes through the typed proxy and logs, plus a REPL; the agent's modes are auto, ask and read-only. Source: [the DMG read](2026-11-23-dmg-workbench-read.md), "The agent and the docs".
 - **L3.** One `eval` tool over a rich lab API is a better agent interface than many small tools. A text rendering of the screen lets the model see the result.
 - **L4.** The IR is built after compilation, from the compiled spec plus regex scans of lambda source. The runtime and the C emitter both bypass it.
 - **L5.** The C emitter gets data exactly right and emits every lambda body as a comment. Structure lowers; behaviour does not.
+
+  > **Corrected 2026-11-23 (M1):** this overstates it. `emitC` comments only some lambdas: component methods and `onFrame`s, timer bodies, and the first world `on` handler per event. It omits `draw`, `hud`, component `on`, world `onFrame`, `init`, `done` and `bot`. Its output would not compile (`MS_TO_FRAMES` is used before it is defined, and a global is initialized from a non-constant), and it times at 60 fps with truncation where the runtime uses 59.73 with rounding. Source: [the DMG read](2026-11-23-dmg-workbench-read.md), "The existing IR and C emitter".
 - **L6.** The template chain drifts. This workbench loads a web font from a CDN, which Ramon's prompt forbids.
 - **L7.** The 22 presets, which include seven games other than the one the grammar was designed for, show the grammar was not overfit.
 
@@ -58,6 +62,8 @@ The proposal:
 
 - **L10.** The "god file" is a bundle. About 99% of it is one line of JSON holding 27 Markdown chapters, 113 sketches and 195 demo records whose ids already look like file paths.
 - **L11.** Prose links into the bench by address. There are 2,098 `lab:` links in three kinds (`demo`, `book`, `sketch`). The DMG Workbench styles the same link class.
+
+  > **Corrected 2026-11-23 (M1):** the DMG Workbench's docs have no `lab:` links. They appear only in the agent's replies, in four kinds (`line`, `node`, `view`, `preset`); the preset notes and the reference view carry none. So "the textbook and the DMG Workbench already share" the scheme (§9.3) holds only for the agent's replies. Source: [the DMG read](2026-11-23-dmg-workbench-read.md), "The agent and the docs".
 - **L12.** Each sketch declares its own parameters in a `meta` block, so the book needs no interface code per figure.
 - **L13.** Figures are inline SVG styled by semantic classes, which already separates content from look.
 - **L14.** Chapters run 94k to 220k characters. No agent reads the book whole, but each chapter and sketch carries a one-paragraph summary.
@@ -229,6 +235,8 @@ kernel Mole.onFrame(self: &Mole)   ; domain entity · read up · read/write ttl 
     }
   }
 ```
+
+> **Corrected 2026-11-23 (M1):** this listing is wrong for the DMG runtime. The runtime coerces only when a typed attribute is stored, and the expression `--self.ttl` evaluates to the unwrapped value, so `sub.wrap.u8` before the compare changes behavior: on a `u8` holding 0 the runtime compares −1 (false) while storing 255. Preset 10's `ttl` is also `u16`, not `u8`. The IR M1 built subtracts on doubles, keeps the result in a temporary, stores through the place's coercion rule, and compares the temporary: `let t0 = sub(load self.ttl, 1); store.u16 self.ttl, t0; if eq(t0, 0) …` ([the M1 plan](2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR"; [M1 findings](2026-11-23-m1-findings.md)).
 
 ---
 
@@ -546,6 +554,8 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 | M4 Form and book | Views by role, two skins, the address scheme, one ported chapter | Four skin and workbench combinations pass | H6, H9 |
 | M5 More backends | The wasm emitter; C and Rust text | Differential checks pass | H7, H8 |
 | M6 Regenerate | Revised prompts; one workbench built end to end; kit v1 frozen | No kit code was regenerated | |
+
+> **Corrected 2026-11-23 (M1):** the DMG presets are not numbered 01 to 22. Their ids are 01–08, 10–14, 20–26 and 30–31 (22 in all), and an id is a label, not a position: preset `10` is the ninth. M1 compared presets 04–07 instead of 01–05, because 01–03 have almost no runtime logic ([the M1 plan](2026-11-23-m1-game-slice-plan.md)), and lowered all 22 ([M1 findings](2026-11-23-m1-findings.md)).
 
 The thin slices come before the kit extraction on purpose. If the subset is uncomfortable to write in, we should learn that before building a kit around it.
 

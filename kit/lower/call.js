@@ -4,7 +4,7 @@
 import { assignable, showType, unify, substitute } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { query } from "./query.js";
-import { expr, check, mismatch, bad, seq, resolveOn, spanOf } from "./expr.js";
+import { expr, check, mismatch, bad, seq, resolveOn, spanOf, computed } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Effect } from "../ir/ir.js" */
@@ -34,9 +34,9 @@ export function call(L, node) {
     return withSig(L, node, o.call, typeName, f, args, o.call.effects, callee.name);
   }
   if (callee.type !== "MemberExpression") { L.error("L003", callee, "This is not a function.", "Call only dialect functions and methods."); return bad(node); }
-  if (callee.computed) { L.error("L009", callee.property, "A dynamic property name cannot be checked.", "Name the member directly, as self.name, or use a declared list."); return bad(node); }
-  const name = /** @type {AST.Identifier} */ (callee.property).name;
   const recv = expr(L, callee.object);
+  if (callee.computed) { computed(L, recv, callee); return bad(node); }
+  const name = /** @type {AST.Identifier} */ (callee.property).name;
   if (typeof recv.t === "object" && "list" in recv.t && /** @type {string[]} */ (L.dialect.queries).includes(name)) return query(L, node, recv, /** @type {import("./dialect.js").QueryName} */ (name));
   noCallbacks();
   const r = resolveOn(L, recv, name, callee);
@@ -140,6 +140,23 @@ function emitCall(L, node, r, name, args, effects, label) {
 }
 
 /**
+ * `from` and every method it calls, directly or not.
+ * @param {import("./dialect.js").Signatures} sigs
+ * @param {string} from
+ * @returns {string[]}
+ */
+export function reachable(sigs, from) {
+  const seen = new Set([from]);
+  const stack = [from];
+  while (stack.length) {
+    for (const k of sigs.methods[/** @type {string} */ (stack.pop())]?.calls ?? []) {
+      if (!seen.has(k)) { seen.add(k); stack.push(k); }
+    }
+  }
+  return [...seen];
+}
+
+/**
  * A call to a method the program defines; its signature comes from the program's inference.
  * @param {Lowerer} L
  * @param {AST.CallExpression} node
@@ -155,6 +172,14 @@ function methodCall(L, node, r, owner, name, args) {
   if (sig && args.length !== sig.params.length) {
     L.error("L015", node, `${key} got ${args.length} arguments.`, `${key} takes ${sig.params.length}.`);
     return bad(node);
+  }
+  // Both are reported without bailing out, so the call is still recorded and the next pass sees the same call graph.
+  const self = L.slot.kind === "method" ? `${L.slot.on}.${L.slot.key}` : null;
+  if (self && reachable(L.sigs, key).includes(self)) {
+    L.error("L007", node, `${self} calls itself${key === self ? "" : ` through ${key}`}, so how long it runs cannot be bounded.`, "Replace the recursion with a counted for loop or a query.");
+  }
+  if (sig?.partial && (L.decl.forbid.length > 0 || L.pure > 0)) {
+    L.error("L014", node, `The effects of ${key} are unknown because it, or a method it calls, does not lower.`, `Fix ${key}'s diagnostics first; a ${L.slot.kind} may call only methods whose effects are known.`);
   }
   const vals = seq(L, [() => r.recv, ...args.map((a, i) => () => (sig ? check(L, a, sig.params[i], `argument ${i + 1} of ${key}`) : expr(L, a)))]);
   const [recv, ...rest] = vals;

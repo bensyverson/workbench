@@ -146,13 +146,25 @@ export function identifier(L, node) {
  * @returns {Resolved | null}
  */
 export function resolveMember(L, node) {
-  if (node.computed) {
-    L.error("L009", node.property, "A dynamic property name cannot be checked.", "Name the member directly, as self.name, or use a declared list.");
-    return null;
-  }
   const recv = expr(L, node.object);
+  if (node.computed) { computed(L, recv, node); return null; }
   const name = /** @type {AST.Identifier} */ (node.property).name;
   return resolveOn(L, recv, name, node);
+}
+
+/**
+ * Reports `obj[k]`: indexing a list is not lowered yet (L012); any other computed name cannot be checked (L009).
+ * @param {Lowerer} L
+ * @param {Expr} recv  `obj`, already lowered.
+ * @param {AST.MemberExpression} node
+ */
+export function computed(L, recv, node) {
+  if (typeof recv.t === "object" && "list" in recv.t) {
+    L.error("L012", node, "Indexing a list is not lowered yet.", "Use a query such as find, or the board's at(i), instead of list[i].");
+    return;
+  }
+  if (recv.t === "unknown") return;
+  L.error("L009", node.property, "A dynamic property name cannot be checked.", "Name the member directly, as self.name, or use a declared list.");
 }
 
 /**
@@ -309,8 +321,19 @@ export function test(L, node) {
   if (node.type === "LogicalExpression" && node.operator !== "??") return logical(L, node, "test");
   const e = expr(L, node);
   if (e.t === "bool" || e.t === "unknown") return e;
-  const op = typeof e.t === "object" && "opt" in e.t ? "present" : "truthy";
+  const op = typeof e.t === "object" && "opt" in e.t && isEntity(e.t.opt) ? "present" : "truthy";
   return L.ex({ k: "op", op, args: [e], t: "bool", span: e.span });
+}
+
+/**
+ * Whether every value of `t` is an entity reference, which is never falsy.
+ * @param {Type} t
+ * @returns {boolean}
+ */
+function isEntity(t) {
+  if (typeof t !== "object") return false;
+  if ("ref" in t) return true;
+  return "union" in t && t.union.every(isEntity);
 }
 
 /**

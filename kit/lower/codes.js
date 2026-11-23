@@ -8,15 +8,15 @@ export const LOWER_CODES = Object.freeze({
   L003: "A type mismatch",
   L004: "An effect the slot does not allow",
   L005: "A callback that is not an argument to a declared query",
-  L006: "A query callback with an effect",
-  L007: "A loop whose bound cannot be checked",
+  L006: "A query callback with an effect, or that assigns a local",
+  L007: "A loop whose bound cannot be checked, or a recursive method",
   L008: "A possibly-empty value used without a check",
   L009: "A dynamic property name",
   L010: "More parameters than the slot passes",
   L011: "A name argument that must be a literal, or that names nothing declared",
   L012: "A subset construct lowering does not handle yet",
   L013: "A store to a read-only place",
-  L014: "A signature lowering cannot infer, or that call sites disagree on",
+  L014: "A signature lowering cannot infer, that call sites disagree on, or whose effects are unknown",
   L015: "The wrong number of arguments",
 });
 

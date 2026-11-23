@@ -75,11 +75,15 @@ test("a ternary evaluates only the branch taken, and queries inline as loops", (
 });
 
 test("find yields undefined when nothing matches; some, every and reduce", () => {
-  const { fn } = emit("(w) => { const a = w.board.find((m) => m.ttl > 5); const b = w.board.some((m) => m.up); const c = w.board.every((m) => m.up); const d = w.board.reduce((n, m) => n + m.ttl, 0); return (a ? 1000 : 0) + (b ? 100 : 0) + (c ? 10 : 0) + d; }", "every", "World");
+  const { fn } = emit("(w) => { const a = w.board.find((m) => m.ttl > 5); const b = w.board.some((m) => m.up); const c = w.board.every((m) => m.up); const d = w.board.reduce((n, m) => n + m.ttl, 0); return (a ? a.ttl * 1000 : 0) + (b ? 100 : 0) + (c ? 10 : 0) + d; }", "every", "World");
   const board = Object.assign([{ up: true, ttl: 1 }, { up: false, ttl: 2 }], { at: () => null });
   assert.equal(fn({ board }), 100 + 3);
   board[1].ttl = 9;
-  assert.equal(fn({ board }), 1000 + 100 + 10);
+  assert.equal(fn({ board }), 9000 + 100 + 10);
+  board[0].ttl = 7;
+  assert.equal(fn({ board }), 7000 + 100 + 16, "find yields the first match");
+  board[1].up = true;
+  assert.equal(fn({ board }), 7000 + 100 + 10 + 16);
 });
 
 test("a counted loop with break, spawn, struct literals and a postfix value", () => {
@@ -120,4 +124,18 @@ test("every emitted line maps back to a source span, and statements to their own
   const store = lines.findIndex((l) => l.includes("self.up = false"));
   assert.equal(src.slice(...out.lines[store].span), "self.up = false");
   assert.deepEqual(out.lines[store].start, { line: 3, column: 4 });
+});
+
+test("each statement's line maps to the whole statement, not to its value", () => {
+  const src = "(self, w) => {\n  let a = 0;\n  a = self.ttl + 1;\n  w.score = a * 2;\n  if (a > 3) return;\n}";
+  const { out } = emit(src);
+  const lines = out.source.split("\n");
+  /** @param {string} text */
+  const spanOf = (text) => src.slice(...out.lines[lines.findIndex((l) => l.includes(text))].span);
+  assert.equal(spanOf("let a = 0"), "a = 0");
+  assert.equal(spanOf("a = self.ttl + 1"), "a = self.ttl + 1");
+  assert.equal(spanOf("w.score = a * 2"), "w.score = a * 2");
+  assert.equal(spanOf("if (a > 3)"), "if (a > 3) return;");
+  assert.equal(spanOf("return;"), "return;");
+  assert.deepEqual(out.lines[lines.findIndex((l) => l.includes("a = self.ttl + 1"))].start, { line: 3, column: 2 });
 });

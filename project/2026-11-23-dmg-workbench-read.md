@@ -48,7 +48,11 @@ These run at build time instead: `background`, `board` and the grid `pos` callba
 - **Timers:** first fire on tick `max(1, round(ms × 59.73 / 1000))`. Live params are re-read only when the timer re-arms.
 - **Entity order** is the order of builder calls across `place`, `board` (row-major) and `pool`. `w.spawn` takes the first dead slot. An entity spawned mid-tick with a higher index than the current one runs in the same tick.
 - **RNG:** xorshift32 (line 797). The runtime seed is `rng32(seed * 2654435761)`. `w.rng.pick([])` returns `undefined` **without drawing**, so the RNG stream depends on filter results. The UI and `test()` always pass seed 1 and ignore `Game.seed()` for the runtime RNG. Pass the seed explicitly.
-- **Numbers** (`coerce`, 1201–1223): coercion happens only when a typed attribute is stored through the proxy. The order is clamp, then truncate, then wrap. Locals, `x`/`y`, params and `w.frame` are plain doubles. An assignment expression evaluates to the unwrapped value: `--self.ttl` on a u8 holding 0 yields −1 while 255 is stored.
+- **Numbers** (`coerce`, 1201–1223): coercion happens only when a typed attribute is stored through the proxy. The order is clamp, then truncate, then wrap.
+
+  > **Corrected 2026-11-23:** wrong order. `coerce` truncates first (warning when a fraction is lost), then clamps to `min`/`max`, then wraps; `fix` rounds to 1/256 before it clamps. See the marked correction in [the M1 plan](2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR".
+
+  Locals, `x`/`y`, params and `w.frame` are plain doubles. An assignment expression evaluates to the unwrapped value: `--self.ttl` on a u8 holding 0 yields −1 while 255 is stored.
 - **Input:** buttons `up down left right A B start select`. `pressed` and `released` are edges. `repeat` is true at a hold count n when `n===1 || (n>14 && (n-14)%5===0)`.
 - **Observable state:** `rt.obs()` (1388) omits baked constants, `visible`, timer, RNG and input state, `oamStart`, and **the BG map**, which holds game state in Snake, Breakout, Flappy, Lights Out and Life. `rt.log` is capped at 600 entries; use `hooks.onLog` for the full trace. `draw` and `hud` run at render cadence (the UI renders after 0–10 ticks, `test()` every 4), so a side effect in them would make results depend on cadence. No preset has one.
 - **Headless API:** `DSL.run(code, {overrides}).build.runtime({seed, params, hooks})`, then `.reset()`, `.step(buttons, {frames})`, `._tick(buttons)`, `.render()`, `.obs()`, `.mutate(fn)`, `.set(k, v)` and `.botInput()`.

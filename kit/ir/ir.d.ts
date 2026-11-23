@@ -32,7 +32,11 @@ export type Type =
 
 /** How a store coerces its value: the dialect's numeric rule for one place. */
 export interface Coerce {
-  /** `f64` checks only finiteness; sized integers clamp, truncate, then wrap; `fix` is 8.8. */
+  /**
+   * `f64` checks only finiteness. Sized integers truncate toward zero, then clamp to
+   * `min`/`max` when given, then wrap into the type's range. `fix` rounds to 1/256,
+   * clamps, then wraps into [-128, 128).
+   */
   type: "u8" | "i8" | "u16" | "i16" | "fix" | "bool" | "enum" | "f64";
   min?: number;
   max?: number;
@@ -83,7 +87,10 @@ export type Expr =
 /**
  * Operators. Arithmetic is on doubles with JavaScript's meaning (`rem` is `%`);
  * the bitwise ones go through int32 as in JavaScript. `and`/`or` take bools and
- * short-circuit. `truthy` is JavaScript truthiness; `present` tests an optional.
+ * short-circuit. `present` takes a possibly-empty entity reference (`{ opt: { ref } }`)
+ * and is false only for null or undefined. `truthy` is JavaScript truthiness, for every
+ * other value tested as a condition, optionals of numbers, bools and strings included:
+ * 0, NaN, "" and false are false there.
  */
 export type Op =
   | "add" | "sub" | "mul" | "div" | "rem" | "pow" | "neg" | "pos"

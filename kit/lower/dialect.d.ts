@@ -86,5 +86,16 @@ export interface Dialect {
 export interface Signatures {
   events: Record<string, Type>;
   /** Keyed `Owner.name`. */
-  methods: Record<string, { params: Type[]; returns: Type; effects: Effect[] }>;
+  methods: Record<string, MethodSig>;
+}
+
+/** A program method's signature, inferred from its body and its call sites. */
+export interface MethodSig {
+  params: Type[];
+  returns: Type;
+  effects: Effect[];
+  /** The methods its body calls, keyed `Owner.name`. */
+  calls?: string[];
+  /** True when it, or a method it calls, failed to lower, so `effects` may be missing some. */
+  partial?: boolean;
 }

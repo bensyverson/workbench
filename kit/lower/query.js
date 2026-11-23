@@ -37,7 +37,13 @@ export function query(L, node, list, name) {
   const params = /** @type {AST.Identifier[]} */ (cb.params);
   const body = /** @type {AST.Expression} */ (cb.body);
 
-  const [l, init] = seq(L, [() => list, ...(name === "reduce" ? [() => expr(L, args[1])] : [])]);
+  let [l, init] = seq(L, [() => list, ...(name === "reduce" ? [() => expr(L, args[1])] : [])]);
+  // The loop reads the list after the result's `let` holds reduce's initial value, so a list that could change or has effects is read first.
+  if (name === "reduce" && !L.stable(l) && !L.stable(init)) {
+    const saved = L.temp(l.t);
+    L.emit({ k: "let", name: saved, t: l.t, value: l, span: l.span });
+    l = L.ex({ k: "local", name: saved, t: l.t, span: l.span });
+  }
   /** @type {Type} */
   const rt = name === "filter" ? { list: item, max: lt.max } : name === "find" ? optional(item) : name === "reduce" ? init.t : "bool";
   const result = L.temp(rt);
