@@ -267,6 +267,8 @@ kernel Mole.onFrame(self: &Mole)   ; domain entity · read up · read/write ttl 
 
 Everything in the first column runs as JavaScript in a page. Nothing in the pipeline needs a server.
 
+> **Corrected 2026-11-23:** "IR, analyses, optimisation passes" is narrowed. The kit owns the core IR and its invariants, a verifier, a query and pass API, and the stages below the core. Dialects (and the agents that write them) may add passes above the core, each gated by the verifier and the differential check. This is the working direction, to be tested in M3 as H11; see [passes, queries and several IRs](2026-11-23-passes-queries-and-several-irs.md).
+
 Appendix A records what we found about QuickJS, MicroQuickJS and the small C compilers, and why none of them sits on the critical path.
 
 ---
@@ -529,6 +531,7 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 | H8 | Differential testing catches lowering bugs cheaply | Plant faults in an emitter; count how many the examples catch | Planted faults pass |
 | H9 | Addressed links and embeds are enough for the book | Port one *Uncommon Math* chapter with no per-figure interface code | Chapters need custom wiring |
 | H10 | The IR earns its keep | Remove direct closure execution from one workbench | Something visible depended on it |
+| H11 | Dialects can own their passes | A fresh agent writes a correct domain pass against the query and pass API from the documentation alone (added 2026-11-23) | It has to read kit source, or its passes pass the verifier but break the differential check |
 
 ---
 
@@ -539,7 +542,7 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 | M0 Probe | A small artifact page that instantiates wasm, opens WebGL2 and WebGPU contexts, and fetches a sibling file | We know what the platform allows | L19 |
 | M1 Game slice | Subset parser, IR and JS emitter for DMG presets 01 to 05, compared with the existing runtime | Behaviour matches on seeded runs | H1, H10 |
 | M2 Shader slice | A tiny fields dialect; one kernel to JS and GLSL; tolerance comparison; the pixel debugger | The same source drives both | H2, H3 |
-| M3 Kit v0 | Extract the kit; write `START.md`, `API.md` and `hello`; declarative constructs | A fresh agent builds a third, data-oriented workbench with a SQL plugin from the documents alone | H2, H4, H5 |
+| M3 Kit v0 | Extract the kit; write `START.md`, `API.md` and `hello`; declarative constructs | A fresh agent builds a third, data-oriented workbench with a SQL plugin from the documents alone | H2, H4, H5, H11 (added 2026-11-23) |
 | M4 Form and book | Views by role, two skins, the address scheme, one ported chapter | Four skin and workbench combinations pass | H6, H9 |
 | M5 More backends | The wasm emitter; C and Rust text | Differential checks pass | H7, H8 |
 | M6 Regenerate | Revised prompts; one workbench built end to end; kit v1 frozen | No kit code was regenerated | |

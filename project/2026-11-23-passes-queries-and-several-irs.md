@@ -20,10 +20,10 @@
 
 1. **Several IRs.** The proposal's §5.1 has one core IR with every backend hanging off it. M1 already needs a second level. A store's integer coercion is free in the JS backend, because the DMG proxy performs it, but a C or wasm backend has no such host and needs explicit wrap and clamp operations ([the M1 plan](2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR"). So treat the core IR as one stage in a chain, and let a backend or dialect add its own lowering stages. This shapes M2 and M5, not M1.
 2. **A query and pass API.** The IR records every statement's effects, so questions like "who writes `Mole.ttl`?" are cheap. The proposal promises only a diffable JSON form. Before the kit is extracted (M3), add a small API: loops, effects, def-use, reaching stores, and a pass manager. Then H10 ("the IR earns its keep") can be judged by the questions it answers, not only by whether closures can be removed.
-3. **Who owns the passes** is open; see below.
+3. **Who owns the passes:** the kit owns the core and its invariants, and dialects add passes above it; see below.
 4. **Lattices** pay off first in a range analysis. A range analysis can prove that a `u8` store never wraps, so a C backend can skip the coercion. It can also back the loop-bound check (L007), which the IR review found too weak. Parked until a backend needs it.
 
-## Who owns the passes (open, for Ben)
+## Who owns the passes (ruled: the middle path, to be tested in M3)
 
 The proposal's §7 puts IR, analyses and optimization passes in the kit. Manuel's model has agents write domain passes per workbench.
 
@@ -36,6 +36,8 @@ The proposal's §7 puts IR, analyses and optimization passes in the kit. Manuel'
 | Reference interpreter | Optional (M1 decided against one) | Likely needed, to check a pass with no closure to compare against (CJI below does this per IR) |
 
 A middle path: the kit owns the core IR, its invariants (bounded loops, recorded effects, spans), a verifier, the query API and the stages below the core. Dialects own the stages above the core and any optional optimizations, each gated by the verifier and the differential check. Testing it would be a new hypothesis for M3: *a fresh agent can write a correct domain pass against the API from the documentation alone.*
+
+**Ruling (Ben, 2026-11-23):** take the middle path as the working direction, and test it in M3 as hypothesis H11, *a fresh agent can write a correct domain pass against the query and pass API from the documentation alone*. It fails if the agent has to read kit source, or if its passes get past the verifier and break the differential check. If it fails, the kit keeps every pass.
 
 ## ds-js-os: working code for each idea
 
