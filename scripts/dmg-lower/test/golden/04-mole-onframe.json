@@ -1,0 +1,106 @@
+{
+  "ir": "kernel",
+  "name": "Mole.onFrame#0",
+  "slot": "onFrame",
+  "domain": "entity Mole",
+  "params": [{ "name": "self", "t": { "ref": "Mole" }, "kind": "param" }],
+  "returns": "void",
+  "locals": [{ "name": "t0", "t": "f64", "kind": "temp" }],
+  "body": [
+    {
+      "k": "if",
+      "test": {
+        "k": "load",
+        "place": {
+          "recv": { "k": "local", "name": "self", "t": { "ref": "Mole" }, "span": [20, 24] },
+          "owner": "Mole",
+          "name": "up",
+          "t": "bool",
+          "store": { "type": "bool" }
+        },
+        "t": "bool",
+        "span": [20, 27]
+      },
+      "then": [
+        {
+          "k": "let",
+          "name": "t0",
+          "t": "f64",
+          "value": {
+            "k": "op",
+            "op": "sub",
+            "args": [
+              {
+                "k": "load",
+                "place": {
+                  "recv": { "k": "local", "name": "self", "t": { "ref": "Mole" }, "span": [33, 37] },
+                  "owner": "Mole",
+                  "name": "ttl",
+                  "t": "f64",
+                  "store": { "type": "u16" }
+                },
+                "t": "f64",
+                "span": [33, 41]
+              },
+              { "k": "num", "v": 1, "t": "f64", "span": [31, 41] }
+            ],
+            "t": "f64",
+            "span": [31, 41]
+          },
+          "span": [31, 41],
+          "effects": ["read Mole.ttl"]
+        },
+        {
+          "k": "store",
+          "place": {
+            "recv": { "k": "local", "name": "self", "t": { "ref": "Mole" }, "span": [33, 37] },
+            "owner": "Mole",
+            "name": "ttl",
+            "t": "f64",
+            "store": { "type": "u16" }
+          },
+          "value": { "k": "local", "name": "t0", "t": "f64", "span": [31, 41] },
+          "span": [31, 41],
+          "effects": ["write Mole.ttl"]
+        },
+        {
+          "k": "if",
+          "test": {
+            "k": "op",
+            "op": "eq",
+            "args": [
+              { "k": "local", "name": "t0", "t": "f64", "span": [31, 41] },
+              { "k": "num", "v": 0, "t": "f64", "span": [46, 47] }
+            ],
+            "t": "bool",
+            "span": [31, 47]
+          },
+          "then": [
+            {
+              "k": "store",
+              "place": {
+                "recv": { "k": "local", "name": "self", "t": { "ref": "Mole" }, "span": [49, 53] },
+                "owner": "Mole",
+                "name": "up",
+                "t": "bool",
+                "store": { "type": "bool" }
+              },
+              "value": { "k": "bool", "v": false, "t": "bool", "span": [59, 64] },
+              "span": [49, 64],
+              "effects": ["write Mole.up"]
+            }
+          ],
+          "else": [],
+          "span": [16, 65],
+          "effects": []
+        }
+      ],
+      "else": [],
+      "span": [16, 65],
+      "effects": ["read Mole.up"]
+    }
+  ],
+  "effects": ["read Mole.up", "read Mole.ttl", "write Mole.ttl", "write Mole.up"],
+  "src": "(self) => {\n    if (self.up && --self.ttl === 0) self.up = false;\n  }",
+  "span": [0, 69]
+}

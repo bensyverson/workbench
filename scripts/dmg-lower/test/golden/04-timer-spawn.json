@@ -1,0 +1,357 @@
+{
+  "ir": "kernel",
+  "name": "timer(spawn)",
+  "slot": "timer",
+  "domain": "tick",
+  "params": [{ "name": "w", "t": { "obj": "World" }, "kind": "param" }],
+  "returns": "void",
+  "locals": [
+    { "name": "t0", "t": { "list": { "ref": "Mole" }, "max": 9 }, "kind": "temp" },
+    { "name": "m_1", "t": { "ref": "Mole" }, "kind": "const", "source": "m" },
+    { "name": "t1", "t": { "opt": { "ref": "Mole" } }, "kind": "temp" },
+    { "name": "m", "t": { "opt": { "ref": "Mole" } }, "kind": "const" }
+  ],
+  "body": [
+    {
+      "k": "let",
+      "name": "t1",
+      "t": { "opt": { "ref": "Mole" } },
+      "value": null,
+      "span": [23, 115],
+      "effects": []
+    },
+    {
+      "k": "if",
+      "test": {
+        "k": "op",
+        "op": "eq",
+        "args": [
+          {
+            "k": "call",
+            "fn": "World.param",
+            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [23, 24] },
+            "args": [{ "k": "str", "v": "order", "t": { "enum": ["order"] }, "span": [31, 38] }],
+            "effects": ["read param order"],
+            "t": { "enum": ["random", "sweep"] },
+            "span": [23, 39]
+          },
+          { "k": "str", "v": "sweep", "t": { "enum": ["sweep"] }, "span": [44, 51] }
+        ],
+        "t": "bool",
+        "span": [23, 51]
+      },
+      "then": [
+        {
+          "k": "set",
+          "name": "t1",
+          "value": {
+            "k": "call",
+            "fn": "Board.at",
+            "recv": {
+              "k": "load",
+              "place": {
+                "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [54, 55] },
+                "owner": "World",
+                "name": "board",
+                "t": { "list": { "ref": "Mole" }, "max": 9, "with": "Board" }
+              },
+              "t": { "list": { "ref": "Mole" }, "max": 9, "with": "Board" },
+              "span": [54, 61]
+            },
+            "args": [
+              {
+                "k": "load",
+                "place": {
+                  "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [65, 66] },
+                  "owner": "World",
+                  "name": "next",
+                  "t": "f64",
+                  "store": { "type": "u8" }
+                },
+                "t": "f64",
+                "span": [65, 71]
+              }
+            ],
+            "effects": [],
+            "t": { "ref": "Mole" },
+            "span": [54, 72]
+          },
+          "span": [54, 72],
+          "effects": ["read World.next"]
+        }
+      ],
+      "else": [
+        {
+          "k": "let",
+          "name": "t0",
+          "t": { "list": { "ref": "Mole" }, "max": 9 },
+          "value": { "k": "list", "t": { "list": { "ref": "Mole" }, "max": 9 }, "span": [86, 114] },
+          "span": [86, 114],
+          "effects": []
+        },
+        {
+          "k": "each",
+          "name": "m_1",
+          "t": { "ref": "Mole" },
+          "list": {
+            "k": "load",
+            "place": {
+              "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [86, 87] },
+              "owner": "World",
+              "name": "board",
+              "t": { "list": { "ref": "Mole" }, "max": 9, "with": "Board" }
+            },
+            "t": { "list": { "ref": "Mole" }, "max": 9, "with": "Board" },
+            "span": [86, 93]
+          },
+          "max": 9,
+          "body": [
+            {
+              "k": "if",
+              "test": {
+                "k": "op",
+                "op": "not",
+                "args": [
+                  {
+                    "k": "load",
+                    "place": {
+                      "recv": {
+                        "k": "local",
+                        "name": "m_1",
+                        "t": { "ref": "Mole" },
+                        "span": [109, 110]
+                      },
+                      "owner": "Mole",
+                      "name": "up",
+                      "t": "bool",
+                      "store": { "type": "bool" }
+                    },
+                    "t": "bool",
+                    "span": [109, 113]
+                  }
+                ],
+                "t": "bool",
+                "span": [108, 113]
+              },
+              "then": [
+                {
+                  "k": "push",
+                  "name": "t0",
+                  "value": {
+                    "k": "local",
+                    "name": "m_1",
+                    "t": { "ref": "Mole" },
+                    "span": [86, 114]
+                  },
+                  "span": [86, 114],
+                  "effects": []
+                }
+              ],
+              "else": [],
+              "span": [86, 114],
+              "effects": ["read Mole.up"]
+            }
+          ],
+          "span": [86, 114],
+          "effects": []
+        },
+        {
+          "k": "set",
+          "name": "t1",
+          "value": {
+            "k": "call",
+            "fn": "Rng.pick",
+            "recv": {
+              "k": "load",
+              "place": {
+                "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [75, 76] },
+                "owner": "World",
+                "name": "rng",
+                "t": { "obj": "Rng" }
+              },
+              "t": { "obj": "Rng" },
+              "span": [75, 80]
+            },
+            "args": [
+              {
+                "k": "local",
+                "name": "t0",
+                "t": { "list": { "ref": "Mole" }, "max": 9 },
+                "span": [86, 114]
+              }
+            ],
+            "effects": ["rng"],
+            "t": { "opt": { "ref": "Mole" } },
+            "span": [75, 115]
+          },
+          "span": [75, 115],
+          "effects": ["rng"]
+        }
+      ],
+      "span": [23, 115],
+      "effects": ["read param order"]
+    },
+    {
+      "k": "let",
+      "name": "m",
+      "t": { "opt": { "ref": "Mole" } },
+      "value": { "k": "local", "name": "t1", "t": { "opt": { "ref": "Mole" } }, "span": [23, 115] },
+      "span": [19, 115],
+      "effects": []
+    },
+    {
+      "k": "store",
+      "place": {
+        "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [121, 122] },
+        "owner": "World",
+        "name": "next",
+        "t": "f64",
+        "store": { "type": "u8" }
+      },
+      "value": {
+        "k": "op",
+        "op": "rem",
+        "args": [
+          {
+            "k": "op",
+            "op": "add",
+            "args": [
+              {
+                "k": "load",
+                "place": {
+                  "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [131, 132] },
+                  "owner": "World",
+                  "name": "next",
+                  "t": "f64",
+                  "store": { "type": "u8" }
+                },
+                "t": "f64",
+                "span": [131, 137]
+              },
+              { "k": "num", "v": 1, "t": "f64", "span": [140, 141] }
+            ],
+            "t": "f64",
+            "span": [131, 141]
+          },
+          { "k": "num", "v": 9, "t": "f64", "span": [145, 146] }
+        ],
+        "t": "f64",
+        "span": [130, 146]
+      },
+      "span": [121, 146],
+      "effects": ["read World.next", "write World.next"]
+    },
+    {
+      "k": "if",
+      "test": {
+        "k": "op",
+        "op": "not",
+        "args": [
+          {
+            "k": "op",
+            "op": "present",
+            "args": [
+              { "k": "local", "name": "m", "t": { "opt": { "ref": "Mole" } }, "span": [157, 158] }
+            ],
+            "t": "bool",
+            "span": [157, 158]
+          }
+        ],
+        "t": "bool",
+        "span": [156, 158]
+      },
+      "then": [{ "k": "return", "value": null, "span": [160, 167], "effects": [] }],
+      "else": [],
+      "span": [152, 167],
+      "effects": []
+    },
+    {
+      "k": "store",
+      "place": {
+        "recv": { "k": "local", "name": "m", "t": { "ref": "Mole" }, "span": [172, 173] },
+        "owner": "Mole",
+        "name": "up",
+        "t": "bool",
+        "store": { "type": "bool" }
+      },
+      "value": { "k": "bool", "v": true, "t": "bool", "span": [179, 183] },
+      "span": [172, 183],
+      "effects": ["write Mole.up"]
+    },
+    {
+      "k": "store",
+      "place": {
+        "recv": { "k": "local", "name": "m", "t": { "ref": "Mole" }, "span": [189, 190] },
+        "owner": "Mole",
+        "name": "ttl",
+        "t": "f64",
+        "store": { "type": "u16" }
+      },
+      "value": {
+        "k": "op",
+        "op": "mul",
+        "args": [
+          {
+            "k": "call",
+            "fn": "World.param",
+            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [197, 198] },
+            "args": [{ "k": "str", "v": "linger", "t": { "enum": ["linger"] }, "span": [205, 213] }],
+            "effects": ["read param linger"],
+            "t": "f64",
+            "span": [197, 214]
+          },
+          { "k": "num", "v": 60, "t": "f64", "span": [217, 219] }
+        ],
+        "t": "f64",
+        "span": [197, 219]
+      },
+      "span": [189, 219],
+      "effects": ["read param linger", "write Mole.ttl"]
+    },
+    {
+      "k": "if",
+      "test": {
+        "k": "call",
+        "fn": "World.param",
+        "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [229, 230] },
+        "args": [{ "k": "str", "v": "sound", "t": { "enum": ["sound"] }, "span": [237, 244] }],
+        "effects": ["read param sound"],
+        "t": "bool",
+        "span": [229, 245]
+      },
+      "then": [
+        {
+          "k": "do",
+          "value": {
+            "k": "call",
+            "fn": "World.sfx",
+            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [247, 248] },
+            "args": [{ "k": "str", "v": "pop", "t": { "enum": ["pop"] }, "span": [253, 258] }],
+            "effects": ["sfx pop"],
+            "t": "void",
+            "span": [247, 259]
+          },
+          "span": [247, 259],
+          "effects": ["sfx pop"]
+        }
+      ],
+      "else": [],
+      "span": [225, 260],
+      "effects": ["read param sound"]
+    }
+  ],
+  "effects": [
+    "read param order",
+    "read World.next",
+    "read Mole.up",
+    "rng",
+    "write World.next",
+    "write Mole.up",
+    "read param linger",
+    "write Mole.ttl",
+    "read param sound",
+    "sfx pop"
+  ],
+  "src": "(w) => {\n    const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up));\n    w.next = (w.next + 1) % 9;\n    if (!m) return;\n    m.up = true;\n    m.ttl = w.param(\"linger\") * 60;\n    if (w.param(\"sound\")) w.sfx(\"pop\");\n  }",
+  "span": [0, 264]
+}

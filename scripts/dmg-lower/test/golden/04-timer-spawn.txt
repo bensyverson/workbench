@@ -1,0 +1,24 @@
+kernel timer(spawn)(w: World) -> void      ; tick
+  ; effects: read param order, read World.next, read Mole.up, rng, write World.next, write Mole.up, read param linger, write Mole.ttl, read param sound, sfx pop
+  let t1: Mole?
+  if eq(w.param("order"), "sweep") {       ; read param order
+    t1 = w.board.at(w.next)                ; read World.next
+  } else {
+    let t0: [Mole; 9] = []
+    each m_1 in w.board (≤ 9) {
+      if not(m_1.up) {                     ; read Mole.up
+        push t0, m_1
+      }
+    }
+    t1 = w.rng.pick(t0)                    ; rng
+  }
+  let m: Mole? = t1
+  store.u8 w.next, rem(add(w.next, 1), 9)  ; read World.next, write World.next
+  if not(present(m)) {
+    return
+  }
+  store.bool m.up, true                    ; write Mole.up
+  store.u16 m.ttl, mul(w.param("linger"), 60) ; read param linger, write Mole.ttl
+  if w.param("sound") {                    ; read param sound
+    w.sfx("pop")                           ; sfx pop
+  }

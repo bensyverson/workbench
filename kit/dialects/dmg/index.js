@@ -1,0 +1,255 @@
+// The DMG Workbench's runtime surface, described in the kit's terms: what `self`,
+// `w` and the HUD's `at` offer a runtime lambda, with types and effects, and the
+// calling convention of every slot. Built per program from its declarations.
+
+/** @import { Type, Coerce, Effect, EffectVerb } from "../../ir/ir.js" */
+/** @import { Dialect, ObjectDecl, Member, SlotDecl, SlotRef, FnSig } from "../../lower/dialect.js" */
+/** @import { DmgDeclarations, AttrDecl } from "./decls.js" */
+
+/** The world object's name in types and effects. */
+export const WORLD = "World";
+
+/** Buttons as `normBtn` accepts them. */
+const BUTTONS = ["up", "down", "left", "right", "A", "B", "start", "select", "a", "b"];
+
+/** Effects that change state; a render-time slot may perform none of them. */
+const STATE_CHANGES = /** @type {EffectVerb[]} */ (["write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
+
+const F64 = /** @type {Type} */ ("f64");
+const BOOL = /** @type {Type} */ ("bool");
+const VOID = /** @type {Type} */ ("void");
+const W = /** @type {Type} */ ({ obj: WORLD });
+const T = /** @type {Type} */ ({ tvar: "T" });
+
+/**
+ * @param {Type[]} params
+ * @param {Type} returns
+ * @param {Effect[]} [effects]
+ * @param {Partial<FnSig>} [more]
+ * @returns {Member}
+ */
+const fn = (params, returns, effects = [], more = {}) => ({ kind: "fn", params, returns, effects, ...more });
+
+/**
+ * @param {Type} t
+ * @param {Effect} [effect]
+ * @param {Coerce} [store]
+ * @returns {Member}
+ */
+const value = (t, effect, store) => ({ kind: "value", t, ...(effect ? { effect } : {}), ...(store ? { store } : {}) });
+
+/**
+ * The value type and store rule of a declared attribute.
+ * @param {AttrDecl} a
+ * @returns {{ t: Type, store: Coerce }}
+ */
+function attrType(a) {
+  /** @type {Coerce} */
+  const store = { type: a.type };
+  if (a.min != null) store.min = a.min;
+  if (a.max != null) store.max = a.max;
+  if (a.type === "enum") store.values = a.values ?? [];
+  const t = a.type === "bool" ? BOOL : a.type === "enum" ? { enum: a.values ?? [] } : F64;
+  return { t, store };
+}
+
+/**
+ * The dialect for one DMG program.
+ * @param {DmgDeclarations} d
+ * @returns {Dialect}
+ */
+export function dmgDialect(d) {
+  const kinds = Object.keys(d.comps);
+  /** @type {Type} */
+  const anyEntity = kinds.length === 1 ? { ref: kinds[0] } : { union: kinds.map((k) => ({ ref: k })) };
+  const printable = /** @type {Type} */ ({ union: ["f64", "str", "bool"] });
+
+  /** @type {Record<string, ObjectDecl>} */
+  const objects = {};
+
+  for (const [kind, c] of Object.entries(d.comps)) {
+    /** @type {Record<string, Member>} */
+    const members = {
+      x: value(F64, `read ${kind}.x`, { type: "f64" }),
+      y: value(F64, `read ${kind}.y`, { type: "f64" }),
+      visible: value(BOOL, `read ${kind}.visible`, { type: "bool" }),
+      alive: value(BOOL, `read ${kind}.alive`, { type: "bool" }),
+      id: value(F64), index: value(F64), row: value(F64), col: value(F64),
+      group: value("str"), kind: value({ enum: [kind] }),
+      world: value(W),
+      destroy: fn([], VOID, [`destroy ${kind}`]),
+      hits: fn([anyEntity], BOOL, [`read ${kind}.x`]),
+    };
+    for (const [name, t] of Object.entries(c.baked)) members[name] = value(t);
+    for (const [name, a] of Object.entries(c.attrs)) {
+      const { t, store } = attrType(a);
+      members[name] = value(t, `read ${kind}.${name}`, store);
+    }
+    for (const m of c.methods) members[m] = { kind: "method", owner: kind, name: m };
+    objects[kind] = { label: kind, members };
+  }
+
+  /** @type {Record<string, Member>} */
+  const world = {
+    world: value(W),
+    frame: value(F64, "read frame"),
+    over: value(BOOL, "read over"),
+    oamStart: value(F64, "read oamStart"),
+    input: value({ obj: "Input" }),
+    rng: value({ obj: "Rng" }),
+    rand: fn([F64], F64, ["rng"], { minArgs: 0 }),
+    emit: { kind: "emit", effects: ["emit {key}"] },
+    sfx: { kind: "keyed", what: "sound", keys: Object.fromEntries(d.sfx.map((s) => [s, { params: [], returns: VOID }])), effects: ["sfx {key}"] },
+    toast: fn([printable, printable], VOID, ["toast"], { minArgs: 1 }),
+    log: fn([], VOID, ["log"], { rest: printable }),
+    end: fn(["str"], VOID, ["end"], { minArgs: 0 }),
+    overlap: fn([anyEntity, anyEntity], BOOL, ["read overlap"]),
+    param: {
+      kind: "keyed", what: "param", effects: ["read param {key}"],
+      keys: Object.fromEntries(Object.entries(d.params).map(([name, p]) => {
+        const opts = p.options ?? [];
+        /** @type {Type} */
+        const t = p.kind === "toggle" ? BOOL : p.kind === "choice" && opts.every((o) => typeof o === "string") ? { enum: /** @type {string[]} */ (opts) } : F64;
+        return [name, { params: [], returns: t }];
+      })),
+    },
+    spawn: {
+      kind: "keyed", what: "pool", effects: ["spawn {key}"],
+      keys: Object.fromEntries(Object.entries(d.pools).map(([name, p]) => [name, {
+        params: [initFields(d, p.comp)], minArgs: 0, returns: { opt: { ref: p.comp } },
+      }])),
+    },
+    pool: {
+      kind: "keyed", what: "pool", effects: ["read pool {key}"],
+      keys: Object.fromEntries(Object.entries(d.pools).map(([name, p]) => [name, { params: [], returns: { list: { ref: p.comp }, max: p.size } }])),
+    },
+    all: {
+      kind: "keyed", what: "component", effects: ["read {key}.alive"],
+      keys: Object.fromEntries(Object.entries(d.comps).map(([k, c]) => [k, { params: [], returns: { list: { ref: k }, max: c.count } }])),
+    },
+    one: {
+      kind: "keyed", what: "component", effects: ["read {key}.alive"],
+      keys: Object.fromEntries(kinds.map((k) => [k, { params: [], returns: { opt: { ref: k } } }])),
+    },
+  };
+  if (d.board) world.board = value({ list: { ref: d.board.comp }, max: d.board.size, with: "Board" });
+  if (d.grid) world.grid = value({ obj: "Grid" });
+  for (const [alias, kind] of Object.entries(d.aliases)) world[alias] = value({ ref: kind });
+  for (const [name, a] of Object.entries(d.world.attrs)) {
+    const { t, store } = attrType(a);
+    world[name] = value(t, `read ${WORLD}.${name}`, store);
+  }
+  for (const m of d.world.methods) world[m] = { kind: "method", owner: WORLD, name: m };
+  objects[WORLD] = { label: "the world", members: world };
+
+  const buttons = /** @type {Type} */ ({ enum: BUTTONS });
+  const xy = /** @type {Type} */ ({ struct: { x: F64, y: F64 } });
+  objects.Input = {
+    label: "w.input",
+    members: {
+      held: fn([buttons], BOOL, ["input"]), pressed: fn([buttons], BOOL, ["input"]),
+      released: fn([buttons], BOOL, ["input"]), repeat: fn([buttons], BOOL, ["input"]),
+      dpad: fn([], xy, ["input"]), axis: fn([], xy, ["input"]),
+    },
+  };
+  objects.Rng = {
+    label: "w.rng",
+    members: {
+      int: fn([F64], F64, ["rng"]),
+      pick: fn([{ list: T, max: Infinity }], { opt: T }, ["rng"]),
+      chance: fn([F64], BOOL, ["rng"]),
+    },
+  };
+  objects.Grid = {
+    label: "w.grid",
+    members: {
+      rows: value(F64), cols: value(F64),
+      step: fn([F64, F64, F64], F64), rc: fn([F64], { struct: { r: F64, c: F64 } }),
+    },
+  };
+  if (d.board) objects.Board = { label: "w.board", members: { at: fn([F64], { ref: d.board.comp }), all: value({ list: { ref: d.board.comp }, max: d.board.size }) } };
+  const cell = /** @type {Type} */ ({ obj: "Cell" });
+  objects.Cell = {
+    label: "a HUD cell",
+    members: {
+      text: fn(["str"], cell, ["hud"], { rest: printable }),
+      ink: fn([F64], cell, ["hud"]), paper: fn([F64], cell, ["hud"]),
+      bar: fn([F64, F64, F64], cell, ["hud"], { minArgs: 2 }),
+    },
+  };
+  objects.At = { label: "at", members: {}, call: { params: [F64, F64], returns: cell, effects: [] } };
+  const math1 = fn([F64], F64);
+  objects.Math = {
+    label: "Math",
+    members: {
+      max: fn([], F64, [], { rest: F64 }), min: fn([], F64, [], { rest: F64 }), hypot: fn([], F64, [], { rest: F64 }),
+      floor: math1, ceil: math1, round: math1, trunc: math1, abs: math1, sign: math1, sqrt: math1,
+      sin: math1, cos: math1, tan: math1, atan: math1, log: math1, exp: math1,
+      atan2: fn([F64, F64], F64), pow: fn([F64, F64], F64),
+      PI: value(F64), E: value(F64),
+    },
+  };
+
+  /** @param {string} kind @returns {Type} */
+  const drawResult = (kind) => {
+    const sprites = { enum: d.comps[kind]?.sprites ?? [] };
+    return { union: [sprites, { struct: { sprite: sprites, x: F64, y: F64, flipX: BOOL, flipY: BOOL }, optional: ["sprite", "x", "y", "flipX", "flipY"] }, "null"] };
+  };
+
+  return {
+    name: "dmg",
+    objects,
+    list: { length: value(F64) },
+    queries: ["filter", "find", "some", "every", "reduce"],
+    globals: { Math: { obj: "Math" } },
+    slot: (ref) => slotOf(ref, d, drawResult),
+  };
+}
+
+/**
+ * The fields `w.spawn(pool, init)` may set: the kind's attributes and position.
+ * @param {DmgDeclarations} d
+ * @param {string} kind
+ * @returns {Type}
+ */
+function initFields(d, kind) {
+  /** @type {Record<string, Type>} */
+  const fields = { x: F64, y: F64, visible: BOOL };
+  for (const [name, a] of Object.entries(d.comps[kind]?.attrs ?? {})) fields[name] = attrType(a).t;
+  return { struct: fields, optional: Object.keys(fields) };
+}
+
+/**
+ * The calling convention of each DMG slot (the slot table in project/2026-11-23-dmg-workbench-read.md).
+ * @param {SlotRef} ref
+ * @param {DmgDeclarations} d
+ * @param {(kind: string) => Type} drawResult
+ * @returns {SlotDecl | string}
+ */
+function slotOf(ref, d, drawResult) {
+  const isWorld = ref.on === WORLD;
+  if (!isWorld && !d.comps[ref.on]) return `'${ref.on}' is not a component of this game`;
+  /** @type {Type} */
+  const self = isWorld ? W : { ref: ref.on };
+  const renderWhy = "draw and hud run at render time, so a change there would depend on how often the screen is drawn";
+  /** @param {Omit<SlotDecl, "forbid"> & { forbid?: EffectVerb[] }} s */
+  const slot = (s) => ({ forbid: [], ...s });
+  switch (ref.kind) {
+    case "onFrame": return slot({ params: [self, W], returns: VOID, domain: isWorld ? "tick" : `entity ${ref.on}` });
+    case "init": return slot({ params: [self, W], returns: VOID, domain: isWorld ? "reset" : `spawn ${ref.on}` });
+    case "method": return slot({ params: [self], inferParams: true, returns: "infer", domain: `call ${ref.on}.${ref.key}` });
+    case "on": return slot({ params: isWorld ? [W, "payload"] : [self, "payload", W], returns: VOID, domain: `event ${ref.key}` });
+    case "timer": return slot({ params: [W, W], returns: VOID, domain: "tick" });
+    case "done": return slot({ params: [W, W], returns: BOOL, domain: "tick" });
+    case "bot": return slot({ params: [W, W], returns: { union: [{ enum: BUTTONS }, "null"] }, domain: "tick" });
+    case "every": case "after":
+      return slot({ params: [W], returns: F64, domain: "timer interval", forbid: [...STATE_CHANGES, "hud"], forbidWhy: "a timer's interval is read whenever it re-arms" });
+    case "hud":
+      if (!isWorld) return "a hud belongs to the world";
+      return slot({ params: [W, { obj: "At" }], returns: VOID, domain: "render", forbid: STATE_CHANGES, forbidWhy: renderWhy });
+    case "draw":
+      if (isWorld) return "draw belongs to a component";
+      return slot({ params: [self, W], returns: drawResult(ref.on), domain: `render ${ref.on}`, forbid: [...STATE_CHANGES, "hud"], forbidWhy: renderWhy });
+  }
+  return `the DMG has no '${ref.kind}' slot`;
+}

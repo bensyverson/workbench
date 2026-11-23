@@ -1,0 +1,9 @@
+kernel Mole.onFrame#0(self: Mole) -> void  ; entity Mole
+  ; effects: read Mole.up, read Mole.ttl, write Mole.ttl, write Mole.up
+  if self.up {                             ; read Mole.up
+    let t0: f64 = sub(self.ttl, 1)         ; read Mole.ttl
+    store.u16 self.ttl, t0                 ; write Mole.ttl
+    if eq(t0, 0) {
+      store.bool self.up, false            ; write Mole.up
+    }
+  }

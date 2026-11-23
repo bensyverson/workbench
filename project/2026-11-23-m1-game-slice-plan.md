@@ -46,6 +46,17 @@ These come from the construct survey (`node scripts/subset-survey.js`, which cov
 - **A fixit never changes meaning.** Where a rewrite is only sometimes equivalent, the diagnostic keeps its tip and offers no edit. So loose `==`/`!=` (S116) stays a warning with no fixit, because `x == null` and `x === null` differ for `undefined`. `var` (S110) stays an error and hoisting is not supported; its fixit to `let` is offered only when that is safe: the declaration sits directly in the lambda's top-level block, the name is declared once, and nothing uses it earlier.
 - **Free identifiers are lowering's concern.** M1 counts them as rejections. The long-term answer is helper functions written in the subset (`lib/*.js`), as the proposal's §8.1 describes.
 
+## Integer semantics in the IR (2026-11-23, the IR leaf)
+
+The ruling above (coerce on store; an assignment evaluates to the unwrapped value) is represented like this, in [`kit/ir/ir.d.ts`](../kit/ir/ir.d.ts):
+
+- **Every number is an `f64` value.** Arithmetic, comparison and locals are plain doubles with JavaScript's meaning. A sized integer is not a value type.
+- **The integer type lives on the place, as a store rule.** A writable field's `Place` carries `store: { type, min?, max?, values? }` (`u8`, `i8`, `u16`, `i16`, `fix`, `bool`, `enum`, or `f64` for `x`/`y`). Every `store` statement applies its place's rule: clamp to min/max, truncate, then wrap. Reads return what was stored.
+- **A store never feeds back.** `--self.ttl === 0` lowers to `let t0 = sub(self.ttl, 1); store.u16 self.ttl, t0; if eq(t0, 0) …`. The compare reads the temporary, not the place, so on a u8 holding 0 it sees −1 while 255 is stored. The same holds for `x = e` used as a value (it yields `e`) and for postfix updates (they yield the old number).
+- **Who performs the coercion is the backend's business.** The JS backend targets the DMG runtime, whose entity and world proxies already coerce on every set and log the wrap and fraction warnings that the trace compares. So JS emits a plain assignment through the proxy and leaves the rule to the host, rather than coercing twice. A backend without such a host (C, wasm) emits the rule from `store`.
+
+This is why §5.8's `sub.wrap.u8` before the compare is wrong for this runtime: the wrap belongs to the store, not to the subtraction.
+
 ## Order
 
 The oracle harness comes first: it is the yardstick for everything else and gives the lambda inventory the parser is built against. Parser, lowering and emitter are a chain of dependent leaves, best done by one agent in order. The differential run and H1 report close the stage.

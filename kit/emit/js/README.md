@@ -1,0 +1,18 @@
+# kit/emit/js: the JavaScript backend
+
+Turns an [IR](../../ir/README.md) kernel into the source of a plain JS function whose parameters are the lambda's own, so it drops into the slot the lambda filled: `(self, w)`, `(w, e)`, `(w, at)`. No Node built-ins.
+
+```js
+import { emitKernel, instantiate } from "./kit/emit/js/index.js";
+
+const e = emitKernel(kernel);  // { name, params, source, lines }
+const fn = instantiate(e);     // a callable function, via the Function constructor
+e.lines[i];                    // { span, start }: the source span line i + 1 came from
+```
+
+- **Numbers** are JS doubles, as the IR's `f64`. **A store is a plain assignment**: the DMG host's entity and world proxies apply each attribute's coercion and log its warnings, which the oracle trace compares, so the backend does not coerce a second time. Why the IR keeps the rule on the store: [the M1 plan](../../../project/2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR".
+- **No closures at run time.** Query callbacks were inlined by lowering; they come out as `for…of` loops over the list.
+- **Every compound expression is parenthesized**, so precedence is never at risk; a statement's own expression drops its outer pair.
+- **The line map** has one entry per emitted line. Statement lines point at their statement's span; the function's first and last lines point at the whole lambda.
+
+`scripts/dmg-lower/test/emit-oracle.test.js` swaps each emitted lambda of presets 04–07 into the DMG runtime and compares a seeded run with the original's.

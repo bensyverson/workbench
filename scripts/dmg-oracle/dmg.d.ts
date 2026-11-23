@@ -23,7 +23,24 @@ export interface PartSpec {
   inits: FnRecord[];
   huds: FnRecord[];
   draw: FnRecord | null;
-  attrs: Record<string, { name: string; type: string; init: unknown; owner: string }>;
+  attrs: Record<string, { name: string; type: string; init: unknown; owner: string; min?: number; max?: number; values?: string[] }>;
+  /** A component's sprite names, in declaration order. */
+  spriteOrder: string[];
+}
+
+/** One entity the program places, boards or pools. */
+export interface InstanceSpec {
+  spec: PartSpec;
+  group: "place" | "board" | "pool";
+  alias?: string;
+  pool?: string;
+  /** The constants `bake` set on this instance. */
+  baked: Record<string, unknown>;
+}
+
+export interface ParamSpec {
+  ctrl: { kind: "slider" | "toggle" | "choice"; options?: Array<string | number> };
+  live: boolean;
 }
 
 export interface TimerSpec {
@@ -41,6 +58,10 @@ export interface DmgSpec {
   timers: TimerSpec[];
   done: FnRecord | null;
   bot: FnRecord | null;
+  inst: InstanceSpec[];
+  params: Record<string, ParamSpec>;
+  sfx: Record<string, unknown>;
+  grid: { rows: number; cols: number } | null;
 }
 
 export interface LogEntry { f: number; t: string; name: string; data: unknown }

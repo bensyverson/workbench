@@ -13,7 +13,11 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - README.md — not written yet; it comes when the kit has something to hand to users
 - [project/](project/) — dated plans, findings and decisions. The current plan is [M1: the game slice](project/2026-11-23-m1-game-slice-plan.md); the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md)
 - [kit/parse/README.md](kit/parse/README.md) — the subset parser: API, diagnostic codes, fixits
+- [kit/ir/README.md](kit/ir/README.md) — the core IR: kernels, types, effects, spans, the JSON form and the listing
+- [kit/lower/README.md](kit/lower/README.md) — lowering to IR: dialect descriptions, the DMG dialect, program inference, diagnostic codes
+- [kit/emit/js/README.md](kit/emit/js/README.md) — the JavaScript backend: IR kernels to slot-compatible functions, with a line map
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
+- [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
 
 <!-- agents:begin core@c84939 -->
 ## Working rules

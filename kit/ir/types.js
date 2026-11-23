@@ -1,0 +1,131 @@
+// Operations on IR types: printing, assignability, joins, and type variables.
+
+/** @import { Type } from "./ir.js" */
+
+/**
+ * A compact, readable rendering: `Mole?`, `[Spark; 24]`, `{x: f64}`, `"a"|"b"`.
+ * @param {Type} t
+ * @returns {string}
+ */
+export function showType(t) {
+  if (typeof t === "string") return t;
+  if ("enum" in t) return t.enum.map((v) => JSON.stringify(v)).join("|");
+  if ("ref" in t) return t.ref;
+  if ("opt" in t) {
+    const inner = showType(t.opt);
+    return typeof t.opt === "object" && ("union" in t.opt || "enum" in t.opt) ? `(${inner})?` : `${inner}?`;
+  }
+  if ("list" in t) return `[${showType(t.list)}; ${t.max}]`;
+  if ("struct" in t) {
+    const opt = new Set(t.optional ?? []);
+    return `{${Object.entries(t.struct).map(([k, v]) => `${k}${opt.has(k) ? "?" : ""}: ${showType(v)}`).join(", ")}}`;
+  }
+  if ("union" in t) return t.union.map(showType).join(" | ");
+  if ("obj" in t) return t.obj;
+  return t.tvar;
+}
+
+/**
+ * Structural equality.
+ * @param {Type} a
+ * @param {Type} b
+ */
+export function sameType(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Whether a value of type `from` may be used where `to` is expected.
+ * `unknown` on either side is accepted: it marks an error already reported.
+ * @param {Type} from
+ * @param {Type} to
+ * @returns {boolean}
+ */
+export function assignable(from, to) {
+  if (from === "unknown" || to === "unknown" || sameType(from, to)) return true;
+  if (typeof from === "object" && "union" in from) return from.union.every((f) => assignable(f, to));
+  if (typeof from === "object" && "opt" in from) return assignable("null", to) && assignable(from.opt, to);
+  if (typeof to === "string") return to === "str" && typeof from === "object" && "enum" in from;
+  if ("union" in to) return to.union.some((m) => assignable(from, m));
+  if ("opt" in to) return from === "null" || assignable(from, to.opt);
+  if (typeof from === "string") return false;
+  if ("enum" in to) return "enum" in from && from.enum.every((v) => to.enum.includes(v));
+  if ("ref" in to) return "ref" in from && from.ref === to.ref;
+  if ("list" in to) return "list" in from && assignable(from.list, to.list) && from.max <= to.max;
+  if ("obj" in to) return "obj" in from && from.obj === to.obj;
+  if ("struct" in to) {
+    if (!("struct" in from)) return false;
+    const optional = new Set(to.optional ?? []);
+    for (const [k, v] of Object.entries(from.struct)) if (!(k in to.struct) || !assignable(v, to.struct[k])) return false;
+    return Object.keys(to.struct).every((k) => k in from.struct || optional.has(k));
+  }
+  return false;
+}
+
+/**
+ * The type of a value that is either `a` or `b`: a ternary's, or a function's over its returns.
+ * @param {Type} a
+ * @param {Type} b
+ * @returns {Type}
+ */
+export function join(a, b) {
+  if (a === "unknown") return b;
+  if (b === "unknown" || sameType(a, b)) return a;
+  const empty = (/** @type {Type} */ t) => t === "null" || t === "void";
+  if (empty(a)) return optional(b);
+  if (empty(b)) return optional(a);
+  if (typeof a === "object" && "opt" in a) return optional(join(a.opt, b));
+  if (typeof b === "object" && "opt" in b) return optional(join(a, b.opt));
+  if (typeof a === "object" && typeof b === "object" && "enum" in a && "enum" in b) return { enum: [...new Set([...a.enum, ...b.enum])] };
+  if (assignable(a, b)) return b;
+  if (assignable(b, a)) return a;
+  const members = [a, b].flatMap((t) => (typeof t === "object" && "union" in t ? t.union : [t]));
+  return { union: members.filter((t, i) => members.findIndex((u) => sameType(t, u)) === i) };
+}
+
+/**
+ * `t`, made possibly empty.
+ * @param {Type} t
+ * @returns {Type}
+ */
+export function optional(t) {
+  if (t === "null" || t === "void" || t === "unknown" || (typeof t === "object" && "opt" in t)) return t;
+  return { opt: t };
+}
+
+/**
+ * Binds type variables in `param` by matching it against `arg`. Returns false on a mismatch.
+ * @param {Type} param
+ * @param {Type} arg
+ * @param {Map<string, Type>} bound
+ * @returns {boolean}
+ */
+export function unify(param, arg, bound) {
+  if (arg === "unknown") return true;
+  if (typeof param === "object" && "tvar" in param) {
+    const prior = bound.get(param.tvar);
+    if (!prior) { bound.set(param.tvar, arg); return true; }
+    return assignable(arg, prior);
+  }
+  if (typeof param === "object" && typeof arg === "object") {
+    if ("list" in param && "list" in arg) return unify(param.list, arg.list, bound);
+    if ("opt" in param) return unify(param.opt, "opt" in arg ? arg.opt : arg, bound);
+  }
+  return assignable(arg, substitute(param, bound));
+}
+
+/**
+ * `t` with its type variables replaced by their bindings (`unknown` when unbound).
+ * @param {Type} t
+ * @param {Map<string, Type>} bound
+ * @returns {Type}
+ */
+export function substitute(t, bound) {
+  if (typeof t === "string") return t;
+  if ("tvar" in t) return bound.get(t.tvar) ?? "unknown";
+  if ("opt" in t) return optional(substitute(t.opt, bound));
+  if ("list" in t) return { ...t, list: substitute(t.list, bound) };
+  if ("union" in t) return { union: t.union.map((m) => substitute(m, bound)) };
+  if ("struct" in t) return { ...t, struct: Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, substitute(v, bound)])) };
+  return t;
+}

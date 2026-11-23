@@ -1,0 +1,249 @@
+// Lowering statements: declarations, ifs (with narrowing), bounded for loops,
+// returns, and expressions evaluated for their effects.
+
+import { assignable, join } from "../ir/types.js";
+import { expr, test, facts, check } from "./expr.js";
+import { assign, update } from "./assign.js";
+
+/** @import * as AST from "../parse/ast.js" */
+/** @import { Expr, Stmt, Span, Type } from "../ir/ir.js" */
+/** @import { Lowerer } from "./lowerer.js" */
+
+/** @param {AST.Node} n @returns {Span} */
+const spanOf = (n) => [n.range[0], n.range[1]];
+
+/**
+ * @param {Lowerer} L
+ * @param {AST.Statement[]} body
+ */
+export function statements(L, body) {
+  for (const s of body) statement(L, s);
+}
+
+/**
+ * @param {Lowerer} L
+ * @param {AST.Statement} node
+ */
+export function statement(L, node) {
+  const span = spanOf(node);
+  switch (node.type) {
+    case "ExpressionStatement": return effect(L, node.expression);
+    case "VariableDeclaration": return declaration(L, node);
+    case "IfStatement": return ifStatement(L, node.test, node.consequent, node.alternate, span);
+    case "BlockStatement": return L.scoped(() => statements(L, node.body));
+    case "ForStatement": return forStatement(L, node);
+    case "ReturnStatement": return returnStatement(L, node);
+    case "BreakStatement": case "ContinueStatement":
+      L.emit({ k: node.type === "BreakStatement" ? "break" : "continue", span });
+      return;
+    case "EmptyStatement": return;
+    case "ForOfStatement":
+      L.error("L012", node, "for…of is not lowered yet.", "Use a query (filter, find, some, every, reduce) or a counted for loop.");
+      return;
+    default:
+      L.error("L012", node, `${node.type} is not lowered.`, "Rewrite it with the constructs in the runtime subset.");
+  }
+}
+
+/**
+ * An expression evaluated for its effects: stores without temporaries, `a && f()` as an if.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ */
+export function effect(L, node) {
+  const span = spanOf(node);
+  if (node.type === "AssignmentExpression") { assign(L, node, false); return; }
+  if (node.type === "UpdateExpression") { update(L, node, false); return; }
+  if (node.type === "LogicalExpression" && node.operator !== "??") {
+    const f = facts(L, node.left);
+    const c = test(L, node.left);
+    const guard = node.operator === "&&" ? c : L.ex({ k: "op", op: "not", args: [c], t: "bool", span: c.span });
+    const then = L.capture(() => effect(L, node.right), node.operator === "&&" ? f.yes : f.no).stmts;
+    L.emit({ k: "if", test: guard, then, else: [], span });
+    return;
+  }
+  if (node.type === "ConditionalExpression") {
+    const f = facts(L, node.test);
+    const c = test(L, node.test);
+    const then = L.capture(() => effect(L, node.consequent), f.yes).stmts;
+    const els = L.capture(() => effect(L, node.alternate), f.no).stmts;
+    L.emit({ k: "if", test: c, then, else: els, span });
+    return;
+  }
+  L.emit({ k: "do", value: expr(L, node), span });
+}
+
+/**
+ * @param {Lowerer} L
+ * @param {AST.VariableDeclaration} node
+ */
+function declaration(L, node) {
+  for (const d of node.declarations) {
+    // On failure the names are still declared, with an unknown type, so their uses report nothing more.
+    if (d.id.type !== "Identifier") {
+      L.error("L012", d.id, "Destructuring is not lowered yet.", "Declare each field on its own: const x = p.x;");
+      for (const n of patternNames(d.id)) L.declare(n, "unknown", "let");
+      continue;
+    }
+    if (!d.init) { L.error("L012", d, `'${d.id.name}' has no initial value.`, `Give it one: let ${d.id.name} = 0;`); L.declare(d.id.name, "unknown", "let"); continue; }
+    const v = expr(L, d.init);
+    // A let may later hold any string, so its type is not the literal it starts with.
+    const t = node.kind === "let" && typeof v.t === "object" && "enum" in v.t ? "str" : v.t;
+    const name = L.declare(d.id.name, t, node.kind === "const" ? "const" : "let");
+    L.emit({ k: "let", name, t, value: v, span: spanOf(d) });
+  }
+}
+
+/**
+ * The identifiers a destructuring pattern binds.
+ * @param {AST.Pattern} p
+ * @returns {string[]}
+ */
+function patternNames(p) {
+  if (p.type === "Identifier") return [p.name];
+  if (p.type === "ObjectPattern") return p.properties.flatMap((q) => patternNames(q.value));
+  if (p.type === "ArrayPattern") return p.elements.flatMap((q) => (q ? patternNames(q) : []));
+  if (p.type === "AssignmentPattern") return patternNames(p.left);
+  return [];
+}
+
+/**
+ * Whether control never falls off the end of `stmts`.
+ * @param {Stmt[]} stmts
+ * @returns {boolean}
+ */
+export function terminates(stmts) {
+  const last = stmts[stmts.length - 1];
+  if (!last) return false;
+  if (last.k === "return" || last.k === "break" || last.k === "continue") return true;
+  return last.k === "if" && terminates(last.then) && terminates(last.else);
+}
+
+/**
+ * `if (a && b) s` with no else becomes `if (a) { if (b) s }`, so `b` runs only when `a` holds.
+ * After an if whose branch always exits, what the test proved holds for the rest of the block.
+ * @param {Lowerer} L
+ * @param {AST.Expression} testNode
+ * @param {AST.Statement} consequent
+ * @param {AST.Statement | null} alternate
+ * @param {Span} span
+ */
+function ifStatement(L, testNode, consequent, alternate, span) {
+  const f = facts(L, testNode);
+  if (!alternate && testNode.type === "LogicalExpression" && testNode.operator === "&&") {
+    const c = test(L, testNode.left);
+    const left = facts(L, testNode.left);
+    const then = L.capture(() => ifStatement(L, testNode.right, consequent, null, span), left.yes).stmts;
+    L.emit({ k: "if", test: c, then, else: [], span });
+    return;
+  }
+  const c = test(L, testNode);
+  const then = L.capture(() => statement(L, consequent), f.yes).stmts;
+  const els = alternate ? L.capture(() => statement(L, alternate), f.no).stmts : [];
+  L.emit({ k: "if", test: c, then, else: els, span });
+  if (terminates(then) && !terminates(els)) for (const n of f.no) L.narrowed.add(n);
+  if (alternate && terminates(els) && !terminates(then)) for (const n of f.yes) L.narrowed.add(n);
+}
+
+/**
+ * A counted loop: `for (let i = a; i < B; i++)`, with B a constant, a param or a list's length,
+ * and `i` left alone by the body.
+ * @param {Lowerer} L
+ * @param {AST.ForStatement} node
+ */
+function forStatement(L, node) {
+  const tip = "Count with for (let i = 0; i < n; i++), where n is a constant, a param such as w.param(\"n\"), or a list's length, and leave i alone in the body.";
+  const init = node.init;
+  const d = init?.type === "VariableDeclaration" && init.kind === "let" && init.declarations.length === 1 ? init.declarations[0] : null;
+  const i = d && d.id.type === "Identifier" && d.init ? d.id.name : null;
+  const t = node.test;
+  const boundNode = i && t?.type === "BinaryExpression" && (t.operator === "<" || t.operator === "<=") && t.left.type === "Identifier" && t.left.name === i ? t.right : null;
+  const u = node.update;
+  const counts = i && u && ((u.type === "UpdateExpression" && u.operator === "++" && u.argument.type === "Identifier" && u.argument.name === i)
+    || (u.type === "AssignmentExpression" && u.operator === "+=" && u.left.type === "Identifier" && u.left.name === i && u.right.type === "Literal" && u.right.value === 1));
+  if (!d || !i || !boundNode || !counts || !t || !u) { L.error("L007", node, "This loop's bound cannot be checked.", tip); return; }
+  const writer = findWrite(node.body, i);
+  if (writer) { L.error("L007", writer, `The loop body changes '${i}', so its bound cannot be checked.`, tip); return; }
+  L.scoped(() => {
+    const start = check(L, /** @type {AST.Expression} */ (d.init), "f64", `'${i}'`);
+    const name = L.declare(i, "f64", "let");
+    const mark = L.out.length;
+    const cond = test(L, t);
+    if (L.out.length > mark) { L.error("L007", t, "This loop's test needs statements of its own.", tip); return; }
+    const bound = boundOf(cond);
+    if (!bound) { L.error("L007", boundNode, "This loop's bound is not a constant, a param or a declared size.", tip); return; }
+    const step = L.capture(() => effect(L, u)).stmts;
+    const body = L.capture(() => statement(L, node.body)).stmts;
+    L.emit({ k: "for", name, init: start, test: cond, update: step, body, bound, span: spanOf(node) });
+  });
+}
+
+/**
+ * Names what bounds `i < B`, or null when B is not a constant, a param, or a declared size.
+ * @param {Expr} cond
+ */
+function boundOf(cond) {
+  if (cond.k !== "op") return null;
+  const b = cond.args[1];
+  if (b.k === "num") return `const ${b.v}`;
+  if (b.k === "call" && b.args[0]?.k === "str" && b.fn.endsWith(".param")) return `param ${b.args[0].v}`;
+  if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
+  if (b.k === "load" && b.place.owner === "Grid") return `size ${b.place.name}`;
+  return null;
+}
+
+/**
+ * The first node in `body` that assigns or updates the identifier `name`.
+ * @param {unknown} body
+ * @param {string} name
+ * @returns {AST.Node | null}
+ */
+function findWrite(body, name) {
+  if (Array.isArray(body)) { for (const b of body) { const f = findWrite(b, name); if (f) return f; } return null; }
+  if (!body || typeof body !== "object") return null;
+  const n = /** @type {AST.Node} */ (body);
+  if ((n.type === "AssignmentExpression" && n.left.type === "Identifier" && n.left.name === name)
+    || (n.type === "UpdateExpression" && n.argument.type === "Identifier" && n.argument.name === name)) return n;
+  for (const [k, v] of Object.entries(n)) {
+    if (k === "loc" || k === "range") continue;
+    const f = findWrite(v, name);
+    if (f) return f;
+  }
+  return null;
+}
+
+/**
+ * @param {Lowerer} L
+ * @param {AST.ReturnStatement} node
+ */
+function returnStatement(L, node) {
+  const span = spanOf(node);
+  const want = L.decl.returns;
+  if (want === "infer") {
+    const v = node.argument ? expr(L, node.argument) : null;
+    L.returns.push(v ? v.t : "void");
+    L.emit({ k: "return", value: v, span });
+    return;
+  }
+  if (!node.argument) {
+    if (want !== "void" && !assignable("null", want)) L.error("L003", node, `A ${L.slot.kind} must return ${want}.`, "Return a value.");
+    L.emit({ k: "return", value: null, span });
+    return;
+  }
+  if (want === "void") {
+    L.error("L003", node.argument, `A ${L.slot.kind} returns nothing.`, "Drop the value: return;");
+    return;
+  }
+  L.emit({ k: "return", value: check(L, node.argument, want, `a ${L.slot.kind}'s result`), span });
+}
+
+/**
+ * The inferred return type of a method: the join of its returns, and void if it can fall off the end.
+ * @param {Lowerer} L
+ * @param {Stmt[]} body
+ * @returns {Type}
+ */
+export function inferredReturn(L, body) {
+  const all = terminates(body) ? L.returns : [...L.returns, /** @type {Type} */ ("void")];
+  return all.reduce((a, b) => join(a, b));
+}

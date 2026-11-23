@@ -1,0 +1,411 @@
+// Lowering expressions. An expression lowers to an IR expression; anything that
+// cannot stay inside one (a store, a query's loop, a lazy branch holding either)
+// spills into statements ahead of it, in evaluation order.
+
+import { assignable, join, showType } from "../ir/types.js";
+import { didYouMean } from "./codes.js";
+import { call } from "./call.js";
+import { assign, update } from "./assign.js";
+
+/** @import * as AST from "../parse/ast.js" */
+/** @import { Type, Expr, Op, Place, Span } from "../ir/ir.js" */
+/** @import { Member } from "./dialect.js" */
+/** @import { Lowerer } from "./lowerer.js" */
+
+/** @typedef {{ decl: Member, owner: string, recv: Expr }} Resolved */
+
+const ARITH = /** @type {Record<string, Op>} */ ({ "-": "sub", "*": "mul", "/": "div", "%": "rem", "**": "pow", "&": "band", "|": "bor", "^": "bxor", "<<": "shl", ">>": "shr", ">>>": "ushr" });
+const COMPARE = /** @type {Record<string, Op>} */ ({ "<": "lt", "<=": "le", ">": "gt", ">=": "ge" });
+const EQUALITY = /** @type {Record<string, Op>} */ ({ "===": "eq", "!==": "ne", "==": "eq", "!=": "ne" });
+
+/**
+ * A short description of a type for messages: strings say so.
+ * @param {Type} t
+ */
+export function describe(t) {
+  return typeof t === "object" && "enum" in t && t.enum.length === 1 ? `str ${showType(t)}` : showType(t);
+}
+
+/** @param {AST.Node} n @returns {Span} */
+export const spanOf = (n) => [n.range[0], n.range[1]];
+
+/**
+ * A placeholder for an expression that failed to lower.
+ * @param {AST.Node} n
+ * @returns {Expr}
+ */
+export const bad = (n) => ({ k: "null", t: "unknown", span: spanOf(n) });
+
+/**
+ * Lowers `node` where a value of type `expected` is needed, reporting a mismatch at the narrowest node.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ * @param {Type} expected
+ * @param {string} what  What needs the value, for the message.
+ * @returns {Expr}
+ */
+export function check(L, node, expected, what) {
+  if (node.type === "ConditionalExpression") return cond(L, node, (n) => check(L, n, expected, what));
+  const e = expr(L, node, expected);
+  if (!assignable(e.t, expected)) mismatch(L, node, e.t, expected, what);
+  return e;
+}
+
+/**
+ * @param {Lowerer} L
+ * @param {AST.Node} node
+ * @param {Type} got
+ * @param {Type} expected
+ * @param {string} what
+ */
+export function mismatch(L, node, got, expected, what) {
+  const members = typeof expected === "object" && "union" in expected ? expected.union : [expected];
+  const enums = members.flatMap((m) => (typeof m === "object" && "enum" in m ? m.enum : []));
+  const tip = enums.length ? `Use one of: ${enums.join(", ")}.` : `Give it a ${showType(expected)} value.`;
+  L.error("L003", node, `This is ${describe(got)}, but ${what} needs ${showType(expected)}.`, tip);
+}
+
+/**
+ * Lowers an expression for its value.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ * @param {Type} [expected]  A hint for object literals.
+ * @returns {Expr}
+ */
+export function expr(L, node, expected) {
+  const span = spanOf(node);
+  switch (node.type) {
+    case "Literal": {
+      const v = node.value;
+      if (typeof v === "number") return L.ex({ k: "num", v, t: "f64", span });
+      if (typeof v === "string") return L.ex({ k: "str", v, t: { enum: [v] }, span });
+      if (typeof v === "boolean") return L.ex({ k: "bool", v, t: "bool", span });
+      return L.ex({ k: "null", t: "null", span });
+    }
+    case "Identifier": return identifier(L, node);
+    case "MemberExpression": {
+      const r = resolveMember(L, node);
+      if (!r) return bad(node);
+      return valueOf(L, r, node);
+    }
+    case "CallExpression": return call(L, node);
+    case "UnaryExpression": {
+      if (node.operator === "!") return L.ex({ k: "op", op: "not", args: [test(L, node.argument)], t: "bool", span });
+      const arg = expr(L, node.argument);
+      if (!assignable(arg.t, "f64")) mismatch(L, node.argument, arg.t, "f64", `'${node.operator}'`);
+      const op = node.operator === "-" ? "neg" : node.operator === "+" ? "pos" : "bnot";
+      return L.ex({ k: "op", op, args: [arg], t: "f64", span });
+    }
+    case "BinaryExpression": {
+      const [a, b] = seq(L, [() => expr(L, node.left), () => expr(L, node.right)]);
+      return binary(L, node.operator, a, b, node);
+    }
+    case "LogicalExpression": return logical(L, node, "value");
+    case "ConditionalExpression": return cond(L, node, (n) => expr(L, n, expected));
+    case "AssignmentExpression": return assign(L, node, true);
+    case "UpdateExpression": return update(L, node, true);
+    case "ObjectExpression": return object(L, node, expected);
+    case "ArrowFunctionExpression":
+      L.error("L005", node, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.dialect.queries.join(", ")}.`);
+      return bad(node);
+    case "ArrayExpression":
+      L.error("L012", node, "Array literals are not lowered yet.", "Use a declared list (w.board, w.pool(name)) instead of an array literal.");
+      return bad(node);
+    default:
+      L.error("L012", node, `${node.type} is not lowered yet.`, "Rewrite it with the constructs in the runtime subset.");
+      return bad(node);
+  }
+}
+
+/**
+ * @param {Lowerer} L
+ * @param {AST.Identifier} node
+ * @returns {Expr}
+ */
+export function identifier(L, node) {
+  const span = spanOf(node);
+  const b = L.lookup(node.name);
+  if (b) {
+    if (b.pending) { L.error(b.pending.code, node, b.pending.message, b.pending.tip); return L.ex({ k: "local", name: b.name, t: "unknown", span }); }
+    const t = L.narrowed.has(b.name) && typeof b.t === "object" && "opt" in b.t ? b.t.opt : b.t;
+    return L.ex({ k: "local", name: b.name, t, span });
+  }
+  const g = L.dialect.globals[node.name];
+  if (g) return L.ex({ k: "global", name: node.name, t: g, span });
+  const known = [...L.scopes.flatMap((s) => [...s.keys()]), ...Object.keys(L.dialect.globals)];
+  const tip = node.name === "undefined" ? "Use null for an empty value."
+    : `Runtime lambdas see only their parameters and ${Object.keys(L.dialect.globals).join(", ")}; a top-level helper or constant is not visible, so pass it in or declare it.${didYouMean(node.name, known)}`;
+  L.error("L001", node, `'${node.name}' is not declared here.`, tip);
+  return bad(node);
+}
+
+/**
+ * Resolves `obj.name` to the member it names, lowering `obj`. Reports and returns null on failure.
+ * @param {Lowerer} L
+ * @param {AST.MemberExpression} node
+ * @returns {Resolved | null}
+ */
+export function resolveMember(L, node) {
+  if (node.computed) {
+    L.error("L009", node.property, "A dynamic property name cannot be checked.", "Name the member directly, as self.name, or use a declared list.");
+    return null;
+  }
+  const recv = expr(L, node.object);
+  const name = /** @type {AST.Identifier} */ (node.property).name;
+  return resolveOn(L, recv, name, node);
+}
+
+/**
+ * @param {Lowerer} L
+ * @param {Expr} recv
+ * @param {string} name
+ * @param {AST.MemberExpression} node
+ * @returns {Resolved | null}
+ */
+export function resolveOn(L, recv, name, node) {
+  let t = recv.t;
+  if (t === "unknown") return null;
+  if (typeof t === "object" && "opt" in t) {
+    const what = L.src.slice(node.object.range[0], node.object.range[1]);
+    L.error("L008", node.object, `'${what}' may be empty here.`, `Check it first: if (!${what}) return;`);
+    t = t.opt;
+    recv = { ...recv, t };
+  }
+  /** @type {Record<string, Member> | undefined} */
+  let members;
+  let owner = "";
+  let label = showType(t);
+  if (typeof t === "object" && ("ref" in t || "obj" in t)) {
+    owner = "ref" in t ? t.ref : t.obj;
+    const o = L.dialect.objects[owner];
+    members = o?.members;
+    label = o?.label ?? owner;
+  } else if (typeof t === "object" && "list" in t) {
+    const own = t.with ? L.dialect.objects[t.with]?.members ?? {} : {};
+    owner = t.with ?? "list";
+    members = { ...L.dialect.list, ...own };
+    label = t.with ? L.dialect.objects[t.with]?.label ?? t.with : "a list";
+  } else if (typeof t === "object" && "struct" in t) {
+    owner = "struct";
+    members = Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, /** @type {Member} */ ({ kind: "value", t: v })]));
+  }
+  const decl = members?.[name];
+  if (!decl) {
+    const names = Object.keys(members ?? {});
+    const tip = (didYouMean(name, names).trim() || "") + (names.length ? ` Members: ${names.join(", ")}.` : ` ${label} has no members.`);
+    L.error("L002", node.property, `${label} has no member '${name}'.`, tip.trim());
+    return null;
+  }
+  return { decl, owner, recv };
+}
+
+/**
+ * The value of a resolved member read without a call.
+ * @param {Lowerer} L
+ * @param {Resolved} r
+ * @param {AST.MemberExpression} node
+ * @returns {Expr}
+ */
+function valueOf(L, r, node) {
+  const span = spanOf(node);
+  const name = /** @type {AST.Identifier} */ (node.property).name;
+  if (r.decl.kind !== "value") {
+    L.error("L003", node, `'${name}' is a function here.`, `Call it: ${L.src.slice(node.range[0], node.range[1])}(…).`);
+    return bad(node);
+  }
+  if (r.owner === "list" || r.owner === "struct" || (typeof r.recv.t === "object" && "list" in r.recv.t && name === "length")) {
+    return L.ex({ k: "field", of: r.recv, name, t: r.decl.t, span });
+  }
+  return L.ex({ k: "load", place: placeOf(r, name), t: r.decl.t, span }, r.decl.effect ? [r.decl.effect] : []);
+}
+
+/**
+ * @param {Resolved} r
+ * @param {string} name
+ * @returns {Place}
+ */
+export function placeOf(r, name) {
+  const d = /** @type {Extract<Member, { kind: "value" }>} */ (r.decl);
+  return { recv: r.recv, owner: r.owner, name, t: d.t, ...(d.store ? { store: d.store } : {}) };
+}
+
+/**
+ * Lowers operands left to right. When one spills statements, the operands before it
+ * that could change are first saved to temporaries, so evaluation order holds.
+ * @param {Lowerer} L
+ * @param {Array<() => Expr>} thunks
+ * @returns {Expr[]}
+ */
+export function seq(L, thunks) {
+  /** @type {Expr[]} */
+  const vals = [];
+  for (const thunk of thunks) {
+    const mark = L.out.length;
+    const v = thunk();
+    if (L.out.length > mark) {
+      const out = L.out;
+      L.out = [];
+      for (let i = 0; i < vals.length; i++) {
+        if (L.stable(vals[i])) continue;
+        const name = L.temp(vals[i].t);
+        L.emit({ k: "let", name, t: vals[i].t, value: vals[i], span: vals[i].span });
+        vals[i] = L.ex({ k: "local", name, t: vals[i].t, span: vals[i].span });
+      }
+      out.splice(mark, 0, ...L.out);
+      L.out = out;
+    }
+    vals.push(v);
+  }
+  return vals;
+}
+
+/**
+ * Builds a binary operation on lowered operands, checking their types.
+ * @param {Lowerer} L
+ * @param {string} operator
+ * @param {Expr} a
+ * @param {Expr} b
+ * @param {AST.Node} node
+ * @returns {Expr}
+ */
+export function binary(L, operator, a, b, node) {
+  const span = spanOf(node);
+  const isNum = (/** @type {Expr} */ e) => assignable(e.t, "f64");
+  const isStr = (/** @type {Expr} */ e) => e.t !== "unknown" && assignable(e.t, "str");
+  if (operator === "+") {
+    if (isNum(a) && isNum(b)) return L.ex({ k: "op", op: "add", args: [a, b], t: "f64", span });
+    if ((isStr(a) || isStr(b)) && (isNum(a) || isStr(a)) && (isNum(b) || isStr(b))) return L.ex({ k: "op", op: "concat", args: [a, b], t: "str", span });
+    L.error("L003", node, `'+' needs two numbers or a string, not ${describe(a.t)} and ${describe(b.t)}.`, "Make both sides f64, or one a string to concatenate.");
+    return bad(node);
+  }
+  if (operator in ARITH) {
+    for (const [e, n] of /** @type {const} */ ([[a, "left"], [b, "right"]])) if (!isNum(e)) mismatch(L, node, e.t, "f64", `the ${n} side of '${operator}'`);
+    return L.ex({ k: "op", op: ARITH[operator], args: [a, b], t: "f64", span });
+  }
+  if (operator in COMPARE) {
+    if (!((isNum(a) && isNum(b)) || (isStr(a) && isStr(b)))) L.error("L003", node, `'${operator}' compares two numbers or two strings, not ${describe(a.t)} and ${describe(b.t)}.`, "Compare values of the same type.");
+    return L.ex({ k: "op", op: COMPARE[operator], args: [a, b], t: "bool", span });
+  }
+  if (operator in EQUALITY) {
+    const loose = operator.length === 2;
+    const comparable = assignable(a.t, b.t) || assignable(b.t, a.t) || (isStr(a) && isStr(b));
+    const prim = (/** @type {Type} */ t) => t === "f64" || t === "bool" || t === "str" || (typeof t === "object" && "enum" in t);
+    if (!comparable) L.error("L003", node, `${describe(a.t)} and ${describe(b.t)} can never be equal.`, "Compare values of the same type.");
+    else if (loose && !(prim(a.t) && prim(b.t))) L.error("L003", node, `'${operator}' between ${describe(a.t)} and ${describe(b.t)} can coerce.`, `Use '${operator}=' instead.`);
+    return L.ex({ k: "op", op: EQUALITY[operator], args: [a, b], t: "bool", span });
+  }
+  L.error("L012", node, `'${operator}' is not lowered.`, "Rewrite it with the operators in the runtime subset.");
+  return bad(node);
+}
+
+/**
+ * Lowers `node` where only its truthiness matters, returning a bool.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ * @returns {Expr}
+ */
+export function test(L, node) {
+  if (node.type === "UnaryExpression" && node.operator === "!") return L.ex({ k: "op", op: "not", args: [test(L, node.argument)], t: "bool", span: spanOf(node) });
+  if (node.type === "LogicalExpression" && node.operator !== "??") return logical(L, node, "test");
+  const e = expr(L, node);
+  if (e.t === "bool" || e.t === "unknown") return e;
+  const op = typeof e.t === "object" && "opt" in e.t ? "present" : "truthy";
+  return L.ex({ k: "op", op, args: [e], t: "bool", span: e.span });
+}
+
+/**
+ * What a test proves when it is true or false: the optional locals it shows present.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ * @returns {{ yes: string[], no: string[] }}
+ */
+export function facts(L, node) {
+  if (node.type === "Identifier") {
+    const b = L.lookup(node.name);
+    if (b && b.kind === "const" && typeof b.t === "object" && "opt" in b.t) return { yes: [b.name], no: [] };
+  }
+  if (node.type === "UnaryExpression" && node.operator === "!") { const f = facts(L, node.argument); return { yes: f.no, no: f.yes }; }
+  if (node.type === "LogicalExpression" && node.operator === "&&") return { yes: [...facts(L, node.left).yes, ...facts(L, node.right).yes], no: [] };
+  if (node.type === "LogicalExpression" && node.operator === "||") return { yes: [], no: [...facts(L, node.left).no, ...facts(L, node.right).no] };
+  return { yes: [], no: [] };
+}
+
+/**
+ * `a && b` and `a || b`, short-circuiting. In a value, both sides must be bool.
+ * @param {Lowerer} L
+ * @param {AST.LogicalExpression} node
+ * @param {"value" | "test"} mode
+ * @returns {Expr}
+ */
+function logical(L, node, mode) {
+  const span = spanOf(node);
+  if (node.operator === "??") {
+    L.error("L012", node, "'??' is not lowered yet.", "Write the check out: x !== null ? x : fallback.");
+    return bad(node);
+  }
+  const side = (/** @type {AST.Expression} */ n) => {
+    const e = mode === "test" ? test(L, n) : expr(L, n);
+    if (!assignable(e.t, "bool")) L.error("L003", n, `'${node.operator}' in a value needs bools on both sides, not ${describe(e.t)}.`, "Use a ternary, or compare explicitly (x !== 0).");
+    return e;
+  };
+  const a = side(node.left);
+  const f = facts(L, node.left);
+  const b = L.capture(() => side(node.right), node.operator === "&&" ? f.yes : f.no);
+  const op = node.operator === "&&" ? "and" : "or";
+  if (!b.stmts.length) return L.ex({ k: "op", op, args: [a, b.value], t: "bool", span });
+  const name = L.temp("bool");
+  L.emit({ k: "let", name, t: "bool", value: a, span: a.span });
+  const t0 = L.ex({ k: "local", name, t: "bool", span: a.span });
+  const guard = op === "and" ? t0 : L.ex({ k: "op", op: "not", args: [t0], t: "bool", span: a.span });
+  const set = { k: /** @type {const} */ ("set"), name, value: b.value, span: b.value.span, effects: L.effectsOf(b.value) };
+  L.emit({ k: "if", test: guard, then: [...b.stmts, set], else: [], span });
+  return L.ex({ k: "local", name, t: "bool", span });
+}
+
+/**
+ * A lazy ternary; `branch` lowers each arm.
+ * @param {Lowerer} L
+ * @param {AST.ConditionalExpression} node
+ * @param {(n: AST.Expression) => Expr} branch
+ * @returns {Expr}
+ */
+export function cond(L, node, branch) {
+  const span = spanOf(node);
+  const f = facts(L, node.test);
+  const c = test(L, node.test);
+  const a = L.capture(() => branch(node.consequent), f.yes);
+  const b = L.capture(() => branch(node.alternate), f.no);
+  const t = join(a.value.t, b.value.t);
+  if (!a.stmts.length && !b.stmts.length) return L.ex({ k: "cond", test: c, then: a.value, else: b.value, t, span });
+  const name = L.temp(t);
+  L.emit({ k: "let", name, t, value: null, span });
+  /** @param {{ stmts: import("../ir/ir.js").Stmt[], value: Expr }} arm */
+  const arm = (arm) => [...arm.stmts, /** @type {import("../ir/ir.js").Stmt} */ ({ k: "set", name, value: arm.value, span: arm.value.span, effects: L.effectsOf(arm.value) })];
+  L.emit({ k: "if", test: c, then: arm(a), else: arm(b), span });
+  return L.ex({ k: "local", name, t, span });
+}
+
+/**
+ * An object literal: a struct, its fields checked against `expected` where it names them.
+ * @param {Lowerer} L
+ * @param {AST.ObjectExpression} node
+ * @param {Type} [expected]
+ * @returns {Expr}
+ */
+function object(L, node, expected) {
+  const members = expected && typeof expected === "object" && "union" in expected ? expected.union : expected ? [expected] : [];
+  const shape = /** @type {Extract<Type, { struct: unknown }> | undefined} */ (members.find((m) => typeof m === "object" && "struct" in m));
+  const props = /** @type {AST.Property[]} */ (node.properties);
+  const names = props.map((p) => (p.key.type === "Identifier" ? p.key.name : String(/** @type {AST.Literal} */ (p.key).value)));
+  const vals = seq(L, props.map((p, i) => () => {
+    const want = shape?.struct[names[i]];
+    return want ? check(L, p.value, want, `field '${names[i]}'`) : expr(L, p.value);
+  }));
+  /** @type {Record<string, Expr>} */
+  const fields = {};
+  /** @type {Record<string, Type>} */
+  const struct = {};
+  names.forEach((n, i) => { fields[n] = vals[i]; struct[n] = vals[i].t; });
+  return L.ex({ k: "struct", fields, t: { struct }, span: spanOf(node) });
+}
+
