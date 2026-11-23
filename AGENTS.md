@@ -1,14 +1,18 @@
-IMPORTANT: As you implement features, keep the documentation in <docs path> up to date; update README.md only when a doc file is added or new users must know.
+IMPORTANT: As you implement features, keep the documentation in `project/` and `scripts/*/README.md` up to date; update README.md only when a doc file is added or new users must know.
 
 ## Overview
 
-<One paragraph: what this project is, for whom, and the shape of the code.>
+The Workbench Kit prototype. A workbench is a domain language plus an IDE, an agent and a book, running as one page in the browser, including inside a Claude artifact. The kit is written once: a parser for a JavaScript subset, a typed IR, emitters and checks. Each workbench is then a few small generated files. Current work is milestone M1, which parses the DMG Workbench's runtime lambdas, lowers them to IR, emits them as JavaScript, and compares seeded runs against the original.
+
+**Stack:** plain JavaScript ES modules, type-checked by TypeScript (`checkJs`, `strict`). Shared types live in `.d.ts` files. Tests use `node:test` on Node 26. There is no build step, and code in `kit/` must not import Node built-ins, because it also runs in the page. `npm install` sets up the pre-commit hook, which runs `npm run typecheck` and `npm test`. The full suite takes about 2 s. Sandboxed sessions: `git` and `npm` need the sandbox off for their home-directory files (see `project/agents/harness.md`).
+
+Review baseline: 2026-11-23T15:00:00-06:00
 
 ## Documentation
 
-- [README.md](README.md) — <what it covers>
-- [project/](project/) — dated plans, findings and decisions; <name the current plan>
-- <other docs, one line each>
+- README.md — not written yet; it comes when the kit has something to hand to users
+- [project/](project/) — dated plans, findings and decisions. The current plan is [M1: the game slice](project/2026-11-23-m1-game-slice-plan.md); the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md)
+- [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 
 <!-- agents:begin core@c84939 -->
 ## Working rules

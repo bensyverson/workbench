@@ -1,0 +1,5 @@
+#!/bin/sh
+# Type-check and test before every commit. Skips nothing: a red suite blocks the commit.
+set -e
+npm run --silent typecheck
+npm test --silent

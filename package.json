@@ -1,0 +1,19 @@
+{
+  "name": "workbench-kit",
+  "private": true,
+  "type": "module",
+  "description": "A kit for building domain-language workbenches that run in the browser.",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit",
+    "inventory": "node scripts/dmg-oracle/inventory.js",
+    "prepare": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "6.0.3"
+  }
+}
