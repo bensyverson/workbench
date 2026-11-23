@@ -30,14 +30,7 @@
 
 ## Waiting on Ben
 
-1. **The five subset widenings** in the findings, "H1":
-   - program helpers as lowered functions;
-   - `for…of` over a bounded list;
-   - destructuring;
-   - list indexing with a declared bound, plus string intrinsics;
-   - a constant loop step other than ±1.
-
-   None is decided. Program helpers remove the largest class of rejections (11 lambdas).
+1. **The five subset widenings are ruled.** Ben accepted the recommendations on 2026-11-23. They are recorded in the M1 plan, "Subset widenings after M1", and filed as job `m82n5e` (after `CRTQ0c`).
 2. **Ben's weakly held idea:** a wasm backend early, to dogfood the IR beyond JS → IR → JS. It was not decided. The cheaper first step suggested was a "hostless" JS emitter mode that applies the store rules itself. Raise it when M2 is planned. It may pull a slice of M5 ahead of M3.
 
 ## Next

@@ -46,6 +46,17 @@ These come from the construct survey (`node scripts/subset-survey.js`, which cov
 - **A fixit never changes meaning.** Where a rewrite is only sometimes equivalent, the diagnostic keeps its tip and offers no edit. So loose `==`/`!=` (S116) stays a warning with no fixit, because `x == null` and `x === null` differ for `undefined`. `var` (S110) stays an error and hoisting is not supported; its fixit to `let` is offered only when that is safe: the declaration sits directly in the lambda's top-level block, the name is declared once, and nothing uses it earlier.
 - **Free identifiers are lowering's concern.** M1 counts them as rejections. The long-term answer is helper functions written in the subset (`lib/*.js`), as the proposal's §8.1 describes.
 
+## Subset widenings after M1 (2026-11-23, with Ben)
+
+These are ruled on the evidence in [the M1 findings](2026-11-23-m1-findings.md), "H1". Count figures come from `node scripts/dmg-diff/cli.js survey`.
+
+- **Program helpers lower as program functions.** A top-level helper of the preset program is parsed, checked against the subset, and lowered like a DMG method, with its signature inferred from its call sites and the same rules: effects, and no recursion. A top-level constant becomes a baked constant. This is the largest class of rejections: 11 lambdas, of which about 7 would then lower; the other 4 also break deliberate rules.
+- **`for…of` over a bounded list, and destructuring of structs, are lowered.** The parser rulings above already allow both, so this finishes lowering rather than widening the subset. Lowering must also check a `for…of` body, which it currently skips. Tuple destructuring (`const [dx, dy] = …`) comes with list indexing.
+- **List indexing is allowed and typed as possibly empty**, like `find`'s result, so it must be checked before use. That matches JavaScript's `undefined` out of range, and gives a C backend its bounds check.
+- **String functions (`repeat`, `toUpperCase`, …) are declared in a dialect only when a program needs them.** They are not part of the subset.
+- **A loop step other than ±1 stays rejected** until a range analysis can bound a loop whose start is an expression (backlog, "a range analysis on a small lattice"). L007's tip suggests the rewrite: count the iterations and compute the value inside the loop.
+- **Closures, `while` and spread stay rejected.** Each appears once in 126 lambdas and has a direct rewrite.
+
 ## Integer semantics in the IR (2026-11-23, the IR leaf)
 
 The ruling above (coerce on store; an assignment evaluates to the unwrapped value) is represented like this, in [`kit/ir/ir.d.ts`](../kit/ir/ir.d.ts):
