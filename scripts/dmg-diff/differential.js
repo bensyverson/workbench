@@ -3,13 +3,17 @@
 // original's. A case names the program, its live params and its build-time overrides.
 
 import { swapLambda } from "../dmg-oracle/lambdas.js";
-import { runTrace, firstDifference } from "../dmg-oracle/trace.js";
+import { runTrace, firstDifference, hash } from "../dmg-oracle/trace.js";
 import { inputTrace } from "../dmg-oracle/inputs.js";
 import { lowerPreset, emitEntry } from "../dmg-lower/pipeline.js";
+import { instantiate } from "../../kit/emit/js/index.js";
 
 /** @import { loadDmg } from "../dmg-oracle/load.js" */
 /** @import { DmgBuild } from "../dmg-oracle/dmg.js" */
 /** @import { Trace } from "../dmg-oracle/trace.js" */
+/** @import { Entry } from "../dmg-lower/pipeline.js" */
+
+/** @typedef {(slot: string, source: string) => string} SourceTransform */
 
 /**
  * @typedef {object} DiffCase
@@ -37,6 +41,9 @@ import { lowerPreset, emitEntry } from "../dmg-lower/pipeline.js";
  * @property {string[]} skipped   Slot ids that did not lower.
  * @property {Array<{ slot: string, diff: ReturnType<typeof firstDifference> }>} mismatches  `slot` is `*` for all at once.
  * @property {Coverage} coverage  Of the original run.
+ * @property {number} ticks   Ticks the original ran: fewer than `frames` when it stopped on a runtime error.
+ * @property {string | null} error  The original's runtime error message, or null.
+ * @property {string} fingerprint  Hash of the original trace: two runs with the same label and fingerprint are the same run.
  */
 
 /**
@@ -91,26 +98,90 @@ export function coverage(t) {
 }
 
 /**
- * Runs one case on one seed.
- * @param {ReturnType<typeof loadDmg>} dmg
- * @param {DiffCase} c
- * @param {{ seed: number, frames: number }} run
- * @returns {DiffResult}
+ * Groups lowered entries by slot id: a fragment lambda run by several parts has one entry per part.
+ * @param {Entry[]} entries
+ * @returns {Map<string, Entry[]>}
  */
-export function runCase(dmg, c, { seed, frames }) {
-  const make = builder(dmg, c);
-  const { entries } = lowerPreset({ build: make }, c.preset);
-  /** @type {Map<string, typeof entries>} */
-  const bySlot = new Map();
-  for (const e of entries) bySlot.set(e.slot.id, [...(bySlot.get(e.slot.id) ?? []), e]);
+export function groupBySlot(entries) {
+  /** @type {Map<string, Entry[]>} */
+  const by = new Map();
+  for (const e of entries) by.set(e.slot.id, [...(by.get(e.slot.id) ?? []), e]);
+  return by;
+}
+
+/**
+ * Emits one slot's lowered entries as a single function to swap in. `swapLambda`
+ * replaces the slot's one function, so a fragment lambda whose parts emit different
+ * code cannot be swapped faithfully; that throws rather than test only the first part.
+ * @param {Entry[]} group  Entries of one slot, all lowered.
+ * @param {SourceTransform} [transform]  Rewrites the emitted source before it is instantiated (planting a fault).
+ * @returns {(...a: any[]) => unknown}
+ */
+export function emitGroup(group, transform) {
+  const id = group[0].slot.id;
+  const { emitted } = emitEntry(group[0]);
+  for (const e of group.slice(1)) {
+    if (emitEntry(e).emitted.source !== emitted.source) throw new Error(`${id}: the parts that run this fragment lambda emit different code, so one swapped function cannot stand for them all`);
+  }
+  return instantiate({ ...emitted, source: transform ? transform(id, emitted.source) : emitted.source });
+}
+
+/**
+ * Emits every slot that lowered for all its parts; the rest are skipped.
+ * @param {Entry[]} entries
+ * @param {SourceTransform} [transform]
+ * @returns {{ fns: Array<{ id: string, fn: (...a: any[]) => unknown }>, skipped: string[] }}
+ */
+export function emitSlots(entries, transform) {
   /** @type {Array<{ id: string, fn: (...a: any[]) => unknown }>} */
   const fns = [];
   /** @type {string[]} */
   const skipped = [];
-  for (const [id, group] of bySlot) {
-    if (group.every((e) => e.result.kernel)) fns.push({ id, fn: emitEntry(group[0]).fn });
+  for (const [id, group] of groupBySlot(entries)) {
+    if (group.every((e) => e.result.kernel)) fns.push({ id, fn: emitGroup(group, transform) });
     else skipped.push(id);
   }
+  return { fns, skipped };
+}
+
+/**
+ * One default case per preset that has runtime lambdas, for the survey's lowered count to be run against the originals.
+ * @param {ReturnType<typeof loadDmg>} dmg
+ * @returns {DiffCase[]}
+ */
+export function allPresetCases(dmg) {
+  return dmg.presets.filter((p) => lowerPreset(dmg, p.id).entries.length > 0)
+    .map((p) => ({ label: `${p.id} default`, preset: p.id, why: "the preset as shipped" }));
+}
+
+/**
+ * Identifies a trace by content. The host's first log entry names the seed ("seed 7"),
+ * which is the seed's label and not behavior, so it is blanked: two seeds that drive
+ * the same game then hash alike.
+ * @param {Trace} t
+ * @param {number} seed
+ */
+export function fingerprint(t, seed) {
+  return hash(new TextEncoder().encode(JSON.stringify(t).replaceAll(`"seed ${seed}"`, '"seed"')));
+}
+
+/**
+ * A run fails when a swapped trace differs, or when the original stopped short of its frames (a match over a truncated run proves little).
+ * @param {DiffResult} r
+ */
+export const failed = (r) => r.mismatches.length > 0 || r.ticks < r.frames;
+
+/**
+ * Runs one case on one seed.
+ * @param {ReturnType<typeof loadDmg>} dmg
+ * @param {DiffCase} c
+ * @param {{ seed: number, frames: number, transform?: SourceTransform }} run
+ * @returns {DiffResult}
+ */
+export function runCase(dmg, c, { seed, frames, transform }) {
+  const make = builder(dmg, c);
+  const { entries } = lowerPreset({ build: make }, c.preset);
+  const { fns, skipped } = emitSlots(entries, transform);
   const opts = { seed, frames, input: inputTrace(seed, frames), ...(c.params ? { params: c.params } : {}) };
   const original = runTrace(make(), opts);
   /** @param {Array<{ id: string, fn: (...a: any[]) => unknown }>} swaps */
@@ -127,5 +198,9 @@ export function runCase(dmg, c, { seed, frames }) {
   }
   const all = compare(fns);
   if (all) mismatches.push({ slot: "*", diff: all });
-  return { label: c.label, seed, frames, swapped: fns.map((f) => f.id), skipped, mismatches, coverage: coverage(original) };
+  const last = original.ticks.at(-1);
+  return {
+    label: c.label, seed, frames, swapped: fns.map((f) => f.id), skipped, mismatches, coverage: coverage(original),
+    ticks: original.ticks.length, error: last?.error ?? null, fingerprint: fingerprint(original, seed),
+  };
 }

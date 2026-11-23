@@ -11,18 +11,41 @@ import { topLevelNames, topLevelRefs } from "../dmg-oracle/toplevel.js";
  * Why a lambda did not lower, in the order the classes are checked.
  * - `helpers`: it uses a top-level helper or constant of its preset, which no runtime lambda can see.
  * - `subset`: the parser's subset check, or lowering, rejects a construct the subset excludes on purpose.
- * - `not-yet`: lowering or the DMG dialect does not handle it yet, though the subset allows it.
+ * - `not-yet`: lowering or the DMG dialect does not handle it yet, though the subset allows it (see `isNotYet`).
  */
 export const REJECTION = /** @type {const} */ (["helpers", "subset", "not-yet"]);
 
 /** @typedef {"lowered" | typeof REJECTION[number]} Status */
 
 /**
- * Lowering codes that mean "not handled yet": L012 says so; L002 here is a member the
- * dialect does not describe (string methods, w.bg); L015 on a query is reduce without
- * an initial value. Every other code is the subset (or the program) at fault.
+ * What a diagnostic's source text names, for L002: the property whose lookup failed.
+ * @typedef {(name: string) => boolean} HostHas
  */
-const NOT_YET = new Set(["L012", "L002"]);
+
+/**
+ * Whether the dialect's gap is real: L012 says "not lowered yet"; L002 is a member
+ * the dialect does not describe, which is a gap only when the host has it (a member of
+ * the world, a string method, an array method) and a typo otherwise; L015 is a gap only
+ * for `reduce` without an initial value. Every other code is the subset (or the program) at fault.
+ * @param {{ code: string, message: string, text?: string }} d
+ * @param {HostHas} hostHas
+ */
+const isNotYet = (d, hostHas) =>
+  d.code === "L012" ||
+  (d.code === "L002" && hostHas(d.text ?? "")) ||
+  (d.code === "L015" && /^reduce got/.test(d.message));
+
+/**
+ * Every member name the DMG host offers lambdas: the keys of the world object the runtime
+ * hands them (plus `world`), and the members of String and Array.
+ * @param {ReturnType<typeof loadDmg>} dmg
+ * @returns {HostHas}
+ */
+export function hostMembers(dmg) {
+  const w = dmg.build(dmg.presets[0].id).runtime({ seed: 1 }).w;
+  const names = new Set([...Object.keys(w), "world", ...Object.getOwnPropertyNames(String.prototype), ...Object.getOwnPropertyNames(Array.prototype)]);
+  return (name) => names.has(name);
+}
 
 /**
  * @typedef {object} SurveyRow
@@ -37,15 +60,16 @@ const NOT_YET = new Set(["L012", "L002"]);
 
 /**
  * Classifies a rejected lambda from its error diagnostics and top-level references.
- * @param {Array<{ code: string, message: string }>} errors
+ * Pure: what the host has comes in as `hostHas`.
+ * @param {Array<{ code: string, message: string, text?: string }>} errors  `text` is the diagnostic's source text.
  * @param {string[]} refs
+ * @param {HostHas} hostHas
  * @returns {Status}
  */
-export function classify(errors, refs) {
+export function classify(errors, refs, hostHas) {
   if (errors.length === 0) return "lowered";
   if (refs.length > 0) return "helpers";
-  const notYet = (/** @type {{ code: string, message: string }} */ d) => NOT_YET.has(d.code) || (d.code === "L015" && /^(filter|find|some|every|reduce) got/.test(d.message));
-  return errors.every(notYet) ? "not-yet" : "subset";
+  return errors.every((d) => isNotYet(d, hostHas)) ? "not-yet" : "subset";
 }
 
 /**
@@ -54,6 +78,7 @@ export function classify(errors, refs) {
  * @returns {SurveyRow[]}
  */
 export function survey(dmg) {
+  const hostHas = hostMembers(dmg);
   return dmg.presets.flatMap((p) => {
     const names = topLevelNames(p.code);
     const { entries } = lowerPreset(dmg, p.id);
@@ -67,7 +92,7 @@ export function survey(dmg) {
       const refs = topLevelRefs(slot.src, names);
       return {
         preset: p.id, id: slot.id, kind: slot.kind,
-        status: classify(errors, refs),
+        status: classify(errors, refs, hostHas),
         codes: [...new Set(errors.map((d) => d.code))],
         messages: [...new Set(errors.map((d) => `${d.code} ${d.message} | ${d.text}`))],
         topLevelRefs: refs,

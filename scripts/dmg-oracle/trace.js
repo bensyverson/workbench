@@ -44,7 +44,7 @@ import { encoderFor } from "./encode.js";
  * FNV-1a over bytes, as hex: enough to tell two maps, frames or name lists apart.
  * @param {ArrayLike<number>} a
  */
-function hash(a) {
+export function hash(a) {
   let h = 0x811c9dc5;
   for (let i = 0; i < a.length; i++) { h ^= a[i]; h = Math.imul(h, 0x01000193); }
   return (h >>> 0).toString(16).padStart(8, "0");

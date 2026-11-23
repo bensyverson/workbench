@@ -5,9 +5,8 @@
 import { swapLambda } from "../dmg-oracle/lambdas.js";
 import { runTrace, firstDifference } from "../dmg-oracle/trace.js";
 import { inputTrace } from "../dmg-oracle/inputs.js";
-import { lowerPreset, emitEntry } from "../dmg-lower/pipeline.js";
-import { instantiate } from "../../kit/emit/js/index.js";
-import { CASES, builder } from "./differential.js";
+import { lowerPreset } from "../dmg-lower/pipeline.js";
+import { CASES, builder, groupBySlot, emitGroup } from "./differential.js";
 
 /** @import { loadDmg } from "../dmg-oracle/load.js" */
 
@@ -33,10 +32,21 @@ export const MUTANTS = [
   { preset: "06", slot: "Whackable.method(whack)", from: "return false;", to: "return null;", label: "whack returns null, not false",
     equivalent: "its only caller tests the result for truthiness" },
   { preset: "07", slot: "pools.on(burst)#0", from: "break;", to: "continue;", label: "a full pool continues instead of breaking",
-    equivalent: "w.spawn on a full pool returns null with no effect, and the rest of the body is skipped either way" },
+    equivalent: "w.spawn on a full pool returns null and logs \"pool 'sparks' is full\" through a host warning deduplicated per pool (self._warn(\"full:\"+pool, ...)), so the extra failed spawns that continue makes are invisible in the trace (seed 7: 998 failed spawns, 1 warning); the rest of the body is skipped either way" },
   { preset: "07", slot: "Spark.onFrame#0", from: "(t0 === 0) || (self.y > 144)", to: "(t0 === 0) || (self.y >= 144)", label: "boundary y > 144 becomes >=" },
   { preset: "07", slot: "Spark.draw", from: "(self.life > 12)", to: "(self.life >= 12)", label: "boundary life > 12 becomes >=" },
 ];
+
+/**
+ * The source transform that plants a mutant in its slot, refusing a mutant whose text is not there.
+ * @param {Mutant} m
+ * @returns {import("./differential.js").SourceTransform}
+ */
+export const plant = (m) => (slot, source) => {
+  if (slot !== m.slot) return source;
+  if (!source.includes(m.from)) throw new Error(`${m.slot}: the emitted source has no '${m.from}'`);
+  return source.replace(m.from, m.to);
+};
 
 /**
  * Runs one mutant through every case of its preset; returns, per case, the seeds on which the trace differed.
@@ -48,11 +58,9 @@ export const MUTANTS = [
 export function probe(dmg, m, { seeds, frames }) {
   return CASES.filter((c) => c.preset === m.preset).map((c) => {
     const make = builder(dmg, c);
-    const e = lowerPreset({ build: make }, c.preset).entries.find((x) => x.slot.id === m.slot);
-    if (!e) throw new Error(`${c.label}: no slot ${m.slot}`);
-    const { emitted } = emitEntry(e);
-    if (!emitted.source.includes(m.from)) throw new Error(`${c.label} ${m.slot}: the emitted source has no '${m.from}'`);
-    const fn = instantiate({ ...emitted, source: emitted.source.replace(m.from, m.to) });
+    const group = groupBySlot(lowerPreset({ build: make }, c.preset).entries).get(m.slot);
+    if (!group) throw new Error(`${c.label}: no slot ${m.slot}`);
+    const fn = emitGroup(group, plant(m));
     const caught = seeds.filter((seed) => {
       const opts = { seed, frames, input: inputTrace(seed, frames), ...(c.params ? { params: c.params } : {}) };
       const original = runTrace(make(), opts);
@@ -62,4 +70,15 @@ export function probe(dmg, m, { seeds, frames }) {
     });
     return { label: c.label, caught };
   });
+}
+
+/**
+ * How a mutant's results read: a miss, or an equivalence claim a run contradicts, is not ok.
+ * @param {Mutant & { cases: Array<{ label: string, caught: number[] }> }} r
+ * @returns {{ ok: boolean, text: string }}
+ */
+export function mutantStatus(r) {
+  const caught = r.cases.some((c) => c.caught.length);
+  if (caught) return r.equivalent ? { ok: false, text: "caught (marked equivalent: claim is wrong)" } : { ok: true, text: "caught" };
+  return r.equivalent ? { ok: true, text: "equivalent" } : { ok: false, text: "MISSED" };
 }
