@@ -42,6 +42,8 @@ These come from the construct survey (`node scripts/subset-survey.js`, which cov
 - **The syntax tree follows ESTree**, with `loc` (line and column relative to the lambda) and `range` (offsets) on every node.
 - **Allowed:** `++`/`--` and assignments inside expressions; strings, object and array literals, `a[i]` and `Math.*`. Lowering judges these by type, so `self[axis]` is rejected there, not in the parser.
 - **Rejected by the check, with a tip:** `while`/`do`, `new`, `this`, template literals (with a fixit to `+` concatenation), `?.`, `delete`, `void`, `typeof`, `in`, `instanceof`, the comma operator, spread, and `var`.
+- **Also rejected by the check** (added after the parser review, 2026-11-23, with Ben): a `for` with no condition (S112, which defeats the loop-bound check), computed object keys (S113, a dynamic property name), and default values, including defaults inside destructuring (S114). Destructuring stays allowed without defaults. No DMG lambda uses any of these; widen on evidence.
+- **A fixit never changes meaning.** Where a rewrite is only sometimes equivalent, the diagnostic keeps its tip and offers no edit. So loose `==`/`!=` (S116) stays a warning with no fixit, because `x == null` and `x === null` differ for `undefined`.
 - **Free identifiers are lowering's concern.** M1 counts them as rejections. The long-term answer is helper functions written in the subset (`lib/*.js`), as the proposal's §8.1 describes.
 
 ## Order

@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadDmg } from "./load.js";
 import { lambdaSlots } from "./lambdas.js";
+import { topLevelNames, topLevelRefs } from "./toplevel.js";
 
 /**
  * @typedef {object} InventoryEntry
@@ -14,6 +15,7 @@ import { lambdaSlots } from "./lambdas.js";
  * @property {string} owner
  * @property {string[]} usedBy
  * @property {string} src
+ * @property {string[]} topLevelRefs  Top-level bindings of the preset program (helpers, constants) the lambda uses; empty when it is self-contained.
  */
 
 /**
@@ -22,8 +24,10 @@ import { lambdaSlots } from "./lambdas.js";
  * @returns {InventoryEntry[]}
  */
 export function inventory(dmg = loadDmg()) {
-  return dmg.presets.flatMap((p) =>
-    lambdaSlots(dmg.build(p.id).spec).map((s) => ({ preset: p.id, id: s.id, kind: s.kind, owner: s.owner, usedBy: s.usedBy, src: s.src })));
+  return dmg.presets.flatMap((p) => {
+    const names = topLevelNames(p.code);
+    return lambdaSlots(dmg.build(p.id).spec).map((s) => ({ preset: p.id, id: s.id, kind: s.kind, owner: s.owner, usedBy: s.usedBy, src: s.src, topLevelRefs: topLevelRefs(s.src, names) }));
+  });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -40,5 +44,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     for (const e of mine) kinds[e.kind] = (kinds[e.kind] ?? 0) + 1;
     console.log(`${p.id}  ${String(mine.length).padStart(3)}  ${p.title.padEnd(28)}  ${Object.entries(kinds).map(([k, n]) => `${k} ${n}`).join(" · ")}`);
   }
-  console.log(`total ${inv.length} runtime lambdas in ${dmg.presets.length} presets → ${outFile}`);
+  const open = inv.filter((e) => e.topLevelRefs.length > 0).length;
+  console.log(`total ${inv.length} runtime lambdas in ${dmg.presets.length} presets, ${open} using top-level bindings → ${outFile}`);
 }

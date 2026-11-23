@@ -9,3 +9,7 @@ Project-specific traps that cost real time and that no general rule predicts. Re
 Format: one dated H2 headline, then one paragraph. If an entry needs more than that, it's a finding — write it as a dated doc under `project/` and link it from the paragraph.
 
 ---
+
+## 2026-11-23: a worktree has no node_modules
+
+`npm run typecheck` in a fresh worktree fails because `node_modules` is gitignored and so absent. Symlink the main checkout's (`ln -s /Users/ben/git/workbench/node_modules <worktree>/node_modules`) and remove the link before handing back. `npm test` needs no packages and runs without it.

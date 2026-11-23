@@ -62,16 +62,26 @@ export interface DmgRuntime {
   wv: Record<string, unknown>;
   oamStart: number;
   fb: Uint8Array;
-  bg: { map: Uint16Array; scx: number; scy: number };
+  bg: { map: Uint16Array; scx: number; scy: number; ts: { names: string[] } };
   ents: Array<{ kind: string; alive: boolean }>;
+  /** The world proxy that lambdas receive. */
+  w: object;
+  /** The compiled spec the runtime runs. */
+  s: DmgSpec;
+  /** The seeded RNG; replaced by every reset. */
+  rnd: (...args: unknown[]) => number;
   _tmap: Map<unknown, EntState>;
   _tick(buttons: string[]): void;
+  /** What the bot lambda would press now, or null when the build has none. A throwing bot fails the runtime. */
+  botInput(): string[] | null;
+  /** Sets a live param; throws for unknown or build-time params. */
+  set(name: string, value: unknown): void;
+  reset(): void;
   render(): void;
 }
 
 export interface RuntimeOptions {
   seed?: number;
-  params?: Record<string, unknown>;
   hooks?: { onLog?: (e: LogEntry) => void };
 }
 

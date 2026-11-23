@@ -5,7 +5,7 @@
 /** @import { DmgSpec, FnRecord, Lambda, PartSpec } from "./dmg.js" */
 
 /**
- * @typedef {"onFrame" | "method" | "on" | "init" | "hud" | "draw" | "timer" | "every" | "done" | "bot"} SlotKind
+ * @typedef {"onFrame" | "method" | "on" | "init" | "hud" | "draw" | "timer" | "every" | "after" | "done" | "bot"} SlotKind
  * @typedef {object} Slot
  * @property {string} id      Stable id, e.g. `Mole.onFrame#0`, `Whackable.method(whack)`, `timer(spawn).every`.
  * @property {SlotKind} kind
@@ -90,6 +90,8 @@ export function lambdaSlots(spec) {
     add(t, "timer", spec.name, spec.name, `timer(${t.name})`, () => t.fn, (fn) => { t.fn = fn; });
     const every = t.every;
     if (every && typeof every.fn === "function") add(every, "every", spec.name, spec.name, `timer(${t.name}).every`, () => /** @type {Lambda} */ (every.fn), (fn) => { every.fn = fn; });
+    const after = t.after;
+    if (after && typeof after.fn === "function") add(after, "after", spec.name, spec.name, `timer(${t.name}).after`, () => /** @type {Lambda} */ (after.fn), (fn) => { after.fn = fn; });
   }
   if (spec.done) addRecord(spec.done, "done", spec.name, spec.name, "done");
   if (spec.bot) addRecord(spec.bot, "bot", spec.name, spec.name, "bot");
