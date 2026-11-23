@@ -32,6 +32,18 @@ A lambda that cannot be lowered keeps its original closure and is counted, with 
 - **D1 (typed operators) stays open.** M1 needs only scalar arithmetic, but the parser should not foreclose operators on dialect types.
 - **Integer semantics follow the oracle.** In the DMG runtime, coercion happens only when a typed attribute is stored through the proxy, and an assignment expression evaluates to the unwrapped value. So `--self.ttl` on a u8 holding 0 yields −1 while 255 is stored. The proposal's §5.8 example wraps before comparing, which is wrong for this runtime. The IR leaf chooses how to represent this, but the emitted code must match the oracle, and the choice gets written down.
 
+## Parser rulings (2026-11-23, with Ben)
+
+These come from the construct survey (`node scripts/subset-survey.js`, which covers 126 runtime lambdas in 21 presets).
+
+- **Parse broadly, then check the subset in a separate pass.** The parser accepts a fairly wide slice of JavaScript. A separate check reports every construct outside the subset at once, each with a code, a line, a one-line tip, and, where the rewrite is mechanical, a machine-applicable edit (a fixit) that an agent can apply directly. The subset is a table of rules, so a dialect narrows it by adding rules. Syntax that nobody uses (`class`, `function`, `switch`, `try`, `async`, regex) stops parsing with a single "unsupported syntax" error.
+- **Callbacks are legal only as arguments to queries the dialect declares** (`filter`, `find`, `some`, `every`, `reduce`, `count`). Lowering inlines them as bounded loops, so no closure exists at run time, and a callback may read the enclosing lambda's locals. Twelve lambdas need this, among them every whack-a-mole preset.
+- **Destructuring and `for…of` over fixed-size collections are allowed, as shorthand.** Lowering checks that the loop's bound is known.
+- **The syntax tree follows ESTree**, with `loc` (line and column relative to the lambda) and `range` (offsets) on every node.
+- **Allowed:** `++`/`--` and assignments inside expressions; strings, object and array literals, `a[i]` and `Math.*`. Lowering judges these by type, so `self[axis]` is rejected there, not in the parser.
+- **Rejected by the check, with a tip:** `while`/`do`, `new`, `this`, template literals (with a fixit to `+` concatenation), `?.`, `delete`, `void`, `typeof`, `in`, `instanceof`, the comma operator, spread, and `var`.
+- **Free identifiers are lowering's concern.** M1 counts them as rejections. The long-term answer is helper functions written in the subset (`lib/*.js`), as the proposal's §8.1 describes.
+
 ## Order
 
 The oracle harness comes first: it is the yardstick for everything else and gives the lambda inventory the parser is built against. Parser, lowering and emitter are a chain of dependent leaves, best done by one agent in order. The differential run and H1 report close the stage.

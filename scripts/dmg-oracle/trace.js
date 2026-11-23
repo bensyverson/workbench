@@ -2,7 +2,7 @@
 // two runs: more than `rt.obs()`, which omits the background map, visibility,
 // oamStart and the full log.
 
-/** @import { DmgBuild, DmgRuntime, LogEntry } from "./dmg.d.ts" */
+/** @import { DmgBuild, DmgRuntime, LogEntry } from "./dmg.js" */
 
 /**
  * @typedef {object} TraceOptions

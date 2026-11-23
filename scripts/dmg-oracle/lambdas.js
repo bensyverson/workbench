@@ -2,7 +2,7 @@
 // the M1 pipeline can replace one with emitted code. The runtime reads each
 // record's `fn` live, so replacing `record.fn` is enough.
 
-/** @import { DmgSpec, FnRecord, Lambda, PartSpec } from "./dmg.d.ts" */
+/** @import { DmgSpec, FnRecord, Lambda, PartSpec } from "./dmg.js" */
 
 /**
  * @typedef {"onFrame" | "method" | "on" | "init" | "hud" | "draw" | "timer" | "every" | "done" | "bot"} SlotKind

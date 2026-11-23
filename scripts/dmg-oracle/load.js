@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-/** @import { DmgDSL, DmgBuild, DmgPreset } from "./dmg.d.ts" */
+/** @import { DmgDSL, DmgBuild, DmgPreset } from "./dmg.js" */
 
 const DEFAULT_HTML = fileURLToPath(new URL("../../project/2026-11-23-dmg-workbench.html", import.meta.url));
 const CORE_START = "var DSL = (function";

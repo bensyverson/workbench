@@ -12,6 +12,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 
 - README.md — not written yet; it comes when the kit has something to hand to users
 - [project/](project/) — dated plans, findings and decisions. The current plan is [M1: the game slice](project/2026-11-23-m1-game-slice-plan.md); the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md)
+- [kit/parse/README.md](kit/parse/README.md) — the subset parser: API, diagnostic codes, fixits
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 
 <!-- agents:begin core@c84939 -->
