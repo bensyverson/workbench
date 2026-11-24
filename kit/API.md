@@ -93,11 +93,18 @@ export const program = defineGrammar(myLang, {
 });
 ```
 
-**Arguments:** `name(ns)` declares a name in namespace `ns` (an identifier, unique: B004, B002); `ref(ns)` names a declared one (B003, did-you-mean); `data(shape)` is a value of a shape (B004); `lambda(convention)` is a Runtime Lambda; `opt(spec)` (last only); `rest(spec)` (last only). Any spec takes `{ as: "key" }` last to name its record key. **Shapes:** `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, plus `ref` and `lambda` anywhere inside.
+**Arguments:** `name(ns)` declares a name in namespace `ns` (an identifier, unique: B004, B002); a namespace spans the **whole Program**, not one construct instance. `ref(ns)` names a declared one, earlier or later in the Program (B003, did-you-mean); `data(shape)` is a value of a shape (B004); `lambda(convention)` is a Runtime Lambda; `opt(spec)` (last only); `rest(spec)` (last only). Any spec takes `{ as: "key" }` last to name its record key. **Shapes:** `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, plus `ref` and `lambda` anywhere inside.
 
 **Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. **Your checks** report with `ctx.error(code, message, { tip, arg, suggest, fix })`: your code is one letter of your own and three digits (not B C D L P S V), `arg` an argument's position or a path into it, and `fix` the text to write instead.
 
-**The record** (what `.build()` returns, and what `environment`, `init` and checks see): opening arguments under their `as`, else namespace, else `name`. A decl slot whose first argument is a `name()` becomes an object by name (`{ param: { topN: { value: 10 } } }`). Any other decl slot becomes a list of its calls' arguments (the bare arguments when `once`). Unit slots go under `units: [{ name, kind, src }]`, children are a list under the child's name, and a `record: "calls"` construct keeps `calls: [{ slot, args }]` in order. A lambda appears as its source text.
+**The record** (what `.build()` returns, and what `environment`, `init` and checks see): a construct's opening arguments under their `as`, else a `name(ns)` under `ns` (a bare `name()` under `name`); any other opening argument lands under `arg1`, `arg2` …, so give it an `as`. A decl slot whose first argument is a `name()` becomes an object by name (`{ param: { topN: { value: 10 } } }`). Any other decl slot becomes a list of its calls' arguments (the bare arguments when `once`). Unit slots go under `units: [{ name, kind, src }]`, children are a list under the child's name, and a `record: "calls"` construct keeps `calls: [{ slot, args }]` in order. A lambda appears as its source text. The example Program below builds to:
+
+```js
+{ name: "sales", params: { topN: { value: 10, min: 1, max: 50 } }, title: "Top sales",
+  source: { orders: { columns: { price: "f64", units: "f64" } } },
+  table: [{ name: "big", from: "orders", calls: [{ slot: "derive", args: ["value", "(r) => …"] }, …] }],
+  units: [ /* top-level helpers and constants the lambdas read */ ] }
+```
 
 ## A Program, and running it
 
@@ -125,18 +132,19 @@ The host calls `run(programFn, { values })`, which hands the function a `$` that
 
 These cost earlier authors time. The rest, you can infer.
 
-1. **A child construct has every method of its parent** (calling one ends the child). So a child and its parent may not both declare a slot named `fn` (D010).
-2. **A child construct cannot be `required`.** To require at least one, check for it in the parent construct's `check(record, ctx)`.
-3. **`init` reads other declarations from the record** by their record key: `program.source[opened.from]` above is the `source` slot's object by name. Another instance's final state is `stateOf(name)`, available to both `init` and `step` (`ctx.stateOf`).
-4. **State exists only at lowering.** `.check()` and slot checks never see it (`ctx.state` is undefined). Anything that depends on the state at a step belongs in `state.names`, a convention function or `step`'s `ctx.error`.
-5. **A slot's `check` sees its own call already in the record** (`ctx.program`). Exclude it when you look for duplicates.
-6. **`suggest` appends its own "Did you mean 'x'?"** to your message. Don't write one yourself.
-7. **A nominal scalar is not a constructor.** A lambda gets one through a parameter, a member or an intrinsic that returns it (`dayOf` above).
-8. **Params need both halves:** the Grammar's `params: { slot }` and the Dialect's `params: { object, name }`, plus a `$` global whose object `environment` fills.
-9. **A value from a param has one form:** `.limit($.topN)`. `.limit(() => $.topN)` is B004. Build-time code reads a param only after its `.param` call, and only by name (no `in`, spread or `Object.keys` on `$`: B015).
-10. **A lambda is checked only once its Program builds.** Fix the `B…` errors first. A lambda's type errors (`L…`) then show at its exact place.
-11. **A top-level helper must be an arrow its own `const` writes.** One made by another function (`const f = make(3)`) loses what it closes over and is refused (B012). A name declared only inside build-time code is B013.
-12. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
+1. **A name is unique in the whole Program.** If a name must be unique only within one instance (a column of one table, a flow of one account), take it as `data("string")` and refuse a repeat yourself, in `step` with `ctx.error`, where the state holds the names so far.
+2. **A child construct has every method of its parent** (calling one ends the child) and inherits its `rejected` names. So a child and its parent may not both declare a slot named `fn` (D010).
+3. **A child construct cannot be `required`.** To require at least one, check for it in the parent construct's `check(record, ctx)`.
+4. **`init` reads other declarations from the record** by their record key: `program.source[opened.from]` above is the `source` slot's object by name. Another instance's final state is `stateOf(name)`, available to both `init` and `step` (`ctx.stateOf`).
+5. **State needs `record: "calls"` (D015 without it), and exists only at lowering.** `.check()` and slot checks never see it (`ctx.state` is undefined). Anything that depends on the state at a step belongs in `state.names`, a convention function or `step`'s `ctx.error`.
+6. **A slot's `check` runs at the call**, and `ctx.program` is the record so far: the instance being built is last in its list (`ctx.program.table.at(-1)`), with this call already in it. Exclude it when you look for duplicates.
+7. **`suggest` appends its own "Did you mean 'x'?"** to your message. Don't write one yourself.
+8. **A nominal scalar is not a constructor.** A lambda gets one through a parameter, a member or an intrinsic that returns it (`dayOf` above).
+9. **Params need both halves:** the Grammar's `params: { slot }` and the Dialect's `params: { object, name }`, plus a `$` global whose object `environment` fills.
+10. **A value from a param has one form:** `.limit($.topN)`. `.limit(() => $.topN)` is B004. Build-time code reads a param only after its `.param` call, and only by name (no `in`, spread or `Object.keys` on `$`: B015).
+11. **A lambda is checked only once its Program builds.** Fix the `B…` errors first. A lambda's type errors (`L…`) then show at its exact place.
+12. **A top-level helper must be an arrow its own `const` writes, and a top-level constant must be plain data.** Intrinsics exist only inside lambdas, so `const START = dayOf(2026, 1, 1)` fails when the file loads. A helper made by another function (`const f = make(3)`) loses what it closes over and is refused (B012). A name declared only inside build-time code is B013.
+13. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
 
 ## Codes you will meet
 
