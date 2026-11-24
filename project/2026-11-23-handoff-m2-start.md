@@ -48,7 +48,7 @@
 
 ## Open for Ben
 
-1. **A number literal takes f32 from its context.** In `uv * 0.5` the literal becomes an f32; elsewhere it stays f64. The value-types agent chose this so that shader constants need no `f32(…)`. It is a two-way door, noted on `gmyAFW`. Confirm or reverse it before the fields Dialect is built.
+1. ~~A number literal takes f32 from its context.~~ **Answered:** Ben ruled that literals are untyped until used and each Dialect declares its default number type (the M2 plan, Rulings). The fields Dialect leaf implements it.
 
 ## Next
 
