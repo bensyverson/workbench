@@ -88,7 +88,7 @@ A member is a type name (a read-only value), or one of:
 - `{ fn: { params: ["f64", "f64"], returns: "f64" } }`: a method. Add `minArgs: n` for optional trailing arguments.
 - `{ keyed: { what: "column", keys: { revenue: { params: [], returns: "f64" }, … } } }`: a method whose first argument must be a string literal naming one of `keys`; the rest of its signature depends on which. `g.sum("revenue")` is a keyed call. An unknown key gets a "did you mean".
 
-`globals` names what a lambda may use without receiving it, with its type: `globals: { Math: "Math" }` (with a `Math` object declared). If a global named `$` is declared, lambdas may read `$.name`; that is how a language gives every lambda the Program's parameters (see the free-name rule below).
+`globals` names what a lambda may use without receiving it, with its type: `globals: { Math: "Math" }` (with a `Math` object declared). If a global named `$` is declared, lambdas may read `$.name`; that is how a language gives every lambda the Program's parameters (see the free-name rule below). Declare it statically, `globals: { $: "Params" }` with `objects: { Params: { label: "the params ($)", members: {} } }`, and let `environment(program)` add one member per parameter.
 
 ### `intrinsics`
 
@@ -250,7 +250,7 @@ A Runtime Lambda is passed as a **function** or as its **source text**:
 .pixel("(uv, u) => color(uv.x, uv.y, 0)")
 ```
 
-Both mean the same: the kit reads a function's text (`String(fn)`) and never calls it. Write an arrow function or a `function` expression; a method shorthand (`pixel(uv, u) { … }`) is refused (B007).
+Both mean the same: the kit reads a function's text (`String(fn)`) and never calls it. Write an **arrow function**; a `function` expression or a method shorthand (`pixel(uv, u) { … }`) is refused (B007).
 
 Because only the text is read, **a lambda cannot see the variables around it**. Inside a lambda, a free name must be one of:
 
@@ -259,7 +259,7 @@ Because only the text is read, **a lambda cannot see the variables around it**. 
 3. a helper or constant the Program declared with a unit slot (`.fn`, `.const`);
 4. `$`, if the Dialect declares it: the Program's parameters.
 
-Anything else is refused at the call (B008), with a fix: declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level `const K = 3` in your file is **not** visible; declare it with `.const("K", "3")`.
+Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused at the call (B008), with a fix: declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level `const K = 3` in your file is **not** visible; declare it with `.const("K", "3")`.
 
 The body must be in the **Runtime Subset**: `const`/`let`, arithmetic, comparisons, `if`, ternaries, `for` loops with a bound the kit can check, calls to the names above. No `new`, no `this`, no closures that escape, no `async`, no string building beyond what the Dialect declares.
 
