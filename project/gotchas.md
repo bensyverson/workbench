@@ -21,3 +21,7 @@ The survey agent (job 4ZsFh5) found every command refused as "too complex to ver
 ## 2026-11-24: every `.js` under a `test/` folder runs as a test
 
 `node --test` (and so `npm test`) runs every `.js` file under any directory named `test/`, not only `*.test.js`. A fixture that is candidate code (it imports a module only a hook supplies, such as the define-trial's `kit/define`) fails there as a test file. Keep such fixtures beside `test/`, as `scripts/define-trial/fixtures/` does, and exclude them from `tsconfig.json`.
+
+## 2026-11-24: a subagent's Write of a file named like a report may be refused
+
+In dogfood trial 1 the harness refused two of three agents' Write of `REPORT.md` ("Subagents should return findings as text, not write report files"); one wrote it with a shell heredoc, one returned it as text for the main thread to save. When a trial's hand-in includes a report file, tell the agent in the brief to write it with a shell heredoc if Write is refused, or have it return the report and save it yourself.

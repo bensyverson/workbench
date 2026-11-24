@@ -12,6 +12,7 @@ The first dogfood trial of the Definition API (M3, leaf `lMNmIB`): fresh agents 
 | `checker/` | the checker's library: `define.js` is the stub `kit/define` (the draft's helpers, plus `defineDialect` / `defineGrammar` that validate, D001–D014), `dialect.js` and `grammar.js` the checks, `builder.js` the recording builder, `lambda.js` the Runtime Subset parse and free names (C002, C003), `index.js` `checkDir` |
 | `fixtures/valid/` | the passing fixture: a tiny per-pixel language (borrowed from the fields example) shaped as rules.md's hand-in; the tests derive one failing fixture per code from it by a one-line edit |
 | `test/` | the checker's tests (in `npm test`) |
+| `runs/2026-11-24/` | trial 1: each agent's hand-in, `REPORT.md` and checker log (`log.jsonl`); the findings are [project/2026-11-24-definition-api-trial-1.md](../../project/2026-11-24-definition-api-trial-1.md) |
 
 ## Usage
 
