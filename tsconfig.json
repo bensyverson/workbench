@@ -13,6 +13,6 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true
   },
-  "include": ["kit/**/*", "scripts/**/*.js", "scripts/**/*.d.ts"],
-  "exclude": ["node_modules", "scripts/m0-probe", "scripts/define-trial/fixtures", "scripts/define-trial/runs", "scripts/define-probes","**/out/**"]
+  "include": ["kit/**/*", "scripts/**/*.js", "scripts/**/*.d.ts", "examples/**/*.js", "test/**/*.js"],
+  "exclude": ["node_modules", "scripts/m0-probe", "scripts/define-trial/fixtures", "scripts/define-trial/runs", "**/out/**"]
 }
