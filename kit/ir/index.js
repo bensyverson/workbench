@@ -3,4 +3,5 @@
 
 export { printKernel } from "./print.js";
 export { formatJSON } from "./json.js";
+export { verify, VERIFY_CODES } from "./verify.js";
 export { showType, sameType, assignable, join, optional, unify, substitute } from "./types.js";

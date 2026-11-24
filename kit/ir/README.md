@@ -3,10 +3,11 @@
 The typed IR that runtime lambdas lower to and backends read (proposal §5). No dependencies and no Node built-ins, so it runs in the page.
 
 ```js
-import { printKernel, formatJSON, showType, assignable } from "./kit/ir/index.js";
+import { printKernel, formatJSON, showType, assignable, verify } from "./kit/ir/index.js";
 
 formatJSON(kernel);   // the diffable JSON form: standard JSON, short nodes on one line
 printKernel(kernel);  // a listing for people: one statement per line, effects as comments
+verify(kernel);       // [] when the kernel keeps every invariant below; never throws (see "Verifying a kernel")
 ```
 
 - **A kernel** ([`ir.d.ts`](ir.d.ts)) is a function plus its iteration space (`entity Mole`, `tick`, `render`): parameters, locals, a body of statements, the effects the body has, and the lambda's source.
@@ -33,3 +34,39 @@ kernel Mole.onFrame#0(self: Mole) -> void  ; entity Mole
 ```
 
 Goldens for it and the spawn timer are in [`scripts/dmg-lower/test/golden/`](../../scripts/dmg-lower/test/golden/).
+
+## Verifying a kernel
+
+[`verify.js`](verify.js) checks a kernel against the invariants above, reading the kernel alone (no environment, no dialect). It is the safety net after every stage that makes or rewrites a kernel: a diagnostic is a bug in the kit, never in the author's program.
+
+```js
+verify(kernel);                     // [{ code, message, path, span }], [] when clean
+verify(kernel, { partial: true });  // a kernel lowered alone, or before inference settles: `unknown` may stand for a type not yet inferred
+```
+
+`path` locates the node (`body[0].then[1].value`); `span` is its span when it has a valid one. Lowering runs it (partial) on every kernel it makes when `switches.verify` is on ([kit/lower](../lower/README.md)); `npm test` turns it on. A finished program's kernels are verified without `partial`: `scripts/dmg-lower/test/verify-corpus.test.js` checks every kernel of every preset and the goldens.
+
+| Code | Invariant broken |
+|---|---|
+| V001 | A node of no known kind, or missing a field its kind has (checked first; when it fails nothing else is) |
+| V002 | A type that disagrees with the node's operands or its kind |
+| V003 | A type no kernel may hold: `unknown` (unless partial), a type variable, a list without a whole-number `max`, `len` past `max`, an empty enum, a one-member union, a nested or empty optional |
+| V004 | A name used where nothing binds it, or a binder whose name is not among the kernel's locals |
+| V005 | A name bound twice, or declared twice among parameters and locals |
+| V006 | A `set` or `push` of a parameter or `const`, or a `store` to a place without a store rule |
+| V007 | A statement whose recorded effects miss what it does; an effect with no known verb |
+| V008 | Kernel effects other than its statements', deduplicated in first-seen order (depth first) |
+| V009 | A loop that is not bounded |
+| V010 | A `break` or `continue` outside a loop |
+| V011 | An expression, statement or kernel span that is not integer `[start, end]` inside `src` |
+| V012 | A kernel whose JSON form does not read back the same (`Infinity`, `NaN`, `-0`, a function, a cycle) |
+
+**Readings.** Where the spec above is silent, the verifier takes what lowering produces:
+
+- **Types agree** exactly for literals (a string is the enum of its value), a load (its place's type), `index` (`itemAt`), `array` (`{ list, max: n, len: n }` of the items' strict join), `cond` (the `join` of its arms), `field`, and a place's store rule (`bool`, `enum` with the same values, any numeric rule on `f64`). A `let` has its value's type, except that a `let` local may widen a string literal to `str`; `set`, `store`, `push` and `return` take any assignable value. A `local` has its binding's type, or the binding's type made non-empty (narrowing).
+- **Effects** are what the IR shows: a call's recorded effects, `call Owner.name` for a method and `call name` for a helper, `read Owner.name` for loading a writable place (a place with a store rule is state), and `write Owner.name` for a store. A statement's effects cover its own expressions', not its nested statements'. A read of a read-only place (`read frame`) is the dialect's to decide and is not in the IR, so it is not checked; nor are a call's argument and result types, whose signatures live in the environment.
+- **Bound before use** is block scoping: a `let` binds to the end of its block, `for` binds its counter for its test, update and body, `each` its item for its body, and each branch of an `if` is a block. A `let` with a null value counts as bound; definite assignment is not checked.
+- **Bounded loops.** A `for` counts from an integer literal (maybe negated) or a param, tests `counter < bound` or `<=`, steps by exactly `counter = counter + 1`, and nothing in it changes the counter. Its `bound` names what its test compares against: `const N` (within 2^53), `param name`, `size ≤ max` (a list's length), or `size name` (a read-only place, such as the grid's size). An `each` runs a whole number of times equal to its list type's `max`. Recursion spans kernels, so lowering checks it (L007).
+- **`unknown`** marks an expression that failed to lower, and lowering makes no kernel then. But a lambda lowered without its program's signatures (`lowerLambda` alone, or `lowerProgram` before inference settles) gets `unknown` for a method's or helper's result, so lowering verifies with `partial`.
+
+**Extending.** A new expression or statement kind adds an entry to `EXPR` or `STMT` in `verify.js` and to the shapes in `verify-shape.js`; a new operator or value type adds to `OPS` or `typeProblem` in `verify-rules.js`. A stage below the IR gets its own entry point beside `verify`.

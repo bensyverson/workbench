@@ -8,8 +8,16 @@ import { check } from "./expr.js";
 import { reachable } from "./call.js";
 import { joinCallSites } from "./callsites.js";
 import { HELPER_OWNER } from "./codes.js";
+import { verify } from "../ir/verify.js";
 
 export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
+
+/**
+ * Lowering's switches. With `verify` on, every kernel lowering makes goes through the IR
+ * verifier (kit/ir/verify.js), and a broken invariant is a V… error: the result has no kernel.
+ * Off by default; the test suite turns it on (`--import ./kit/test/verify-lowering.js`).
+ */
+export const switches = { verify: false };
 
 /** @import { Diagnostic, ArrowFunctionExpression, Expression } from "../parse/ast.js" */
 /** @import { Kernel, Type, Effect, Stmt, Local } from "../ir/ir.js" */
@@ -60,12 +68,20 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
   const body = L.capture(() => lowerBody(L, ast, decl)).stmts;
   const returns = decl.returns === "infer" ? inferredReturn(L, body) : decl.returns;
   const effects = dedupe(collectEffects(body));
-  const diagnostics = [...subset, ...L.diagnostics].sort((a, b) => a.range[0] - b.range[0]);
   /** @type {Kernel | null} */
-  const kernel = L.failed ? null : {
+  const made = L.failed ? null : {
     ir: "kernel", name: slot.id, slot: slot.kind, space: decl.space,
     params, returns, locals: L.locals.filter((l) => l.kind !== "param"), body, effects, src, span: [ast.range[0], ast.range[1]],
   };
+  if (made && switches.verify) {
+    // Partial: a lambda lowered alone, or before the program's inference settles, may hold `unknown`.
+    for (const d of verify(made, { partial: true })) {
+      const [start, end] = d.span ?? made.span;
+      L.diagnostics.push({ code: d.code, severity: "error", message: d.message, tip: `This is a bug in the kit, not in the program (at ${d.path || "the kernel"}).`, loc: { start: L.lines.at(start), end: L.lines.at(end) }, range: [start, end] });
+    }
+  }
+  const kernel = L.failed ? null : made;
+  const diagnostics = [...subset, ...L.diagnostics].sort((a, b) => a.range[0] - b.range[0]);
   return { ok: !L.failed, kernel, diagnostics, emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t), arity: Math.max(0, ast.params.length - decl.params.length) };
 }
 

@@ -71,7 +71,7 @@ export type Expr =
   /** A name the dialect provides to every lambda, e.g. `Math`. */
   | (ExprBase & { k: "global"; name: string })
   | (ExprBase & { k: "load"; place: Place })
-  /** An operator; evaluated left to right. See `OPS` in ops.js for each one's meaning. */
+  /** An operator; evaluated left to right. Each one's meaning is at `Op` below; its operand and result types are `OPS` in verify-rules.js. */
   | (ExprBase & { k: "op"; op: Op; args: Expr[] })
   /** Lazy: evaluates only the branch taken. */
   | (ExprBase & { k: "cond"; test: Expr; then: Expr; else: Expr })

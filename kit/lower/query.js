@@ -52,7 +52,7 @@ export function query(L, node, list, name) {
     : name === "find" ? { k: "undef", t: rt, span }
     : name === "reduce" ? init
     : { k: "bool", v: name === "every", t: "bool", span };
-  L.emit({ k: "let", name: result, t: rt, value: L.ex(start), span });
+  L.emit({ k: "let", name: result, t: rt, value: start === init ? init : L.ex(start), span });
 
   const local = (/** @type {string} */ n, /** @type {Type} */ t) => L.ex({ k: "local", name: n, t, span });
   const set = (/** @type {Expr} */ value) => /** @type {Stmt} */ ({ k: "set", name: result, value, span, effects: L.effectsOf(value) });

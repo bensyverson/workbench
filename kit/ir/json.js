@@ -36,3 +36,29 @@ function oneLine(v) {
   const entries = Object.entries(/** @type {Record<string, unknown>} */ (v)).filter(([, x]) => x !== undefined);
   return entries.length ? `{ ${entries.map(([k, x]) => `${JSON.stringify(k)}: ${oneLine(x)}`).join(", ")} }` : "{}";
 }
+
+/**
+ * Where `a` and `b` first differ (a path like `body[0].span`), or null when they are the same JSON data,
+ * numbers compared with `Object.is`. A key whose value is undefined counts as absent, as in JSON.
+ * @param {unknown} a
+ * @param {unknown} b
+ * @param {string} [path]  Where `a` and `b` sit in the values being compared.
+ * @returns {string | null}
+ */
+export function jsonDifference(a, b, path = "") {
+  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) return Object.is(a, b) ? null : path;
+  if (Array.isArray(a) !== Array.isArray(b)) return path;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return path;
+    for (let i = 0; i < a.length; i++) { const d = jsonDifference(a[i], b[i], `${path}[${i}]`); if (d !== null) return d; }
+    return null;
+  }
+  const ra = /** @type {Record<string, unknown>} */ (a), rb = /** @type {Record<string, unknown>} */ (b);
+  const keys = new Set([...Object.keys(ra), ...Object.keys(rb)]);
+  for (const k of keys) {
+    if (ra[k] === undefined && rb[k] === undefined) continue;
+    const d = jsonDifference(ra[k], rb[k], path ? `${path}.${k}` : k);
+    if (d !== null) return d;
+  }
+  return null;
+}

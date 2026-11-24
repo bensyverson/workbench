@@ -7,8 +7,8 @@
     "node": ">=26"
   },
   "scripts": {
-    "test": "node --test",
-    "test:prerelease": "node --test \"**/prerelease/*.prerelease.js\"",
+    "test": "node --import ./kit/test/verify-lowering.js --test",
+    "test:prerelease": "node --import ./kit/test/verify-lowering.js --test \"**/prerelease/*.prerelease.js\"",
     "typecheck": "tsc --noEmit",
     "inventory": "node scripts/dmg-oracle/inventory.js",
     "prepare": "git config core.hooksPath .githooks"
