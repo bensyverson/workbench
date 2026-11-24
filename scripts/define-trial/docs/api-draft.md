@@ -274,13 +274,15 @@ state: {
     const source = program.source?.[opened.from];
     return { columns: source ? { ...source.columns } : { ...stateOf(opened.from).columns } };
   },
-  // The state after one call. `inferred` is the inferred type of each lambda in the call: one type
+  // The state after one call. `call` is { slot, args }: the call's arguments as passed (a rest(...)
+  // argument's values in place, flat; a recordOf argument as its object; lambdas as their source text).
+  // `inferred` is the inferred type of each lambda in the call: one type
   // name (or compound type) for a lone lambda; an object by key when every lambda of the call has a
   // recordOf key (a key holding several lambdas has the list of their types); otherwise the list of
   // every lambda's type in call order.
   step(state, call, inferred) {
     if (call.slot === "derive") return { columns: { ...state.columns, [call.args[0]]: inferred } };
-    if (call.slot === "agg") return { columns: { ...pick(state.columns, state.keys), ...inferred } };
+    if (call.slot === "agg") return { columns: { ...Object.fromEntries(state.keys.map((k) => [k, state.columns[k]])), ...inferred } };
     return state;
   },
   // Namespaces read from the state: ref("column") on this construct resolves here.
