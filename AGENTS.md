@@ -31,6 +31,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
 - [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
 - [scripts/define-trial/README.md](scripts/define-trial/README.md) — the Definition API dogfood trial: the draft API, the strict rules and the checker's codes
+- [scripts/compose-trial/README.md](scripts/compose-trial/README.md) — the composition paper trial: the draft composition model, the cave / tiles / glow references, the rules and the checker's codes
 
 ## Local rulings
 
