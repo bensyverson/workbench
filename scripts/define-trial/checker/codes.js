@@ -1,32 +1,20 @@
-// The checker's codes, as rules.md defines them. D… are about the definition files, C… about the examples.
+// The checker's own codes: the rules kit/define does not enforce (rules.md). Everything else it prints is
+// the kit's own code: D… from defineDialect / defineGrammar, B… from the generated builder and from
+// lowering a record (construct state, conventions), L… from lowering each lambda, a Dialect's own letter
+// from its checks.
 
 /** Each code and when it is reported; the tests check that every one has a failing fixture. */
 export const CHECK_CODES = Object.freeze({
-  D001: "A key defineDialect or defineGrammar does not take, at any level, or a required key that is missing",
-  D002: "A type name that resolves to nothing",
-  D003: "An intrinsic without a spelling for one of the targets",
-  D004: "An intrinsic without ref, params or returns",
-  D005: "A slot convention whose space is not declared",
-  D006: "A target whose accepts names an undeclared space",
-  D007: "A name declared twice across intrinsics, globals, library and objects",
-  D008: "A compare mode other than exact() or tolerance(figure) with a positive figure",
-  D009: "A lambda slot whose slot names no slot convention",
-  D010: "A child construct with a method of its parent's name, or a parent (or root) that is not a construct",
-  D011: "A malformed argument spec, shape or helper call, or a helper kit/define does not export",
-  D012: "A space without pure: true",
-  D013: "A library entry that is not { fn: src } or { const: src }, or whose source does not parse",
-  D014: "A slot without a kind, or with a kind other than decl, unit or lambda",
   C001: "An example that neither exports a builder chain nor starts with // REFUSED: <code>",
-  C002: "A Runtime Lambda that does not parse in the Runtime Subset",
-  C003: "A free name in a Runtime Lambda that the free-name rule does not allow",
-  C004: "A builder call to a method the grammar neither defines nor rejects",
+  C005: "A function in the definitions (environment, a slot convention, a check, state init or step) threw while an example was checked",
 });
 
-/** @typedef {keyof typeof CHECK_CODES} CheckCode */
+/** The codes check v0 had that the kit now reports, each with the kit's code that replaced it. */
+export const RETIRED_CODES = Object.freeze({ C002: "B007", C003: "B008", C004: "B001" });
 
 /**
  * A definition file that cannot be loaded at all (a syntax error, an exception, no define call). rules.md
- * gives this no code; an example that cannot be loaded is C001 instead.
+ * gives this no number; an example that cannot be loaded is C001 instead.
  */
 export const LOAD = "LOAD";
 
@@ -35,8 +23,8 @@ export const LOAD = "LOAD";
  * @typedef {object} CheckDiagnostic
  * @property {string} file  Path relative to the candidate directory, with `/` separators.
  * @property {number} line  1-based.
- * @property {CheckCode | typeof LOAD} code
- * @property {"error" | "warning"} severity  Only the parser's warnings (S116) are warnings.
+ * @property {string} code  One of CHECK_CODES, LOAD, or the kit's own (D…, B…, L…, a Dialect's letter).
+ * @property {"error" | "warning" | "info"} severity  As the kit gave it; the checker's own are errors.
  * @property {string} message
  * @property {string} fix  What to write instead.
  */

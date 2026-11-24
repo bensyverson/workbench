@@ -8,8 +8,12 @@ export default program("glow")
     const w = 0.01;
     return floor(d / r) * w;
   })
-  .layer("halo", "speed")
-  .blend((uv, u) => color(uv.x, uv.y, sin(u.t * $.speed)))
+  .layer("halo", { speed: "speed" })
+  .channel("glow", (c, u) => c.base * sin(u.t * $.speed))
+  .channel("pulse", (c, u) => c.glow + c.base)
+  .mute("glow")
+  .layer("echo", { speed: "speed", from: "halo" })
+  .channel("late", (c, u) => c.pulse * 0.5)
   .pixel((uv, u) => {
     let c = color(0, 0, 0);
     for (let i = 0; i < 3; i++) {

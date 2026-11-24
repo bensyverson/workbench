@@ -1,29 +1,28 @@
-// The Definition API trial's checker (the kit's `check` v0): loads a candidate directory's Dialect,
-// Grammar and examples with a stub kit/define, and returns every violation of rules.md's D… and C… codes.
+// The Definition API trial's checker (the kit's `check`): loads a candidate directory's Dialect, Grammar and
+// examples with the real kit/define, runs each example's Program through the generated builder and lowers
+// it, and returns every diagnostic: the kit's own D…, B… and L… codes, and the checker's C… for the rules
+// the kit does not enforce.
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { session } from "./session.js";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import * as kit from "../../../kit/define/index.js";
+import { didYouMean } from "../../../kit/lower/codes.js";
+import { session, candidateFrame } from "./session.js";
 import { installHooks, DEFINE_SPECIFIER } from "./hooks.js";
-import { HELPERS, isPlainObject } from "./tags.js";
-import { didYouMean } from "./common.js";
-import { offsetOfLine, lineAt } from "./locate.js";
-import { parseRuntime, freeNames } from "./lambda.js";
-import { constructsOf } from "./grammar.js";
-import { DIALECT_KEYS } from "./dialect.js";
-import { BUILDER, BUILT } from "./builder.js";
+import { checkExport, runProgram, reportBuild, reportThrown, EXAMPLES_DIR } from "./examples.js";
 import { LOAD } from "./codes.js";
 
-/** @import { Recording, Call } from "./session.js" */
-
-export { CHECK_CODES, LOAD } from "./codes.js";
+export { CHECK_CODES, RETIRED_CODES, LOAD } from "./codes.js";
+export { EXAMPLES_DIR } from "./examples.js";
 /** @typedef {import("./codes.js").CheckDiagnostic} CheckDiagnostic */
 
 export const DIALECT_FILE = "data.dialect.js";
 export const GRAMMAR_FILE = "data.grammar.js";
-export const EXAMPLES_DIR = "examples";
-const REFUSED = /^\/\/ REFUSED: \S/;
+
+/** What a candidate may import from kit/define (its helpers and define calls), for a did-you-mean. */
+const EXPORTS = Object.keys(kit);
 
 /** A candidate directory the checker cannot read: missing, or without its definition files. */
 export class CheckTargetError extends Error {}
@@ -38,7 +37,7 @@ export class CheckTargetError extends Error {}
 let queue = Promise.resolve();
 
 /**
- * Checks one candidate directory. Checks run one at a time (the stub kit/define reports to one session).
+ * Checks one candidate directory. Checks run one at a time (the candidate's kit/define reports to one session).
  * @param {string} dir
  * @returns {Promise<CheckResult>}
  */
@@ -68,21 +67,21 @@ async function checkNow(dir) {
   let definitionsLoaded = true;
   try {
     await load(DIALECT_FILE);
-    if (!session.dialect) loadFailure(DIALECT_FILE, 1, `${DIALECT_FILE} does not call defineDialect.`, `write export const data = defineDialect({ … }), importing defineDialect from "${DEFINE_SPECIFIER}"`);
+    if (!session.dialectSite) loadFailure(DIALECT_FILE, 1, `${DIALECT_FILE} does not call defineDialect.`, `write export const data = defineDialect({ … }), importing defineDialect from "${DEFINE_SPECIFIER}"`);
   } catch (e) {
     definitionsLoaded = false;
     reportLoadError(e, DIALECT_FILE);
   }
   try {
     await load(GRAMMAR_FILE);
-    if (!session.grammar) { definitionsLoaded = false; loadFailure(GRAMMAR_FILE, 1, `${GRAMMAR_FILE} does not call defineGrammar.`, `write export const program = defineGrammar(data, { … }), importing defineGrammar from "${DEFINE_SPECIFIER}"`); }
+    if (!session.grammar && !session.refused) { definitionsLoaded = false; loadFailure(GRAMMAR_FILE, 1, `${GRAMMAR_FILE} does not call defineGrammar.`, `write export const program = defineGrammar(data, { … }), importing defineGrammar from "${DEFINE_SPECIFIER}"`); }
   } catch (e) {
     definitionsLoaded = false;
     reportLoadError(e, GRAMMAR_FILE);
   }
 
-  // Examples import the grammar; while it does not load, each would only repeat its error.
-  if (definitionsLoaded) {
+  // Examples import the grammar; while it is refused or does not load, each would only repeat its error.
+  if (definitionsLoaded && !session.refused && session.grammar) {
     for (const f of examples) {
       /** @type {Record<string, unknown> | null} */
       let mod = null;
@@ -91,9 +90,10 @@ async function checkNow(dir) {
       } catch (e) {
         reportLoadError(e, f);
       }
-      if (mod) checkExport(f, mod.default);
+      if (!mod) continue;
+      const builder = checkExport(f, mod.default);
+      if (builder) runProgram(f, builder, session.grammar);
     }
-    for (const rec of session.recordings) checkLambdas(rec);
   }
 
   const rank = (/** @type {string} */ f) => (order.includes(f) ? order.indexOf(f) : order.length);
@@ -108,149 +108,45 @@ function loadFailure(file, line, message, fix) {
   session.add({ file, line, code: file.startsWith(`${EXAMPLES_DIR}/`) ? "C001" : LOAD, severity: "error", message, fix });
 }
 
-const FRAME = /(file:\/\/[^\s)]+?):(\d+)(?::\d+)?/g;
-
 /**
- * An import that threw: a helper kit/define lacks is D011; anything else is reported against the file.
+ * An import that threw: the builder's B001 is reported as the kit gave it, a helper kit/define lacks is D011,
+ * an exception inside the definitions while an example ran is C005, and anything else is reported against the
+ * file.
  * @param {unknown} e
  * @param {string} file  the file whose import threw
  */
 function reportLoadError(e, file) {
+  if (e instanceof kit.BuildError) { reportBuild(e.diagnostics, file); return; }
   const err = e instanceof Error ? e : new Error(String(e));
   // The innermost candidate file on the error's stack is where it went wrong (a syntax error's position
   // comes first in the stack, as `file:…:line`).
-  let where = { file, line: 1 };
-  for (const m of `${err.stack ?? ""}`.matchAll(FRAME)) {
-    const url = m[1].replace(/\?.*$/, "");
-    if (url.startsWith(session.dirUrl)) { where = { file: decodeURIComponent(url.slice(session.dirUrl.length)), line: Number(m[2]) }; break; }
-  }
+  let where = candidateFrame(`${err.stack ?? ""}`) ?? (err instanceof SyntaxError ? syntaxErrorSite() : null) ?? { file, line: 1 };
   const missing = /The requested module '([^']+)' does not provide an export named '([^']+)'/.exec(err.message);
   if (missing && missing[1] === DEFINE_SPECIFIER) {
-    session.add({ file: where.file, line: where.line, code: "D011", severity: "error", message: `${DEFINE_SPECIFIER} has no helper '${missing[2]}'.${didYouMean(missing[2], HELPERS)}`, fix: `import only the draft's helpers: ${HELPERS.join(", ")}` });
+    session.add({ file: where.file, line: where.line, code: "D011", severity: "error", message: `${DEFINE_SPECIFIER} has no export '${missing[2]}'.${didYouMean(missing[2], EXPORTS)}`, fix: `import only what api-draft.md names: ${EXPORTS.join(", ")}` });
     return;
   }
+  const isExample = file.startsWith(`${EXAMPLES_DIR}/`);
+  if (isExample && (where.file === DIALECT_FILE || where.file === GRAMMAR_FILE) && !(err instanceof SyntaxError)) { reportThrown(err, file, "while its builder calls ran"); return; }
   const fix = err instanceof SyntaxError ? "fix the JavaScript syntax at that line" : "the file must load: only kit/define and your own files may be imported, and nothing may be read from outside them";
-  if (where.file !== file && !where.file.startsWith(`${EXAMPLES_DIR}/`) && file.startsWith(`${EXAMPLES_DIR}/`)) where = { file, line: 1 };
+  if (where.file !== file && !where.file.startsWith(`${EXAMPLES_DIR}/`) && isExample) where = { file, line: 1 };
+  // The Grammar importing a Dialect that failed to load fails with the Dialect's error, already reported.
+  if (where.file !== file && session.diagnostics.some((d) => d.code === LOAD && d.file === where.file)) return;
   loadFailure(where.file, where.line, `${file} could not be loaded: ${err.name}: ${err.message.split("\n")[0]}`, fix);
 }
 
 /**
- * C001: an example exports a builder chain, or begins with `// REFUSED: <code>`.
- * @param {string} file
- * @param {unknown} exported
+ * Where the first candidate file with a syntax error has it. An import's SyntaxError carries no position
+ * in its stack, so each file is parsed with `node --check`, which prints `<path>:<line>`.
+ * @returns {{ file: string, line: number } | null}
  */
-function checkExport(file, exported) {
-  const src = session.sources[file] ?? "";
-  const refused = REFUSED.test(src.split("\n")[0].trimEnd());
-  // Outside a "type": "module" package a file with no ESM syntax loads as CommonJS, whose default is {}.
-  if (!/\bexport\b/.test(src)) exported = undefined;
-  const isBuilder = (exported !== null && typeof exported === "object" && /** @type {Record<symbol, unknown>} */ (exported)[BUILDER] !== undefined);
-  if (isBuilder) return;
-  if (exported !== null && typeof exported === "object" && BUILT in exported) {
-    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file} exports what .build() returns, not the builder chain.`, fix: "remove .build() from the end of the exported chain: export default program(…)…;" });
-    return;
+function syntaxErrorSite() {
+  for (const file of Object.keys(session.sources)) {
+    const path = fileURLToPath(new URL(file, session.dirUrl));
+    const r = spawnSync(process.execPath, ["--check", path], { encoding: "utf8" });
+    if (r.status === 0) continue;
+    const m = /^.*:(\d+)\n/.exec(r.stderr);
+    return { file, line: m ? Number(m[1]) : 1 };
   }
-  if (refused && exported === undefined) return;
-  session.add({
-    file, line: 1, code: "C001", severity: "error",
-    message: exported === undefined ? `${file} neither exports a builder chain nor starts with // REFUSED: <code>.` : `${file}'s default export is not a builder chain.`,
-    fix: "end it with export default program(\"…\")…; (without .build()), or make its first line // REFUSED: <code> followed by the diagnostic and why",
-  });
-}
-
-/**
- * The names the free-name rule allows every lambda of a Program, before its own parameters and locals.
- * @param {Recording} rec
- */
-function allowedNames(rec) {
-  const d = session.dialect ?? {};
-  /** @param {unknown} v */
-  const keys = (v) => (isPlainObject(v) ? Object.keys(v) : []);
-  const units = unitCalls(rec).map((c) => c.args[0]).filter((n) => typeof n === "string");
-  return new Set([...keys(d.globals), ...keys(d.intrinsics), ...keys(d.types), ...keys(d.library), ...units]);
-}
-
-/**
- * Names declared under a top-level key defineDialect does not take (a typo such as `intrinsic:`), each
- * with that key, so a lambda's C003 can point at the D001 that caused it.
- * @returns {Map<string, string>}
- */
-function misfiledNames() {
-  /** @type {Map<string, string>} */
-  const out = new Map();
-  for (const [k, v] of Object.entries(session.dialect ?? {})) {
-    if (DIALECT_KEYS.includes(k) || !isPlainObject(v)) continue;
-    for (const n of Object.keys(v)) if (!out.has(n)) out.set(n, k);
-  }
-  return out;
-}
-
-/** @param {Call} c */
-const slotOf = (c) => {
-  const cs = constructsOf(session.grammar?.def);
-  const slots = cs[c.construct]?.slots;
-  const s = isPlainObject(slots) ? slots[c.method] : undefined;
-  return isPlainObject(s) ? s : null;
-};
-
-/** @param {Recording} rec */
-const unitCalls = (rec) => rec.calls.filter((c) => c.what === "slot" && slotOf(c)?.kind === "unit");
-
-/**
- * C002 and C003 for every Runtime Lambda (and unit source) one Program passes.
- * @param {Recording} rec
- */
-function checkLambdas(rec) {
-  const allowed = allowedNames(rec);
-  for (const c of rec.calls) {
-    if (c.what !== "slot") continue;
-    const slot = slotOf(c);
-    if (!slot) continue;
-    if (slot.kind === "lambda") {
-      const at = Array.isArray(slot.args) ? slot.args.length : 0;
-      const src = c.args[at];
-      if (typeof src === "function" || typeof src === "string") checkOne(rec, c, String(src), `the ${c.construct}.${c.method} lambda`, false, allowed);
-    } else if (slot.kind === "unit") {
-      const src = c.args[1];
-      const unit = slot.unit === "const" ? "const" : "fn";
-      if (typeof src === "function" || typeof src === "string") checkOne(rec, c, String(src), `${unit} '${String(c.args[0])}'`, unit === "const" && typeof src === "string", allowed);
-    }
-  }
-}
-
-/**
- * @param {Recording} rec @param {Call} call @param {string} src @param {string} what
- * @param {boolean} expression  a const unit's source: an expression, not a lambda
- * @param {Set<string>} allowed
- */
-function checkOne(rec, call, src, what, expression, allowed) {
-  const text = session.sources[rec.file] ?? "";
-  const from = offsetOfLine(text, call.line);
-  let at = text.indexOf(src, from);
-  if (at < 0) at = text.indexOf(JSON.stringify(src).slice(1, -1), from);
-  /** @param {number} inner 1-based line within src */
-  const lineOf = (inner) => (at < 0 ? call.line : lineAt(text, at) + inner - 1);
-
-  const r = parseRuntime(src, { expression });
-  for (const d of r.diagnostics) {
-    session.add({ file: rec.file, line: lineOf(d.loc.start.line), code: "C002", severity: d.severity, message: `${what}${d.severity === "warning" ? " (warning)" : ""}: ${d.code} ${d.message}`, fix: d.tip || "rewrite it in the Runtime Subset" });
-  }
-  if (!r.ast) return;
-  const hasDollar = allowed.has("$");
-  const misfiled = misfiledNames();
-  for (const { name, loc } of freeNames(r.ast)) {
-    if (allowed.has(name)) continue;
-    const near = misfiled.has(name)
-      ? ` It is declared under '${misfiled.get(name)}', which defineDialect does not take (D001).`
-      : name.length > 1 ? didYouMean(name, [...allowed].filter((n) => n !== "$")) : "";
-    session.add({
-      file: rec.file, line: lineOf(loc.start.line), code: "C003", severity: "error",
-      message: name === "$"
-        ? `${what} reads '$', which this Dialect does not declare as a global.`
-        : `${what} reads '${name}', which it cannot see: only its text is compiled.${near}`,
-      fix: name === "$"
-        ? `declare $ in the Dialect's globals (e.g. globals: { $: "Params" }) to give lambdas the Program's parameters, or pass the value another way`
-        : `declare it on the Program (.const("${name}", "…") or .fn("${name}", …)), use a Dialect global, intrinsic, vector type or library name${hasDollar ? `, or make it a parameter and read $.${name}` : ""}`,
-    });
-  }
+  return null;
 }

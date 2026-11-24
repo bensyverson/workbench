@@ -1,70 +1,85 @@
-// The module the checker supplies as `kit/define` to a candidate's files: the draft's helpers, and stub
-// defineDialect / defineGrammar that validate their input (D001–D014) and, for the grammar, return a
-// recording builder. Nothing here lowers or runs a lambda.
+// The module the checker supplies as `kit/define` to a candidate's files: the real kit/define, with
+// defineDialect and defineGrammar wrapped so that a refused definition is recorded (each problem at its
+// line) instead of ending the load, and so the checker learns which Dialect and Grammar the candidate made.
+// Nothing here checks anything itself.
 
-import { TAG } from "./tags.js";
+import * as kit from "../../../kit/define/index.js";
 import { session, callSite } from "./session.js";
-import { validateDialect } from "./dialect.js";
-import { validateGrammar } from "./grammar.js";
-import { rootBuilder } from "./builder.js";
 
-/** @import * as T from "./tags.js" */
+/** @import { Dialect, DialectDef, GrammarDef } from "../../../kit/define/define.js" */
 
-/** @param {unknown} n @param {unknown} elem @param {unknown} [options] @returns {T.VectorTag} */
-export const vector = (n, elem, options) => ({ [TAG]: "vector", n, elem, options });
-/** @returns {T.ExactTag} */
-export const exact = () => ({ [TAG]: "exact" });
-/** @param {unknown} figure @returns {T.ToleranceTag} */
-export const tolerance = (figure) => ({ [TAG]: "tolerance", figure });
-/** @param {unknown} of @param {unknown} max @returns {T.ListTag} */
-export const list = (of, max) => ({ [TAG]: "list", of, max });
-/** @param {unknown} of @returns {T.OptTag} */
-export const opt = (of) => ({ [TAG]: "opt", of });
-/** @param {unknown} fields @param {unknown} [options] @returns {T.StructTag} */
-export const struct = (fields, options) => ({ [TAG]: "struct", fields, options });
-/** @param {...unknown} of @returns {T.UnionTag} */
-export const union = (...of) => ({ [TAG]: "union", of });
-/** @param {unknown} values @returns {T.EnumTag} */
-export const enumOf = (values) => ({ [TAG]: "enum", values });
-/** @param {...unknown} a @returns {T.NameTag} */
-export const name = (...a) => ({ [TAG]: "name", ns: a[0], count: a.length });
-/** @param {...unknown} a @returns {T.RefTag} */
-export const ref = (...a) => ({ [TAG]: "ref", ns: a[0], count: a.length });
-/** @param {...unknown} a @returns {T.DataTag} */
-export const data = (...a) => ({ [TAG]: "data", shape: a[0], count: a.length });
-/** @param {...unknown} a @returns {T.RestTag} */
-export const rest = (...a) => ({ [TAG]: "rest", spec: a[0], count: a.length });
-/** @param {...unknown} of @returns {T.OneOfTag} */
-export const oneOf = (...of) => ({ [TAG]: "oneOf", of });
-/** @param {unknown} of @returns {T.RecordOfTag} */
-export const recordOf = (of) => ({ [TAG]: "recordOf", of });
-/** @param {unknown} of @returns {T.ListOfTag} */
-export const listOf = (of) => ({ [TAG]: "listOf", of });
+export * from "../../../kit/define/index.js";
+
+/** The Dialects made in place of a refused one, so its Grammar can still be checked. */
+const STAND_INS = new WeakSet();
+/** Conventions the kit makes, which a stand-in may not declare (D007). */
+const KIT_CONVENTIONS = ["helper", "const", "method"];
 
 /**
- * Validates a Dialect definition and returns it unchanged.
- * @template D
- * @param {D} def
- * @returns {D}
+ * A Dialect with the refused definition's convention names and nothing else, so that defineGrammar checks
+ * the Grammar's lambda() specs against the names the author meant. Null if even that cannot be made.
+ * @param {unknown} def
+ * @returns {Dialect | null}
  */
-export function defineDialect(def) {
-  const site = callSite();
-  session.report(site, validateDialect(def));
-  if (def !== null && typeof def === "object") session.dialects.add(def);
-  session.dialect ??= /** @type {Record<string, unknown>} */ (def);
-  return def;
+function standIn(def) {
+  const slots = /** @type {any} */ (def)?.slots;
+  const names = slots !== null && typeof slots === "object" ? Object.keys(slots).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !KIT_CONVENTIONS.includes(n)) : [];
+  try {
+    const d = kit.defineDialect({
+      name: "refused", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: kit.exact() } },
+      slots: Object.fromEntries(names.map((n) => [n, { params: [], returns: "infer", space: "s" }])),
+    });
+    STAND_INS.add(d);
+    return d;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Validates a Grammar definition and returns its root builder: a function that records the calls made on it.
- * @param {unknown} dialect
- * @param {unknown} def
- * @returns {(...args: unknown[]) => unknown}
+ * kit/define's defineDialect; a refusal is recorded and a stand-in returned.
+ * @param {DialectDef} def
+ * @returns {Dialect}
+ */
+export function defineDialect(def) {
+  const site = callSite();
+  if (!session.dialectSite) { session.dialectSite = site; session.dialectDef = /** @type {any} */ (def); }
+  try {
+    const d = kit.defineDialect(def);
+    session.dialect ??= d;
+    return d;
+  } catch (e) {
+    if (!(e instanceof kit.DefinitionError)) throw e;
+    session.report(site, e.diagnostics);
+    session.refused = true;
+    return /** @type {Dialect} */ (standIn(def));
+  }
+}
+
+/**
+ * kit/define's defineGrammar; a refusal is recorded. Against a refused Dialect the Grammar is checked but
+ * not kept, and "not a Dialect" is not repeated.
+ * @param {Dialect} dialect
+ * @param {GrammarDef} def
  */
 export function defineGrammar(dialect, def) {
   const site = callSite();
-  const known = dialect !== null && typeof dialect === "object" && session.dialects.has(dialect);
-  session.report(site, validateGrammar(known ? /** @type {Record<string, unknown>} */ (dialect) : null, def));
-  session.grammar = { def, dialect: known ? /** @type {Record<string, unknown>} */ (dialect) : null };
-  return rootBuilder(def);
+  const insteadOfRefused = session.refused && (dialect === null || STAND_INS.has(dialect));
+  try {
+    const g = kit.defineGrammar(dialect, def);
+    if (insteadOfRefused) return refusedBuilder;
+    session.grammar ??= g;
+    return g;
+  } catch (e) {
+    if (!(e instanceof kit.DefinitionError)) throw e;
+    const notADialect = (/** @type {{ code: string, path: unknown[], message: string }} */ d) => d.code === "D011" && d.path.length === 0 && /first argument is not a Dialect/.test(d.message);
+    session.report(site, e.diagnostics.filter((d) => !(insteadOfRefused && notADialect(d))));
+    session.refused = true;
+    return refusedBuilder;
+  }
+}
+
+/** What a refused defineGrammar returns: the examples are not run, so it is never called by the checker. */
+function refusedBuilder() {
+  throw new Error("the Grammar was refused; fix the definition files first");
 }
