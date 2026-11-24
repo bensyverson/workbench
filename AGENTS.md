@@ -30,6 +30,10 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
 - [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
 
+## Local rulings
+
+**Dogfood our own designs before locking them in.** Whenever we ask an agent to use something we made (a DSL, an API, a tool, a document set), have a few fresh agents use it and report on the experience before the design is frozen and fully implemented: how hard the task was, where the rules or documents misled them, what they had to guess. Give them a strict rule set (checkable by a program where possible) and the draft API, then review their output by hand. Their difficulty is feedback on the design, not on the agent: change the design, then rerun. Massaging their output to make it compliant is fine, and the size of the massage is itself a finding. This adds to the shared rules and overrides none; why: [the M3 plan](project/2026-11-24-m3-kit-v0-plan.md) (Ben, 2026-11-24).
+
 <!-- agents:begin core@c84939 -->
 ## Working rules
 
