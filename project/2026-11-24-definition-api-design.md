@@ -110,6 +110,7 @@ So examples 2 to 5 carry the v0 data Dialect, as leaf `5eeJED` already assumes; 
 - The Library-clash and duplicate-name refusals move from the call to `.build()` (decision 7), with the same `loc`; `review2.test.js`'s three `assert.throws(() => field("c").fn(…))` gain a `.build()`.
 - Refusals gain codes (`B002`, `B005`, `B006`, `F001`, `F002`) where today they are bare `Error` messages.
 - The generated `const` convention forbids every effect (above).
+- *(Added after the build, 38WI7z.)* The generated `field()` also refuses what the hand-written one let through to lowering: a param of the wrong shape (B004), a free name such as `Math` at the call (B008), and unparseable source at the call (B007). A Program's name is a label (any non-empty string, so `domain-warp` stays legal); other names must be identifiers. Kernel ids drop `#index` for a `once` slot, so fields' Kernels keep their names (`swirl.pixel`).
 
 ## For pass 2
 

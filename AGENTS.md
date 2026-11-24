@@ -17,6 +17,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [kit/ir/README.md](kit/ir/README.md) — the core IR: kernels, types, effects, spans, the JSON form and the listing
 - [kit/lower/README.md](kit/lower/README.md) — lowering to IR: dialect descriptions, the DMG dialect, program inference, diagnostic codes
 - [kit/dialects/fields/README.md](kit/dialects/fields/README.md) — the fields Dialect: typed vectors and operators, intrinsics with each target's spelling, the Library, the `field` Grammar and the two H3 sketches
+- [kit/define/README.md](kit/define/README.md) — the Definition API: `defineDialect` (a Dialect as data → Environment, intrinsic table, Library), `defineGrammar` (the generated builder, its B codes and record) and lowering a record with construct state
 - [kit/interp/README.md](kit/interp/README.md) — the reference interpreter: what a Kernel means, with f32, vectors, store rules and a per-node hook
 - [kit/emit/js/README.md](kit/emit/js/README.md) — the JavaScript backend: IR kernels to slot-compatible functions, with a line map
 - [kit/lir/README.md](kit/lir/README.md) — the first LIR stage: a Kernel with no f64, explicit conversions and bound intrinsics, its verifier and diagnostic codes
