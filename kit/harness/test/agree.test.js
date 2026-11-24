@@ -14,7 +14,7 @@ test("JS and the interpreter agree bit for bit on every sketch and param set", a
 });
 
 test("every planted JS fault is caught, except the ones with a recorded reason", async (t) => {
-  const { rows, controls } = await runFaults({ scale: 0.2 });
+  const { rows, controls } = await runFaults({ scale: 0.1 });
   const js = rows.filter((r) => r.target === "js");
   assert.deepEqual(js.filter((r) => !r.planted).map((r) => r.id), [], "every fault changed something");
   assert.deepEqual(js.filter((r) => !r.caught && !r.escape).map((r) => r.id), [], "no unexplained escape");

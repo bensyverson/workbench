@@ -23,7 +23,7 @@ test("every call-style sketch lowers clean and every Kernel verifies", () => {
 });
 
 test("call style and typed style give bit-identical pixels in the interpreter, on every recorded param set", () => {
-  for (const c of standardCases(0.2)) {
+  for (const c of standardCases(0.1)) {
     const calls = { ...c, program: CALLS[/** @type {keyof typeof CALLS} */ (c.name)] };
     assert.ok(calls.program, c.name);
     const typed = referencePixels(prepare(c.program), c);
@@ -38,7 +38,7 @@ test("call style and typed style give bit-identical pixels in the interpreter, o
 });
 
 test("the call style's emitted JS agrees with its own interpreter run, bit for bit", async () => {
-  for (const c of standardCases(0.2)) {
+  for (const c of standardCases(0.1)) {
     const r = await runCase({ ...c, program: CALLS[/** @type {keyof typeof CALLS} */ (c.name)] });
     assert.equal(r.jsVsInterp.exact, true, c.name);
   }

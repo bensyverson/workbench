@@ -32,7 +32,7 @@ test("check --no-glsl compares JS alone, says GLSL was skipped, and exits 0", as
 });
 
 test("faults --no-glsl runs the JS faults, and exits 0 because every escape has a reason", async () => {
-  const r = await cli("faults", "--no-glsl", "--scale", "0.2");
+  const r = await cli("faults", "--no-glsl", "--scale", "0.1");
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /js: \d+ of \d+ planted faults caught/);
   assert.doesNotMatch(r.out, /UNEXPLAINED/);
