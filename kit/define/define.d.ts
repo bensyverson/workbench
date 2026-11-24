@@ -121,6 +121,9 @@ export interface BuildDiagnostic extends Diagnostic {
   arg?: number | Array<string | number>;
   /** The mechanical replacement text, when there is one (no range: the builder does not read the file). */
   fix?: string;
+  /** The construct instance and slot a step's `ctx.error` refused. */
+  on?: string;
+  slot?: string;
   /** The Runtime Lambda it is about, on a refusal found when lowering (B011). */
   ref?: DefineSlotRef;
   /** The Runtime Lambda a B007 or B008 is about: its source, and the place inside it when known (the first line is 1). */
@@ -146,9 +149,19 @@ export interface SlotDef {
   check?: (call: { slot: string; args: any[] }, ctx: CheckContext) => void;
 }
 
+/** What `step` receives besides the state, the call and the inferred types. */
+export interface StepContext {
+  /** The record, as init's `program`. */
+  program: Record<string, any>;
+  /** Another stateful instance's final state, by instance name, as init's `stateOf`; a loop through it is B010. */
+  stateOf(name: string): any;
+  /** Refuses this call with the Dialect's own code, pinned at the call. The state `step` returns still applies. */
+  error(code: string, message: string, tip?: string): void;
+}
+
 export interface StateDef {
   init(opened: Record<string, any>, ctx: { program: Record<string, any>; stateOf(name: string): any }): any;
-  step(state: any, call: { slot: string; args: any[] }, inferred: any): any;
+  step(state: any, call: { slot: string; args: any[] }, inferred: any, ctx: StepContext): any;
   names?: Record<string, (state: any) => string[]>;
 }
 

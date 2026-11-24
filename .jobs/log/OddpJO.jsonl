@@ -357,3 +357,11 @@
 {"v":1,"rep":"OddpJO","seq":357,"ts":1795536588276,"actor":"nits-fixer","type":"claimed","task":"Bm0B1l","data":{"duration":"2h","expires_at":1795543788}}
 {"v":1,"rep":"OddpJO","seq":358,"ts":1795536640567,"actor":"oneof-fixer","type":"released","task":"fE5VVV","data":{"was_claimed_by":"oneof-fixer","was_expires_at":1795543622}}
 {"v":1,"rep":"OddpJO","seq":359,"ts":1795536640622,"actor":"oneof-fixer","type":"released","task":"Afyn1H","data":{"was_claimed_by":"oneof-fixer","was_expires_at":1795543660}}
+{"v":1,"rep":"OddpJO","seq":360,"ts":1795536682262,"actor":"claude","type":"criterion_state","task":"fE5VVV","data":{"label":"oneOf(ref, lambda) lowers a function or arrow-source lambda and resolves a plain name as a ref, with tests","state":"passed","prior":"pending","short_id":"7xt"}}
+{"v":1,"rep":"OddpJO","seq":361,"ts":1795536682288,"actor":"claude","type":"done","task":"fE5VVV","data":{"note":"Fixed in a9a690d (oneof-fixer; squash-merged and reviewed).","cascade":false,"criteria_bulk_state":"passed","was_status":"available"}}
+{"v":1,"rep":"OddpJO","seq":362,"ts":1795536682324,"actor":"claude","type":"criterion_state","task":"Afyn1H","data":{"label":"B008 for Math names the bare intrinsic, with a test","state":"passed","prior":"pending","short_id":"Dtd"}}
+{"v":1,"rep":"OddpJO","seq":363,"ts":1795536682334,"actor":"claude","type":"criterion_state","task":"Afyn1H","data":{"label":"scripts/h3-trial check.js reports build diagnostics as entries; the todo test is a passing test","state":"passed","prior":"pending","short_id":"qya"}}
+{"v":1,"rep":"OddpJO","seq":364,"ts":1795536682342,"actor":"claude","type":"done","task":"Afyn1H","data":{"note":"Fixed in a9a690d (oneof-fixer; squash-merged and reviewed).","cascade":false,"criteria_bulk_state":"passed","was_status":"available"}}
+{"v":1,"rep":"OddpJO","seq":365,"ts":1795536706200,"actor":"step-ctx","type":"claimed","task":"YiR5Mk","data":{"duration":"2h","expires_at":1795543906}}
+{"v":1,"rep":"OddpJO","seq":366,"ts":1795536806420,"actor":"step-ctx","type":"released","task":"YiR5Mk","data":{"was_claimed_by":"step-ctx","was_expires_at":1795543906}}
+{"v":1,"rep":"OddpJO","seq":367,"ts":1795536831756,"actor":"nits-fixer","type":"released","task":"Bm0B1l","data":{"was_claimed_by":"nits-fixer","was_expires_at":1795543788}}

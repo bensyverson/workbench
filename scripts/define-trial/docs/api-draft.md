@@ -280,7 +280,16 @@ state: {
   // name (or compound type) for a lone lambda; an object by key when every lambda of the call has a
   // recordOf key (a key holding several lambdas has the list of their types); otherwise the list of
   // every lambda's type in call order.
-  step(state, call, inferred) {
+  // `ctx` is { program, stateOf, error }: `program` and `stateOf(name)` are init's (stateOf is another instance's
+  // final state, so a join reads it here, with no closure in the state), and `error(code, message, tip)` refuses
+  // this call with your own code, pinned at the call. The state you return still applies after an error, so later
+  // calls still type; the diagnostic is what makes the Program fail. A code with a reserved letter throws.
+  step(state, call, inferred, ctx) {
+    if (call.slot === "join") {
+      const other = ctx.stateOf(call.args[0]);
+      if (state.columns.id !== other.columns.id) ctx.error("T001", `cannot join '${call.args[0]}': its id has another type`, "join tables whose id columns have one type");
+      return { columns: { ...other.columns, ...state.columns } };
+    }
     if (call.slot === "derive") return { columns: { ...state.columns, [call.args[0]]: inferred } };
     if (call.slot === "agg") return { columns: { ...Object.fromEntries(state.keys.map((k) => [k, state.columns[k]])), ...inferred } };
     return state;
@@ -297,7 +306,7 @@ The kit builds a construct with state like this: it computes `init`, then for ea
 row: (ref, program, state) => ({ params: [object(`a row of ${ref.on}`, state.columns)], returns: "infer", space: "row" }),
 ```
 
-`object(label, members)` makes an object type on the spot, with members as in `objects`. A `stateOf` that would loop (a table built from itself) is refused (B010). `environment(program)` runs before all of this and does not see state.
+`object(label, members)` makes an object type on the spot, with members as in `objects`. A `stateOf` that would loop (a table built from itself), in `init` or in `step`, is refused (B010). `environment(program)` runs before all of this and does not see state.
 
 All of this happens when the Program is **lowered**, not while it is built: `.check()` and `.build()` do not check a state namespace's `ref`s (lowering does, B003 "at this step"), and a slot `check` sees no state (see "Your own checks"). An instance's name is the value of its construct's `name()` opening, under whatever record key that opening has (`name("table")` too), else its construct's name. `stateOf(name)` finds an instance by its name alone, so every instance of every construct with state shares one namespace of names, and a second one with a name already taken is refused (B002).
 

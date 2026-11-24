@@ -5,7 +5,7 @@
 // "Construct state"). It lives on the grammar because only the grammar knows where lambdas sit in a record.
 
 import { lowerProgram } from "../lower/index.js";
-import { didYouMean } from "./codes.js";
+import { didYouMean, RESERVED_LETTERS } from "./codes.js";
 import { enumOf, opt, list, struct, union, kindOf } from "./tags.js";
 import { rematch, single, nameOf, setOwn, LOCS } from "./record.js";
 
@@ -223,7 +223,8 @@ export function lowerRecord(g, record) {
     try {
       const st = inst.construct.def.state;
       const opened = Object.fromEntries(Object.entries(inst.rec).filter(([k]) => k !== "calls" && !inst.construct.children.some((c) => c.name === k)));
-      let state = st.init(opened, { program: record, stateOf: (/** @type {string} */ n) => { const i = stateful.find((x) => x.name === n); return i ? finalState(i) : undefined; } });
+      const stateOf = (/** @type {string} */ n) => { const i = stateful.find((x) => x.name === n); return i ? finalState(i) : undefined; };
+      let state = st.init(opened, { program: record, stateOf });
       for (const call of inst.calls) {
         const s = inst.construct.def.slots?.[call.slot];
         if (!s || s.kind !== "decl") continue;
@@ -239,7 +240,12 @@ export function lowerRecord(g, record) {
           states.set(l.ref.id, state);
           return usable(l) ? fromCore(lowerProgram(env, [{ src: l.src, slot: l.ref }], helpers).results[0].returns) : "unknown";
         });
-        state = st.step(state, { slot: call.slot, args: call.args }, inferredOf(here, types));
+        // A refusal does not stop the state: step's return still applies, so later calls type and one mistake is one diagnostic.
+        const error = (/** @type {string} */ code, /** @type {string} */ message, /** @type {string} */ tip = "") => {
+          if (!/^[A-Z]\d{3}$/.test(code) || RESERVED_LETTERS.includes(code[0])) throw new Error(`a step's code '${code}' must be the Dialect's own letter and three digits, not one of ${RESERVED_LETTERS.join(", ")}`);
+          diagnostics.push({ code, severity: "error", message, tip, ...call.at, range: [0, 0], on: inst.name, slot: call.slot });
+        };
+        state = st.step(state, { slot: call.slot, args: call.args }, inferredOf(here, types), { program: record, stateOf, error });
       }
       finals.set(inst, state);
       return state;

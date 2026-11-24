@@ -100,10 +100,10 @@ export function validateGrammar(dialect, def) {
     if (c.state !== undefined) {
       const st = c.state;
       if (c.record !== "calls") out.push({ code: "D015", path: [...path, "state"], message: `construct '${cn}' has a state but no record: "calls"; state is threaded through calls in order.`, tip: `add record: "calls" to '${cn}'` });
-      if (!isPlainObject(st)) out.push({ code: "D015", path: [...path, "state"], message: `construct '${cn}': state must be { init, step, names }.`, tip: "state: { init(opened, ctx) { … }, step(state, call, inferred) { … } }" });
+      if (!isPlainObject(st)) out.push({ code: "D015", path: [...path, "state"], message: `construct '${cn}': state must be { init, step, names }.`, tip: "state: { init(opened, ctx) { … }, step(state, call, inferred, ctx) { … } }" });
       else {
         checkKeys(st, ["init", "step", "names"], [], [...path, "state"], `construct '${cn}''s state`, out);
-        for (const k of ["init", "step"]) if (typeof st[k] !== "function") out.push({ code: "D015", path: [...path, "state", k], message: `construct '${cn}''s state has no ${k} function.`, tip: k === "init" ? "init(opened, { program, stateOf }) { return { … }; }" : "step(state, call, inferred) { return state; }" });
+        for (const k of ["init", "step"]) if (typeof st[k] !== "function") out.push({ code: "D015", path: [...path, "state", k], message: `construct '${cn}''s state has no ${k} function.`, tip: k === "init" ? "init(opened, { program, stateOf }) { return { … }; }" : "step(state, call, inferred, { program, stateOf, error }) { return state; }" });
         if (st.names !== undefined && !(isPlainObject(st.names) && Object.values(st.names).every((f) => typeof f === "function"))) out.push({ code: "D015", path: [...path, "state", "names"], message: `construct '${cn}': state.names must map each namespace to a function of the state.`, tip: "names: { column: (state) => Object.keys(state.columns) }" });
         for (const ns of Object.keys(isPlainObject(st.names) ? st.names : {})) if (programNs.has(ns)) out.push({ code: "D015", path: [...path, "state", "names", ns], message: `construct '${cn}''s state namespace '${ns}' is also a Program namespace (a name("${ns}") declares into it).`, tip: `rename the state namespace or the name() namespace` });
       }
