@@ -71,7 +71,20 @@ The composition note covered imports and nominal types and said nothing about ti
 
 We can show that every fast path (emitted JS, GLSL, later C) agrees with a reference: the kit's interpreter for Kernels, the dialect's runtime for structure. We cannot show that a model-written reference runtime means what the user intended. The proposal's §12 should say so, and B suggests the UI should too.
 
-### 3.7 Smaller points
+### 3.7 The build is recorded and can explain itself (Manuel's pass-design gist)
+
+*Added 2026-11-24, after the consults, from [Manuel's pass-design gist](https://gist.github.com/wesen/2c6e5beb40c65cfdb958c240d2de63e0), written for Jig.* It proposes a compiler orchestration and observability layer: transformations kept apart from the strategies that schedule them; artifacts with separate **identity, revision and content hash**; four graphs kept apart (IR, dependency, provenance, execution); a queryable record of each compilation; structured explanations ("mounting hole: cache miss, because the build direction changed +Z → +Y"); one algorithm interface whose context does `require`, `read`, `derive`, `decide`, `emit` and `diagnostic`; and view providers registered per artifact kind.
+
+Most of it is the same territory as §3.1 to §3.5, seen from the compiler's side, and it sharpens them:
+
+- **Dependency manifests, not opaque hashes.** §3.1 already records which parameters build-time code read. Keep the record and answer "why did this rebuild?" from it: which input changed, or which dialect version. This is the feedback loop Ben's delivery decisions put first, and it costs little once reads are recorded.
+- **Identity, revision and content hash are three things.** Both consults called identity across edits a hard seam problem. The package and seam design (§3.4, §3.5) should keep the three apart from the start: an address says which object, a revision which version, a content key whether a result can be reused.
+- **Provenance and the execution record** are what our spans, addresses and the lab API's `why` / `trace` already reach for; one record should feed them all.
+- **The algorithm context** has the shape of construct state's `step` context (`program`, `stateOf`, `error`), which trial 2 converged on.
+
+What does not carry over at our scale: **the strategy layer and a general pass framework** (`repeatUntilStable`, `chooseBest`, analysis invalidation). Jig needs them because its compiles are expensive (OpenCascade, solvers, an orientation search). Our Kernel compiles take milliseconds, and both consults list pass managers and incremental query engines as dead weight. The gist itself says to validate dependency, identity and provenance before building a pass framework. So the existing backlog entry stands ("a pass manager and H11", un-parked when a backend wants a transformation). One exception is likely: a dialect's own expensive build work (a BVH, an FEA solve, a cave generation) is Jig's case in miniature, and the Composition milestone's scheduler and content-keyed cache are where a small orchestrator, recording its reasons, would live.
+
+### 3.8 Smaller points
 
 - **Required laws and replay** (both): a dialect may declare properties (B's `laws`, after Jig's `justifies`), and replaying recorded input must give the same state hash. Cheap to promise now, expensive to retrofit.
 - **checkJs stays for the kit's own code only** (B): the TypeScript compiler is too large to run in the page for programs. That is already the case.
@@ -94,7 +107,7 @@ The JS surface, our own parser, the typed Kernel IR, D1, the reference interpret
 ## 6. Proposed plan changes (for Ben)
 
 1. **Finish M3 as planned, with three additions folded into the Definition API:** the required text view (§3.3), binding-time parameters replacing `live` (§3.1), and module-scope resolution (§3.2). Each goes through the dogfood ruling before it is frozen.
-2. **A new milestone after M3: Composition.** Package format and loading from a repo, a path or an upload (§3.4); seam types, ports, clocks, the scheduler and frames (§3.5); one composed workbench built from two dialects written in separate sessions. The current M4 (form and book) and later steps move down one. Reason: composition is where Ben's ambition lives, both consults call it the least tested part, and it constrains the package format, which is cheaper to fix before form and book build on it.
+2. **A new milestone after M3: Composition.** Package format and loading from a repo, a path or an upload (§3.4); seam types, ports, clocks, the scheduler and frames (§3.5); a build record that keeps identity, revision and content key apart and answers "why did this rebuild?" (§3.7); one composed workbench built from two dialects written in separate sessions. The current M4 (form and book) and later steps move down one. Reason: composition is where Ben's ambition lives, both consults call it the least tested part, and it constrains the package format, which is cheaper to fix before form and book build on it.
 3. **Two cheap experiments now, before either design hardens** (both consults list them as top risks):
    - **Subset friction (half a day, a script):** parse every runtime lambda in the 22 DMG presets and the 113 *Uncommon Math* sketches; count what falls outside the Kernel subset and what reaches module scope. B's regex screen says about four in five already fit; a real parse settles it. Goes in `scripts/`.
    - **Composition on paper (one day, a dogfood trial):** write short references for three dialects (cave, tiles, glow, after B's worked example), and have three fresh agents write the composed program from those references and a draft composition section. Review by hand: did cross-part values go through ports, signal-dependent arguments through lambdas, frames through named conversions? Count what a seam check would catch and what nothing would.
