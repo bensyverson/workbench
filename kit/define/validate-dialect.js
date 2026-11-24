@@ -8,7 +8,9 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "environment"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment"]);
+/** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
+export const CONSTANT_CALLS = Object.freeze(["none", "pure"]);
 const DIALECT_REQUIRED = Object.freeze(["name", "numberType", "spaces", "targets", "slots"]);
 const INTRINSIC_KEYS = Object.freeze(["params", "returns", "numeric", "componentwise", "ref", "spell", "minArgs", "rest"]);
 const QUERIES = Object.freeze(["filter", "find", "some", "every", "reduce"]);
@@ -67,6 +69,13 @@ export function validateDialect(def) {
   const targets = table(def, "targets", out), slots = table(def, "slots", out), conversions = table(def, "conversions", out);
   const list = table(def, "list", out);
   if (def.queries !== undefined && !(Array.isArray(def.queries) && def.queries.every((q) => QUERIES.includes(q)))) out.push({ code: "D011", path: ["queries"], message: `queries must be a list of ${listed([...QUERIES])}.`, tip: `queries: ["filter"]` });
+  if (def.constants !== undefined) {
+    if (!isPlainObject(def.constants)) out.push({ code: "D011", path: ["constants"], message: `constants must be { calls }, not ${describe(def.constants)}.`, tip: `constants: { calls: "pure" }` });
+    else {
+      checkKeys(def.constants, ["calls"], ["calls"], ["constants"], "constants", out);
+      if ("calls" in def.constants && !CONSTANT_CALLS.includes(/** @type {any} */ (def.constants.calls))) out.push({ code: "D011", path: ["constants", "calls"], message: `constants.calls must be ${listed([...CONSTANT_CALLS])}, not ${describe(def.constants.calls)}.`, tip: `calls: "pure" lets a constant call a pure helper` });
+    }
+  }
   if (def.environment !== undefined && typeof def.environment !== "function") out.push({ code: "D011", path: ["environment"], message: "environment must be a function of the program record.", tip: "environment(program) { return { objects, globals }; }" });
 
   /** @type {TypeScope} */

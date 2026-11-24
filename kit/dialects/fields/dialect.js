@@ -45,6 +45,8 @@ export const fields = defineDialect({
   },
   /** A pixel is pure: it reads its position and its uniforms and nothing else. */
   slots: { pixel: { params: ["vec2", UNIFORMS], returns: "color", space: "pixel" } },
+  /** A constant may call a pure helper (`.const("K", "g()")`), as it could before fields was declared here. */
+  constants: { calls: "pure" },
 
   // Each param becomes a uniform, read in the pixel lambda as u.name: an f32 for a number (an integer is a whole
   // f32, as `ihash` takes), the choice's enum for options, bool for a toggle.

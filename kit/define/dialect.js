@@ -175,7 +175,7 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
     conversions: { ...(def.conversions ?? {}) },
     slot(ref) {
       if (ref.kind === "helper") return { params: [], inferParams: true, returns: "infer", space: `helper ${ref.key}`, forbid: [] };
-      if (ref.kind === "const") return { params: [], returns: "infer", space: `constant ${ref.key}`, forbid: ALL_EFFECTS, forbidWhy: "a constant is computed once, so it may not call, read or change anything" };
+      if (ref.kind === "const") return constConvention(ref.key, def.constants?.calls ?? "none");
       const c = Object.hasOwn(def.slots, ref.kind) ? def.slots[ref.kind] : undefined;
       if (c === undefined) return `the ${def.name} Dialect has no '${ref.kind}' slot convention`;
       if (typeof c !== "function") {
@@ -189,6 +189,19 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
       return convention(made, r);
     },
   };
+}
+
+/**
+ * The kit's `const` convention. A constant is computed once, so it reads and changes nothing; with
+ * `calls: "pure"` it may call a helper, whose own effects are listed beside the call and judged by the
+ * same rule, so a helper that stores or emits is still refused.
+ * @param {string | undefined} key @param {T.ConstantCalls} calls
+ * @returns {SlotDecl}
+ */
+function constConvention(key, calls) {
+  const space = `constant ${key}`;
+  if (calls === "pure") return { params: [], returns: "infer", space, forbid: ALL_EFFECTS.filter((v) => v !== "call"), forbidWhy: "a constant is computed once, so it may call only pure helpers and may not read or change anything" };
+  return { params: [], returns: "infer", space, forbid: ALL_EFFECTS, forbidWhy: "a constant is computed once, so it may not call, read or change anything" };
 }
 
 /**

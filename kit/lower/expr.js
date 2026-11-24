@@ -7,6 +7,7 @@ import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
 import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
+import { nullCheck, nullCheckOf, nullFacts } from "./nullcheck.js";
 import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -106,6 +107,8 @@ export function expr(L, node, expected) {
       return L.ex({ k: "op", op, args: [arg], t: "f64", span });
     }
     case "BinaryExpression": {
+      const check = nullCheckOf(L, node);
+      if (check) return nullCheck(L, node, check);
       const [a, b] = seq(L, [() => expr(L, node.left), () => expr(L, node.right)]);
       return binary(L, node.operator, a, b, node);
     }
@@ -223,7 +226,8 @@ function inline(L, e, span) {
   for (const key of ["args", "items"]) if (copy[key]) copy[key] = copy[key].map((/** @type {Expr} */ a) => inline(L, a, span));
   if (copy.fields) copy.fields = Object.fromEntries(Object.entries(copy.fields).map(([k, v]) => [k, inline(L, /** @type {Expr} */ (v), span)]));
   if (copy.place) copy.place = { ...copy.place, recv: inline(L, copy.place.recv, span) };
-  return L.ex(/** @type {Expr} */ (copy));
+  // A call's own effects (a constant calling a pure helper does `call g`) were recorded by the constant's lowerer, not this one.
+  return L.ex(/** @type {Expr} */ (copy), Array.isArray(copy.effects) ? copy.effects : []);
 }
 
 /**
@@ -474,6 +478,9 @@ export function facts(L, node) {
     const b = L.lookup(node.name);
     if (b && b.kind === "const" && typeof b.t === "object" && "opt" in b.t) return { yes: [b.name], no: [] };
   }
+  const check = nullCheckOf(L, node);
+  const known = check && nullFacts(L, check);
+  if (known) return known;
   if (node.type === "UnaryExpression" && node.operator === "!") { const f = facts(L, node.argument); return { yes: f.no, no: f.yes }; }
   if (node.type === "LogicalExpression" && node.operator === "&&") return { yes: [...facts(L, node.left).yes, ...facts(L, node.right).yes], no: [] };
   if (node.type === "LogicalExpression" && node.operator === "||") return { yes: [], no: [...facts(L, node.left).no, ...facts(L, node.right).no] };

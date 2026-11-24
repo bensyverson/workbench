@@ -43,7 +43,7 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 
 - **A Library name is reserved.** `field(…).fn("vnoise", …)` or `.const("OCTAVE_COS", …)` is refused (`B002`, thrown by `.build()`), naming the Library: a second definition would also replace the Library's own inside `fbm`. `lowerField` refuses a hand-built Program that does the same.
 - **A param with a `max` of at most 2^24 - 1 can bound a loop** (`for (let i = 0; i < u.n; i++)`); a param with no `max`, or a larger one (the f32 counter sticks at 2^24), a default outside its min..max (refused, F001), and the built-ins `u.t` and `u.aspect` are L007, since the f32 counter would stop changing and the loop never end. The value is trusted to stay within its declared `max`. A constant bound past 2^24 - 1 is L007.
-- **A constant calls nothing.** `.const("K", "g(1)")` with a helper `g` is L004: the convention the Definition API generates for a constant forbids every effect, a helper call included (the hand-written Dialect allowed it until M3). `cos(0.5)` and other intrinsics are fine.
+- **A constant may call a pure helper.** fields declares `constants: { calls: "pure" }`, so `.const("K", "g(1)")` with a helper `g` lowers, as the hand-written Dialect allowed; the Definition API's default const convention forbids the call (L004), and DMG keeps that default. `cos(0.5)` and other intrinsics are fine either way.
 - **GLSL leaves some calls undefined that JavaScript defines.** `pow(x, y)` with a negative `x`, `smoothstep(e0, e1, x)` with `e0 >= e1`, and `atan(0, 0)` are undefined in GLSL (a driver may return anything); the JS spelling returns NaN, a step and 0 respectively. A sketch that depends on them differs between targets.
 
 ## The two sketches

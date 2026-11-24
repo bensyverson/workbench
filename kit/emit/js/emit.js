@@ -29,7 +29,7 @@ const BINARY = /** @type {Partial<Record<Op, string>>} */ ({
   band: "&", bor: "|", bxor: "^", shl: "<<", shr: ">>", ushr: ">>>",
   eq: "===", ne: "!==", lt: "<", le: "<=", gt: ">", ge: ">=", and: "&&", or: "||",
 });
-const UNARY = /** @type {Partial<Record<Op, string>>} */ ({ neg: "-", pos: "+", not: "!", bnot: "~", truthy: "!!", present: "!!" });
+const UNARY = /** @type {Partial<Record<Op, string>>} */ ({ neg: "-", pos: "+", not: "!", bnot: "~", truthy: "!!" });
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 
 /**
@@ -249,6 +249,8 @@ function opSource(e, cx) {
   // `-2 ** 2` is a SyntaxError: a negative literal on the left of `**` needs its own parentheses.
   if (e.op === "pow" && bin && e.args.length === 2) return `(${a.startsWith("-") ? `(${a})` : a} ${bin} ${b})`;
   if (bin && e.args.length === 2) return `(${a} ${bin} ${b})`;
+  // Loose, so a host's missing value (undefined) is empty as null is, and 0 is present.
+  if (e.op === "present" && args.length === 1) return `(${a} != null)`;
   const un = UNARY[e.op];
   if (un && e.args.length === 1) return `(${un}${a})`;
   throw new Error(`cannot emit op ${e.op}/${e.args.length}`);

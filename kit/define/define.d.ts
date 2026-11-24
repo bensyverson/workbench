@@ -75,8 +75,13 @@ export interface DialectDef {
   queries?: string[];
   targets: Record<string, { accepts: "*" | string[]; compare: ExactTag | ToleranceTag }>;
   slots: Record<string, ConventionDef | ConventionFn>;
+  /** What a constant may call: `"pure"` lets it call a pure helper; `"none"`, the default, forbids every call. */
+  constants?: { calls: ConstantCalls };
   environment?: (program: Record<string, any>) => EnvironmentAddition;
 }
+
+/** What a Dialect's constants may call. Stores and emits stay forbidden either way. */
+export type ConstantCalls = "none" | "pure";
 
 /** One intrinsic as the backends read it: the shape of kit/dialects/fields/intrinsics.js entries, one spelling per target. */
 export interface Intrinsic {

@@ -23,7 +23,7 @@ Wherever a definition names a type, write its name as a string:
 | a declared object, e.g. `"Uniforms"` | a handle with members (see `objects`) |
 | a single capital letter, `"T"` | a type variable in an intrinsic's signature, bound per call |
 
-Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null; a lambda must check it before use), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings; nominal: two enums with the same values are different types; a type enum holds strings only, though a data shape's `enumOf` may hold numbers), and `object(label, members)`, an object type made on the spot (see "Construct state").
+Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null; a lambda must check it before use, in a `const`: `if (d !== null)` or `d != null`, which keep a 0 or a date at the epoch present, or `if (d)`, JavaScript's truthiness, which does not; give null, never undefined, for an empty value), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings; nominal: two enums with the same values are different types; a type enum holds strings only, though a data shape's `enumOf` may hold numbers), and `object(label, members)`, an object type made on the spot (see "Construct state").
 
 **Everything `kit/define` exports:** `defineDialect`, `defineGrammar`, the helpers `vector`, `scalar`, `exact`, `tolerance`, `list`, `opt`, `struct`, `union`, `enumOf`, `object`, `name`, `ref`, `data`, `lambda`, `rest`, `oneOf`, `recordOf`, `listOf`, and `DefinitionError`, `BuildError`, `DEFINE_CODES`, `BUILD_CODES`. Importing anything else is refused (D011).
 
@@ -49,6 +49,7 @@ export const myDialect = defineDialect({
   list: { … }, queries: [ … ],   // optional: members and callback methods on lists
   targets: { … },                // what each target accepts and how it is compared
   slots: { … },                  // the calling convention of each kind of Runtime Lambda
+  constants: { calls: "pure" },  // optional: a constant may call a pure helper (default "none")
   environment(program) { … },    // optional: what one Program adds (see below)
 });
 ```
@@ -167,7 +168,7 @@ A convention may also be a function `(ref, program, state) => convention`, for l
 
 `state` is the construct's state just before this call (or `undefined` if the construct declares none). Return a string instead of a convention to refuse the lambda, with the string as the reason (B011, at the call).
 
-Helpers and constants (`fn` and `const` units, below) get their conventions from the kit; do not declare them. A Dialect may not name a convention `helper`, `const` or `method` (D007).
+Helpers and constants (`fn` and `const` units, below) get their conventions from the kit; do not declare them. A constant is computed once and may read or change nothing; it may call a helper only if the Dialect declares `constants: { calls: "pure" }` (any other value of `calls` but `"none"` is D011). A Dialect may not name a convention `helper`, `const` or `method` (D007).
 
 ### `environment(program)`
 

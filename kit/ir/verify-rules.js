@@ -80,13 +80,6 @@ const str = (t) => assignable(t, "str");
 const bool = (t) => assignable(t, "bool");
 
 /**
- * Whether every value of `t` is an entity reference.
- * @param {Type} t
- * @returns {boolean}
- */
-const entity = (t) => typeof t === "object" && ("ref" in t || ("union" in t && t.union.every(entity)));
-
-/**
  * An operator's rule: given its operands' types and its own, what is wrong, or null.
  * @typedef {(args: Type[], t: Type) => string | null} OpRule
  */
@@ -169,7 +162,7 @@ export const OPS = /** @type {Record<Op, OpRule>} */ ({
   truthy: uniform(1, (a) => a !== "void" && !vectorOf(a) && !namedScalar(a), "a value other than a vector or a nominal scalar (a possibly-empty one is tested as an optional number is)", "bool"),
   f32: uniform(1, num, "an f64", "f32"),
   f64: uniform(1, (a) => a === "f32" || a === "unknown", "an f32", "f64"),
-  present: uniform(1, (a) => typeof a === "object" && "opt" in a && entity(a.opt), "a possibly-empty entity reference", "bool"),
+  present: uniform(1, (a) => typeof a === "object" && "opt" in a, "a possibly-empty value", "bool"),
   concat: (args, t) => {
     if (args.length !== 2) return `takes 2 operands, not ${args.length}`;
     if (!args.every((a) => num(a) || str(a)) || !args.some((a) => a !== "unknown" && str(a))) return "takes a string and a string or number";

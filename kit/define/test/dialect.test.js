@@ -30,9 +30,9 @@ test("the fields Environment: uniforms from params, the pixel and helper convent
     assert.deepEqual(got.globals.mix, { obj: "mix" }, "an intrinsic is a callable global");
     assert.deepEqual(got.slot({ id: `${p.name}.pixel`, kind: "pixel", on: p.name }), { params: [vec2, { obj: "Uniforms" }], returns: color, space: "pixel", forbid: [] });
     assert.deepEqual(got.slot({ id: "ring", kind: "helper", on: "$", key: "ring" }), { params: [], inferParams: true, returns: "infer", space: "helper ring", forbid: [] });
-    // The hand-written fields const convention forbade nothing; the generated one forbids every effect (the design doc, decision record).
+    // fields declares constants: { calls: "pure" } (Ben's ruling on iySXYx), so its const convention forbids every effect but a call.
     const { forbid, forbidWhy } = /** @type {import("../../lower/environment.js").SlotDecl} */ (got.slot({ id: "K", kind: "const", on: "$", key: "K" }));
-    assert.deepEqual([...forbid].sort(), [...ALL_VERBS].sort());
+    assert.deepEqual([...forbid].sort(), ALL_VERBS.filter((v) => v !== "call").sort());
     assert.match(String(forbidWhy), /computed once/);
     assert.equal(typeof got.slot({ id: "x", kind: "row", on: "x" }), "string", "an undeclared convention is a reason, not a convention");
   }
