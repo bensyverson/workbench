@@ -7,122 +7,34 @@
 // built-ins.
 //
 // This is a lexical scan, not a parser. It first blanks every comment, string, regex
-// literal and template text (keeping a template's `${}` expressions), so what is left is
-// code and brackets at their own offsets; the top level is bracket depth 0. A statement
+// literal and template text (keeping a template's `${}` expressions; blank.js, which
+// decides where a `/` starts a regex), so what is left is code and brackets at their own
+// offsets; the top level is no bracket open, brackets matched by kind. A statement
 // without a `;` ends at a line break that the next line cannot continue (the next line
-// starts with a name, and the line before does not end in an operator or a comma). A
-// `/` starts a regex literal where an expression may start (after an operator, an
-// opening bracket, a comma or a keyword such as `return`), else it is division.
+// starts with a name, a string or a number, and the line before does not end in an
+// operator or a comma).
 
-const IDENT = /^[A-Za-z_$][\w$]*$/;
-/** Words after which a `/` starts a regex literal, not a division. */
-const BEFORE_REGEX = new Set(["return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw", "instanceof", "yield", "await"]);
+import { blank, lineEnds, startsStatement, isNameUnit, ID, IDENT, NOT_AFTER_NAME } from "./blank.js";
 
-/**
- * The source with every comment, string, regex literal and template literal's text replaced by spaces (a
- * string or regex keeps a `"` at each end; a template's `${` becomes ` (` and its `}` a `)`), the same length as
- * the source, so an offset into it is an offset into the source. A line break in a block comment is kept.
- * @param {string} src
- */
-export function blank(src) {
-  const out = /** @type {string[]} */ ([]);
-  /** @type {number[]} */
-  const templateDepth = []; // the brace depth at which each open `${` was entered
-  let depth = 0;
-  /** @param {number} from @param {number} to @param {string} [ends]  a character for each end */
-  const fill = (from, to, ends) => {
-    for (let k = from; k < to; k++) out.push(ends && (k === from || k === to - 1) ? ends : "\n\r".includes(src[k]) && !ends ? src[k] : " ");
-  };
-  /** Template text from `i` (just after a backtick or a `}`) to its next `${` or closing backtick. @param {number} i */
-  const templateText = (i) => {
-    let j = i;
-    while (j < src.length && src[j] !== "`" && !(src[j] === "$" && src[j + 1] === "{")) j += src[j] === "\\" ? 2 : 1;
-    for (let k = i; k < Math.min(j, src.length); k++) out.push(" ");
-    if (src[j] === "$") { templateDepth.push(depth); out.push(" ", "("); return j + 2; }
-    if (j < src.length) out.push('"');
-    return j + 1;
-  };
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i], d = src[i + 1];
-    if (c === "/" && d === "/") { let j = i; while (j < src.length && src[j] !== "\n") j++; fill(i, j); i = j; continue; }
-    if (c === "/" && d === "*") { const e = src.indexOf("*/", i + 2); const j = e < 0 ? src.length : e + 2; fill(i, j); i = j; continue; }
-    if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < src.length && src[j] !== c && src[j] !== "\n") j += src[j] === "\\" ? 2 : 1;
-      j = src[j] === c ? j + 1 : Math.min(j, src.length); // an unclosed string ends at its line
-      fill(i, j, '"');
-      i = j;
-      continue;
-    }
-    if (c === "/" && regexMayStart(out)) {
-      const j = regexEnd(src, i);
-      if (j > i) { fill(i, j, '"'); i = j; continue; }
-    }
-    if (c === "`") { out.push('"'); i = templateText(i + 1); continue; }
-    if (c === "}" && templateDepth.length && templateDepth[templateDepth.length - 1] === depth) {
-      templateDepth.pop();
-      out.push(")");
-      i = templateText(i + 1);
-      continue;
-    }
-    if (c === "{") depth++;
-    if (c === "}") depth--;
-    out.push(c);
-    i++;
-  }
-  return out.join("").slice(0, src.length);
-}
+export { blank };
 
-/** Whether a `/` after the code so far starts a regex literal. @param {string[]} out */
-function regexMayStart(out) {
-  let k = out.length - 1;
-  while (k >= 0 && /\s/.test(out[k])) k--;
-  if (k < 0) return true;
-  const p = out[k];
-  if (/[\w$]/.test(p)) {
-    let w = "";
-    while (k >= 0 && /[\w$]/.test(out[k])) w = out[k--] + w;
-    while (k >= 0 && /\s/.test(out[k])) k--;
-    return BEFORE_REGEX.has(w) && out[k] !== "."; // `o.typeof / 2`: a keyword as a property name is a value
-  }
-  if ((p === "+" || p === "-") && out[k - 1] === p) return false; // `i++ / 2`: a postfix operator ends a value
-  return !")]}\"".includes(p);
-}
+/** Each closing bracket's opener. */
+const OPENER = /** @type {Record<string, string>} */ ({ ")": "(", "]": "[", "}": "{" });
 
 /**
- * The offset after the regex literal (and its flags) that starts at `i`, or `i` when no regex closes on its line.
- * @param {string} s @param {number} i
+ * A scan that found a name declared twice at a program's top level where the language allows it once (a
+ * `const` or `let` beside another declaration of it). A module cannot declare a `const` twice, so
+ * the scan misread the file (or the file does not load): neither declaration can be trusted, and a host that
+ * vouches for a helper by its declaration must refuse rather than keep either.
  */
-function regexEnd(s, i) {
-  let inClass = false;
-  for (let j = i + 1; j < s.length; j++) {
-    const c = s[j];
-    if (c === "\n") return i;
-    if (c === "\\") { j++; continue; }
-    if (c === "[") inClass = true;
-    else if (c === "]") inClass = false;
-    else if (c === "/" && !inClass) {
-      j++;
-      while (j < s.length && /[\w$]/.test(s[j])) j++;
-      return j;
-    }
+export class ScanError extends Error {
+  /** @param {string} name @param {number} line  the 1-based line of the second declaration */
+  constructor(name, line) {
+    super(`the top-level scan found '${name}' declared twice (again at line ${line}), which a module cannot do: it misread this file, so it vouches for none of its declarations`);
+    this.name = "ScanError";
+    this.binding = name;
+    this.line = line;
   }
-  return i;
-}
-
-/**
- * Whether the line break at `j` in blanked code ends a statement: the next line starts with a name, and the
- * code before the break does not end in an operator, a comma or an opening bracket.
- * @param {string} b @param {number} j
- */
-function lineEnds(b, j) {
-  let n = j + 1;
-  while (n < b.length && /\s/.test(b[n])) n++;
-  if (!/[A-Za-z_$]/.test(b[n] ?? "")) return false;
-  let p = j - 1;
-  while (p >= 0 && /\s/.test(b[p])) p--;
-  return p < 0 || !/[=+\-*/%&|^!?:<>,.([{~]/.test(b[p]);
 }
 
 /**
@@ -135,17 +47,20 @@ function lineEnds(b, j) {
 function declaration(b, i) {
   /** @type {Array<{ from: number, eq: number, to: number }>} */
   const declarators = [];
-  let depth = 0, from = i, eq = -1, j = i;
+  /** @type {string[]} */
+  const open = [];
+  let from = i, eq = -1, j = i;
   for (; j < b.length; j++) {
     const c = b[j];
-    if ("([{".includes(c)) depth++;
-    else if (")]}".includes(c)) { if (depth === 0) break; depth--; }
-    else if (depth > 0) continue;
+    if ("([{".includes(c)) open.push(c);
+    else if (c in OPENER) { if (!open.length) break; if (open[open.length - 1] === OPENER[c]) open.pop(); }
+    else if (open.length) continue;
     else if (c === ";") break;
     else if (c === "\n" && lineEnds(b, j)) break;
     else if (c === ",") { declarators.push({ from, eq, to: j }); from = j + 1; eq = -1; }
     else if (c === "=" && eq < 0 && b[j + 1] !== "=" && b[j + 1] !== ">" && !"=!<>".includes(b[j - 1])) eq = j;
-    else if (eq < 0 && /\s/.test(b[j - 1] ?? "") && /^(?:of|in)(?![\w$])/.test(b.slice(j, j + 3))) break;
+    // `of` / `in` after a binding ends a loop head's declaration; as the binding itself (`const of = 2`) it is a name
+    else if (eq < 0 && /\s/.test(b[j - 1] ?? "") && /\S/.test(b.slice(from, j)) && /^(?:of|in)$/.test(b.slice(j, j + 2)) && !isNameUnit(b[j + 2])) break;
   }
   declarators.push({ from, eq, to: j });
   return { declarators, end: j };
@@ -198,41 +113,26 @@ function indexAtDepth0(s, ch) {
 }
 
 /**
- * Each declaration keyword at bracket depth 0 of blanked code, as a token: where it starts and ends.
+ * Each declaration keyword at the top level of blanked code (no bracket open), as a token: where it starts and ends.
  * @param {string} b
  * @returns {Array<{ word: string, at: number, end: number }>}
  */
 function topLevelKeywords(b) {
   /** @type {Array<{ word: string, at: number, end: number }>} */
   const out = [];
-  let depth = 0;
+  /** @type {string[]} */
+  const open = [];
   for (let j = 0; j < b.length; j++) {
     const c = b[j];
-    if ("([{".includes(c)) { depth++; continue; }
-    if (")]}".includes(c)) { depth--; continue; }
-    if (depth !== 0 || !/[a-z]/.test(c) || /[\w$.]/.test(b[j - 1] ?? "")) continue;
-    const m = /^(?:const|let|var|function)(?![\w$])/.exec(b.slice(j, j + 9));
-    if (m) out.push({ word: m[0], at: j, end: j + m[0].length });
-    while (j + 1 < b.length && /[\w$]/.test(b[j + 1])) j++;
+    if ("([{".includes(c)) { open.push(c); continue; }
+    // a closer of another kind than the open bracket closes nothing (the scan misread what came before it)
+    if (c in OPENER) { if (open[open.length - 1] === OPENER[c]) open.pop(); continue; }
+    if (open.length || !isNameUnit(c) || isNameUnit(b[j - 1]) || b[j - 1] === ".") continue;
+    const m = /^(?:const|let|var|function)/.exec(b.slice(j, j + 8));
+    if (m && !isNameUnit(b[j + m[0].length])) out.push({ word: m[0], at: j, end: j + m[0].length });
+    while (j + 1 < b.length && isNameUnit(b[j + 1])) j++;
   }
   return out;
-}
-
-/**
- * Whether a `function` keyword at `at` starts a statement (a declaration), not a function expression: nothing
- * but `export`, `default`, `async`, a `;`, a `}` or a statement-ending line break comes before it.
- * @param {string} b @param {number} at
- */
-function startsStatement(b, at) {
-  let p = at - 1;
-  for (;;) {
-    while (p >= 0 && /[ \t]/.test(b[p])) p--;
-    if (p < 0 || b[p] === ";" || b[p] === "}") return true;
-    if (b[p] === "\n" || b[p] === "\r") return lineEnds(b, p) || !/\S/.test(b.slice(0, p));
-    const w = /(?:export|default|async)$/.exec(b.slice(Math.max(0, p - 6), p + 1));
-    if (!w || /[\w$]/.test(b[p - w[0].length] ?? "")) return false;
-    p -= w[0].length;
-  }
 }
 
 /**
@@ -261,12 +161,14 @@ function initText(code, b, from, to) {
 /**
  * Each plain-named `const` and `let` a program declares at its top level, with its initializer's
  * source. A `const a = 1, b = 2` gives two. Destructuring declarations, `var` and functions are
- * not listed.
+ * not listed. A name declared twice where one of the two is a `const` or `let` throws a ScanError: a
+ * program cannot do that, so the scan misread it, and these initializers vouch for helpers.
  * @param {string} code
  * @returns {Binding[]}
  */
 export function topLevelBindings(code) {
   const b = blank(code);
+  refuseRedeclared(code, topLevelDecls(b));
   /** @type {Binding[]} */
   const out = [];
   for (const k of topLevelKeywords(b)) {
@@ -281,28 +183,67 @@ export function topLevelBindings(code) {
 }
 
 /**
- * The names a program declares at its top level (bracket depth 0, however indented): every name a
+ * The names a program declares at its top level (no bracket open, however indented): every name a
  * `const`, `let` or `var` binds (destructuring included), and each function declaration's name.
  * Classes and imports are not listed.
  * @param {string} code
  * @returns {string[]}
  */
 export function topLevelNames(code) {
-  const b = blank(code);
-  /** @type {string[]} */
-  const names = [];
+  return topLevelDecls(blank(code)).map((d) => d.name);
+}
+
+/** A function declaration's name, after its keyword. */
+const FN_NAME = new RegExp(`^\\s*\\*?\\s*(${ID})`, "u");
+
+/**
+ * Each name the top level of blanked code declares, with the keyword that declares it and where that is.
+ * @param {string} b
+ * @returns {Array<{ name: string, word: string, at: number }>}
+ */
+function topLevelDecls(b) {
+  /** @type {Array<{ name: string, word: string, at: number }>} */
+  const out = [];
   for (const k of topLevelKeywords(b)) {
     if (k.word === "function") {
       if (!startsStatement(b, k.at)) continue;
-      const m = /^\s*\*?\s*([A-Za-z_$][\w$]*)/.exec(b.slice(k.end));
-      if (m) names.push(m[1]);
-    } else names.push(...declaredNames(b, k.end));
+      const m = FN_NAME.exec(b.slice(k.end));
+      if (m) out.push({ name: m[1], word: k.word, at: k.at });
+    } else for (const name of declaredNames(b, k.end)) out.push({ name, word: k.word, at: k.at });
   }
-  return names;
+  return out;
+}
+
+/**
+ * Throws a ScanError at the first name declared again where one of its declarations is a `const` or `let`
+ * (`var` and function declarations may repeat in a script).
+ * @param {string} code @param {Array<{ name: string, word: string, at: number }>} decls
+ */
+function refuseRedeclared(code, decls) {
+  /** @type {Map<string, string[]>} */
+  const words = new Map();
+  for (const d of decls) {
+    const before = words.get(d.name) ?? [];
+    if (before.length && [...before, d.word].some((w) => w === "const" || w === "let")) throw new ScanError(d.name, code.slice(0, d.at).split("\n").length);
+    words.set(d.name, [...before, d.word]);
+  }
 }
 
 /** Every name a declaration whose declarators start at `i` binds. @param {string} b @param {number} i */
 const declaredNames = (b, i) => declaration(b, i).declarators.flatMap((d) => patternNames(b.slice(d.from, d.eq < 0 ? d.to : d.eq)));
+
+/** Not just after a name character or a `.`, as a `u` regex lookbehind. */
+const NOT_AFTER_NAME_OR_DOT = "(?<![\\p{ID_Continue}$\\u200C\\u200D.])";
+/** A `const`, `let` or `var` keyword, up to its first declarator. */
+const DECL = new RegExp(`${NOT_AFTER_NAME_OR_DOT}(?:const|let|var)\\s+`, "gu");
+/** A function's keyword, its name if any and its parameter list (without nested parens). */
+const FUNCTION = new RegExp(`${NOT_AFTER_NAME}function(?![\\p{ID_Continue}$])\\s*\\*?\\s*(${ID})?\\s*\\(([^()]*)\\)`, "gu");
+/** An arrow's single unparenthesized parameter. */
+const ARROW_PARAM = new RegExp(`${NOT_AFTER_NAME_OR_DOT}(${ID})\\s*=>`, "gu");
+/** A `catch` clause's parameter. */
+const CATCH = new RegExp(`${NOT_AFTER_NAME}catch\\s*\\(([^()]*)\\)`, "gu");
+/** Every name. */
+const NAME = new RegExp(`${NOT_AFTER_NAME}${ID}`, "gu");
 
 /**
  * The names a program declares only below its top level: `const`/`let`/`var` inside a block or function,
@@ -318,11 +259,11 @@ export function buildTimeNames(code) {
   /** @type {Set<string>} */
   const names = new Set();
   const params = (/** @type {string} */ list) => { for (const part of splitTopLevel(list)) for (const n of patternNames(part)) names.add(n); };
-  for (const m of s.matchAll(/(?<![\w$.])(?:const|let|var)\s+/g)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) names.add(n);
-  for (const m of s.matchAll(/\bfunction\b\s*\*?\s*([A-Za-z_$][\w$]*)?\s*\(([^()]*)\)/g)) { if (m[1]) names.add(m[1]); params(m[2]); }
+  for (const m of s.matchAll(DECL)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) names.add(n);
+  for (const m of s.matchAll(FUNCTION)) { if (m[1]) names.add(m[1]); params(m[2]); }
   for (const m of s.matchAll(/\(([^()]*)\)\s*=>/g)) params(m[1]);
-  for (const m of s.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>/g)) names.add(m[1]);
-  for (const m of s.matchAll(/\bcatch\s*\(([^()]*)\)/g)) params(m[1]);
+  for (const m of s.matchAll(ARROW_PARAM)) names.add(m[1]);
+  for (const m of s.matchAll(CATCH)) params(m[1]);
   const top = new Set(topLevelNames(code));
   return [...names].filter((n) => !top.has(n));
 }
@@ -339,15 +280,15 @@ export function topLevelRefs(src, names) {
   const s = blank(src);
   /** @type {Set<string>} */
   const locals = new Set();
-  for (const m of s.matchAll(/(?<![\w$.])(?:const|let|var)\s+/g)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) locals.add(n);
+  for (const m of s.matchAll(DECL)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) locals.add(n);
   for (const m of s.matchAll(/\(([^()]*)\)\s*=>/g)) {
     for (const part of splitTopLevel(m[1])) for (const n of patternNames(part)) locals.add(n);
   }
-  for (const m of s.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>/g)) locals.add(m[1]);
+  for (const m of s.matchAll(ARROW_PARAM)) locals.add(m[1]);
   const wanted = new Set(names);
   /** @type {Set<string>} */
   const found = new Set();
-  for (const m of s.matchAll(/(?<![\w$])[A-Za-z_$][\w$]*/g)) {
+  for (const m of s.matchAll(NAME)) {
     const id = m[0], at = m.index ?? 0;
     if (!wanted.has(id) || locals.has(id)) continue;
     const before = s.slice(0, at).trimEnd();

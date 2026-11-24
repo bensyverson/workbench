@@ -93,7 +93,8 @@ async function checkNow(dir) {
       }
       if (!mod) continue;
       const programFn = checkExport(f, mod.default);
-      if (programFn) runProgram(f, programFn, session.grammar, moduleScope(f, mod));
+      const scope = programFn && moduleScope(f, mod);
+      if (programFn && scope) runProgram(f, programFn, session.grammar, scope);
     }
   }
 

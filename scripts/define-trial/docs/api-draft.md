@@ -376,7 +376,7 @@ topN   folded at build, read at 05.js:22 (before top.limit#5)
 year   uniform, read by top.filter#0
 ```
 
-There is **one form** for a value a param gives a slot: `.limit($.topN)`. A lambda where the slot takes a value, `.limit(() => $.topN)`, is B004, with the fix `.limit($.topN)`. Reading a param at build time before its `.param` call, or one that is not declared, is B003 (with a did-you-mean). Reading a member that exists only while the Program runs (fields' `u.t`) at build time is B014: read it inside the lambda. Build-time code reads `$` **by name only**, `$.topN` or `const { topN } = $`: `"topN" in $`, a spread, `Object.keys($)`, `JSON.stringify($)` and a rest pattern are B015. A param may not be named like a property runtimes probe on every object (`then`, `toJSON`, `inspect`, `prototype` …; B004 at the `.param` call), except Object.prototype's `constructor`, `valueOf` and `toString`. The function takes exactly one parameter, the params (C001 otherwise); it may be named as the lambdas read the params (`$` in data, `u` in fields); a lambda's own `$` is the Dialect's global, so the two never clash.
+There is **one form** for a value a param gives a slot: `.limit($.topN)`. A lambda where the slot takes a value, `.limit(() => $.topN)`, is B004, with the fix `.limit($.topN)`. Reading a param at build time before its `.param` call, or one that is not declared, is B003 (with a did-you-mean). Reading a member that exists only while the Program runs (fields' `u.t`) at build time is B014: read it inside the lambda. A refusal stands even if build-time code catches it: the run still fails with it. A param's declared `value` must fit its own declaration, finite, inside `min..max` and one of `options` (B004 at the `.param` call). Build-time code reads `$` **by name only**, `$.topN` or `const { topN } = $`: `"topN" in $`, a spread, `Object.keys($)`, `JSON.stringify($)` and a rest pattern are B015. A param may not be named like a property runtimes probe on every object (`then`, `toJSON`, `inspect`, `prototype` …; B004 at the `.param` call), except Object.prototype's `constructor`, `valueOf` and `toString`. The function takes exactly one parameter, the params (C001 otherwise; `($ = {}) => …` is one); it may be named as the lambdas read the params (`$` in data, `u` in fields); a lambda's own `$` is the Dialect's global, so the two never clash.
 
 ### The record
 
@@ -404,7 +404,7 @@ The generated builder reports with the kit's diagnostic: `{ code, severity, mess
 | B001 | a method the construct does not have, with a "did you mean" |
 | B002 | a `name()` already declared in its namespace, or a second construct instance with state under a name another one has |
 | B003 | a `ref()` that names nothing, with a "did you mean" |
-| B004 | a value that does not fit its shape, naming the part that does not |
+| B004 | a value that does not fit its shape, naming the part that does not; a param whose declared `value` does not fit its own declaration (not finite, outside `min..max`, not one of `options`) |
 | B005 | `.build()` on a construct missing a `required` slot |
 | B006 | a second call to a `once` slot |
 | B007 | a lambda that is not an arrow function or its source text, or does not parse |

@@ -6,7 +6,8 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames, topLevelBindings } from "../../../kit/parse/toplevel.js";
+import { buildTimeNames, topLevelBindings, ScanError, blank } from "../../../kit/parse/toplevel.js";
+import { LOAD } from "./codes.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */
 
@@ -39,9 +40,9 @@ export function checkExport(file, exported) {
   const refused = REFUSED.test(src.split("\n")[0].trimEnd());
   // Outside a "type": "module" package a file with no ESM syntax loads as CommonJS, whose default is {}.
   if (!/\bexport\b/.test(src)) exported = undefined;
-  if (typeof exported === "function" && exported.length === 1) return /** @type {(params: any) => unknown} */ (exported);
+  if (typeof exported === "function" && (exported.length === 1 || (exported.length === 0 && oneDefaultedParam(String(exported))))) return /** @type {(params: any) => unknown} */ (exported);
   if (typeof exported === "function") {
-    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file}'s default export is a function of ${exported.length} parameters; a Program is a function of one parameter, the params, which the kit calls with $.`, fix: `take the params as its one parameter: ${FORM}` });
+    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file}'s default export is a function of ${paramList(String(exported))?.length ?? exported.length} parameters; a Program is a function of one parameter, the params, which the kit calls with $.`, fix: `take the params as its one parameter: ${FORM}` });
     return null;
   }
   if (isBuilder(exported)) {
@@ -62,16 +63,63 @@ export function checkExport(file, exported) {
 }
 
 /**
+ * The parameters a function's source declares, each as its blanked text, or null when its list cannot be found.
+ * A trailing comma adds none.
+ * @param {string} src  what String(fn) gives
+ * @returns {string[] | null}
+ */
+function paramList(src) {
+  const b = blank(src);
+  const arrow = /^\s*(?:async\s+)?([^\s(=]+)\s*=>/u.exec(b);
+  if (arrow) return [arrow[1]];
+  const open = b.indexOf("(");
+  if (open < 0) return null;
+  /** @type {string[]} */
+  const parts = [];
+  let depth = 0, from = open + 1;
+  for (let i = open; i < b.length; i++) {
+    const c = b[i];
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c) && --depth === 0) {
+      parts.push(b.slice(from, i));
+      return parts.map((p) => p.trim()).filter((p, k, all) => p !== "" || k < all.length - 1);
+    } else if (c === "," && depth === 1) { parts.push(b.slice(from, i)); from = i + 1; }
+  }
+  return null;
+}
+
+/**
+ * Whether a function whose `length` is 0 declares exactly one parameter, which then has a default (`$ = {}`,
+ * `{ topN } = {}`), so the kit's `$` still reaches it. A rest parameter would get a list, not the params.
+ * @param {string} src
+ */
+function oneDefaultedParam(src) {
+  const ps = paramList(src);
+  return ps !== null && ps.length === 1 && !ps[0].startsWith("...");
+}
+
+/**
  * An example's module scope, as the builder takes it: its top-level bindings (from the export the load hook
  * appends), each top-level `const` declaration's initializer text (a helper's must be its own) and the names its
- * text declares only inside build-time code.
+ * text declares only inside build-time code. When the scan of its text finds a name declared twice at the top
+ * level, which a module cannot do, the scan misread the file: that is LOAD at the second declaration, and null,
+ * since no declaration can then vouch for a helper (fail closed, rather than keep either).
  * @param {string} file @param {Record<string, unknown>} mod
- * @returns {import("../../../kit/define/define.js").BuildOptions}
+ * @returns {import("../../../kit/define/define.js").BuildOptions | null}
  */
 export function moduleScope(file, mod) {
   const get = mod.__defineTrialScope;
   const text = session.sources[file] ?? "";
-  return { scope: typeof get === "function" ? get() : {}, sources: helperSources(text), buildTime: buildTimeNames(text) };
+  /** @type {Record<string, string>} */
+  let sources;
+  try {
+    sources = helperSources(text);
+  } catch (e) {
+    if (!(e instanceof ScanError)) throw e;
+    session.add({ file, line: e.line, code: LOAD, severity: "error", message: `${file} could not be read: ${e.message}. This is the checker's misreading, not a rule the file broke.`, fix: "report it with the file; meanwhile, move the code the scan misread (a regex literal is the usual cause) into a function of its own, or rename one of the two" });
+    return null;
+  }
+  return { scope: typeof get === "function" ? get() : {}, sources, buildTime: buildTimeNames(text) };
 }
 
 /**

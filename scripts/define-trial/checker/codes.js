@@ -15,8 +15,9 @@ export const CHECK_CODES = Object.freeze({
 export const RETIRED_CODES = Object.freeze({ C002: "B007", C003: "B008", C004: "B001" });
 
 /**
- * A definition file that cannot be loaded at all (a syntax error, an exception, no define call). rules.md
- * gives this no number; an example that cannot be loaded is C001 instead.
+ * A definition file that cannot be loaded at all (a syntax error, an exception, no define call), or an example
+ * whose top level the checker's scan misread (it found a name declared twice, which a module cannot do).
+ * rules.md gives this no number; an example that cannot be loaded is C001 instead.
  */
 export const LOAD = "LOAD";
 

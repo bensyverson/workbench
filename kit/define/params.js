@@ -25,7 +25,13 @@ import { BuildError, programOf } from "./grammar.js";
  * @typedef {{ declared(): Map<string, unknown>, paramSlot(): string | undefined, dialectParams(): T.DialectDef["params"] }} RunProgram
  */
 
-/** @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, closed: boolean }} Run */
+/**
+ * One run: the host's values, the reads so far, the Program once it opens, and every refusal the recording `$`
+ * made (each is thrown into build-time code and also kept here, so code that catches one does not make the run
+ * succeed). `early` holds reads made before the Program opened of a name some Dialect knows only at run time:
+ * whether such a read is B014 or B003 depends on the Program's Dialect, so it is decided when the Program opens.
+ * @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, closed: boolean, refusals: T.BuildDiagnostic[], early: Array<{ prop: string, diagnostic: T.BuildDiagnostic }> }} Run
+ */
 
 /** The open run, while `programFn` runs. @type {Run | null} */
 let current = null;
@@ -37,7 +43,32 @@ const RUN_KEYS = ["values", "scope", "sources", "buildTime"];
  * @param {RunProgram} program
  */
 export function noteRoot(program) {
-  if (current && !current.program) current.program = program;
+  if (!current || current.program) return;
+  current.program = program;
+  settleEarly(current);
+}
+
+/**
+ * Decides each read made before the Program opened: B014 when the Program's Dialect knows the name only at run
+ * time, else B003 (read before declared), worded for no Dialect when no Program opened. Each is then a refusal.
+ * @param {Run} run
+ */
+function settleEarly(run) {
+  const conv = run.program?.dialectParams();
+  for (const { prop, diagnostic } of run.early) {
+    if (conv?.runtime?.includes(prop)) Object.assign(diagnostic, runtimeOnly(conv, prop, diagnostic));
+    run.refusals.push(diagnostic);
+  }
+  run.early = [];
+}
+
+/**
+ * Keeps a refusal on the run and returns it as the error to throw into build-time code.
+ * @param {Run} run @param {T.BuildDiagnostic} d
+ */
+function refuse(run, d) {
+  run.refusals.push(d);
+  return new BuildError([d]);
 }
 
 /**
@@ -72,12 +103,14 @@ export function noteConvention(conv) {
 }
 
 /**
- * B014 for a read of a run-time-only member through `conv`.
- * @param {NonNullable<T.DialectDef["params"]>} conv @param {string} prop
+ * B014 for a read of a run-time-only member through `conv`, at the read's place (`at`, else here).
+ * @param {NonNullable<T.DialectDef["params"]>} conv @param {string} prop @param {T.BuildDiagnostic} [at]
+ * @returns {T.BuildDiagnostic}
  */
-function runtimeOnly(conv, prop) {
+function runtimeOnly(conv, prop, at) {
   const via = conv.name;
-  return new BuildError([{ ...refusal("B014", `${via}.${prop} is known only while the Program runs, not when it is built: build-time code cannot read it`, `read it inside the lambda: (…) => … ${via}.${prop} …`), fix: `${via}.${prop}` }]);
+  const d = refusal("B014", `${via}.${prop} is known only while the Program runs, not when it is built: build-time code cannot read it`, `read it inside the lambda: (…) => … ${via}.${prop} …`);
+  return { ...d, ...(at ? { loc: at.loc, file: at.file } : {}), fix: `${via}.${prop}` };
 }
 
 /**
@@ -89,7 +122,7 @@ function notByName(run, how, prop) {
   if (run.closed) throw new Error(`the params were read (${how}) after run() returned: read them while the Program is built`);
   const via = run.program?.dialectParams()?.name ?? "$";
   const fix = prop === undefined ? undefined : `${via}.${prop}`;
-  return new BuildError([{ ...refusal("B015", `build-time code reads the params ${how}: only a read of one param by name is answered and recorded`, `read each param by name, ${fix ?? `${via}.name`}`), ...(fix ? { fix } : {}) }]);
+  return refuse(run, { ...refusal("B015", `build-time code reads the params ${how}: only a read of one param by name is answered and recorded`, `read each param by name, ${fix ?? `${via}.name`}`), ...(fix ? { fix } : {}) });
 }
 
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
@@ -99,12 +132,13 @@ const isObject = (v) => v !== null && typeof v === "object";
 const typeName = (v) => (v === null ? "null" : typeof v === "object" ? "an object" : `a ${typeof v}`);
 
 /**
- * Why the host's value does not fit the param's declaration, or null: it must have the declared value's type, be
- * finite when a number, lie inside `min..max` and be one of `options` when the declaration has them.
+ * Why a value does not fit the param's declaration, or null: it must have the declared value's type, be finite
+ * when a number, lie inside `min..max` and be one of `options` when the declaration has them. The builder holds
+ * the declared value itself to the same rules (B004 at the param's call).
  * @param {unknown} value @param {Record<string, unknown>} decl
  * @returns {string | null}
  */
-function misfit(value, decl) {
+export function misfit(value, decl) {
   if (typeof value !== typeof decl.value) return `is ${typeName(decl.value)} param, not ${typeName(value)}`;
   if (typeof value === "number" && !Number.isFinite(value)) return `takes a finite number, not ${value}`;
   const { min, max, options } = decl;
@@ -137,16 +171,18 @@ function paramsProxy(run) {
       if (run.closed) throw new Error(`the params were read (.${prop}) after run() returned: read them while the Program is built`);
       const program = run.program;
       if (!program) {
-        const conv = [...conventions].find((c) => c.runtime?.includes(prop));
-        if (conv) throw runtimeOnly(conv, prop);
-        throw new BuildError([refusal("B003", `build-time code reads the param '${prop}' before the Program declares it`, `open the Program and declare it first, .param("${prop}", { value: … }), then read it`)]);
+        const early = refusal("B003", `build-time code reads the param '${prop}' before the Program declares it`, `open the Program and declare it first, .param("${prop}", { value: … }), then read it`);
+        // A name some Dialect knows only at run time: B014 or B003 depends on the Program's Dialect, decided when
+        // it opens. The read answers nothing meanwhile; the run fails either way.
+        if ([...conventions].some((c) => c.runtime?.includes(prop))) { run.early.push({ prop, diagnostic: early }); return undefined; }
+        throw refuse(run, early);
       }
       const conv = program.dialectParams();
-      if (conv?.runtime?.includes(prop)) throw runtimeOnly(conv, prop);
+      if (conv?.runtime?.includes(prop)) throw refuse(run, runtimeOnly(conv, prop));
       const declared = program.declared();
       const decl = declared.get(prop);
       const slot = program.paramSlot() ?? "param";
-      if (!declared.has(prop)) throw new BuildError([refusal("B003", `there is no param '${prop}' declared before this read.${didYouMean(prop, [...declared.keys()])}`, `declare it before reading it: .${slot}("${prop}", { value: … })`)]);
+      if (!declared.has(prop)) throw refuse(run, refusal("B003", `there is no param '${prop}' declared before this read.${didYouMean(prop, [...declared.keys()])}`, `declare it before reading it: .${slot}("${prop}", { value: … })`));
       const own = Object.hasOwn(run.values, prop);
       const value = own ? run.values[prop] : isObject(decl) ? decl.value : undefined;
       if (own && isObject(decl)) checkValue(prop, value, decl);
@@ -156,8 +192,9 @@ function paramsProxy(run) {
     },
     has(_, prop) {
       if (typeof prop === "symbol") return false;
-      const conv = run.program ? run.program.dialectParams() : [...conventions].find((c) => c.runtime?.includes(prop));
-      if (!run.closed && conv?.runtime?.includes(prop)) throw runtimeOnly(conv, prop);
+      // before the Program opens its Dialect is unknown, and B015 holds for any Dialect
+      const conv = run.program?.dialectParams();
+      if (!run.closed && conv?.runtime?.includes(prop)) throw refuse(run, runtimeOnly(conv, prop));
       throw notByName(run, `with \`"${prop}" in …\``, prop);
     },
     ownKeys() { throw notByName(run, "as a whole (a spread, Object.keys, JSON.stringify or a rest pattern lists them)"); },
@@ -182,26 +219,38 @@ export function run(programFn, options = {}) {
   if (values === null || typeof values !== "object" || Array.isArray(values)) throw new TypeError("run({ values }): values are the params' values, by name");
   if (current) throw new Error("run() does not nest: a Program's code may not call run");
   /** @type {Run} */
-  const ctx = { values, reads: [], pending: [], program: null, closed: false };
+  const ctx = { values, reads: [], pending: [], program: null, closed: false, refusals: [], early: [] };
   current = ctx;
   /** @type {unknown} */
   let out;
+  /**
+   * The run stopped at these refusals, with no record.
+   * @param {T.BuildDiagnostic[]} diagnostics @param {unknown} [cause]
+   */
+  const stopped = (diagnostics, cause) => {
+    // The host's typo is still its own mistake, though the Program stopped before declaring every param (so a
+    // param declared after the stop is reported too; the message says where the code stopped).
+    const declared = ctx.program?.declared() ?? new Map();
+    const unknown = Object.keys(values).find((k) => !declared.has(k));
+    if (ctx.program && unknown !== undefined) throw new TypeError(`run({ values }): the Program declares no param '${unknown}'.${didYouMean(unknown, [...declared.keys()])} (Its code stopped at ${diagnostics.map((d) => d.code).join(", ")} before declaring any more: ${diagnostics[0]?.message})`, { cause });
+    return { record: null, diagnostics };
+  };
   try {
     out = programFn(paramsProxy(ctx));
   } catch (e) {
-    if (e instanceof BuildError) {
-      // The host's typo is still its own mistake, though the Program stopped before declaring every param (so a
-      // param declared after the stop is reported too; the message says where the code stopped).
-      const declared = ctx.program?.declared() ?? new Map();
-      const unknown = Object.keys(values).find((k) => !declared.has(k));
-      if (ctx.program && unknown !== undefined) throw new TypeError(`run({ values }): the Program declares no param '${unknown}'.${didYouMean(unknown, [...declared.keys()])} (Its code stopped at ${e.diagnostics.map((d) => d.code).join(", ")} before declaring any more: ${e.diagnostics[0]?.message})`, { cause: e });
-      return { record: null, diagnostics: e.diagnostics };
-    }
+    settleEarly(ctx);
+    if (e instanceof BuildError) return stopped([...ctx.refusals, ...e.diagnostics.filter((d) => !ctx.refusals.includes(d))], e);
+    // an exception after a refusal (one build-time code caught, or a read before the Program opened, which
+    // answered nothing) follows from it: the refusal is what to fix
+    if (ctx.refusals.length) return stopped(ctx.refusals, e);
     throw e;
   } finally {
     current = null;
     ctx.closed = true;
   }
+  settleEarly(ctx);
+  // build-time code caught a refusal and went on: the run still fails with it
+  if (ctx.refusals.length) return stopped(ctx.refusals);
   const program = programOf(out);
   if (!program || program !== ctx.program) throw new TypeError(`run(programFn): programFn($) must return the Program's builder chain (without .build()), not ${out === null || typeof out !== "object" ? String(out) : "an object"}`);
   for (const r of ctx.pending) ctx.reads.push({ ...r, by: null });

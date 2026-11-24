@@ -6,6 +6,7 @@ import { registerHooks } from "node:module";
 import { session } from "./session.js";
 import { lineAt } from "./locate.js";
 import { topLevelNames } from "../../../kit/parse/toplevel.js";
+import { IDENT } from "../../../kit/parse/blank.js";
 import { EXAMPLES_DIR } from "./examples.js";
 
 export const DEFINE_SPECIFIER = "kit/define";
@@ -66,7 +67,7 @@ export const SCOPE_EXPORT = "__defineTrialScope";
  */
 export function withScope(text) {
   // The scan errs toward listing a name; one the module does not bind (or has not bound) is left out, not thrown.
-  const names = topLevelNames(text).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !RESERVED.has(n));
+  const names = topLevelNames(text).filter((n) => IDENT.test(n) && !RESERVED.has(n));
   // The epilogue's own local must not shadow a binding it reads.
   let out = "__scope";
   while (names.includes(out)) out += "_";

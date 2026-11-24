@@ -33,7 +33,7 @@ export const BUILD_CODES = Object.freeze({
   B001: "A method the construct does not have",
   B002: "A name already declared in its namespace",
   B003: "A ref that names nothing",
-  B004: "A value that does not fit its shape",
+  B004: "A value that does not fit its shape, or a param whose declared value does not fit its own declaration",
   B005: ".build() on a construct missing a required slot",
   B006: "A second call to a once slot",
   B007: "A lambda that is not an arrow function or its source text, or does not parse",

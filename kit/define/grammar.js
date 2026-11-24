@@ -12,7 +12,7 @@ import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
 import { freeNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 import { unitOf, PLAIN } from "./scope.js";
-import { noteRoot, noteCall, noteConvention } from "./params.js";
+import { noteRoot, noteCall, noteConvention, misfit } from "./params.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Found } from "./shapes.js" */
@@ -272,6 +272,13 @@ class Program {
     inst.calls.push(call);
     if (!this.diagnostics.slice(before).some((d) => d.severity === "error") && typeof s.check === "function") {
       s.check({ slot, args: call.args }, this.context(at, call.args, this.record()));
+    }
+    // A param's declared value is held to its own declaration, as run() holds a host value; a Dialect's check
+    // that refused the call already (fields' F001 for a value outside its range) says it more precisely.
+    const [n, decl] = call.args;
+    if (inst === this.root && slot === this.paramSlot() && decl !== null && typeof decl === "object" && !this.diagnostics.slice(before).some((d) => d.severity === "error")) {
+      const why = misfit(/** @type {Record<string, unknown>} */ (decl).value, /** @type {Record<string, unknown>} */ (decl));
+      if (why) this.diagnostics.push(diag("B004", `${what}, .${slot}: '${n}' ${why}, the value its declaration gives it`, "make the declared value fit its own declaration: a finite number, inside min..max, one of options", at, { arg: 1 }));
     }
   }
 
