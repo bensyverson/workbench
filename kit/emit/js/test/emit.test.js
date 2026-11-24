@@ -139,21 +139,3 @@ test("each statement's line maps to the whole statement, not to its value", () =
   assert.equal(spanOf("return;"), "return;");
   assert.deepEqual(out.lines[lines.findIndex((l) => l.includes("a = self.ttl + 1"))].start, { line: 3, column: 2 });
 });
-
-test("M2's f32 and vector values are refused, not miscompiled: their emission is job ZDCBUt", () => {
-  const vec2 = /** @type {const} */ ({ vec: 2, of: "f32", name: "vec2" });
-  /** @type {[number, number]} */
-  const S = [0, 1];
-  /** @param {import("../../../ir/ir.js").Expr} value @returns {Kernel} */
-  const kernel = (value) => ({
-    ir: "kernel", name: "p", slot: "pixel", space: "pixel", params: [{ name: "v", t: vec2, kind: "param" }, { name: "k", t: "f32", kind: "param" }],
-    returns: "void", locals: [], body: [{ k: "do", value, span: S, effects: [] }], effects: [], src: "x", span: S,
-  });
-  const v = { k: /** @type {const} */ ("local"), name: "v", t: vec2, span: S };
-  const k = { k: /** @type {const} */ ("local"), name: "k", t: /** @type {const} */ ("f32"), span: S };
-  assert.throws(() => emitKernel(kernel({ k: "vec", items: [k, k], t: vec2, span: S })), /vec2.*ZDCBUt/);
-  assert.throws(() => emitKernel(kernel({ k: "op", op: "add", args: [v, v], t: vec2, span: S })), /vec2.*ZDCBUt/);
-  assert.throws(() => emitKernel(kernel({ k: "op", op: "lt", args: [k, k], t: "bool", span: S })), /f32.*ZDCBUt/);
-  assert.throws(() => emitKernel(kernel({ k: "op", op: "f64", args: [k], t: "f64", span: S })), /f32.*ZDCBUt/);
-  assert.ok(emitKernel(kernel({ k: "op", op: "add", args: [{ k: "num", v: 1, t: "f64", span: S }, { k: "num", v: 2, t: "f64", span: S }], t: "f64", span: S })), "f64 as before");
-});

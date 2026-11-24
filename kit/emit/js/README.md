@@ -5,7 +5,7 @@ Turns an [IR](../../ir/README.md) kernel into the source of a plain JS function 
 ```js
 import { emitKernel, instantiate } from "./kit/emit/js/index.js";
 
-const e = emitKernel(kernel);  // { name, params, source, lines }
+const e = emitKernel(kernel);  // { name, params, source, prelude, lines }; a second argument { intrinsics } spells a Dialect's intrinsics
 const fn = instantiate(e);     // a callable function, via the Function constructor
 e.lines[i];                    // { span, start }: the source span line i + 1 came from
 
@@ -15,7 +15,11 @@ const caller = instantiate(emitKernel(k), scope);            // the helpers are 
 ```
 
 - **Numbers** are JS doubles, as the IR's `f64`. **A store is a plain assignment**: the DMG host's entity and world proxies apply each attribute's coercion and log its warnings, which the oracle trace compares, so the backend does not coerce a second time. Why the IR keeps the rule on the store: [the M1 plan](../../../project/2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR".
-- **f32 and vectors are refused**, not emitted: an op on an `f32` or a vector, or a `vec` node, throws (`cannot emit vec2 values yet`). JavaScript's `+` would compute them in doubles, or on objects, and give a wrong value with no error. Their emission is job ZDCBUt.
+- **f32 and vectors** are emitted, and agree bit for bit with the [reference interpreter](../../interp/README.md). An f32 is a double that `Math.fround` has rounded after every operation, so an f32 operation is the double operation rounded once; the emitter rounds the result of each op, call, helper, method, `index`, load and global of an f32 type, and rounds each f32 (or f32-vector) parameter on the way in. A literal, a local and a vector's component are already f32 and are not rounded again. The `f32` op rounds, `f64` widens, and `pow` on f32 is `Math.pow` (never `**`).
+- **A vector is a plain JS array of its components**, as in the interpreter. Chosen over scalarized locals (every expression's shape would have to be tracked through `let`, `cond`, helper calls and returns, and a vector crossing a helper boundary has to be a value anyway) and over `Float32Array` (an allocation as costly as an array, and rounding by assignment would hide where rounding happens, so the two backends could not be compared node by node). Vectors are never mutated: a component assignment is a rebuilt `vec`. `.x` is `v[0]`. A vector operator calls a small runtime (`$vadd`, `$vsub`, `$vmul`, `$vdiv`, `$vneg`, `$vpos`, `$fv`, `$cw`) that does the double operation componentwise; the emitter then rounds with `$fv`. The runtime is emitted source, not an import, so a generated file stays self-contained.
+- **Preludes.** `Emitted.prelude` lists the source the function needs defined before it (the vector runtime it uses, and each intrinsic's own `prelude`); it is empty for a DMG lambda. `instantiate` and `emitHelpers` put it ahead of the function.
+- **Intrinsics.** `emitKernel(k, { intrinsics })` takes a Dialect's intrinsics (the fields Dialect's `INTRINSICS` has the shape: `js.call`, `js.prelude`, `componentwise`); a call whose name is in the table is spelled from its template (`$0`, `$1` for the arguments, each used once unless it is a local or literal). A `componentwise` intrinsic given a vector runs per component through `$cw`, as the interpreter applies its reference; any other gets the vector whole (`length`). A call not in the table is emitted as before.
+- **A fields pixel Kernel** emits to `function name(uv, u)`, called per pixel; `u` is the uniforms object and `u.t` a place load. Its Library helpers (`fbm`, `vnoise`, `pmod`, and the Program's own) are separate kernels: `emitHelpers(kernels.map((k) => emitKernel(k, { intrinsics })))` makes them callable and hands them to `instantiate(emitKernel(pixel, { intrinsics }), scope)`. `test/fields-agree.test.js` runs both H3 sketches through the interpreter and the emitted JS over a grid of pixels, asserting identical results.
 - **`array`** emits an array literal, `[a, b]`.
 - **`index`** emits `list[i]` (undefined out of range, as the IR says) and a **`helper`** call emits `name(args)`.
 - **No closures at run time.** Query callbacks were inlined by lowering; they come out as `for…of` loops over the list.
