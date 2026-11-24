@@ -184,6 +184,13 @@ const INTRINSIC_PIXELS = /** @type {Record<string, Array<["s" | "v", string]>>} 
   smoothstep: [["s", "smoothstep(0.1, 0.9, uv.x)"]],
   length: [["s", "length(uv)"], ["s", "length(vec3(uv.x, uv.y, u.k))"]],
   ihash: [["s", "ihash(floor(uv.x * 7), floor(uv.y * 7), u.k)"]],
+  // The call style's vector arithmetic (fields/calls.js).
+  vadd: [["s", "vadd(uv.x, u.k)"], ["v", "vadd(uv, vec2(0.3, 0.7))"]],
+  vsub: [["s", "vsub(uv.x, u.k)"], ["v", "vsub(uv, vec2(0.3, 0.7))"]],
+  vmul: [["s", "vmul(uv.x, u.k)"], ["v", "vmul(uv, vec2(0.3, 0.7))"]],
+  vdiv: [["s", "vdiv(uv.x, u.k)"], ["v", "vdiv(uv, vec2(3, 7))"]],
+  vscale: [["s", "vscale(uv.x, u.k)"], ["v", "vscale(uv, 0.3)"]],
+  vneg: [["s", "vneg(uv.x)"], ["v", "vneg(uv)"]],
 });
 
 test("every fields intrinsic is tested here", () => {

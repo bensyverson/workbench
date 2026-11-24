@@ -26,6 +26,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 - [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
 - [scripts/dmg-diff/README.md](scripts/dmg-diff/README.md) — the lowering survey over all presets, the differential run over 04–07, and planted-fault sensitivity
+- [scripts/h3-trial/README.md](scripts/h3-trial/README.md) — the H3 trial kit: documentation packets in two styles, three sketch tasks, the checking tool and the log classifier
 - [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
 - [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
 

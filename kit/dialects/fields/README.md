@@ -22,6 +22,7 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 - `environment.js`: `fieldsEnvironment(params)`, the [Environment](../../lower/environment.d.ts) lowering resolves against.
 - `intrinsics.js`: each intrinsic's signature, its JS and GLSL spellings and a reference implementation.
 - `library.js`: Library functions written in the Runtime Subset (`pmod`, `vnoise`, `fbm`).
+- `calls.js`: `vadd`, `vsub`, `vmul`, `vdiv`, `vscale`, `vneg`, the operators as intrinsics for H3's call style ([the comparison](../../../project/2026-11-23-h3-styles-comparison.md)); `programs/*-calls.js` are the sketches written with them.
 - `grammar.js`: the `field(name)` builder (hand-written; the generic `.construct()` is M3's). `program.js`: `lowerField`.
 - `programs/`: the two H3 sketches. `decls.d.ts`: the shapes (`FieldProgram`, `ParamDecl`, `Intrinsic`).
 

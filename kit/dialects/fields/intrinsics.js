@@ -7,6 +7,8 @@
 /** @import { Type } from "../../ir/ir.js" */
 /** @import { Intrinsic } from "./decls.js" */
 
+import { CALLS } from "./calls.js";
+
 const T = /** @type {Type} */ ({ tvar: "T" });
 const F = /** @type {Type} */ ("f32");
 
@@ -83,6 +85,8 @@ export const INTRINSICS = /** @type {Record<string, Intrinsic>} */ ({
     { js: "const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };" }),
   // The one reduction: the length of a vector. The reference takes the components, however many.
   length: { sig: { params: [T], returns: F, effects: [], numeric: "vector" }, ref: Math.hypot, ...spell("length($0)", "length($0)", { js: "const length = (v) => Math.hypot(...v);" }) },
+  // The operators as calls (vadd, vsub, vmul, vdiv, vscale, vneg), for H3's call style.
+  ...CALLS,
   // Integer hashing without an integer type (the 2026-11-23 ruling): the arguments are whole f32s.
   ihash: { sig: { params: [F, F, F], returns: F, effects: [] }, ref: (x, y, s) => {
     let h = (Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(s | 0, 0x9e3779b1)) >>> 0;
