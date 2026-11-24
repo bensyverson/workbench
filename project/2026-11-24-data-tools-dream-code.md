@@ -1,11 +1,11 @@
 # Data tools workbench: Dream Code examples
 
-Examples only, from simple to complex, of a fluent builder API for a small data-tools workbench: load, clean and transform tables, chart them, and query them with a SQL plugin. Nothing here is implemented.
+Examples only, from simple to complex, of a fluent builder API for a small data-tools workbench: load, clean and transform tables, chart them, and query them. Queries are written in the builder itself: the DSL does not accept SQL text as an input language (example 5 shows the error you get if you paste some). Nothing here is implemented.
 
 The shape used throughout:
 
 - `wb.program(name)` starts a builder. Each fluent call adds a node to a DAG (the IR). Nothing runs until `.build()` (static checks, build-time lambdas) or `.run()` / an attached view (runtime lambdas).
-- The core grammar has a few composable component kinds: **source**, **table** (transforms), **param**, **chart**, **sql** and **view**. Every component takes lambdas where it needs custom behavior.
+- The core grammar has a few composable component kinds: **source**, **table** (transforms, joins and aggregates), **param**, **chart** and **view**. Every component takes lambdas where it needs custom behavior.
 - A lambda is either **build-time** (it receives schemas and params' declared ranges and returns more grammar), or **runtime** (it receives rows and current param values). The component decides which one by default, and `wb.build(fn)` / `wb.run(fn)` mark it explicitly.
 - Rows, schemas and builders are Proxy objects. A misspelled column, a missing method or a type mismatch gives a diagnostic with a span and a fix, not `undefined`.
 - **Fragments** add methods or attributes to one component kind without forking the kit.
@@ -111,9 +111,9 @@ const p = wb.program("revenue-by-month")
 // E-ENC-COLUMN  chart "trend": encoding x names "monht"; did you mean "month"?
 ```
 
-## 5. SQL: a query over the program's tables
+## 5. A query over two tables, and what happens if you paste SQL
 
-The SQL plugin is one more component. Its text is parsed when the program is built: table names resolve to the program's tables, `${$.param}` becomes a bound parameter (never string-spliced), and the result's schema is inferred, so later builders are checked against it.
+A "query" is just a table built from other tables: filter, join, group, aggregate, sort, limit. Params are ordinary params. The result's schema is inferred when the program is built, so later builders are checked against it.
 
 ```js
 const p = wb.program("top-customers")
@@ -121,28 +121,43 @@ const p = wb.program("top-customers")
   .source("customers", wb.csv("data/customers.csv"))
   .param("topN", wb.slider({ min: 5, max: 50, value: 10 }))
   .param("year", wb.select({ options: [2024, 2025, 2026], value: 2026 }))
-  .sql("top", ($) => wb.sql`
-      SELECT c.name, c.segment,
-             SUM(o.amount)            AS total,
-             COUNT(*)                 AS orders
-      FROM orders o
-      JOIN customers c ON c.id = o.customer_id
-      WHERE strftime('%Y', o.placed_at) = ${$.year}
-      GROUP BY c.name, c.segment
-      ORDER BY total DESC
-      LIMIT ${$.topN}`)
+  .table("top", (t, $) => t.orders
+    .filter(o => wb.fn.year(o.placed_at) === $.year)
+    .join(t.customers, { on: { customer_id: "id" }, take: ["name", "segment"] })
+    .groupBy("name", "segment")
+    .agg({
+      total:  g => g.sum("amount"),
+      orders: g => g.count(),
+    })
+    .sort("-total")
+    .limit($.topN))
   .chart("bars", t => wb.chart.bar(t.top).x("total").y("name", { sort: "-x" }).color("segment"))
   .view(c => wb.layout.row(wb.controls(c.$.topN, c.$.year), c.bars, c.t.top.grid()));
 
 const built = await p.build();
 built.schema("top");   // { name: "string", segment: "string", total: "f64", orders: "int" }
 
-// SQL errors come back with spans inside the SQL text:
-//   FROM order o
-// E-SQL-TABLE  top:6:12  no table "order"; tables: orders, customers.  fixit: "orders"
+// Joins are checked like everything else:
+//   .join(t.customer, { on: { customer_id: "id" } })
+// E-TABLE-UNKNOWN  top-customers:9:11  no table "customer"; tables: orders, customers.  fixit: "customers"
+//   .join(t.customers, { on: { customer_id: "name" } })
+// E-JOIN-TYPE  top-customers:9:37  join key types differ: orders.customer_id is int, customers.name is string
 
-// SQL and builder steps mix freely: a SQL result is just a table.
-p.table("bigOnly", t => t.top.filter(row => row.total > 10_000).derive("avg", r => r.total / r.orders));
+// Pasting SQL text anyway is refused, with a fix that points at the builder form:
+p.table("top", t => `SELECT c.name, SUM(o.amount) AS total
+                     FROM orders o JOIN customers c ON c.id = o.customer_id
+                     GROUP BY c.name ORDER BY total DESC LIMIT 10`);
+// E-SQL-TEXT  top-customers:27:21  table "top" got a string that reads as SQL. The DSL does not take SQL text;
+//   build the query with table methods instead.
+//   fixit (rewrite):
+//     t.orders
+//       .join(t.customers, { on: { customer_id: "id" }, take: ["name"] })
+//       .groupBy("name")
+//       .agg({ total: g => g.sum("amount") })
+//       .sort("-total")
+//       .limit(10)
+// The same check catches the old spelling: wb.sql`…`
+// E-METHOD-UNKNOWN  wb has no "sql": SQL text is not an input language. See E-SQL-TEXT for the rewrite.
 ```
 
 ## 6. Build-time lambdas: grammar that depends on the data's shape
@@ -260,7 +275,10 @@ s.profile("sales", "price");                 // { nulls: 112, min: -4, max: 9999
 // Mutate directly.
 await s.set("$.minUnits", 100);              // moves the slider, like a user
 await s.addStep("sales", wb.step.filter(row => row.price > 0), { why: "negative prices are refunds" });
-await s.addSql("refunds", `SELECT region, COUNT(*) AS n FROM sales_raw WHERE price < 0 GROUP BY region`);
+await s.addTable("refunds", t => t.sales_raw
+  .filter(row => row.price < 0)
+  .groupBy("region")
+  .agg({ n: g => g.count() }));
 await s.addChart("refundBars", c => wb.chart.bar(c.t.refunds).x("region").y("n"));
 
 // Invalid mutations are refused with the same diagnostics, and nothing is applied.
@@ -272,16 +290,16 @@ await s.addStep("sales", wb.step.derive("x", row => row.prise * 2));
 s.log();
 // 1 set $.minUnits 50 → 100
 // 2 addStep sales filter price > 0          why: negative prices are refunds
-// 3 addSql refunds                          schema {region: string, n: int}
+// 3 addTable refunds                        schema {region: string, n: int}
 // 4 addChart refundBars
 await s.undo();                               // removes 4
 const proposal = s.toProgram();               // back to builder form, for a person to review
 await env.commit(s, { review: "required" });  // or env.discard(s)
 ```
 
-## 10. A whole workbench: a custom component, SQL, params, charts and an agent hook
+## 10. A whole workbench: a custom component, a builder query, params, charts and an agent hook
 
-A new grammar component, `cohort`, is defined once from core pieces. It takes both kinds of lambda: a build-time one to choose the bucketing from the data's date range, and a runtime one to classify rows. The program combines it with SQL, params, fragments and a view, and exposes a narrow mutation surface to the agent.
+A new grammar component, `cohort`, is defined once from core pieces. It takes both kinds of lambda: a build-time one to choose the bucketing from the data's date range, and a runtime one to classify rows. The program combines it with a builder query, params, fragments and a view, and exposes a narrow mutation surface to the agent.
 
 ```js
 wb.component("cohort", {
@@ -309,11 +327,10 @@ const p = wb.program("retention")
   .source("plans",  wb.csv("data/plans.csv"))
   .param("plan",    wb.select({ from: t => t.plans.distinct("name"), value: "pro" }))
   .param("minEvents", wb.slider({ min: 1, max: 20, value: 3 }))
-  .sql("eligible", ($) => wb.sql`
-      SELECT e.user_id, e.ts, e.kind
-      FROM events e JOIN plans p ON p.user_id = e.user_id
-      WHERE p.name = ${$.plan}
-        AND e.user_id IN (SELECT user_id FROM events GROUP BY user_id HAVING COUNT(*) >= ${$.minEvents})`)
+  .table("eligible", (t, $) => t.events
+    .semiJoin(t.plans.filter(p => p.name === $.plan), { on: "user_id" })   // keep events whose user is on the plan
+    .keepGroups("user_id", g => g.count() >= $.minEvents)                  // keep users with enough events, all their rows
+    .select("user_id", "ts", "kind"))
   .cohort("ret", (t, $) => ({
     table: t.eligible,
     user: "user_id",
@@ -332,7 +349,7 @@ const p = wb.program("retention")
     .can("set", ["$.plan", "$.minEvents"])
     .can("addStep", { on: ["eligible"], kinds: ["filter", "derive"] })
     .can("addChart")
-    .cannot("editSql")                                        // SQL stays human-owned
+    .cannot("editSource")                                     // sources stay human-owned
     .describe("Explore retention by plan. Explain each change in `why`."));
 
 const built = await p.build();
@@ -342,10 +359,20 @@ built.listing({ expand: "ret" });   // shows the cohort's expansion as core node
 const env = await wb.env(built);
 const s = env.session({ actor: "agent" });
 await s.set("$.plan", "team");
-await s.editSql("eligible", "…");
-// { ok: false, code: "E-AGENT-DENIED", message: 'agent may not "editSql" in program "retention"' }
+await s.editSource("events", wb.csv("data/events-2025.csv"));
+// { ok: false, code: "E-AGENT-DENIED", message: 'agent may not "editSource" in program "retention"' }
 ```
 
 ## Assumptions
 
-I assumed the data is small enough to fit in the page, and that the SQL plugin is an embedded engine that reads the program's tables by name (SQLite-like, so `strftime` and `JOIN`), takes `${…}` values as bound parameters, and reports a result schema when the program is built without running the query. I assumed that a build-time lambda may ask for a sample of the data (the `sample` in example 6 and the date range in example 10) but never for param values, and that this phase rule is checked. I assumed that charts use a Vega-Lite-like encoding model, that "fragments" can add both methods and typed attributes to one component kind, and that the agent works only through the Environment's mutation API, under per-program permissions, and never edits builder source. The namespaces (`wb.csv`, `wb.fn`, `wb.step`, `wb.book`), the diagnostic codes and the listing format are made up for illustration.
+I assumed the data is small enough to fit in the page, and that every query is written with table methods: the DSL takes no SQL text, so the original "SQL plugin" use case is covered by joins, grouping, aggregates, sorting and limits in the builder, and the result schema is inferred when the program is built. I assumed that a build-time lambda may ask for a sample of the data (the `sample` in example 6 and the date range in example 10) but never for param values, and that this phase rule is checked. I assumed that charts use a Vega-Lite-like encoding model, that "fragments" can add both methods and typed attributes to one component kind, and that the agent works only through the Environment's mutation API, under per-program permissions, and never edits builder source. The namespaces (`wb.csv`, `wb.fn`, `wb.step`, `wb.book`), the diagnostic codes and the listing format are made up for illustration.
+
+## Builder gaps
+
+These are the SQL features from the earlier draft that had no obvious builder form, so I made up an operator for each:
+
+- **`wb.fn.year(date)`** (example 5) replaces `strftime('%Y', …)`. It is one of a family of date-part functions (`year`, `month`, `truncMonth`, `trunc(unit, d)`, `diff(unit, a, b)`), used instead of a format-string function.
+- **`.join(other, { on: { left: "right" }, take: [...] })`** (example 5) replaces `JOIN … ON c.id = o.customer_id` with table aliases. A map gives the key pairs, and `take` picks the columns brought over from the right table, so there are no aliases to qualify (`c.name`) and no clashing names.
+- **`.sort("-total")`** (example 5) replaces `ORDER BY total DESC`. A leading `-` means descending.
+- **`.semiJoin(other, { on })`** (example 10) replaces a `JOIN` that only filters rows (`JOIN plans p … WHERE p.name = …`, with no plan columns selected). It keeps the left table's rows that have a match, and adds no columns and no duplicates.
+- **`.keepGroups(key, g => predicate)`** (example 10) replaces `user_id IN (SELECT user_id … GROUP BY user_id HAVING COUNT(*) >= n)`. It keeps every row of each group that passes the predicate, so the table is not collapsed to one row per group the way `agg` does it.
