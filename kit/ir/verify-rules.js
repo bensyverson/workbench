@@ -1,7 +1,7 @@
 // The verifier's tables: which types a Kernel may hold, what each operator takes and
 // gives, and the effect verbs. A new value type or operator adds entries here.
 
-import { assignable, sameType, showType, vectorOf } from "./types.js";
+import { assignable, exactLimit, mixesNumbers, sameType, showType, vectorOf } from "./types.js";
 
 /** @import { Type, Op, EffectVerb, Expr, Stmt, Coerce } from "./ir.js" */
 
@@ -54,7 +54,7 @@ export function typeProblem(t, partial = false) {
   if ("union" in o) {
     const ms = o.union;
     if (!Array.isArray(ms) || ms.length < 2) return "a union has two or more members";
-    if (ms.some((m) => m === "f32" || (typeof m === "object" && m !== null && "vec" in m))) return "a union never holds an f32 or a vector, since numbers of different types never mix";
+    if (mixesNumbers(ms)) return "a union never mixes number types (f32, f64 and each vector type), even inside a list or struct";
     for (const m of ms) { const p = typeProblem(m, partial); if (p) return p; }
     return null;
   }
@@ -215,12 +215,13 @@ export function storeFits(c, t) {
 }
 
 /**
- * Whether `e` is the start a bounded `for` may count from: an integer literal (maybe negated) within 2^53, or a param.
+ * Whether `e` is the start a bounded `for` may count from: an integer literal (maybe negated) the
+ * counter's number type holds exactly (`exactLimit`), or a param.
  * @param {Expr} e
  */
 function countsFrom(e) {
   const n = e.k === "op" && e.op === "neg" ? e.args[0] : e;
-  if (n.k === "num") return Number.isSafeInteger(n.v);
+  if (n.k === "num") return Number.isInteger(n.v) && Math.abs(n.v) <= exactLimit(e.t);
   return isParam(e);
 }
 
@@ -229,12 +230,12 @@ const isParam = (e) => e.k === "call" && e.fn.endsWith(".param") && e.args[0]?.k
 
 /**
  * The bound a `for` test names, as lowering writes it, or null when it bounds nothing: a constant
- * within 2^53, a param, a list's length (at most its `max`), or a read-only place.
+ * the counter's number type reaches (`exactLimit`), a param, a list's length (at most its `max`), or a read-only place.
  * @param {Expr} b
  * @returns {string | null}
  */
 function boundOf(b) {
-  if (b.k === "num") return Math.abs(b.v) <= Number.MAX_SAFE_INTEGER ? `const ${b.v}` : null;
+  if (b.k === "num") return Math.abs(b.v) <= exactLimit(b.t) ? `const ${b.v}` : null;
   if (isParam(b) && b.k === "call" && b.args[0].k === "str") return `param ${b.args[0].v}`;
   if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
   if (b.k === "load" && !b.place.store) return `size ${b.place.name}`;

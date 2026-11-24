@@ -2,6 +2,8 @@
 // Runtime Lambda (the proposal's §8.2, written by hand: the generic `.construct()` machinery
 // is M3's). `field("swirl").param("angle", { value: 2.4 }).pixel("(uv, u) => …").build()`.
 
+import { LIBRARY } from "./library.js";
+
 /** @import { FieldProgram, ParamDecl, UnitDecl } from "./decls.js" */
 
 /** @param {unknown} v @param {string} what */
@@ -21,7 +23,10 @@ export function field(name) {
   const units = [];
   /** @type {string | null} */
   let pixel = null;
-  const taken = (/** @type {string} */ n) => n in params || units.some((u) => u.name === n);
+  const taken = (/** @type {string} */ n) => {
+    if (LIBRARY.some((u) => u.name === n)) throw new Error(`field '${name}' cannot declare '${n}': the Library already defines a ${LIBRARY.find((u) => u.name === n)?.kind === "const" ? "constant" : "function"} of that name, and a second one would replace it inside the Library too`);
+    return n in params || units.some((u) => u.name === n);
+  };
   const builder = {
     /**
      * Declares a param: a uniform, read in the pixel lambda as `u.name`.

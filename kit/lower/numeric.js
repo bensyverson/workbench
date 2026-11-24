@@ -5,7 +5,7 @@
 // context. None of this runs where no operand is an f32 or a vector, so M1's lowering
 // of f64 code is unchanged.
 
-import { join, sameType, showType, vectorOf } from "../ir/types.js";
+import { mixesNumbers as unionMixes, join, sameType, showType, vectorOf } from "../ir/types.js";
 import { bad, spanOf, seq, check, expr, mismatch } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -106,7 +106,7 @@ export const settle = (L, e) => asScalar(L, e, L.environment.numberType);
 function mixesNumbers(t) {
   if (typeof t !== "object") return false;
   if ("opt" in t) return mixesNumbers(t.opt);
-  return "union" in t && t.union.some((m) => wide(m) || mixesNumbers(m));
+  return "union" in t && unionMixes(t.union);
 }
 
 /**

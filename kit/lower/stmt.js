@@ -1,7 +1,7 @@
 // Lowering statements: declarations, ifs (with narrowing), bounded for loops,
 // returns, and expressions evaluated for their effects.
 
-import { assignable, join } from "../ir/types.js";
+import { assignable, exactLimit, join } from "../ir/types.js";
 import { expr, test, facts, check, describe } from "./expr.js";
 import { assign, update } from "./assign.js";
 import { bindPattern, patternNames } from "./pattern.js";
@@ -219,21 +219,21 @@ function forStatement(L, node) {
 function boundOf(cond) {
   if (cond.k !== "op") return null;
   const b = cond.args[1];
-  // Past 2^53, i++ stops changing i, so a larger bound is never reached.
-  if (b.k === "num") return Math.abs(b.v) <= Number.MAX_SAFE_INTEGER ? `const ${b.v}` : null;
+  // Past the counter type's exact range, i++ stops changing i, so a larger bound is never reached.
+  if (b.k === "num") return Math.abs(b.v) <= exactLimit(b.t) ? `const ${b.v}` : null;
   if (b.k === "call" && b.args[0]?.k === "str" && b.fn.endsWith(".param")) return `param ${b.args[0].v}`;
   if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
-  if (b.k === "load" && b.place.owner === "Grid") return `size ${b.place.name}`;
+  if (b.k === "load" && !b.place.store) return `size ${b.place.name}`;
   return null;
 }
 
 /**
- * Whether a loop counter's start is an integer literal (possibly negated) within 2^53, or a param.
+ * Whether a loop counter's start is an integer literal (possibly negated) its number type holds exactly, or a param.
  * @param {Expr} e
  */
 function startOf(e) {
   const n = e.k === "op" && e.op === "neg" ? e.args[0] : e;
-  if (n.k === "num") return Number.isSafeInteger(n.v);
+  if (n.k === "num") return Number.isInteger(n.v) && Math.abs(n.v) <= exactLimit(e.t);
   return e.k === "call" && e.args[0]?.k === "str" && e.fn.endsWith(".param");
 }
 

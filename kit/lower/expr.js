@@ -86,6 +86,8 @@ export function expr(L, node, expected) {
     }
     case "Identifier": return identifier(L, node);
     case "MemberExpression": {
+      const folded = bakedItem(L, node);
+      if (folded) return folded;
       if (node.computed) return index(L, node);
       const r = resolveMember(L, node);
       if (!r) return bad(node);
@@ -143,7 +145,8 @@ export function identifier(L, node) {
   }
   if (h?.kind === "const") {
     if (!h.value) { L.error("L014", node, `The constant '${node.name}' does not lower, so it cannot be baked in.`, `Fix ${node.name}'s diagnostics first: a constant is an expression of literals and other constants.`); return bad(node); }
-    return inline(L, h.value, span);
+    const baked = inline(L, h.value, span);
+    return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
   }
   const g = L.environment.globals[node.name];
   if (g) return L.ex({ k: "global", name: node.name, t: g, span });
@@ -156,6 +159,51 @@ export function identifier(L, node) {
     : `Runtime lambdas see only their parameters and ${Object.keys(L.environment.globals).join(", ")}; a top-level helper or constant is not visible, so pass it in or declare it.${didYouMean(node.name, known)}`;
   L.error("L001", node, `'${node.name}' is not declared here.`, tip);
   return bad(node);
+}
+
+/**
+ * `A[0]` or `A.h` where A is a baked array or struct constant: the item itself, still untyped
+ * where it is a number, so it takes its type from this use as a scalar constant does. Only where
+ * the Environment has a default number type, so a dialect without one lowers exactly as before.
+ * @param {Lowerer} L
+ * @param {AST.MemberExpression} node
+ * @returns {Expr | null}
+ */
+function bakedItem(L, node) {
+  const o = node.object;
+  if (!L.environment.numberType || o.type !== "Identifier" || L.lookup(o.name)) return null;
+  const h = L.sigs.helpers?.[o.name];
+  const value = h?.kind === "const" ? h.value : null;
+  if (!value) return null;
+  const p = node.property;
+  let item;
+  if (node.computed) {
+    if (value.k !== "array" || p.type !== "Literal" || typeof p.value !== "number" || !Number.isInteger(p.value)) return null;
+    item = value.items[p.value];
+  } else if (value.k === "struct" && p.type === "Identifier") item = value.fields[p.name];
+  if (!item) return null;
+  const baked = inline(L, item, spanOf(node));
+  return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
+}
+
+/**
+ * A baked array or struct constant, kept untyped inside its definition, with every number in it
+ * settled to the default number type, as a literal array or struct is at its definition.
+ * @param {Lowerer} L
+ * @param {Expr} e
+ * @returns {Expr}
+ */
+function settleTree(L, e) {
+  if (e.k === "array") {
+    const items = e.items.map((i) => settleTree(L, i));
+    const item = items.reduce((/** @type {Type | null} */ a, i) => (a === null ? null : strictJoin(a, i.t)), "unknown");
+    return L.ex({ ...e, items, t: item === null || item === "unknown" ? e.t : { list: item, max: items.length, len: items.length } });
+  }
+  if (e.k === "struct") {
+    const fields = Object.fromEntries(Object.entries(e.fields).map(([k, v]) => [k, settleTree(L, v)]));
+    return L.ex({ ...e, fields, t: { struct: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.t])) } });
+  }
+  return settle(L, e);
 }
 
 /**
@@ -502,7 +550,9 @@ function array(L, node) {
     L.error("L012", node, "An empty array literal has no item type.", "Use a declared list (w.board, w.pool(name)), or write the items out.");
     return bad(node);
   }
-  const items = seq(L, elements.map((el) => () => settle(L, expr(L, el))));
+  // A baked constant's numbers stay untyped until each use (see `settleTree`).
+  const keep = L.slot.kind === "const";
+  const items = seq(L, elements.map((el) => () => (keep ? expr(L, el) : settle(L, expr(L, el)))));
   /** @type {Type} */
   let item = "unknown";
   items.forEach((e, i) => {
@@ -530,7 +580,7 @@ function object(L, node, expected) {
   const names = props.map((p) => (p.key.type === "Identifier" ? p.key.name : String(/** @type {AST.Literal} */ (p.key).value)));
   const vals = seq(L, props.map((p, i) => () => {
     const want = shape?.struct[names[i]];
-    return want ? check(L, p.value, want, `field '${names[i]}'`) : settle(L, expr(L, p.value));
+    return want ? check(L, p.value, want, `field '${names[i]}'`) : L.slot.kind === "const" ? expr(L, p.value) : settle(L, expr(L, p.value));
   }));
   /** @type {Record<string, Expr>} */
   const fields = {};

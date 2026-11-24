@@ -235,3 +235,46 @@ export function dialectVector(name, n, of) {
 export function vectorOf(t) {
   return typeof t === "object" && "vec" in t ? t : null;
 }
+
+/**
+ * The largest whole number a counter of number type `t` counts to by ones without skipping or
+ * stalling: 2^53 - 1 for an f64 and 2^24 - 1 for an f32 (`i + 1` of 2^24 is 2^24 again, so a
+ * bound past it is never reached).
+ * @param {Type} t
+ * @returns {number}
+ */
+export function exactLimit(t) {
+  return t === "f32" ? 2 ** 24 - 1 : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * The number types `t` holds at any depth (an item of a list, a field of a struct, a member of a
+ * union or of a possibly-empty value), as sorted names: "f32", "f64", and each vector type's
+ * structural key. Reads a malformed type as holding none, for the verifier.
+ * @param {unknown} t
+ * @returns {string[]}
+ */
+function numberLeaves(t) {
+  if (t === "f32" || t === "f64") return [t];
+  if (typeof t !== "object" || t === null) return [];
+  const o = /** @type {Record<string, unknown>} */ (t);
+  if ("vec" in o) return [canonical(o)];
+  if ("opt" in o) return numberLeaves(o.opt);
+  if ("list" in o) return numberLeaves(o.list);
+  if ("struct" in o) return typeof o.struct === "object" && o.struct !== null ? Object.values(o.struct).flatMap(numberLeaves) : [];
+  if ("union" in o) return Array.isArray(o.union) ? o.union.flatMap(numberLeaves) : [];
+  return [];
+}
+
+/**
+ * Whether a union of `members` mixes number types, which never mix: some member is or holds an
+ * f32 or a vector (at any depth), and the members do not all hold the same number types. Two
+ * lists of f32 that differ only in length are no mix; a list of f32 and a list of f64 are.
+ * @param {unknown[]} members
+ * @returns {boolean}
+ */
+export function mixesNumbers(members) {
+  const sets = members.map((m) => [...new Set(numberLeaves(m))].sort().join("|"));
+  const wide = members.some((m) => numberLeaves(m).some((n) => n !== "f64"));
+  return wide && sets.some((x) => x !== sets[0]);
+}

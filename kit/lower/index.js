@@ -209,6 +209,11 @@ function lowerConstants(environment, sources, decls) {
  * @returns {{ results: LowerResult[], sigs: Signatures, helpers: HelperResult[] }}
  */
 export function lowerProgram(environment, lambdas, helperSources = []) {
+  const seen = new Set();
+  for (const h of helperSources) {
+    if (seen.has(h.name)) throw new Error(`'${h.name}' is declared twice among a program's helpers and constants; the later would silently replace the earlier`);
+    seen.add(h.name);
+  }
   /** @type {Record<string, HelperDecl>} */
   const decls = Object.fromEntries(helperSources.map((h) => [h.name, h.kind === "fn" ? { kind: "fn" } : { kind: "const", value: null }]));
   const consts = lowerConstants(environment, helperSources, decls);

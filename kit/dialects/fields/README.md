@@ -33,9 +33,15 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 
 **The pixel.** `(uv, u) => color`. `uv` is a `vec2`, `u` the uniforms: each `param` as `u.name` (a number is an f32, `{ value, options }` an enum, `{ value: true }` a bool), plus `u.t` (seconds) and `u.aspect` (width over height). Params are uniforms: loads of read-only places, constant across a frame and free to change between frames. A pixel has no state and no effect except calls to its own helpers.
 
-**Intrinsics** are called by bare name, typed by signature: `floor` `fract` `abs` `min` `max` `clamp` `mix` over an f32 or any vector (applied per component); `sin` `cos` `sqrt` `pow` `atan2` `smoothstep` on f32; `length` on a vector; `ihash(ix, iy, seed) -> f32`. `Math` is not here (L001). Each has a JS and a GLSL spelling and a reference implementation (`INTRINSICS`). `ihash` is the integer hash of the Uncommon Math book's `domain-warp`, an intrinsic because the core has no integer value type (the 2026-11-23 ruling): its JS spelling is the book's code, its GLSL spelling `uint` arithmetic, and a test compares both with the reference and with the book itself.
+**Intrinsics** are called by bare name, typed by signature: `floor` `fract` `abs` `min` `max` `clamp` `mix` over an f32 or any vector (applied per component); `sin` `cos` `sqrt` `pow` `atan2` `smoothstep` on f32; `length` on a vector; `ihash(ix, iy, seed) -> f32`. `Math` is not here (L001). Each has a JS and a GLSL spelling and a reference implementation (`INTRINSICS`). `ihash` is the integer hash of the Uncommon Math book's `domain-warp`, an intrinsic because the core has no integer value type (the 2026-11-23 ruling): its JS spelling is the book's code and its GLSL spelling `uint` arithmetic. Today a test compares the JS spelling with the reference implementation and with the book's code, which is not an independent check of the hash (the reference was written from the same source), and the GLSL spelling is only checked by pattern; running the GLSL against the reference arrives with the comparison harness.
 
 **The Library** is intrinsics written in the Runtime Subset. A Program gets the ones it names, lowered like its own helpers, so they reach every target with no spelling: `pmod(x, n)`, `vnoise(p, s)` and `fbm(p, s)` (five octaves, the book's constants, baked as constants `OCTAVE_COS` and `OCTAVE_SIN`). Their parameter types come from call sites.
+
+## Limits
+
+- **A Library name is reserved.** `field(…).fn("vnoise", …)` or `.const("OCTAVE_COS", …)` throws, naming the Library: a second definition would also replace the Library's own inside `fbm`. `lowerField` refuses a hand-built Program that does the same.
+- **A param can bound a loop** (`for (let i = 0; i < u.n; i++)`), but its value is not checked there: declare a count param with a `max` below 2^24, or the f32 counter stops changing and the loop never ends. A constant bound past 2^24 - 1 is L007.
+- **GLSL leaves some calls undefined that JavaScript defines.** `pow(x, y)` with a negative `x`, `smoothstep(e0, e1, x)` with `e0 >= e1`, and `atan(0, 0)` are undefined in GLSL (a driver may return anything); the JS spelling returns NaN, a step and 0 respectively. A sketch that depends on them differs between targets.
 
 ## The two sketches
 

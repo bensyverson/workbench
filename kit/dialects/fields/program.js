@@ -3,7 +3,7 @@
 
 import { lowerProgram } from "../../lower/index.js";
 import { fieldsEnvironment } from "./environment.js";
-import { libraryFor } from "./library.js";
+import { LIBRARY, libraryFor } from "./library.js";
 
 /** @import { FieldProgram } from "./decls.js" */
 /** @import { LowerResult, HelperResult } from "../../lower/index.js" */
@@ -25,6 +25,8 @@ import { libraryFor } from "./library.js";
  */
 export function lowerField(program) {
   const environment = fieldsEnvironment(program.params);
+  const clash = program.units.find((u) => LIBRARY.some((l) => l.name === u.name));
+  if (clash) throw new Error(`field '${program.name}' declares '${clash.name}', which the Library already defines; a second one would replace it inside the Library too`);
   const units = [...libraryFor([program.pixel, ...program.units.map((u) => u.src)]), ...program.units];
   const slot = { id: `${program.name}.pixel`, kind: "pixel", on: "field" };
   const { results, helpers } = lowerProgram(environment, [{ src: program.pixel, slot }], units);

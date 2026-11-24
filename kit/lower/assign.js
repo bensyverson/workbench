@@ -4,7 +4,7 @@
 // assignment or update) the target's old value, then the right-hand side.
 
 import { assignable, showType, vectorOf } from "../ir/types.js";
-import { components, componentOf, componentNames } from "./numeric.js";
+import { components, componentOf, componentNames, isUntyped } from "./numeric.js";
 import { expr, check, mismatch, bad, seq, binary, resolveMember, placeOf, identifier, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -113,7 +113,8 @@ export function assign(L, node, wantValue) {
     v = binary(L, binop, old, r, node);
     if (!assignable(v.t, p.place.t)) mismatch(L, node, v.t, p.place.t, what);
   }
-  if (wantValue && !L.stable(v)) {
+  // An untyped literal is spilled too: the value of an assignment has its place's type, not a literal's.
+  if (wantValue && (!L.stable(v) || isUntyped(v))) {
     const name = L.temp(v.t);
     L.emit({ k: "let", name, t: v.t, value: v, span: v.span });
     v = L.ex({ k: "local", name, t: v.t, span: v.span });
@@ -159,7 +160,8 @@ function assignPart(L, node, wantValue, part) {
     v = binary(L, node.operator.slice(0, -1), old, r, node);
     if (!assignable(v.t, vec.of)) mismatch(L, node, v.t, vec.of, label);
   }
-  if (wantValue && !L.stable(v)) {
+  // An untyped literal is spilled too: the value of an assignment has its place's type, not a literal's.
+  if (wantValue && (!L.stable(v) || isUntyped(v))) {
     const name = L.temp(v.t);
     L.emit({ k: "let", name, t: v.t, value: v, span: v.span });
     v = L.ex({ k: "local", name, t: v.t, span: v.span });
@@ -180,10 +182,18 @@ export function update(L, node, wantValue) {
   const span = spanOf(node);
   const op = node.operator === "++" ? "add" : "sub";
   const target = node.argument;
-  if (!wantValue && target.type === "MemberExpression" && vectorPart(L, target)) {
-    // `a.x++` as a statement is `a.x += 1`.
+  const part = target.type === "MemberExpression" ? vectorPart(L, target) : null;
+  if (part && target.type === "MemberExpression") {
+    // `a.x++` is `a.x += 1`; as a value, prefix yields the new component and postfix the old one.
     const one = /** @type {AST.Literal} */ ({ type: "Literal", value: 1, raw: "1", range: node.range, loc: node.loc });
-    return assign(L, /** @type {AST.AssignmentExpression} */ ({ type: "AssignmentExpression", operator: node.operator === "++" ? "+=" : "-=", left: target, right: one, range: node.range, loc: node.loc }), false);
+    const step = /** @type {AST.AssignmentExpression} */ ({ type: "AssignmentExpression", operator: node.operator === "++" ? "+=" : "-=", left: target, right: one, range: node.range, loc: node.loc });
+    if (!wantValue || node.prefix) return assign(L, step, wantValue);
+    const cur = L.ex({ k: "local", name: part.b.name, t: part.b.t, span: spanOf(part.id) });
+    const old = L.ex({ k: "field", of: cur, name: part.comp, t: part.vec.of, span });
+    const name = L.temp(part.vec.of);
+    L.emit({ k: "let", name, t: part.vec.of, value: old, span });
+    assign(L, step, false);
+    return L.ex({ k: "local", name, t: part.vec.of, span });
   }
   /** The number type of the target: the step is one of it. */
   let nt = /** @type {"f32" | "f64"} */ ("f64");
