@@ -17,6 +17,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [kit/ir/README.md](kit/ir/README.md) — the core IR: kernels, types, effects, spans, the JSON form and the listing
 - [kit/lower/README.md](kit/lower/README.md) — lowering to IR: dialect descriptions, the DMG dialect, program inference, diagnostic codes
 - [kit/dialects/fields/README.md](kit/dialects/fields/README.md) — the fields Dialect: typed vectors and operators, intrinsics with each target's spelling, the Library, the `field` Grammar and the two H3 sketches
+- [kit/interp/README.md](kit/interp/README.md) — the reference interpreter: what a Kernel means, with f32, vectors, store rules and a per-node hook
 - [kit/emit/js/README.md](kit/emit/js/README.md) — the JavaScript backend: IR kernels to slot-compatible functions, with a line map
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 - [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
