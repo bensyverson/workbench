@@ -68,7 +68,7 @@ export class Ctx {
 
   /**
    * Reports why this Kernel cannot lower. Read after "Target `glsl` cannot take `<kernel>`:", so it starts with "it".
-   * @param {"R001" | "R002" | "R003" | "R004" | "R005"} code
+   * @param {"R001" | "R002" | "R003" | "R004" | "R005" | "R006"} code
    * @param {string} message
    * @param {Span | null} span
    */

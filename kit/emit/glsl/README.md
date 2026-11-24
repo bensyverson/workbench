@@ -42,7 +42,7 @@ Before any lowering, [`capabilities.js`](capabilities.js) checks the kernel and 
 
 > Target `glsl` cannot take `Mole.onFrame#0`: it writes entity state and emits an event. Shader targets accept pure kernels over `pixel`.
 
-Then the LIR's refusals (R001 an f64-dependent kernel, R002 a value with no form, R003 an intrinsic with no spelling, R004 a missing or recursive helper, R005 an undeclared uniform) arrive in the same sentence: ``Target `glsl` cannot take `<kernel>`: <why>.``
+Then the LIR's refusals (R001 an f64-dependent kernel, R002 a value with no form, R003 an intrinsic with no spelling, R004 a missing or recursive helper, R005 an undeclared uniform, R006 `%` on f32) arrive in the same sentence: ``Target `glsl` cannot take `<kernel>`: <why>.``
 
 ## Tests
 
@@ -53,3 +53,7 @@ Then the LIR's refusals (R001 an f64-dependent kernel, R002 a value with no form
 ## Known edges of the Dialect's spellings
 
 Where GLSL leaves undefined what JavaScript defines, the reference interpreter and the shader may differ outside the sketches' ranges: `pow(x, y)` with `x < 0`, `smoothstep(a, b, x)` with `a >= b`, `int(x)` of a float outside int32 (in `ihash`), and `sin`/`cos` of large arguments (GPU precision). Within the two sketches' own ranges none arises (`pow` takes `1 - stripe` with `stripe` in [0, 1]).
+
+Also undefined in GLSL ES 3.00, and so possibly different from JavaScript: `clamp(x, lo, hi)` with `lo > hi`, `sqrt(x)` with `x < 0`, and `min`/`max` with a NaN operand (JavaScript's give NaN; a GPU may return the other operand). `!!x` on an f32 is false for NaN in the shader (`wb_truthy` tests `isnan`), but that holds only where the driver honors NaN. `%` on f32 is refused (R006) rather than approximated: see the [LIR README](../../lir/README.md).
+
+**Rounding.** An intrinsic rounds once in JavaScript and in the reference interpreter (the double result, then `Math.fround`), and per operation in GLSL (each f32 step of `smoothstep`, `mix`, `length` and the rest rounds), so results can differ by a few ULP. The comparison harness's tolerance covers this.

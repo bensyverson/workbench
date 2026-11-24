@@ -22,9 +22,10 @@ An `LProgram` is one entry kernel, the helpers it calls (**callee first**, so a 
 |---|---|
 | `f32`, `f64`, vectors named by a Dialect (`vec2`, `color`) | `f32`, `i32`, `bool`, and `vec2`..`vec4` of f32 (a Dialect's `color` is a `vec3`). **No f64.** |
 | Reads of a place (`u.angle`) | `uniform` nodes naming the program's uniform (`u_angle`); the entry kernel's uniforms parameter is dropped |
-| A declared choice (`u.palette`), compared with `"grey"` | An `i32` uniform holding an index into its `options`; the comparison is of two i32s |
+| A declared choice (`u.palette`), compared with `"grey"` | An `i32` uniform holding an index into its `options`; the comparison is of two i32s. Two choices compare only when their options are identical and in the same order (else R002): the indices would be of different lists |
 | `call` of a Dialect intrinsic by name | `call` carrying its **spelling** (`clamp($0, $1, $2)`) and a prelude when it needs one |
-| `rem`, `pow`, `truthy` | Written out: `wb_rem` (JavaScript's `%` truncates; the target's `mod` floors), `pow(…)`, `x != 0.0` |
+| `pow`, `truthy` (of an f32) | Written out: `pow(…)`, and `wb_truthy(x)` (`x != 0.0 && !isnan(x)`, so NaN is false as in JavaScript; best effort, since GLSL ES 3.00 leaves NaN to the driver, though it holds on the Apple GPU it was checked on) |
+| `rem` (`%`) on f32 | Refused, **R006**: JavaScript's `%` truncates, GLSL's `mod` floors, and `x - y * trunc(x / y)` rounds differently for a non-integer divisor (`31550 % 0.1f` is 0.0995 in JavaScript and 0 there; on a GPU `x % 0.1` was -7e-9, the wrong sign). Use the Library's `pmod(x, n)` (which floors) or `fract` |
 | Names as the author wrote them | Legal identifiers: `domain-warp.pixel` is `domain_warp_pixel`, a local `float` is `float_` |
 | Statements with `effects`, stores, `each` | Only `let`, `set`, `do`, `if`, `for`, `return`, `break`, `continue` |
 
@@ -43,6 +44,7 @@ Lowering's codes (**R**) are the author's: why this kernel cannot be a shader. E
 | R003 | An intrinsic the target has no spelling for |
 | R004 | A helper that was not given, or that recurses (GLSL has no recursion) |
 | R005 | A read of a uniform the program does not declare |
+| R006 | An operator whose JavaScript result GLSL cannot reproduce: `%` on f32 |
 
 The verifier's codes (**W**) are kit bugs, in [`verify.js`](verify.js) (`LIR_CODES`): **W001** unknown node or missing field; **W002** type disagreement (operator operands, result, return, assignment, condition); **W003** a type or literal the LIR cannot hold (f64, an f32 not already rounded, an i32 not whole); **W004** a name unbound or bound twice, or a local missing from the kernel's list; **W005** an assignment to a parameter or of another type; **W006** `break` outside a loop, or a loop with no bound; **W007** a helper, uniform or spelling that does not match its use; **W008** a helper declared after its caller, or recursion; **W009** a node without a span inside the kernel's source; **W010** a name that is not a legal identifier (keyword, built-in, `__`, a prefix the emitter owns); **W011** a prelude missing for an intrinsic, or listed and unused.
 

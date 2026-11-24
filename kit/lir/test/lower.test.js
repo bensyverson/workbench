@@ -130,18 +130,38 @@ test("an intrinsic's prelude is carried once however often it is used", () => {
   assert.deepEqual(p.preludes, [{ name: "twice", text: "float twice(float x) { return 2.0 * x; }\n" }]);
 });
 
-test("rem is written out: JavaScript's % truncates, so it calls a prelude function that does", () => {
-  const p = ok(c.kernel({ name: "k#0", params: [["x", "f32"]], returns: "f32", body: [c.ret(c.op("rem", "f32", c.local("x", "f32"), c.f32(3)))] }));
-  const e = /** @type {any} */ (p.main.body[0]).value;
-  assert.equal(e.k, "call");
-  assert.equal(e.name, "rem");
-  assert.match(p.preludes[0].text, /trunc/);
+test("R006: rem is refused on f32, since GLSL cannot reproduce JavaScript's %, and the tip names pmod", () => {
+  const k = c.kernel({ name: "k#0", params: [["x", "f32"]], returns: "f32", body: [c.ret(c.op("rem", "f32", c.local("x", "f32"), c.f32(3)))] });
+  assert.deepEqual(refused(k), ["R006"]);
+  const message = lower(k).diagnostics[0].message;
+  assert.match(message, /pmod/);
+  assert.match(message, /%/);
 });
 
-test("pow and truthy are written out", () => {
+test("pow is written out, and truthy of an f32 is false for NaN as in JavaScript", () => {
   const p = ok(c.kernel({ name: "k#0", params: [["x", "f32"]], returns: "bool", body: [c.ret(c.op("truthy", "bool", c.op("pow", "f32", c.local("x", "f32"), c.f32(2))))] }));
   const e = /** @type {any} */ (p.main.body[0]).value;
-  assert.deepEqual([e.op, e.args[0].k, e.args[0].name, e.args[1].v], ["ne", "call", "pow", 0]);
+  assert.deepEqual([e.k, e.name, e.args[0].k, e.args[0].name], ["call", "truthy", "call", "pow"]);
+  assert.match(e.spelling.prelude, /isnan/, "NaN is tested for, not only zero");
+  assert.deepEqual(p.preludes.map((x) => x.name), ["truthy"]);
+  assert.deepEqual(verifyLir(p), []);
+});
+
+test("R002: comparing two choices whose options differ compares ordinals of different lists, and is refused", () => {
+  const other = /** @type {Type} */ ({ enum: ["marble", "grey", "fog"], declared: true });
+  const same = /** @type {Type} */ ({ enum: ["fog", "grey", "marble"], declared: true });
+  const mk = (/** @type {Type} */ bt) => c.kernel({ name: "k#0", params: [["u", U]], returns: "f32", body: [
+    c.if_(c.op("eq", "bool", uni("palette", COLORS), uni("other", bt)), [c.ret(c.f32(1))]),
+    c.ret(c.f32(0)),
+  ] });
+  const lowerWith = (/** @type {Type} */ bt) => lowerToLir({ name: "t", main: mk(bt), helpers: [], uniforms: { Uniforms: { ...UNIFORMS.Uniforms, other: bt } } }, { spell });
+  const bad = lowerWith(other);
+  assert.equal(bad.program, null);
+  assert.deepEqual(bad.diagnostics.map((d) => d.code), ["R002"]);
+  assert.match(bad.diagnostics[0].message, /options/);
+  const good = lowerWith(same);
+  assert.deepEqual(good.diagnostics, [], "the same options in the same order compare as ordinals");
+  assert.ok(good.program);
 });
 
 test("helpers come out callee first, only the ones the kernel reaches, and a constant kernel is not one", () => {

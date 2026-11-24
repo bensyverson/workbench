@@ -13,9 +13,10 @@ const DIRECT = new Set(["add", "sub", "mul", "div", "neg", "lt", "le", "gt", "ge
 /** The spelling of an operator the LIR has no operator for: the target's own function, with its prelude when it needs one. */
 const WRITTEN_OUT = /** @type {Record<string, { name: string, spelling: Spelling }>} */ ({
   pow: { name: "pow", spelling: { call: "pow($0, $1)" } },
-  // JavaScript's % truncates toward zero; the target's mod floors.
-  rem: { name: "rem", spelling: { call: "wb_rem($0, $1)", prelude: "float wb_rem(float x, float y) {\n  return x - y * trunc(x / y);\n}\n" } },
 });
+
+/** JavaScript's `!!x` on an f32: false for zero and for NaN, which a bare `x != 0.0` would call true (best effort: GLSL ES 3.00 leaves NaN to the driver). */
+const TRUTHY = { name: "truthy", spelling: { call: "wb_truthy($0)", prelude: "bool wb_truthy(float x) {\n  return x != 0.0 && !isnan(x);\n}\n" } };
 
 /** @param {Type} t */
 const isF64 = (t) => t === "f64" || (typeof t === "object" && "vec" in t && t.of === "f64");
@@ -145,7 +146,11 @@ function operator(cx, e) {
   if (e.op === "pos") return as[0];
   if (e.op === "truthy") {
     if (as[0].t === "bool") return as[0];
-    if (as[0].t === "f32") return { k: "op", op: "ne", args: [as[0], { k: "num", v: 0, t: "f32", span }], t: "bool", span };
+    if (as[0].t === "f32") return bound(cx, TRUTHY.name, TRUTHY.spelling, as, t, span);
+  }
+  if (e.op === "rem") {
+    cx.report("R006", "it uses % on f32, and GLSL ES 3.00 cannot reproduce JavaScript's %: its mod floors, and x - y * trunc(x / y) rounds differently for a non-integer divisor (and can take the wrong sign); use the Library's pmod(x, n), which floors, or fract", span);
+    return null;
   }
   cx.report("R002", `it uses the operator ${e.op} on ${e.args.map((a) => showType(a.t)).join(" and ")}, which has no form in the LIR`, span);
   return null;
@@ -161,6 +166,11 @@ function choiceCompare(cx, e) {
   const { span } = e;
   const options = e.args.map((a) => (typeof a.t === "object" && "enum" in a.t && a.t.declared ? a.t.enum : null)).find((o) => o !== null);
   if (!options) { cx.report("R002", "it compares strings, and only a choice declared by the Dialect has a form in the LIR", span); return null; }
+  const sides = e.args.filter((a) => a.k !== "str").map((a) => (typeof a.t === "object" && "enum" in a.t ? a.t.enum : null));
+  if (sides.length === 2 && sides[0] && sides[1] && sides[0].join("\0") !== sides[1].join("\0")) {
+    cx.report("R002", `it compares two choices whose options differ (${sides[0].join(", ")} and ${sides[1].join(", ")}), and a choice is its option's index, so the comparison would be of indices of different lists`, span);
+    return null;
+  }
   const args = e.args.map((a) => {
     if (a.k !== "str") return lowerExpr(cx, a);
     const at = options.indexOf(a.v);

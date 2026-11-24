@@ -1,7 +1,7 @@
 // f32 and vector emission: which types need rounding, the vector runtime the emitted code
 // carries as its own prelude, and how an intrinsic's JS spelling becomes a call.
 
-/** @import { Type } from "../../ir/ir.js" */
+/** @import { Type, Kernel, Stmt } from "../../ir/ir.js" */
 
 /**
  * What the emitter needs of an intrinsic: its JS spelling (a call template with `$0`, `$1` for the
@@ -22,6 +22,7 @@
  * @typedef {object} Cx
  * @property {Record<string, JsIntrinsic>} intrinsics
  * @property {Set<string>} prelude
+ * @property {Map<string, string>} names  The author's locals the emitted code renames, because it owns the name.
  */
 
 /** @param {Type} t */
@@ -129,4 +130,44 @@ function fill(name, template, srcs, simple) {
     return srcs[i];
   });
   return out;
+}
+
+/**
+ * The name an author's local is emitted under: its own, unless the emitted code owns it.
+ * @param {Cx} cx
+ * @param {string} name
+ */
+export const id = (cx, name) => cx.names.get(name) ?? name;
+
+/**
+ * The locals of `k` (parameters included) whose names the emitted code needs for itself: `Math` and
+ * `Infinity`/`NaN` (which it writes), the vector runtime's `$`-names, and an intrinsic's name (its
+ * prelude may define it). Each gets a fresh name, which no local of `k` has.
+ * @param {Kernel} k
+ * @param {string[]} intrinsics  The names the Dialect's intrinsics are called by.
+ * @returns {Map<string, string>}
+ */
+export function collidingNames(k, intrinsics) {
+  const own = new Set(["Math", "Infinity", "NaN", ...intrinsics]);
+  /** @type {Set<string>} */
+  const declared = new Set(k.params.map((p) => p.name));
+  /** @param {Stmt[]} stmts */
+  const walk = (stmts) => {
+    for (const s of stmts) {
+      if (s.k === "let" || s.k === "for" || s.k === "each") declared.add(s.name);
+      if (s.k === "if") { walk(s.then); walk(s.else); }
+      if (s.k === "for" || s.k === "each") walk(s.body);
+    }
+  };
+  walk(k.body);
+  /** @type {Map<string, string>} */
+  const names = new Map();
+  for (const name of declared) {
+    if (!own.has(name) && !name.startsWith("$")) continue;
+    let fresh = name.replace(/^\$+/, "") || "v";
+    let n = 0;
+    while (own.has(fresh) || declared.has(fresh) || [...names.values()].includes(fresh)) fresh = `${name.replace(/^\$+/, "") || "v"}_${++n}`;
+    names.set(name, fresh);
+  }
+  return names;
 }

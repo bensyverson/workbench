@@ -3,7 +3,7 @@
 // Every emitted line records the source span it came from.
 
 import { LineTable } from "../../parse/lexer.js";
-import { isVec, isF32Vec, isWide, COMPONENTS, round, vectorOp, intrinsicCall } from "./wide.js";
+import { isVec, isF32Vec, isWide, COMPONENTS, round, vectorOp, intrinsicCall, collidingNames, id } from "./wide.js";
 
 /** @import { Kernel, Stmt, Expr, Op, Span } from "../../ir/ir.js" */
 /** @import { Position } from "../../parse/ast.js" */
@@ -45,7 +45,7 @@ const IDENT = /^[A-Za-z_$][\w$]*$/;
  */
 export function emitKernel(k, options = {}) {
   /** @type {Cx} */
-  const cx = { intrinsics: options.intrinsics ?? {}, prelude: new Set() };
+  const cx = { intrinsics: options.intrinsics ?? {}, prelude: new Set(), names: collidingNames(k, Object.keys(options.intrinsics ?? {})) };
   const lines = new LineTable(k.src);
   /** @type {string[]} */
   const text = [];
@@ -54,10 +54,10 @@ export function emitKernel(k, options = {}) {
   /** @param {string} line @param {Span} span */
   const out = (line, span) => { text.push(line); map.push({ span, start: lines.at(span[0]) }); };
   const name = k.name.replace(/[^\w$]+/g, "_").replace(/^(\d)/, "_$1").replace(/_+$/, "");
-  const params = k.params.map((p) => p.name);
+  const params = k.params.map((p) => id(cx, p.name));
   out(`function ${name}(${params.join(", ")}) {`, k.span);
   // A caller may pass a double where a parameter is an f32: round it on the way in, as the interpreter does.
-  for (const p of k.params) if (p.t === "f32" || isF32Vec(p.t)) out(`  ${p.name} = ${round(cx, p.t, p.name)};`, k.span);
+  for (const p of k.params) if (p.t === "f32" || isF32Vec(p.t)) out(`  ${id(cx, p.name)} = ${round(cx, p.t, id(cx, p.name))};`, k.span);
   block(k.body, 1, out, cx);
   out("}", k.span);
   return { name, params, source: text.join("\n"), prelude: [...cx.prelude], lines: map };
@@ -96,11 +96,11 @@ function block(stmts, depth, out, cx) {
   const pad = "  ".repeat(depth);
   for (const s of stmts) {
     switch (s.k) {
-      case "let": out(`${pad}let ${s.name}${s.value ? ` = ${top(s.value, cx)}` : ""};`, s.span); break;
-      case "set": out(`${pad}${s.name} = ${top(s.value, cx)};`, s.span); break;
+      case "let": out(`${pad}let ${id(cx, s.name)}${s.value ? ` = ${top(s.value, cx)}` : ""};`, s.span); break;
+      case "set": out(`${pad}${id(cx, s.name)} = ${top(s.value, cx)};`, s.span); break;
       case "store": out(`${pad}${member(s.place.recv, cx)}.${s.place.name} = ${top(s.value, cx)};`, s.span); break;
       case "do": out(`${pad}${expr(s.value, cx)};`, s.span); break;
-      case "push": out(`${pad}${s.name}.push(${top(s.value, cx)});`, s.span); break;
+      case "push": out(`${pad}${id(cx, s.name)}.push(${top(s.value, cx)});`, s.span); break;
       case "return": out(`${pad}return${s.value ? ` ${top(s.value, cx)}` : ""};`, s.span); break;
       case "break": case "continue": out(`${pad}${s.k};`, s.span); break;
       case "if":
@@ -112,15 +112,15 @@ function block(stmts, depth, out, cx) {
       case "for": {
         const update = s.update.map((u) => {
           if (u.k !== "set") throw new Error(`a for loop's update must be a local assignment, not ${u.k}`);
-          return `${u.name} = ${top(u.value, cx)}`;
+          return `${id(cx, u.name)} = ${top(u.value, cx)}`;
         }).join(", ");
-        out(`${pad}for (let ${s.name} = ${top(s.init, cx)}; ${top(s.test, cx)}; ${update}) {`, s.span);
+        out(`${pad}for (let ${id(cx, s.name)} = ${top(s.init, cx)}; ${top(s.test, cx)}; ${update}) {`, s.span);
         block(s.body, depth + 1, out, cx);
         out(`${pad}}`, s.span);
         break;
       }
       case "each":
-        out(`${pad}for (const ${s.name} of ${expr(s.list, cx)}) {`, s.span);
+        out(`${pad}for (const ${id(cx, s.name)} of ${expr(s.list, cx)}) {`, s.span);
         block(s.body, depth + 1, out, cx);
         out(`${pad}}`, s.span);
         break;
@@ -199,7 +199,8 @@ function raw(e, cx) {
     case "bool": return String(e.v);
     case "null": return "null";
     case "undef": return "void 0";
-    case "local": case "global": return e.name;
+    case "local": return id(cx, e.name);
+    case "global": return e.name;
     case "load": return `${member(e.place.recv, cx)}.${e.place.name}`;
     case "field": return isVec(e.of.t) ? `${member(e.of, cx)}[${COMPONENTS.indexOf(e.name)}]` : `${member(e.of, cx)}.${e.name}`;
     case "index": return `${member(e.of, cx)}[${top(e.index, cx)}]`;
@@ -245,6 +246,8 @@ function opSource(e, cx) {
     if (e.op === "pow" && args.length === 2) return `Math.pow(${a}, ${b})`;
   }
   const bin = BINARY[e.op];
+  // `-2 ** 2` is a SyntaxError: a negative literal on the left of `**` needs its own parentheses.
+  if (e.op === "pow" && bin && e.args.length === 2) return `(${a.startsWith("-") ? `(${a})` : a} ${bin} ${b})`;
   if (bin && e.args.length === 2) return `(${a} ${bin} ${b})`;
   const un = UNARY[e.op];
   if (un && e.args.length === 1) return `(${un}${a})`;
