@@ -46,6 +46,8 @@ Each item says where it came from, what we have, and what to do. "Both" means A 
 
 **Now:** a lambda is read with `String(fn)`, so a value it closes over is not captured; a name means the Dialect's or the Library's; top-level constants are taken by their text (the capture policy folded into the M3 design leaf).
 
+> **Corrected 2026-11-24 (same day):** this understated what exists. DMG lowering already resolves a program's top-level `const f = (…) => …` as helper Kernels and its other top-level `const`s as baked constants (`kit/lower/README.md`, "Top-level helpers"), so the change below is to carry that rule into the Definition API (fields and the data Dialect), not to invent it. What remains new: data from a `lib/` file shared across programs and dialects, and a refusal with a fixit for a binding that exists only inside build-time code.
+
 **Change:** resolve a lambda's free names against the program file's top-level bindings. A function becomes a helper Kernel (it must itself be in the subset); plain data becomes a frozen constant; a parameter handle becomes a parameter read; a binding that exists only inside build-time code is refused with a fixit ("move it to state, or to the top level"). A rewrote whole files to capture loop variables too; B's module snapshot is smaller (an epilogue that returns the top-level bindings, no source rewriting) and covers what the existing programs do. B measured that about one in ten DMG runtime lambdas reaches a top-level helper or constant, clustered in the larger games, so this is required, not a nicety. **Take B's form.**
 
 ### 3.3 Every dialect has a text view (both)
@@ -113,4 +115,13 @@ The JS surface, our own parser, the typed Kernel IR, D1, the reference interpret
    - **Composition on paper (one day, a dogfood trial):** write short references for three dialects (cave, tiles, glow, after B's worked example), and have three fresh agents write the composed program from those references and a draft composition section. Review by hand: did cross-part values go through ports, signal-dependent arguments through lambdas, frames through named conversions? Count what a seam check would catch and what nothing would.
 4. **Correct the proposal in place:** §1 and §4 point here; §12 gets B's limit on G-verify; §8.2's `live` flag is marked superseded once (1) lands.
 
-**Needs Ben's yes:** items 2 (the roadmap order) and 3 (spending the two experiments now). Items 1 and 4 follow from the consults and are two-way doors; I will proceed with them unless told otherwise.
+**Ruled (Ben, 2026-11-24):** all four items, including the Composition milestone after M3 and both experiments now.
+
+## 7. Experiment 1, subset friction: already answered by the existing surveys
+
+The two survey scripts already parse every runtime lambda with `kit/parse`, so no new script was needed. Figures from `node scripts/dmg-diff/cli.js survey` and `node scripts/um-survey/survey.js` (2026-11-24):
+
+- **DMG, 22 presets:** 126 runtime lambdas; 111 lower (88 %). Of the 15 that do not: 7 use a top-level helper or constant that fails for some other reason (mostly L014, a helper that does not lower makes its callers fail), 4 fall outside the subset's syntax, and 4 hit gaps in lowering (`repeat` on a string, `reduce` with one argument, one L012).
+- ***Uncommon Math*, 113 sketches:** of 548 kernel-candidate functions (everything but `draw`, `setup` and `meta`), 379 (69 %) are inside the subset's syntax. The refusals, by code: S111 (an arrow that is not a call argument, a closure) 93, S102 (`new`) 51, S109 (spread) 21, S101 (`while`) 17, S114 (parameter defaults) 11, S104 9, P004 8, S112 5, S108 1. By kind (the survey's per-sketch `fit`): pixel-loop sketches 177 of 232 clean (76 %), canvas sketches 195 of 308 (63 %), fragment sketches 7 of 8.
+
+Reading: consult B's regex screen (about four in five DMG lambdas inside the subset) understated the fit; a real parse lowers 88 %. The book's gap is concentrated in four constructs, and three of them are the ones consult B predicted would need a rule: nested closures (lower array callbacks to loops, refuse escaping ones), `new` (typed arrays and value constructors), and spread. Many of the canvas sketches' functions belong in a `Native` slot (§5) anyway. **Verdict: the subset does not fight natural code enough to change the capture decision.** The un-modeled risk is new code written to the rules, which the composition trial (§6, item 3) exercises.

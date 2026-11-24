@@ -347,6 +347,8 @@ From this the kit generates:
 
 Fragments are mixins over constructs. A grammar that does not fit this shape can still supply hand-written builders that produce the same IR nodes.
 
+> **To be superseded (ruled 2026-11-24):** the `live: true` flag below gives way to binding time: a parameter read by build-time code is folded and changing it rebuilds; one read inside a Kernel stays a uniform. The kit records which, so "live" becomes a derived fact. See [the architecture synthesis](2026-11-24-architecture-synthesis.md), §3.1.
+
 **Parameters** use one declaration everywhere, in programs and in book sketches: `{ value, min, max, step }`, `{ value, options }` or `{ value: true }`, plus `live: true` when the value may change while running. Live parameters stay dynamic. The rest are folded in as constants.
 
 ### 8.3 Two modes of use
@@ -496,6 +498,8 @@ One tool, `eval`, over the lab API, as today. Its scope and its prompt are gener
 
 > **Corrected 2026-11-23 (M2):** the debugger steps the **reference interpreter**, not the emitted JavaScript (`kit/debugger`, through the interpreter's per-node `onNode` hook, which carries a span, a value and a depth). The emitted JS has a line map but no per-node stepping, and under typed operators the "JavaScript form" is an output, not a runnable closure. It was checked in a browser: a click gave pixel (75, 75) with a 157-step trace, and the GPU's byte matched the interpreter's in every channel for that pixel and three fixed ones (from job YqeZpz's note). Item 1 is built (`kit/interp`); item 3's tolerance is 1e-3 per color component, measured on one GPU. See [the M2 findings](2026-11-23-m2-findings.md).
 5. **Programs are tests.** Each example carries its own assertions. Each optimisation pass must leave differential results unchanged.
+> **Corrected 2026-11-24 (architecture review):** this section shows that each fast path agrees with a reference: the interpreter for Kernels, a Dialect's runtime for structure. It cannot show that a model-written Dialect runtime means what the user intended, and the workbench should say so rather than imply it. See [the architecture synthesis](2026-11-24-architecture-synthesis.md), §3.6.
+
 6. **Spec checks.** No network assets, required comments present, every view placed, budgets met. This is what stops template drift.
 
 ---
@@ -570,6 +574,8 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 > **Corrected 2026-11-23 (M1):** the DMG presets are not numbered 01 to 22. Their ids are 01–08, 10–14, 20–26 and 30–31 (22 in all), and an id is a label, not a position: preset `10` is the ninth. M1 compared presets 04–07 instead of 01–05, because 01–03 have almost no runtime logic ([the M1 plan](2026-11-23-m1-game-slice-plan.md)), and lowered all 22 ([M1 findings](2026-11-23-m1-findings.md)).
 
 > **Corrected 2026-11-23 (M2):** M2 is done. One fields source drives the reference interpreter, emitted JS (identical bits) and emitted GLSL ES 3.00 (within 2.19e-4 per component on one GPU), with a pixel debugger. H2 is supported for two Dialects at the cost of changes to 14 existing source files (the "one change to the core" in the plan was wrong), and H3 is provisional. H2's test says "three dialects, one of each kind": M2 tried two. See [the M2 findings](2026-11-23-m2-findings.md).
+
+> **Revised 2026-11-24 (Ben, after the architecture review):** a **Composition** milestone follows M3, ahead of form and book, which move down one (M4 Composition, M5 Form and book, M6 More backends, M7 Regenerate). It covers dialects as packages loaded from a repo, a path or an upload; seam types, ports, clocks, a snapshot scheduler and frames; a build record that can say why something rebuilt; and one workbench composed from two dialects written in separate sessions. M3 also gains a required text view, binding-time parameters and module-scope resolution in the Definition API. See [the architecture synthesis](2026-11-24-architecture-synthesis.md), §6.
 
 The thin slices come before the kit extraction on purpose. If the subset is uncomfortable to write in, we should learn that before building a kit around it.
 
