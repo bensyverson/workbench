@@ -35,6 +35,9 @@ export function field(name) {
      */
     param(n, decl) {
       if (taken(n)) throw new Error(`field '${name}' already declares '${n}'`);
+      if ("value" in decl && typeof decl.value === "number" && (("min" in decl && typeof decl.min === "number" && decl.value < decl.min) || ("max" in decl && typeof decl.max === "number" && decl.value > decl.max))) {
+        throw new Error(`param '${n}': its value ${decl.value} lies outside its range ${"min" in decl ? decl.min : "-∞"}..${"max" in decl ? decl.max : "∞"}`);
+      }
       params[n] = decl;
       return builder;
     },

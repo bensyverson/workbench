@@ -29,8 +29,9 @@ function compile(gl, type, source) {
 export function createRenderer(canvas, lowering) {
   const emitted = emitGlsl(fromLowering(lowering), FIELDS_DIALECT);
   if (!emitted.source) throw new Error(emitted.diagnostics.map((d) => d.message).join("\n"));
-  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true, antialias: false });
   if (!gl) throw new Error("WebGL2 is not available");
+  gl.disable(gl.DITHER); // dither would perturb the values the debugger compares with the interpreter
   const program = /** @type {WebGLProgram} */ (gl.createProgram());
   gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX));
   gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, emitted.source));

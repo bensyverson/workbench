@@ -41,7 +41,7 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 ## Limits
 
 - **A Library name is reserved.** `field(…).fn("vnoise", …)` or `.const("OCTAVE_COS", …)` throws, naming the Library: a second definition would also replace the Library's own inside `fbm`. `lowerField` refuses a hand-built Program that does the same.
-- **A param can bound a loop** (`for (let i = 0; i < u.n; i++)`), but its value is not checked there: declare a count param with a `max` below 2^24, or the f32 counter stops changing and the loop never ends. A constant bound past 2^24 - 1 is L007.
+- **A param with a `max` of at most 2^24 - 1 can bound a loop** (`for (let i = 0; i < u.n; i++)`); a param with no `max`, or a larger one (the f32 counter sticks at 2^24), a default outside its min..max (refused when declared), and the built-ins `u.t` and `u.aspect` are L007, since the f32 counter would stop changing and the loop never end. The value is trusted to stay within its declared `max`. A constant bound past 2^24 - 1 is L007.
 - **GLSL leaves some calls undefined that JavaScript defines.** `pow(x, y)` with a negative `x`, `smoothstep(e0, e1, x)` with `e0 >= e1`, and `atan(0, 0)` are undefined in GLSL (a driver may return anything); the JS spelling returns NaN, a step and 0 respectively. A sketch that depends on them differs between targets.
 
 ## The two sketches

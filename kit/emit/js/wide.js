@@ -140,15 +140,31 @@ function fill(name, template, srcs, simple) {
 export const id = (cx, name) => cx.names.get(name) ?? name;
 
 /**
+ * The helpers a kernel calls, found anywhere in its tree: they are in scope by name, so a local must not take one.
+ * @param {unknown} node
+ * @param {Set<string>} [out]
+ * @returns {Set<string>}
+ */
+function helperNames(node, out = new Set()) {
+  if (Array.isArray(node)) for (const n of node) helperNames(n, out);
+  else if (node && typeof node === "object") {
+    const o = /** @type {Record<string, unknown>} */ (node);
+    if (o.k === "helper" && typeof o.name === "string") out.add(o.name);
+    for (const v of Object.values(o)) helperNames(v, out);
+  }
+  return out;
+}
+
+/**
  * The locals of `k` (parameters included) whose names the emitted code needs for itself: `Math` and
- * `Infinity`/`NaN` (which it writes), the vector runtime's `$`-names, and an intrinsic's name (its
+ * `Infinity`/`NaN` (which it writes), the vector runtime's `$`-names, a helper it calls, and an intrinsic's name (its
  * prelude may define it). Each gets a fresh name, which no local of `k` has.
  * @param {Kernel} k
  * @param {string[]} intrinsics  The names the Dialect's intrinsics are called by.
  * @returns {Map<string, string>}
  */
 export function collidingNames(k, intrinsics) {
-  const own = new Set(["Math", "Infinity", "NaN", ...intrinsics]);
+  const own = new Set(["Math", "Infinity", "NaN", ...intrinsics, ...helperNames(k)]);
   /** @type {Set<string>} */
   const declared = new Set(k.params.map((p) => p.name));
   /** @param {Stmt[]} stmts */

@@ -61,7 +61,7 @@ export function shaderJob(p, c, id) {
  * @returns {PairResult}
  */
 function withLocation(p, c, cmp, tolerance = 0) {
-  const at = cmp.worst.diff > 0 ? locate(p, cmp.worst.pixel, c.width, c.height, uniformValues(p, c.sets[cmp.worst.set].values).host) : null;
+  const at = !cmp.exact || cmp.worst.diff > 0 ? locate(p, cmp.worst.pixel, c.width, c.height, uniformValues(p, c.sets[cmp.worst.set].values).host) : null;
   return { ...cmp, at, tolerance };
 }
 

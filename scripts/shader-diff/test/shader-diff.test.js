@@ -35,7 +35,7 @@ test("faults --no-glsl runs the JS faults, and exits 0 because every escape has 
   const r = await cli("faults", "--no-glsl", "--scale", "0.1");
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /js: \d+ of \d+ planted faults caught/);
-  assert.doesNotMatch(r.out, /UNEXPLAINED/);
+  assert.doesNotMatch(r.out, /PROBLEM/);
 });
 
 test("a pair that differs is described with its pixel, set and source line", async () => {
@@ -50,4 +50,12 @@ test("a pair that differs is described with its pixel, set and source line", asy
 test("findSleepy answers a path or null, never throws", () => {
   const s = findSleepy();
   assert.ok(s === null || typeof s === "string");
+});
+
+test("a --tolerance that is not a number exits 2 instead of passing every comparison", async () => {
+  for (const bad of ["nope", "-1"]) {
+    const r = await cli("check", "--no-glsl", "--scale", "0.1", "--tolerance", bad);
+    assert.equal(r.code, 2, bad);
+    assert.match(r.out, /--tolerance needs a number/);
+  }
 });

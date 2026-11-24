@@ -44,6 +44,27 @@ function where(pair) {
 }
 
 /**
+ * What is wrong with a `runFaults` result, one line each; empty when the run is a clean verdict: every control
+ * clean, every fault planted and compared, every escape explained.
+ * @param {{ rows: FaultRow[], controls: Array<{ case: string, jsExact: boolean, glslWorst: number | null }>, tolerance: number }} result
+ * @returns {string[]}
+ */
+export function faultProblems(result) {
+  const out = [];
+  for (const c of result.controls) {
+    if (!c.jsExact) out.push(`control ${c.case}: JS differs from the interpreter with no fault planted`);
+    if (c.glslWorst !== null && !(c.glslWorst <= result.tolerance)) out.push(`control ${c.case}: GLSL differs by ${c.glslWorst} with no fault planted`);
+  }
+  for (const r of result.rows) {
+    if (!r.planted) out.push(`not planted: ${r.id} (${r.target})`);
+    else if (r.error) out.push(`${r.id} (${r.target}): shader error: ${r.error.slice(0, 160)}`);
+    else if (r.caught === false && !r.escape) out.push(`unexplained escape: ${r.id} (${r.target})`);
+    else if (r.caught === true && r.escape) out.push(`escape claimed but caught: ${r.id} (${r.target})`);
+  }
+  return out;
+}
+
+/**
  * Plants every fault in every backend it applies to. JS faults run here; GLSL faults need `render` and are skipped
  * (with `caught: null`) when there is none.
  * @param {{ render?: Render, scale?: number, tolerance?: number, faults?: Fault[] }} [options]
@@ -84,7 +105,8 @@ export async function runFaults(options = {}) {
     const results = await options.render(pending.map((x) => x.job));
     pending.forEach((x, i) => {
       const r = results[i];
-      if (r.error) { x.row.error = r.error; x.row.caught = true; x.row.worst = Infinity; return; }
+      // A shader that does not compile was never compared, so it is neither caught nor escaped.
+      if (r.error) { x.row.error = r.error; return; }
       const { pair } = compareGlsl(x.p, x.c, refOf(x.c), r.sets, tolerance);
       Object.assign(x.row, { caught: pair.over > 0, worst: pair.worst.diff, at: where(pair) });
     });

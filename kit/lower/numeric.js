@@ -3,7 +3,8 @@
 // dialect's vector types never mix with each other, and each mix is an L003 whose tip
 // names the explicit fix. A number literal is not yet a value: it takes f32 from its
 // context. None of this runs where no operand is an f32 or a vector, so M1's lowering
-// of f64 code is unchanged.
+// of f64 code keeps its meaning; assign.js's spill rule (`self.x = self.y = 0` goes through
+// a temporary) applies to it too.
 
 import { mixesNumbers as unionMixes, join, sameType, showType, vectorOf } from "../ir/types.js";
 import { bad, spanOf, seq, check, expr, mismatch } from "./expr.js";

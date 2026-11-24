@@ -223,7 +223,7 @@ function boundOf(cond) {
   if (b.k === "num") return Math.abs(b.v) <= exactLimit(b.t) ? `const ${b.v}` : null;
   if (b.k === "call" && b.args[0]?.k === "str" && b.fn.endsWith(".param")) return `param ${b.args[0].v}`;
   if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
-  if (b.k === "load" && !b.place.store) return `size ${b.place.name}`;
+  if (b.k === "load" && b.place.size) return `size ${b.place.name}`;
   return null;
 }
 

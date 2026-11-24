@@ -8,7 +8,7 @@ import { components, componentOf, componentNames, isUntyped } from "./numeric.js
 import { expr, check, mismatch, bad, seq, binary, resolveMember, placeOf, identifier, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
-/** @import { Expr, Effect, Place } from "../ir/ir.js" */
+/** @import { Expr, Effect, Place, Span } from "../ir/ir.js" */
 /** @import { Lowerer, Binding } from "./lowerer.js" */
 
 /**
@@ -152,11 +152,12 @@ function assignPart(L, node, wantValue, part) {
   const { id, b, vec, comp, label } = part;
   if (!writableLocal(L, id)) return bad(node);
   const cur = () => L.ex({ k: "local", name: b.name, t: b.t, span: spanOf(id) });
-  const at = (/** @type {string} */ c) => L.ex({ k: "field", of: cur(), name: c, t: vec.of, span: spanOf(node.left) });
+  // The assigned component's own read points at `a.x`; a kept one points at the vector `a` it comes from.
+  const at = (/** @type {string} */ c, /** @type {Span} */ sp = spanOf(id)) => L.ex({ k: "field", of: cur(), name: c, t: vec.of, span: sp });
   let v;
   if (node.operator === "=") v = check(L, node.right, vec.of, label);
   else {
-    const [old, r] = seq(L, [() => at(comp), () => expr(L, node.right)]);
+    const [old, r] = seq(L, [() => at(comp, spanOf(node.left)), () => expr(L, node.right)]);
     v = binary(L, node.operator.slice(0, -1), old, r, node);
     if (!assignable(v.t, vec.of)) mismatch(L, node, v.t, vec.of, label);
   }

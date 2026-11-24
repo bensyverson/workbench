@@ -33,7 +33,7 @@ r.glslVsInterp.at;                             // { kernel, line, text, jsLine, 
 ## Conventions
 
 - **Pixels.** Column `i`, row `j` from the bottom, sampled at its center: `uv = ((i + 0.5) / width, (j + 0.5) / height)`, y up, as the GLSL backend's `gl_FragCoord.xy / wb_resolution` is; `readPixels` rows are bottom-up too, so nothing flips. `aspect` is a uniform set to width over height.
-- **Why grids avoid ties.** A pixel whose input lands *exactly* on a branch threshold (`pmod(x, 10) < 1` with `x` an integer) can fall on either side on a GPU and in the interpreter, which differ by a whole color, not a tolerance. A 75-pixel `swirl` panel does it (`(i + 0.5) * 150 / 75` is an integer); the recorded 150- and 74-pixel panels do not. A grid that has ties tests the sketch's discontinuities, not the backends.
+- **Why grids avoid ties.** A pixel whose input lands *exactly* on a branch threshold (`pmod(x, 10) < 1` with `x` an integer) can fall on either side on a GPU and in the interpreter, which differ by a whole color, not a tolerance. A 75-pixel `swirl` panel does it (`(i + 0.5) * 150 / 75` is an integer); the recorded 150- and 74-pixel panels do not. Other scales tie too: `check --scale 0.3` (45 px) puts pixel (22, 16) on a threshold, 0.16 off. The CLI does not warn; pick a scale from the recorded ones, or read a failure at such a pixel as a tie before blaming a backend. A grid that has ties tests the sketch's discontinuities, not the backends.
 - **Color** is compared as `vec3` rgb; the shader's alpha must read back as exactly 1.
 - **The reference is always the interpreter.** A fault planted in one backend leaves the interpreter untouched, so the pair that holds the faulty backend is the one expected to differ.
 

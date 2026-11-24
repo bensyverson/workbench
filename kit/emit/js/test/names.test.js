@@ -2,10 +2,10 @@
 // survive an author's local of the same name; and `**` needs its left operand parenthesized.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emitKernel, instantiate } from "../index.js";
+import { emitKernel, emitHelpers, instantiate } from "../index.js";
 import { run } from "../../../interp/index.js";
 import { INTRINSICS } from "../../../dialects/fields/index.js";
-import { num, f32, op, local, call, let_, set, ret, kernel, returning } from "../../../interp/test/build.js";
+import { num, f32, op, local, call, helper, let_, set, ret, kernel, returning } from "../../../interp/test/build.js";
 
 /** @import { Type, Kernel } from "../../../ir/ir.js" */
 
@@ -69,4 +69,15 @@ test("f64 pow with a negative literal on the left is parenthesized, not a Syntax
   const k = returning(op("pow", "f64", num(-2), local("a")), [["a", "f64"]]);
   assert.equal(same(k, [2]), 4);
   assert.equal(same(returning(op("pow", "f64", num(2), local("a")), [["a", "f64"]]), [3]), 8);
+});
+
+test("a local named `$q` is not renamed onto the helper `q` the kernel calls", () => {
+  const k = kernel({ name: "k#0", params: [["x", "f32"]], returns: "f32", body: [
+    let_("$q", "f32", f32(2)),
+    ret(op("add", "f32", helper("q", "f32", [local("x", "f32")]), local("$q", "f32"))),
+  ] });
+  const emitted = emitKernel(k, OPTS);
+  const q = emitKernel(kernel({ name: "q", params: [["a", "f32"]], returns: "f32", body: [ret(op("mul", "f32", local("a", "f32"), f32(10)))] }), OPTS);
+  const fn = instantiate(emitted, emitHelpers([q]));
+  assert.equal(fn(0.5), 7, emitted.source);
 });

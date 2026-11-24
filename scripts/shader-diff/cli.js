@@ -2,7 +2,7 @@
 // (through sleepy) GLSL; `stress` the edge of the sketches' ranges; `faults` the planted faults. A thin adapter over kit/harness.
 
 import { fileURLToPath } from "node:url";
-import { standardCases, stressCase, runCase, runFaults, tally, GLSL_TOLERANCE, FAULT_SCALE } from "../../kit/harness/index.js";
+import { standardCases, stressCase, runCase, runFaults, faultProblems, tally, GLSL_TOLERANCE, FAULT_SCALE } from "../../kit/harness/index.js";
 import { probeSleepy, sleepyRender } from "./sleepy.js";
 
 /** @import { CaseResult, PairResult } from "../../kit/harness/run.js" */
@@ -74,6 +74,7 @@ export async function main(argv) {
   const flag = (name) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
   const json = rest.includes("--json");
   const tolerance = flag("--tolerance") !== undefined ? Number(flag("--tolerance")) : GLSL_TOLERANCE;
+  if (Number.isNaN(tolerance) || tolerance < 0) { console.error(`--tolerance needs a number of at least 0, got '${flag("--tolerance")}'`); return 2; }
   if (verb === "renderer") {
     const probe = probeSleepy();
     console.log(JSON.stringify(probe));
@@ -93,16 +94,19 @@ export async function main(argv) {
       if (!r.jsVsInterp.exact || r.glslError || (r.glslVsInterp && r.glslVsInterp.over > 0)) failed = true;
     }
     if (json) console.log(JSON.stringify(all.map((r) => ({ ...r, shape: r.shape }))));
-    return failed && verb === "check" ? 1 : 0;
+    // `stress` reports headroom, so GLSL over the tolerance is its result, not a failure; JS differing or a shader that does not build still is.
+    const broken = all.some((r) => !r.jsVsInterp.exact || r.glslError);
+    return (verb === "check" ? failed : broken) ? 1 : 0;
   }
   if (verb === "faults") {
     const scale = Number(flag("--scale") ?? FAULT_SCALE);
     const result = await runFaults({ ...(render ? { render } : {}), scale, tolerance });
     const t = tally(result.rows);
-    if (json) { console.log(JSON.stringify({ ...result, tally: t })); return 0; }
+    const problems = faultProblems(result);
+    if (json) { console.log(JSON.stringify({ ...result, tally: t, problems })); return problems.length ? 1 : 0; }
     console.log(`scale ${scale}; JS exact, GLSL tolerance ${tolerance}`);
     for (const r of result.rows) {
-      const state = !r.planted ? "NOT PLANTED" : r.caught === null ? "skipped" : r.caught ? "caught" : "ESCAPED";
+      const state = !r.planted ? "NOT PLANTED" : r.caught === null ? (r.error ? "NO SHADER" : "skipped") : r.caught ? "caught" : "ESCAPED";
       console.log(`${r.id.padEnd(28)} ${r.target.padEnd(4)} ${state.padEnd(11)} worst ${r.worst === null ? "-" : r.worst.toExponential(2)}  ${r.what}`);
       if (r.error) console.log(`    shader error: ${r.error.slice(0, 160)}`);
       if (r.escape && r.caught === false) console.log(`    escape explained: ${r.escape}`);
@@ -112,11 +116,8 @@ export async function main(argv) {
       const x = t[target];
       console.log(`${target}: ${x.caught} of ${x.planted} planted faults caught${x.skipped ? `, ${x.skipped} skipped` : ""}; escaped: ${x.escaped.map((e) => e.id).join(", ") || "none"}${x.unplanted.length ? `; unplanted: ${x.unplanted.map((e) => e.id).join(", ")}` : ""}`);
     }
-    const unexplained = result.rows.filter((r) => r.planted && r.caught === false && !r.escape);
-    const wrong = result.rows.filter((r) => r.caught === true && r.escape);
-    for (const r of unexplained) console.log(`UNEXPLAINED ESCAPE: ${r.id} (${r.target})`);
-    for (const r of wrong) console.log(`escape claimed but caught: ${r.id} (${r.target})`);
-    return unexplained.length || wrong.length || result.rows.some((r) => !r.planted) ? 1 : 0;
+    for (const p of problems) console.log(`PROBLEM: ${p}`);
+    return problems.length ? 1 : 0;
   }
   console.error(`unknown verb '${verb}'\n\n${USAGE}`);
   return 2;

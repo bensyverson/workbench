@@ -177,7 +177,7 @@ export const FAULTS = /** @type {Fault[]} */ ([
   ir({ id: "pmod-sign", kind: "operator", case: "swirl", what: "pmod's `x - n * floor(x / n)` becomes `x + n * floor(x / n)`", fault: () => swapOperator("pmod", isOp("sub"), "add") }),
   ir({ id: "bulge-scale", kind: "operator", case: "bulge", what: "`d * k` becomes `d / k`", fault: () => swapOperator("pixel", (e) => e.op === "mul" && vec(e) && e.args[1]?.k === "local" && e.args[1].name === "k", "div") }),
   ir({ id: "fbm-accumulate", kind: "operator", case: "domain-warp", what: "fbm's `v + a * vnoise(q, s)` becomes `v - a * vnoise(q, s)`", fault: () => swapOperator("fbm", (e) => e.op === "add" && e.args[1]?.op === "mul", "sub") }),
-  ir({ id: "vnoise-smooth", kind: "operator", case: "domain-warp", what: "vnoise's smoothing `f * f * (3 - 2 * f)` becomes `f + f * (3 - 2 * f)`", fault: () => swapOperator("vnoise", (e) => e.op === "mul" && vec(e) && e.args[0]?.op === "mul", "add") }),
+  ir({ id: "vnoise-smooth", kind: "operator", case: "domain-warp", what: "vnoise's smoothing `f * f * (3 - 2 * f)` becomes `f * f + (3 - 2 * f)` (its outer multiply becomes an add)", fault: () => swapOperator("vnoise", (e) => e.op === "mul" && vec(e) && e.args[0]?.op === "mul", "add") }),
   ir({ id: "grey-offset", kind: "operator", case: "domain-warp", what: "the grey palette's `f - 0.2` becomes `f + 0.2`", fault: () => swapOperator("pixel", (e) => e.op === "sub" && e.args[1]?.v !== undefined && Math.abs(e.args[1].v - 0.2) < 1e-6, "add") }),
   // constants
   ir({ id: "swirl-radius", kind: "constant", case: "swirl", what: "the lens radius `63` becomes `63.5`", fault: () => nudgeConstant("pixel", num(63), 0.5) }),

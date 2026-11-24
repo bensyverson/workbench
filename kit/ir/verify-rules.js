@@ -230,7 +230,7 @@ const isParam = (e) => e.k === "call" && e.fn.endsWith(".param") && e.args[0]?.k
 
 /**
  * The bound a `for` test names, as lowering writes it, or null when it bounds nothing: a constant
- * the counter's number type reaches (`exactLimit`), a param, a list's length (at most its `max`), or a read-only place.
+ * the counter's number type reaches (`exactLimit`), a param, a list's length (at most its `max`), or a place its Dialect declares a size.
  * @param {Expr} b
  * @returns {string | null}
  */
@@ -238,7 +238,7 @@ function boundOf(b) {
   if (b.k === "num") return Math.abs(b.v) <= exactLimit(b.t) ? `const ${b.v}` : null;
   if (isParam(b) && b.k === "call" && b.args[0].k === "str") return `param ${b.args[0].v}`;
   if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
-  if (b.k === "load" && !b.place.store) return `size ${b.place.name}`;
+  if (b.k === "load" && b.place.size && !b.place.store) return `size ${b.place.name}`;
   return null;
 }
 
@@ -266,7 +266,7 @@ export function unbounded(s) {
   const t = s.test;
   if (!(t.k === "op" && (t.op === "lt" || t.op === "le") && t.args.length === 2 && t.args[0].k === "local" && t.args[0].name === s.name)) return `its test is not ${s.name} < bound or ${s.name} <= bound`;
   const named = boundOf(t.args[1]);
-  if (named === null) return "its test's bound is not a constant, a param, a list's length or a read-only place";
+  if (named === null) return "its test's bound is not a constant, a param, a list's length or a declared size";
   if (named !== s.bound) return `it records the bound '${s.bound}', but its test's is '${named}'`;
   const u = s.update;
   const step = u.length === 1 && u[0].k === "set" && u[0].name === s.name ? u[0].value : null;

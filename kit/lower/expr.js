@@ -349,7 +349,7 @@ function valueOf(L, r, node) {
  */
 export function placeOf(r, name) {
   const d = /** @type {Extract<Member, { kind: "value" }>} */ (r.decl);
-  return { recv: r.recv, owner: r.owner, name, t: d.t, ...(d.store ? { store: d.store } : {}) };
+  return { recv: r.recv, owner: r.owner, name, t: d.t, ...(d.store ? { store: d.store } : {}), ...(d.size && !d.store ? { size: /** @type {const} */ (true) } : {}) };
 }
 
 /**

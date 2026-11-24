@@ -65,6 +65,8 @@ export interface Place {
   t: Type;
   /** Present when the place is writable: the coercion every store applies. */
   store?: Coerce;
+  /** Present when the Dialect declares this read-only place a size: it bounds a `for` loop. Never set with `store`. */
+  size?: true;
 }
 
 interface ExprBase { t: Type; span: Span }

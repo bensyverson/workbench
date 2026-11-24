@@ -139,7 +139,7 @@ export function report(r, name) {
   }
   for (const n of r.styleNotes) out.push(`note in ${n.where}, line ${n.line}: this style writes vector math as calls, not operators; ${n.use} instead of '${n.op === "neg" ? "-" : { add: "+", sub: "-", mul: "*", div: "/", pos: "+" }[n.op]}' on vectors`, `    ${n.text}`);
   if (r.ok) {
-    out.push(`${name}: lowers and verifies. Final color (r, g, b) at sample pixels, with every param at its default, t = 0, aspect = ${SAMPLE_ASPECT}:`);
+    out.push(`${name}: lowers (the GLSL target's acceptance is not checked here). Final color (r, g, b) at sample pixels, with every param at its default, t = 0, aspect = ${SAMPLE_ASPECT}:`);
     for (const s of r.samples) out.push(`  uv (${s.uv.join(", ")}) -> ${s.color ? `(${s.color.map(show).join(", ")})${s.color.some(Number.isNaN) ? "  NaN: check for a division by zero or a sqrt or pow of a negative" : ""}` : `error: ${s.error}`}`);
   } else out.push(`${name}: does not lower.`);
   return out.join("\n");

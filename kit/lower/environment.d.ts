@@ -21,8 +21,12 @@ export interface FnSig {
 }
 
 export type Member =
-  /** A field. Writable when `store` is present; `effect` is what a read records. */
-  | { kind: "value"; t: Type; store?: Coerce; effect?: Effect }
+  /**
+   * A field. Writable when `store` is present; `effect` is what a read records. `size` declares a
+   * read-only number that stays small for the whole run (a grid's rows, a param's capped max), so a
+   * loop `i < it` ends: being read-only is not enough (`w.frame` never stops growing).
+   */
+  | { kind: "value"; t: Type; store?: Coerce; effect?: Effect; size?: boolean }
   | ({ kind: "fn" } & FnSig)
   /**
    * The first argument must be a string literal naming one of `keys` (a param, a

@@ -33,6 +33,12 @@ export function paramType(name, p) {
 }
 
 /**
+ * A number param whose `max` an f32 counter reaches exactly (at most 2^24 - 1) is a size: the author set a cap.
+ * @param {ParamDecl} p
+ */
+const isSize = (p) => "max" in p && typeof p.max === "number" && p.max <= 2 ** 24 - 1;
+
+/**
  * The environment for one fields Program: the Dialect plus that Program's params.
  * @param {Record<string, ParamDecl>} [params]
  * @returns {Environment}
@@ -42,7 +48,7 @@ export function fieldsEnvironment(params = {}) {
   const members = { ...BUILT_IN };
   for (const [name, p] of Object.entries(params)) {
     if (name in BUILT_IN) throw new Error(`param '${name}' clashes with the built-in uniform u.${name}`);
-    members[name] = { kind: "value", t: paramType(name, p) };
+    members[name] = { kind: "value", t: paramType(name, p), ...(isSize(p) ? { size: true } : {}) };
   }
   /** @type {Record<string, ObjectDecl>} */
   const objects = { [UNIFORMS]: { label: "the uniforms (u)", members } };

@@ -37,9 +37,10 @@ const fn = (params, returns, effects = [], more = {}) => ({ kind: "fn", params, 
  * @param {Type} t
  * @param {Effect} [effect]
  * @param {Coerce} [store]
+ * @param {boolean} [size] a read-only number that stays small, so it can bound a loop
  * @returns {Member}
  */
-const value = (t, effect, store) => ({ kind: "value", t, ...(effect ? { effect } : {}), ...(store ? { store } : {}) });
+const value = (t, effect, store, size) => ({ kind: "value", t, ...(effect ? { effect } : {}), ...(store ? { store } : {}), ...(size ? { size } : {}) });
 
 /**
  * The value type and store rule of a declared attribute.
@@ -185,7 +186,7 @@ export function dmgEnvironment(d) {
   objects.Grid = {
     label: "w.grid",
     members: {
-      rows: value(F64), cols: value(F64),
+      rows: value(F64, undefined, undefined, true), cols: value(F64, undefined, undefined, true),
       step: fn([F64, F64, F64], F64), rc: fn([F64], { struct: { r: F64, c: F64 } }),
     },
   };

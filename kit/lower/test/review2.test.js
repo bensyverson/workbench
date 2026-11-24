@@ -16,7 +16,7 @@ const DV = dialectVector("dvec2", 2, "f64");
 /** @type {Environment} */
 const env = {
   name: "review2 (test)",
-  objects: { U: { label: "the uniforms", members: { n: { kind: "value", t: "f32" } } } },
+  objects: { U: { label: "the uniforms", members: { n: { kind: "value", t: "f32" }, cap: { kind: "value", t: "f32", size: true } } } },
   list: {},
   queries: [],
   globals: {},
@@ -53,8 +53,9 @@ test("an f64 counter keeps the 2^53 limit", () => {
   assert.deepEqual(codes("{ let s = 0; for (let i = 0; i <= 9007199254740993; i++) { s += 1; } return s; }", plain), ["L007"]);
 });
 
-test("a read-only declared place (a uniform) bounds a loop", () => {
-  const r = lower("{ let s = 0; for (let i = 0; i < u.n; i++) { s += 1; } return s; }");
+test("a declared size (a place the Dialect flags) bounds a loop; a plain read-only uniform does not", () => {
+  assert.deepEqual(codes("{ let s = 0; for (let i = 0; i < u.n; i++) { s += 1; } return s; }"), ["L007"]);
+  const r = lower("{ let s = 0; for (let i = 0; i < u.cap; i++) { s += 1; } return s; }");
   assert.deepEqual(r.diagnostics.map((d) => d.code), []);
   assert.deepEqual(verify(/** @type {import("../../ir/ir.js").Kernel} */ (r.kernel)), []);
 });

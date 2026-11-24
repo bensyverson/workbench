@@ -51,11 +51,14 @@ export function rgbOf(rgba) {
  * @returns {Comparison}
  */
 export function compare(ref, got, shape, tolerance) {
+  if (Number.isNaN(tolerance) || tolerance < 0) throw new Error(`the tolerance must be a number of at least 0, got ${tolerance}`);
   const size = shape.width * shape.height * 3;
   if (ref.length !== shape.labels.length || got.length !== shape.labels.length) throw new Error(`expected ${shape.labels.length} sets, got ${ref.length} and ${got.length}`);
   /** @type {Worst} */
   let worst = { diff: 0, set: 0, pixel: [0, 0], channel: 0, ref: ref[0][0], got: got[0][0] };
   let exact = true, over = 0;
+  /** The first component that is not identical, kept for a mismatch whose difference is 0 (-0 against +0). @type {Worst | null} */
+  let first = null;
   /** @type {Comparison["sets"]} */
   const sets = [];
   for (let s = 0; s < ref.length; s++) {
@@ -63,7 +66,10 @@ export function compare(ref, got, shape, tolerance) {
     let setWorst = 0, setOver = 0;
     for (let c = 0; c < size; c++) {
       const a = ref[s][c], b = got[s][c];
-      if (!Object.is(a, b)) exact = false;
+      if (!Object.is(a, b)) {
+        exact = false;
+        if (!first) { const p = Math.floor(c / 3); first = { diff: 0, set: s, pixel: [p % shape.width, Math.floor(p / shape.width)], channel: c % 3, ref: a, got: b }; }
+      }
       const diff = Object.is(a, b) ? 0 : Number.isNaN(a) || Number.isNaN(b) ? Infinity : Math.abs(a - b);
       if (diff > tolerance) { over++; setOver++; }
       if (diff > setWorst) setWorst = diff;
@@ -74,5 +80,6 @@ export function compare(ref, got, shape, tolerance) {
     }
     sets.push({ worst: setWorst, over: setOver });
   }
+  if (first && worst.diff === 0) worst = first;
   return { exact, worst, over, components: size * ref.length, sets };
 }
