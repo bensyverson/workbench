@@ -1,0 +1,51 @@
+ 1 | #version 300 es  <- -
+ 2 | precision highp float;  <- -
+ 3 | precision highp int;  <- -
+ 4 |  <- -
+ 5 | uniform float u_t;  <- -
+ 6 | uniform float u_aspect;  <- -
+ 7 | uniform float u_angle;  <- -
+ 8 | uniform float u_cx;  <- -
+ 9 | uniform float u_cy;  <- -
+10 | uniform vec2 wb_resolution;  <- -
+11 | out vec4 wb_color;  <- -
+12 |  <- -
+13 | float pmod(float x, float n) {  <- pmod 1:0 [0, 30]
+14 |   return x - (n * floor((x / n)));  <- pmod 1:10 [10, 30]
+15 | }  <- pmod 1:0 [0, 30]
+16 |  <- -
+17 | vec3 grid(vec2 q) {  <- grid 1:0 [0, 370]
+18 |   float gx = pmod(q.x, 10.0);  <- grid 2:8 [17, 35]
+19 |   float gy = pmod(q.y, 10.0);  <- grid 3:8 [45, 63]
+20 |   bool major = ((pmod(floor((q.x / 10.0)), 5.0) == 0.0) && (gx < 1.2)) || ((pmod(floor((q.y / 10.0)), 5.0) == 0.0) && (gy < 1.2));  <- grid 4:8 [73, 173]
+21 |   if (major) {  <- grid 5:2 [177, 218]
+22 |     return vec3(0.886, 0.0, 0.102);  <- grid 5:13 [188, 218]
+23 |   }  <- grid 5:2 [177, 218]
+24 |   if ((gx < 1.0) || (gy < 1.0)) {  <- grid 6:2 [221, 274]
+25 |     return vec3(0.45, 0.45, 0.45);  <- grid 6:24 [243, 274]
+26 |   }  <- grid 6:2 [221, 274]
+27 |   if (length((q - vec2(75.0, 75.0))) < 20.0) {  <- grid 7:2 [277, 343]
+28 |     return vec3(0.84, 0.84, 0.84);  <- grid 7:37 [312, 343]
+29 |   }  <- grid 7:2 [277, 343]
+30 |   return vec3(1.0, 1.0, 1.0);  <- grid 8:2 [346, 368]
+31 | }  <- grid 1:0 [0, 370]
+32 |  <- -
+33 | vec3 swirl_pixel(vec2 uv) {  <- swirl.pixel 1:0 [0, 320]
+34 |   float R = 63.0;  <- swirl.pixel 2:8 [21, 27]
+35 |   vec2 c = vec2(u_cx, u_cy);  <- swirl.pixel 3:8 [37, 57]
+36 |   vec2 d = (uv * 150.0) - c;  <- swirl.pixel 4:6 [65, 81]
+37 |   float dist = length(d);  <- swirl.pixel 5:8 [91, 107]
+38 |   if (dist < R) {  <- swirl.pixel 6:2 [111, 296]
+39 |     float pc = (R - dist) / R;  <- swirl.pixel 7:10 [137, 156]
+40 |     float th = (pc * pc) * u_angle;  <- swirl.pixel 8:10 [168, 190]
+41 |     float s = sin(th);  <- swirl.pixel 9:10 [202, 213]
+42 |     float co = cos(th);  <- swirl.pixel 10:10 [225, 237]
+43 |     d = vec2((d.x * co) - (d.y * s), (d.x * s) + (d.y * co));  <- swirl.pixel 11:4 [243, 291]
+44 |   }  <- swirl.pixel 6:2 [111, 296]
+45 |   return grid(d + c);  <- swirl.pixel 13:2 [299, 318]
+46 | }  <- swirl.pixel 1:0 [0, 320]
+47 |  <- -
+48 | void main() {  <- -
+49 |   vec2 uv = gl_FragCoord.xy / wb_resolution;  <- -
+50 |   wb_color = vec4(swirl_pixel(uv), 1.0);  <- -
+51 | }  <- -

@@ -19,6 +19,8 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [kit/dialects/fields/README.md](kit/dialects/fields/README.md) — the fields Dialect: typed vectors and operators, intrinsics with each target's spelling, the Library, the `field` Grammar and the two H3 sketches
 - [kit/interp/README.md](kit/interp/README.md) — the reference interpreter: what a Kernel means, with f32, vectors, store rules and a per-node hook
 - [kit/emit/js/README.md](kit/emit/js/README.md) — the JavaScript backend: IR kernels to slot-compatible functions, with a line map
+- [kit/lir/README.md](kit/lir/README.md) — the first LIR stage: a Kernel with no f64, explicit conversions and bound intrinsics, its verifier and diagnostic codes
+- [kit/emit/glsl/README.md](kit/emit/glsl/README.md) — the GLSL ES 3.00 backend: fragment shaders from pixel Kernels, uniforms, the `uv` convention, the line map, capability refusals
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 - [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
 - [scripts/dmg-diff/README.md](scripts/dmg-diff/README.md) — the lowering survey over all presets, the differential run over 04–07, and planted-fault sensitivity

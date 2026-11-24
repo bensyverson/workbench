@@ -1,0 +1,50 @@
+ 1 | #version 300 es  <- -
+ 2 | precision highp float;  <- -
+ 3 | precision highp int;  <- -
+ 4 |  <- -
+ 5 | uniform float u_t;  <- -
+ 6 | uniform float u_aspect;  <- -
+ 7 | uniform float u_strength;  <- -
+ 8 | uniform float u_cx;  <- -
+ 9 | uniform float u_cy;  <- -
+10 | uniform vec2 wb_resolution;  <- -
+11 | out vec4 wb_color;  <- -
+12 |  <- -
+13 | float pmod(float x, float n) {  <- pmod 1:0 [0, 30]
+14 |   return x - (n * floor((x / n)));  <- pmod 1:10 [10, 30]
+15 | }  <- pmod 1:0 [0, 30]
+16 |  <- -
+17 | vec3 grid(vec2 q) {  <- grid 1:0 [0, 370]
+18 |   float gx = pmod(q.x, 10.0);  <- grid 2:8 [17, 35]
+19 |   float gy = pmod(q.y, 10.0);  <- grid 3:8 [45, 63]
+20 |   bool major = ((pmod(floor((q.x / 10.0)), 5.0) == 0.0) && (gx < 1.2)) || ((pmod(floor((q.y / 10.0)), 5.0) == 0.0) && (gy < 1.2));  <- grid 4:8 [73, 173]
+21 |   if (major) {  <- grid 5:2 [177, 218]
+22 |     return vec3(0.886, 0.0, 0.102);  <- grid 5:13 [188, 218]
+23 |   }  <- grid 5:2 [177, 218]
+24 |   if ((gx < 1.0) || (gy < 1.0)) {  <- grid 6:2 [221, 274]
+25 |     return vec3(0.45, 0.45, 0.45);  <- grid 6:24 [243, 274]
+26 |   }  <- grid 6:2 [221, 274]
+27 |   if (length((q - vec2(75.0, 75.0))) < 20.0) {  <- grid 7:2 [277, 343]
+28 |     return vec3(0.84, 0.84, 0.84);  <- grid 7:37 [312, 343]
+29 |   }  <- grid 7:2 [277, 343]
+30 |   return vec3(1.0, 1.0, 1.0);  <- grid 8:2 [346, 368]
+31 | }  <- grid 1:0 [0, 370]
+32 |  <- -
+33 | vec3 bulge_pixel(vec2 uv) {  <- bulge.pixel 1:0 [0, 257]
+34 |   float R = 63.0;  <- bulge.pixel 2:8 [21, 27]
+35 |   vec2 c = vec2(u_cx, u_cy);  <- bulge.pixel 3:8 [37, 57]
+36 |   vec2 d = (uv * 150.0) - c;  <- bulge.pixel 4:6 [65, 81]
+37 |   float dist = length(d);  <- bulge.pixel 5:8 [91, 107]
+38 |   if (dist < R) {  <- bulge.pixel 6:2 [111, 233]
+39 |     if (dist > 0.0) {  <- bulge.pixel 6:2 [111, 233]
+40 |       float k = mix(1.0, smoothstep(0.0, (R / dist), (dist / R)), (u_strength * 0.75));  <- bulge.pixel 7:10 [149, 213]
+41 |       d = d * k;  <- bulge.pixel 8:4 [219, 228]
+42 |     }  <- bulge.pixel 6:2 [111, 233]
+43 |   }  <- bulge.pixel 6:2 [111, 233]
+44 |   return grid(d + c);  <- bulge.pixel 10:2 [236, 255]
+45 | }  <- bulge.pixel 1:0 [0, 257]
+46 |  <- -
+47 | void main() {  <- -
+48 |   vec2 uv = gl_FragCoord.xy / wb_resolution;  <- -
+49 |   wb_color = vec4(bulge_pixel(uv), 1.0);  <- -
+50 | }  <- -

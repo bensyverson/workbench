@@ -1,0 +1,90 @@
+ 1 | #version 300 es  <- -
+ 2 | precision highp float;  <- -
+ 3 | precision highp int;  <- -
+ 4 |  <- -
+ 5 | uniform float u_t;  <- -
+ 6 | uniform float u_aspect;  <- -
+ 7 | uniform float u_k;  <- -
+ 8 | uniform float u_levels;  <- -
+ 9 | uniform float u_scale;  <- -
+10 | uniform int u_palette;  <- -
+11 | uniform float u_seed;  <- -
+12 | uniform vec2 wb_resolution;  <- -
+13 | out vec4 wb_color;  <- -
+14 |  <- -
+15 | float ihash(float x, float y, float s) {  <- prelude ihash
+16 |   uint h = (uint(int(x)) * 0x27d4eb2du) ^ (uint(int(y)) * 0x165667b1u) ^ (uint(int(s)) * 0x9e3779b1u);  <- prelude ihash
+17 |   h ^= h >> 16u; h *= 0x7feb352du; h ^= h >> 15u; h *= 0x846ca68bu; h ^= h >> 16u;  <- prelude ihash
+18 |   return float(h) / 4294967296.0;  <- prelude ihash
+19 | }  <- prelude ihash
+20 |  <- -
+21 | float vnoise(vec2 p, float s) {  <- vnoise 1:0 [0, 314]
+22 |   vec2 i = floor(p);  <- vnoise 2:8 [20, 32]
+23 |   vec2 f = p - i;  <- vnoise 3:8 [42, 51]
+24 |   vec2 u = (f * f) * (vec2(3.0, 3.0) - (2.0 * f));  <- vnoise 4:8 [61, 93]
+25 |   float a = ihash(i.x, i.y, s);  <- vnoise 5:8 [103, 125]
+26 |   float b = ihash((i.x + 1.0), i.y, s);  <- vnoise 6:8 [135, 161]
+27 |   float c = ihash(i.x, (i.y + 1.0), s);  <- vnoise 7:8 [171, 197]
+28 |   float d = ihash((i.x + 1.0), (i.y + 1.0), s);  <- vnoise 8:8 [207, 237]
+29 |   return ((a + ((b - a) * u.x)) + ((c - a) * u.y)) + (((((a - b) - c) + d) * u.x) * u.y);  <- vnoise 9:2 [241, 312]
+30 | }  <- vnoise 1:0 [0, 314]
+31 |  <- -
+32 | float fbm(vec2 p, float s) {  <- fbm 1:0 [0, 261]
+33 |   float v = 0.0;  <- fbm 2:6 [18, 23]
+34 |   float a = 0.5;  <- fbm 3:6 [31, 38]
+35 |   vec2 q = p;  <- fbm 4:6 [46, 51]
+36 |   for (float i = 0.0; i < 5.0; i = i + 1.0) {  <- fbm 5:2 [55, 247]
+37 |     v = v + (a * vnoise(q, s));  <- fbm 6:4 [89, 110]
+38 |     q = vec2((2.02 * ((cos(0.5) * q.x) - (sin(0.5) * q.y))) + 100.0, (2.02 * ((sin(0.5) * q.x) + (cos(0.5) * q.y))) + 100.0);  <- fbm 7:4 [116, 228]
+39 |     a = a * 0.5;  <- fbm 8:4 [234, 242]
+40 |   }  <- fbm 5:2 [55, 247]
+41 |   return v;  <- fbm 10:2 [250, 259]
+42 | }  <- fbm 1:0 [0, 261]
+43 |  <- -
+44 | vec3 domain_warp_pixel(vec2 uv) {  <- domain-warp.pixel 1:0 [0, 1349]
+45 |   float s = u_seed * 3.0;  <- domain-warp.pixel 2:8 [21, 35]
+46 |   float k = u_k;  <- domain-warp.pixel 3:8 [45, 52]
+47 |   vec2 p = vec2(uv.x * u_scale, (uv.y * u_scale) / u_aspect);  <- domain-warp.pixel 4:8 [62, 113]
+48 |   vec2 q = vec2(0.0, 0.0);  <- domain-warp.pixel 5:6 [121, 135]
+49 |   vec2 r = vec2(0.0, 0.0);  <- domain-warp.pixel 6:6 [143, 157]
+50 |   float f = 0.0;  <- domain-warp.pixel 7:6 [165, 170]
+51 |   if (u_levels == 0.0) {  <- domain-warp.pixel 8:2 [174, 504]
+52 |     f = fbm(p, s);  <- domain-warp.pixel 8:22 [194, 207]
+53 |   } else {  <- domain-warp.pixel 8:2 [174, 504]
+54 |     q = vec2(fbm(p + vec2(0.03 * u_t, 0.0), s), fbm(p + vec2(5.2, 1.3), s));  <- domain-warp.pixel 10:4 [222, 291]
+55 |     if (u_levels == 1.0) {  <- domain-warp.pixel 11:4 [297, 500]
+56 |       f = fbm(p + (k * q), s);  <- domain-warp.pixel 11:24 [317, 338]
+57 |     } else {  <- domain-warp.pixel 11:4 [297, 500]
+58 |       r = vec2(fbm((p + (k * q)) + vec2(1.7 + (0.15 * u_t), 9.2), s), fbm((p + (k * q)) + vec2(8.3, 2.8 + (0.126 * u_t)), s));  <- domain-warp.pixel 13:6 [357, 464]
+59 |       f = fbm(p + (k * r), s);  <- domain-warp.pixel 14:6 [472, 493]
+60 |     }  <- domain-warp.pixel 11:4 [297, 500]
+61 |   }  <- domain-warp.pixel 8:2 [174, 504]
+62 |   if (u_palette == 1) {  <- domain-warp.pixel 17:2 [507, 609]
+63 |     float g = clamp(((f - 0.2) / 0.6), 0.0, 1.0);  <- domain-warp.pixel 18:10 [545, 577]
+64 |     return vec3(g, g, g);  <- domain-warp.pixel 19:4 [583, 605]
+65 |   }  <- domain-warp.pixel 17:2 [507, 609]
+66 |   vec3 B = vec3(0.051, 0.039, 0.102);  <- domain-warp.pixel 21:6 [616, 646]
+67 |   vec3 L = vec3(0.169, 0.102, 0.431);  <- domain-warp.pixel 22:6 [654, 684]
+68 |   vec3 M = vec3(0.851, 0.271, 0.42);  <- domain-warp.pixel 23:6 [692, 721]
+69 |   vec3 H = vec3(1.0, 0.722, 0.42);  <- domain-warp.pixel 24:6 [729, 754]
+70 |   if (u_palette == 2) {  <- domain-warp.pixel 25:2 [758, 1166]
+71 |     B = vec3(0.03, 0.08, 0.06);  <- domain-warp.pixel 26:4 [792, 819]
+72 |     L = vec3(0.1, 0.27, 0.22);  <- domain-warp.pixel 27:4 [825, 851]
+73 |     M = vec3(0.31, 0.56, 0.47);  <- domain-warp.pixel 28:4 [857, 884]
+74 |     H = vec3(0.94, 0.91, 0.83);  <- domain-warp.pixel 29:4 [890, 917]
+75 |     float stripe = 0.5 + (0.5 * sin(((2.2 * (p.x + p.y)) + (9.0 * f))));  <- domain-warp.pixel 30:10 [929, 980]
+76 |     float vein = pow((1.0 - stripe), 6.0);  <- domain-warp.pixel 31:10 [992, 1017]
+77 |     float n = clamp(((f - 0.25) / 0.5), 0.0, 1.0);  <- domain-warp.pixel 32:10 [1029, 1062]
+78 |     vec3 c = (n < 0.5) ? mix(B, L, (n * 2.0)) : mix(L, M, ((n * 2.0) - 1.0));  <- domain-warp.pixel 33:10 [1074, 1127]
+79 |     return mix(c, H, (0.9 * vein));  <- domain-warp.pixel 34:4 [1133, 1162]
+80 |   }  <- domain-warp.pixel 25:2 [758, 1166]
+81 |   vec3 c_1 = mix(B, L, clamp(((f * f) * 4.0), 0.0, 1.0));  <- domain-warp.pixel 36:6 [1173, 1210]
+82 |   c_1 = mix(c_1, M, clamp(length(q), 0.0, 1.0));  <- domain-warp.pixel 37:2 [1214, 1251]
+83 |   c_1 = mix(c_1, H, clamp(abs(r.x), 0.0, 1.0));  <- domain-warp.pixel 38:2 [1255, 1291]
+84 |   return mix(B, c_1, ((((f * f) * f) + ((0.6 * f) * f)) + (0.5 * f)));  <- domain-warp.pixel 39:2 [1295, 1347]
+85 | }  <- domain-warp.pixel 1:0 [0, 1349]
+86 |  <- -
+87 | void main() {  <- -
+88 |   vec2 uv = gl_FragCoord.xy / wb_resolution;  <- -
+89 |   wb_color = vec4(domain_warp_pixel(uv), 1.0);  <- -
+90 | }  <- -
