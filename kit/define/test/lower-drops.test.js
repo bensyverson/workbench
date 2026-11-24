@@ -69,7 +69,7 @@ test("a call's several unkeyed lambdas give step their types as a list; a lone l
   const seen = [];
   const d = defineDialect({
     name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
-    slots: { k: (ref) => ({ params: [], returns: ref.id.endsWith(".1") ? "bool" : "infer", space: "s" }) },
+    slots: { k: (ref) => ({ params: [], returns: ref.id.endsWith("[1]") ? "bool" : "infer", space: "s" }) },
   });
   const g = defineGrammar(d, { root: "p", constructs: {
     p: { opens: [name()] },

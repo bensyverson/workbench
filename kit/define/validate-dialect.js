@@ -2,7 +2,7 @@
 // Adapted from the trial checker (scripts/define-trial/checker/dialect.js), which leaf O63kB5 retires.
 
 import { didYouMean } from "./codes.js";
-import { checkKeys, checkType, checkMember, checkSignature, listed } from "./types.js";
+import { checkKeys, checkType, checkMember, checkSignature, listed, BUILTIN_TYPES } from "./types.js";
 import { isPlainObject, kindOf, describe } from "./tags.js";
 import { parseLambda, checkSubset } from "../parse/index.js";
 
@@ -76,6 +76,11 @@ export function validateDialect(def) {
 
   for (const [n, v] of types) {
     const path = ["types", n];
+    // a type named like a built-in or a type variable would take that name over everywhere it is written
+    if ([...BUILTIN_TYPES, "unknown"].includes(n) || /^[A-Z]$/.test(n)) {
+      out.push({ code: "D007", path, message: `'${n}' is ${/^[A-Z]$/.test(n) ? "a type variable" : "a built-in type"}; a type named so would take its place everywhere it is written.`, tip: `rename it (${n === "T" || /^[A-Z]$/.test(n) ? "one capital letter is a type variable; use a longer name" : `the built-ins are ${[...BUILTIN_TYPES, "unknown"].join(", ")}`})` });
+      continue;
+    }
     if (kindOf(v) === "scalar") { scope.types.add(n); checkScalar(n, /** @type {T.ScalarTag} */ (v), path, out); continue; }
     if (kindOf(v) !== "vector") { out.push({ code: "D011", path, message: `types.${n} is ${describe(v)}; types holds vectors and scalars.`, tip: `${n}: vector(2, "f32"), or ${n}: scalar("f64", { note: "…" })` }); continue; }
     scope.types.add(n);

@@ -27,15 +27,16 @@ test("B011 in a by-slot construct points at the refused call, not the construct'
 test("each call of a by-slot construct keeps its own place, also in a name slot", () => {
   const d = defineDialect({
     name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
-    slots: { k: (ref) => (ref.on === "x" && ref.id.endsWith("#0") ? "no" : { params: [], returns: "f64", space: "s" }) },
+    slots: { k: (ref) => (ref.index === 1 ? "no" : { params: [], returns: "f64", space: "s" }) },
   });
   const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()], slots: { k: { kind: "decl", args: [name("n"), lambda("k")] } } } } });
   const open = lineHere() + 1;
   const b = g("x")
-    .k("a", "() => 1");
-  const diag = /** @type {any} */ (g.lower(b.build()).diagnostics[0]);
-  assert.equal(diag.code, "B011");
-  assert.equal(diag.loc.start.line, open + 1);
+    .k("a", "() => 1")
+    .k("b", "() => 2");
+  const r = g.lower(b.build());
+  assert.deepEqual(r.diagnostics.map((x) => x.code), ["B011"]);
+  assert.equal(/** @type {any} */ (r.diagnostics[0]).loc.start.line, open + 2);
 });
 
 test("an L diagnostic in the flat list says which lambda it belongs to", () => {

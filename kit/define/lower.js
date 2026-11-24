@@ -7,7 +7,7 @@
 import { lowerProgram } from "../lower/index.js";
 import { didYouMean } from "./codes.js";
 import { enumOf, opt, list, struct, union, kindOf } from "./tags.js";
-import { rematch, single, LOCS } from "./record.js";
+import { rematch, single, nameOf, setOwn, LOCS } from "./record.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Type } from "../ir/ir.js" */
@@ -62,6 +62,27 @@ export function fromCore(t) {
 }
 
 /**
+ * What a call's lambdas inferred, as `step` receives it: all keyed, an object by key (a key with several
+ * lambdas holds the list of their types); all unkeyed, the lone type or the list in call order; a mix of
+ * keyed and unkeyed, the list of every lambda's type in call order.
+ * @param {Array<{ key?: string }>} here @param {unknown[]} types
+ * @returns {unknown}
+ */
+function inferredOf(here, types) {
+  const keyed = here.filter((l) => l.key !== undefined).length;
+  if (keyed === 0) return types.length > 1 ? types : types[0] ?? "unknown";
+  if (keyed < here.length) return types;
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  const keys = [...new Set(here.map((l) => /** @type {string} */ (l.key)))];
+  for (const k of keys) {
+    const ts = types.filter((_, i) => here[i].key === k);
+    setOwn(out, k, ts.length > 1 ? ts : ts[0]);
+  }
+  return out;
+}
+
+/**
  * The instances of a record, by the grammar: each with its calls in order (a by-slot record's calls are
  * replayed in slot order, so `index` there counts in declaration order, not call order).
  * @param {import("./grammar.js").Compiled} g @param {Record<string, any>} record
@@ -90,7 +111,7 @@ function instancesOf(g, record) {
         else for (const x of v) calls.push({ slot: sn, args: list(s.args, x), index: calls.length, once: false, at: here(calls.filter((y) => y.slot === sn).length) });
       }
     }
-    out.push({ construct: c, rec, name: String(rec.name ?? c.name), calls, at: at(rec) });
+    out.push({ construct: c, rec, name: nameOf(c, rec), calls, at: at(rec) });
     for (const child of c.children) for (const r of rec[child.name] ?? []) walk(child, r);
   };
   walk(g.root, record);
@@ -131,18 +152,40 @@ export function lowerRecord(g, record) {
   const lambdas = [];
   /** @type {Map<RecCall, typeof lambdas>} */
   const byCall = new Map();
+  // An instance's id prefix is its name; a name an earlier instance already has (two unnamed instances of
+  // one construct) gets `~2`, `~3`, … in record order. `ref.on` keeps the real name.
+  /** @type {Map<RecInstance, string>} */
+  const tags = new Map();
+  const usedTags = new Set();
+  for (const inst of instances) {
+    let tag = inst.name;
+    for (let n = 2; usedTags.has(tag); n++) tag = `${inst.name}~${n}`;
+    usedTags.add(tag);
+    tags.set(inst, tag);
+  }
+  const usedIds = new Set();
+  /** The id, or the first of `id~2`, `id~3`, … not taken: a last guard for odd names and keys. @param {string} id */
+  const unique = (id) => {
+    let out = id;
+    for (let n = 2; usedIds.has(out); n++) out = `${id}~${n}`;
+    usedIds.add(out);
+    return out;
+  };
   for (const inst of instances) {
     for (const call of inst.calls) {
       const s = inst.construct.def.slots?.[call.slot];
       if (!s || s.kind !== "decl") continue;
       const found = rematch(s.args, call.args).lambdas;
-      const several = found.filter((l) => l.key === undefined).length > 1;
-      let nth = 0;
-      const here = found.map((l) => ({
-        inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}),
-        // lambdas of one call with no recordOf key are told apart by their place in the call
-        ref: /** @type {T.DefineSlotRef} */ ({ id: `${inst.name}.${call.slot}${call.once ? "" : `#${call.index}`}${l.key !== undefined ? `.${l.key}` : several ? `.${nth++}` : ""}`, kind: l.convention, on: inst.name, index: call.index, ...(l.key !== undefined ? { key: l.key } : {}) }),
-      }));
+      // Lambdas that share a recordOf key (or have none) are told apart by their place among them, `[n]`;
+      // a lambda alone under its key has no place. `[n]` is not `.n`, which a key "0" could spell.
+      /** @param {string | undefined} key */
+      const group = (key) => found.filter((l) => l.key === key);
+      const here = found.map((l) => {
+        const peers = group(l.key);
+        const place = peers.length > 1 ? `[${peers.indexOf(l)}]` : "";
+        const id = unique(`${tags.get(inst)}.${call.slot}${call.once ? "" : `#${call.index}`}${l.key !== undefined ? `.${l.key}` : ""}${place}`);
+        return { inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}), ref: /** @type {T.DefineSlotRef} */ ({ id, kind: l.convention, on: inst.name, index: call.index, ...(l.key !== undefined ? { key: l.key } : {}) }) };
+      });
       byCall.set(call, here);
       lambdas.push(...here);
     }
@@ -191,17 +234,12 @@ export function lowerRecord(g, record) {
           if (!known.includes(r.value)) diagnostics.push({ code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}', .${call.slot}: there is no ${r.ns} '${r.value}' at this step.${didYouMean(r.value, known)}`, tip: known.length ? `name one of: ${known.join(", ")}` : `this ${inst.construct.name} has no ${r.ns} yet`, ...call.at, range: [0, 0] });
         }
         const here = byCall.get(call) ?? [];
-        /** @type {Record<string, unknown>} */
-        const keyed = {};
         /** @type {unknown[]} */
-        const unkeyed = [];
-        for (const l of here) {
+        const types = here.map((l) => {
           states.set(l.ref.id, state);
-          const t = usable(l) ? fromCore(lowerProgram(env, [{ src: l.src, slot: l.ref }], helpers).results[0].returns) : "unknown";
-          if (l.key !== undefined) keyed[l.key] = t; else unkeyed.push(t);
-        }
-        const inferred = here.some((l) => l.key !== undefined) ? keyed : unkeyed.length > 1 ? unkeyed : unkeyed[0] ?? "unknown";
-        state = st.step(state, { slot: call.slot, args: call.args }, inferred);
+          return usable(l) ? fromCore(lowerProgram(env, [{ src: l.src, slot: l.ref }], helpers).results[0].returns) : "unknown";
+        });
+        state = st.step(state, { slot: call.slot, args: call.args }, inferredOf(here, types));
       }
       finals.set(inst, state);
       return state;

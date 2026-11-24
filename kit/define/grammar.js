@@ -101,7 +101,7 @@ class Program {
     const inst = { construct: c, opened, parent, children: [], calls: [], loc: at.loc, file: at.file };
     this.report(f.errors, c.name, at);
     specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") this.declare(/** @type {T.NameTag} */ (s), c.name, made[i], at, true); });
-    if (c.def.state) this.declareState(c, String(opened.name ?? c.name), at);
+    if (c.def.state) this.declareState(c, instanceName(inst), at);
     /** @type {Call} */
     const call = { slot: "(opens)", args: made, loc: at.loc, file: at.file, found: f };
     this.track(call, at);

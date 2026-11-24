@@ -58,8 +58,27 @@ export function openKey(spec, i) {
   return `arg${i}`;
 }
 
-/** The name an instance goes by in `ref.on`: its opening name, else its construct's. @param {Instance} inst */
-export const instanceName = (inst) => String(inst.opened.name ?? inst.construct.name);
+/**
+ * The name an instance goes by (`ref.on`, the state namespace, ids): the value of its construct's name()
+ * opening under whatever record key that opening has, else the construct's own name. No other record key
+ * (a slot or child called `name`) renames an instance; the builder and lowering both ask here.
+ * @param {{ def: Record<string, any>, name: string }} c @param {Record<string, any>} rec  the opening arguments, or a record
+ */
+export function nameOf(c, rec) {
+  const specs = /** @type {T.Tagged[]} */ (c.def.opens ?? []);
+  const i = specs.findIndex((s) => s[TAG] === "name");
+  const v = i < 0 ? undefined : rec[openKey(specs[i], i)];
+  return v === undefined || v === null ? c.name : String(v);
+}
+
+/** @param {Instance} inst */
+export const instanceName = (inst) => nameOf(inst.construct, inst.opened);
+
+/**
+ * Sets an own key, even `__proto__`, which a plain assignment would take for the prototype.
+ * @param {Record<string, any>} o @param {string} k @param {unknown} v
+ */
+export function setOwn(o, k, v) { Object.defineProperty(o, k, { value: v, writable: true, enumerable: true, configurable: true }); }
 
 /**
  * Whether a decl slot's record value is its one argument (a single spec that is not rest) or the list of them.
@@ -94,7 +113,7 @@ export function recordOf(inst) {
       (slotAt[call.slot] ??= []).push({ file: call.file, loc: call.loc });
       const s = c.def.slots[call.slot];
       if (s.kind === "unit") rec.units.push({ name: call.args[0], kind: s.unit, src: call.args[1] });
-      else if (s.args[0]?.[TAG] === "name") rec[s.as ?? call.slot][/** @type {string} */ (call.args[0])] = single(s.args.slice(1)) ? call.args[1] : call.args.slice(1);
+      else if (s.args[0]?.[TAG] === "name") setOwn(rec[s.as ?? call.slot], /** @type {string} */ (call.args[0]), single(s.args.slice(1)) ? call.args[1] : call.args.slice(1));
       else if (s.once) rec[s.as ?? call.slot] = single(s.args) ? call.args[0] : [...call.args];
       else rec[s.as ?? call.slot].push(single(s.args) ? call.args[0] : [...call.args]);
     }
