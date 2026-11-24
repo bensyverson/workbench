@@ -47,12 +47,15 @@ import { matchArg, matchShape, found } from "./shapes.js";
 export const LOCS = /** @type {WeakMap<object, Site>} */ (new WeakMap());
 
 /**
- * The record key of an opening argument: its `as`, else its namespace, else `name`.
+ * The record key of an opening argument: its `as`, else its namespace, else `name`; an `opt()` takes the key
+ * of the spec it wraps.
  * @param {T.Tagged} spec @param {number} i
+ * @returns {string}
  */
 export function openKey(spec, i) {
   const s = /** @type {any} */ (spec);
   if (s.as) return s.as;
+  if (spec[TAG] === "opt") { const inner = tagged(s.of); return inner ? openKey(inner, i) : `arg${i}`; }
   if (spec[TAG] === "name") return typeof s.ns === "string" ? s.ns : "name";
   if (spec[TAG] === "ref") return s.ns;
   return `arg${i}`;

@@ -47,4 +47,4 @@ const { lambdas, helpers, diagnostics } = tiny.lower(record);  // Kernels, throu
 
 ## Not built
 
-Effects, store rules, `emit` and inferred methods (every space is pure); fragments; build-time slots; Dialect imports; lambdas in a construct's opening arguments (`D019`); a checker that runs this builder (`scripts/define-trial` still validates the first draft with its own copy, leaf `O63kB5`); re-declaring `kit/dialects/fields` through this API (leaf `iJtvVE`).
+Effects, store rules, `emit` and inferred methods (every space is pure); fragments; build-time slots; Dialect imports; lambdas in a construct's opening arguments (`D019`); re-declaring `kit/dialects/fields` through this API (leaf `iJtvVE`).

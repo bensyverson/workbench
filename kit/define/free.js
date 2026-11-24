@@ -1,5 +1,4 @@
 // The free names a Runtime Lambda reads (the free-name rule, B008): every name it does not bind itself.
-// Moved from the trial checker (scripts/define-trial/checker/lambda.js), which leaf O63kB5 retires.
 
 /** @import { Node, Pattern, Statement, Expression, ArrowFunctionExpression, Loc } from "../parse/ast.js" */
 

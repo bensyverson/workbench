@@ -1,5 +1,4 @@
 // defineDialect's checks: every problem in a Dialect definition, collected (D001–D008, D011–D013).
-// Adapted from the trial checker (scripts/define-trial/checker/dialect.js), which leaf O63kB5 retires.
 
 import { didYouMean } from "./codes.js";
 import { checkKeys, checkType, checkMember, checkSignature, listed, BUILTIN_TYPES } from "./types.js";

@@ -1,5 +1,4 @@
 // defineGrammar's checks: every problem in a Grammar definition, collected (D001, D009–D011, D014, D015).
-// Adapted from the trial checker (scripts/define-trial/checker/grammar.js), which leaf O63kB5 retires.
 
 import { didYouMean } from "./codes.js";
 import { checkKeys, listed } from "./types.js";
