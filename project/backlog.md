@@ -35,3 +35,25 @@ A second front end for pure, branch-free dialects: call the lambda with symbolic
 ## 2026-11-23: a dream-code checker for phase 1 of the workflow
 
 This checks example programs (the "dream code" a model writes before any dialect exists) against themselves. It checks the subset, harvests the grammar through a recording proxy, builds a provisional environment from the examples' own declarations, and lowers in an "open world" mode that turns unknown intrinsics into a wishlist with joined signatures. Ben wants it ("a fascinating addition"). Design: [a dream-code checker](2026-11-23-dream-code-checker.md). It is parked only because it belongs to the kit's workflow, not to M1 or M2. Un-park when M3 is planned, alongside H4.
+
+## 2026-11-24: a program record in the kit core
+
+A uniform node list (id, kind, declared data, span, phase, owned Kernels) that Dialects fill in, with edges derived from Kernel effects plus edges implied by slot types (a slot taking a table and returning a table). The proposal's §5.2 "Declarations" promised it. Parked because it falls out of a generated Grammar builder, which sees every call; designing it ahead of that builder would shape it around three hand-written versions. The counter-argument: a record with opaque `data` is an index, and a `nodes()`/`edges()`/`resolve()` protocol each Dialect implements may be as good and cheaper; the evidence to settle it is two consumers (who reads or writes P, what is downstream of a param; resolve an address to a span) written over all three Dialects. Un-park when the minimal Grammar's generated builder exists and a consumer (the lab API's addresses, a graph view, the query API) needs a uniform node list. Not a generic DAG: DMG's graph is cyclic and a field's is a star. See the M3 plan's revision blocks and job leaves RJtpuF and UWVq0O.
+
+## 2026-11-24: a pass manager and H11
+
+A way for a Dialect to add a pass above the core, gated by the verifier and the differential check. Parked because nothing consumes an optimization yet (the JS backend is DMG's only backend). Un-park when the Kernel queries have a real client and a backend wants a transformation; H11 is "not tested" in M3 until then. This extends the 2026-11-23 query and pass API entry, whose un-park trigger ("start of M3") fired and was answered: queries only, and only with a client (rewrite `kit/emit/glsl/capabilities.js` on them, or the data Dialect's "which params does this lambda read"). Job xMYcAM.
+
+## 2026-11-24: re-declaring DMG through the Definition API
+
+The kit has no DMG Grammar: `kit/dialects/dmg` is only the Environment, derived from declarations extracted from the original builder; the builder (about 145 lines) and `compile()` (about 230) live in the original HTML, and the delivery decisions forbid copying them. Re-declaring DMG means writing a DMG builder from scratch (9 injected globals, `art` templates, the nested `board(b => ...)`, `timer`'s optional middle argument, aliases, fragment merge order, `bake`). It is M3's largest possible leaf and the place an API would bloat. Parked until the minimal Grammar is proved on fields and the data Dialect. The M1 survey (126/111/7/4/4), goldens and differential run read lambdas from the original builder, so they are regression checks, not H4 evidence; pointing them at a generated builder's record would make them evidence. Job Ieojrm.
+
+## 2026-11-24: a kit boundary, a generic differential harness, and a packaged distribution
+
+Move the Dialects out of `kit/`, define what `kit/` exports, package START.md, API.md and `hello` with the kit as a distribution, and generalize `kit/harness` (which runs only fields Programs) to compare any Dialect's Kernels across targets. Needed for a clean H5 reading ("it had to read kit source" is measurable only against a package) and as H11's differential gate. Parked until the docs exist and the pilot gives a reason; the pilot uses the interpreter alone. Job dLBHp7.
+
+## 2026-11-24: SQL as an emit target
+
+Emit a SELECT from a data-Dialect table pipeline, golden-tested, with no engine and no dependency: the proposal's §6 "target plugin" meaning of SQL, and a second backend for the data domain. SQL is not an input language (Ben, 2026-11-24). Parked as optional; un-park when the data Dialect's operators are in place and a second backend is wanted. Job dOwNtu.
+
+> **Corrected 2026-11-24 (M3 plan):** the dream-code checker entry above says to un-park "when M3 is planned, alongside H4". The M3 plan takes the cheap half: the fresh-agent trial's checker script (job lMNmIB) loads a candidate Dialect and prints each violation with a code and a fix, and is `check` v0. The harvest and open-world lowering half stays parked until the generated builder can be run in an open mode.

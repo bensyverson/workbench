@@ -654,3 +654,5 @@ Sources:
 | Kernels over domains; a core with no game concepts; typed operators | This draft, after the correction not to centre embedded targets |
 | Views by role, skins, budgets, the check loop, declarative constructs | This draft, from the design goals |
 | `lab:` addresses, embedded sketches, parameters declared by examples | *Uncommon Math* and the DMG Workbench |
+
+> **Corrected 2026-11-24 (M3 plan):** the M3 row above says "with a SQL plugin". SQL is not an input language (Ben's ruling, [the M3 plan](2026-11-24-m3-kit-v0-plan.md)), and SQL as a target plugin is parked in the backlog. M3's done-when is now a minimal Definition API and generated builder proved on fields, a fresh-agent trial on the data-tools Dream Code, and a pilot on `hello`; the DMG re-declaration, passes and H11 are parked.

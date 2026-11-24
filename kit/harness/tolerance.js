@@ -1,5 +1,5 @@
 // How far the GLSL target may stray from the reference interpreter. It belongs to the GLSL target (the fields
-// Dialect's `targets.glsl.compare` says only "tolerance"); it lives here until it moves to kit/emit/glsl.
+// Dialect's `targets.glsl.compare` says only "tolerance"); it lives here until it moves to the Dialect's `targets.glsl.compare` declaration (Ben's ruling, M3 leaf JsWK1s).
 
 /**
  * The largest absolute difference allowed in any color component, in the unit range of a `color`: a quarter of
