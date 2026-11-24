@@ -69,6 +69,8 @@ The composition note covered imports and nominal types and said nothing about ti
 - **Code crosses too:** a `lib/` helper runs as JS in one dialect and as GLSL in another, compiled per target and checked against itself by the harness. This is what ends the twice-maintained shaders of *Uncommon Math*, and it already works within one dialect (the fields Library).
 - **Seam errors name both sides** and carry a fixit (both consults show five or six; A's V204, CPU and GPU disagreeing about a hash, is the one kind only a differential run catches).
 
+> **Tested 2026-11-24 ([the composition trial](2026-11-24-composition-trial.md)):** three agents (Opus, Sonnet, Haiku) followed these rules with no seam mistakes. What the model lacks is time and units: a reload needs a defined point in the tick and a visible **revision** of each input (the identity / revision / content-key split of §3.7), sampling needs a reset across a revision, and frames need **lengths** as well as positions (an affine edge whose scale converts a length). The next trial must compose dialects written in separate sessions.
+
 ### 3.6 A premise to correct: what G-verify can show (B)
 
 We can show that every fast path (emitted JS, GLSL, later C) agrees with a reference: the kit's interpreter for Kernels, the dialect's runtime for structure. We cannot show that a model-written reference runtime means what the user intended. The proposal's §12 should say so, and B suggests the UI should too.
