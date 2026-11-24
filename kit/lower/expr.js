@@ -125,6 +125,10 @@ export function identifier(L, node) {
   const span = spanOf(node);
   const b = L.lookup(node.name);
   if (b) {
+    if (b.dead) {
+      L.error("L001", node, `'${node.name}' is read before its declaration finishes.`, `A name is not usable inside its own initializer; give the inner name another name, or read the outer one before declaring it.`);
+      return bad(node);
+    }
     if (b.pending) { L.error(b.pending.code, node, b.pending.message, b.pending.tip); return L.ex({ k: "local", name: b.name, t: "unknown", span }); }
     const t = L.narrowed.has(b.name) && typeof b.t === "object" && "opt" in b.t ? b.t.opt : b.t;
     return L.ex({ k: "local", name: b.name, t, span });
@@ -350,7 +354,10 @@ export function binary(L, operator, a, b, node) {
     const loose = operator.length === 2;
     const comparable = assignable(a.t, b.t) || assignable(b.t, a.t) || (isStr(a) && isStr(b));
     const prim = (/** @type {Type} */ t) => t === "f64" || t === "bool" || t === "str" || (typeof t === "object" && "enum" in t);
-    if (!comparable) L.error("L003", node, `${describe(a.t)} and ${describe(b.t)} can never be equal.`, "Compare values of the same type.");
+    const compound = (/** @type {Expr} */ e) => { const t = typeof e.t === "object" && "opt" in e.t ? e.t.opt : e.t; return typeof t === "object" && ("list" in t || "struct" in t); };
+    const nothing = (/** @type {Expr} */ e) => e.t === "null";
+    if ((compound(a) && !nothing(b)) || (compound(b) && !nothing(a))) L.error("L003", node, `'${operator}' on a list or struct would compare identity, and a list or struct value has none here.`, "Compare their fields or items instead: a.x === b.x, a[0] === b[0].");
+    else if (!comparable) L.error("L003", node, `${describe(a.t)} and ${describe(b.t)} can never be equal.`, "Compare values of the same type.");
     else if (loose && !(prim(a.t) && prim(b.t))) L.error("L003", node, `'${operator}' between ${describe(a.t)} and ${describe(b.t)} can coerce.`, `Use '${operator}=' instead.`);
     return L.ex({ k: "op", op: EQUALITY[operator], args: [a, b], t: "bool", span });
   }
@@ -466,6 +473,10 @@ export function cond(L, node, branch) {
  */
 function array(L, node) {
   const elements = /** @type {AST.Expression[]} */ (node.elements);
+  if (elements.some((el) => el === null)) {
+    L.error("L012", node, "An array literal has a hole, an empty slot between its commas.", "Write every item out: [1, 0, 2].");
+    return bad(node);
+  }
   if (elements.length === 0) {
     L.error("L012", node, "An empty array literal has no item type.", "Use a declared list (w.board, w.pool(name)), or write the items out.");
     return bad(node);

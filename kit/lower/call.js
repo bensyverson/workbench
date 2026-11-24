@@ -165,7 +165,7 @@ export function reachable(sigs, from) {
  * @returns {import("./environment.js").ArgSite}
  */
 function siteOf(L, a) {
-  return { slot: L.slot.id, line: L.lines.at(a.range[0]).line, range: [a.range[0], a.range[1]] };
+  return { slot: L.slot.id, on: L.slot.on, line: L.lines.at(a.range[0]).line, range: [a.range[0], a.range[1]] };
 }
 
 /**
@@ -180,7 +180,7 @@ function siteOf(L, a) {
  * @returns {Expr}
  */
 function argument(L, a, i, sig, what) {
-  const conflict = sig?.conflicts?.find((c) => c.param === i && c.slot === L.slot.id && c.range[0] === a.range[0] && c.range[1] === a.range[1]);
+  const conflict = sig?.conflicts?.find((c) => c.param === i && c.slot === L.slot.id && c.on === L.slot.on && c.range[0] === a.range[0] && c.range[1] === a.range[1]);
   if (conflict) {
     const e = expr(L, a);
     L.error("L014", a, conflict.message, conflict.tip);
@@ -202,8 +202,8 @@ function argument(L, a, i, sig, what) {
 function methodCall(L, node, r, owner, name, args) {
   const key = `${owner}.${name}`;
   const sig = L.sigs.methods[key];
-  if (sig && args.length !== sig.params.length) {
-    L.error("L015", node, `${key} got ${args.length} arguments.`, `${key} takes ${sig.params.length}.`);
+  if (sig && args.length !== sig.arity) {
+    L.error("L015", node, `${key} got ${args.length} arguments.`, `${key} takes ${sig.arity}.`);
     return bad(node);
   }
   // Both are reported without bailing out, so the call is still recorded and the next pass sees the same call graph.
@@ -235,8 +235,8 @@ function methodCall(L, node, r, owner, name, args) {
 function helperCall(L, node, name, args) {
   const key = `${HELPER_OWNER}.${name}`;
   const sig = L.sigs.methods[key];
-  if (sig && args.length !== sig.params.length) {
-    L.error("L015", node, `${name} got ${args.length} argument${args.length === 1 ? "" : "s"}.`, `${name} takes ${sig.params.length}.`);
+  if (sig && args.length !== sig.arity) {
+    L.error("L015", node, `${name} got ${args.length} argument${args.length === 1 ? "" : "s"}.`, `${name} takes ${sig.arity}.`);
     return bad(node);
   }
   const self = L.slot.kind === "method" || L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;

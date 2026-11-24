@@ -13,8 +13,8 @@ export type Type =
   | "f64" | "bool" | "str" | "null" | "void"
   /** The type of an expression that already failed to lower; it silences cascades. */
   | "unknown"
-  /** One of a fixed set of strings: sprite names, choice options, buttons. */
-  | { enum: string[] }
+  /** One of a fixed set of strings: sprite names, choice options, buttons. `declared` marks a dialect's enum, which is nominal; the enum of a string literal has no mark. */
+  | { enum: string[]; declared?: true }
   /** A live entity of this kind. */
   | { ref: string }
   /** A value that may be empty (null or undefined at run time). */

@@ -13,6 +13,7 @@ import { LineTable } from "../parse/lexer.js";
  * @property {string} name   The unique IR name.
  * @property {Type} t
  * @property {Local["kind"]} kind
+ * @property {true} [dead]  In its temporal dead zone: declared, but its initializer is still running.
  * @property {{ code: LowerCode, message: string, tip: string }} [pending]  Reported at the first use: a type lowering could not infer.
  */
 
@@ -127,6 +128,29 @@ export class Lowerer {
    */
   alias(source, b) { this.scopes[this.scopes.length - 1].set(source, b); }
 
+  /**
+   * Runs `fn` with `names` declared but not yet initialized, as JavaScript has them while a
+   * declaration's own initializer runs: a read of one is an error, never of an outer name.
+   * @template R
+   * @param {string[]} names
+   * @param {() => R} fn
+   * @returns {R}
+   */
+  deadZone(names, fn) {
+    this.scopes.push(new Map());
+    this.hoist(names);
+    try { return fn(); } finally { this.scopes.pop(); }
+  }
+
+  /**
+   * Declares `names` in the current scope as dead, until `declare` replaces each with its real binding.
+   * @param {string[]} names
+   */
+  hoist(names) {
+    const scope = this.scopes[this.scopes.length - 1];
+    for (const n of names) scope.set(n, { name: n, t: /** @type {Type} */ ("unknown"), kind: /** @type {Local["kind"]} */ ("const"), dead: true });
+  }
+
   /** @param {string} source */
   lookup(source) {
     for (let i = this.scopes.length - 1; i >= 0; i--) {
@@ -219,7 +243,8 @@ export class Lowerer {
   checkEffects(effects, span) {
     for (const effect of effects) {
       const verb = /** @type {EffectVerb} */ (effect.split(" ")[0]);
-      if (this.pure > 0 && !PURE.has(verb)) {
+      // `call` only marks that a program function was called; the callee's own effects are listed beside it and judged here.
+      if (this.pure > 0 && !PURE.has(verb) && verb !== "call") {
         this.error("L006", span, `A query callback must be pure, but this has the effect '${effect}'.`, "Keep callbacks pure: compute the effect after the query, from its result.");
       }
       if (this.decl.forbid.includes(verb)) {

@@ -18,6 +18,8 @@ const spanOf = (n) => [n.range[0], n.range[1]];
  * @param {AST.Statement[]} body
  */
 export function statements(L, body) {
+  // A block's names are dead from its first statement until their declarations run, as in JavaScript.
+  L.hoist(body.flatMap((s) => (s.type === "VariableDeclaration" ? s.declarations.flatMap((d) => patternNames(d.id)) : [])));
   for (const s of body) statement(L, s);
 }
 
@@ -105,7 +107,7 @@ function declaration(L, node) {
 function forOf(L, node) {
   const decl = node.left.type === "VariableDeclaration" && node.left.declarations.length === 1 ? node.left : null;
   const target = decl?.declarations[0].id ?? null;
-  const list = expr(L, node.right);
+  const list = L.deadZone(target ? patternNames(target) : [], () => expr(L, node.right));
   /** @type {Type} */
   let item = "unknown";
   let max = 0;

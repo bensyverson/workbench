@@ -153,6 +153,10 @@ test("tuple destructuring takes items by index, each possibly empty", () => {
 test("an unchecked tuple item is L008, and a hole skips an item", () => {
   const r = lower("(self, w) => { const [, b] = w.board; b.up = true; }", "onFrame", "Hammer");
   assert.deepEqual(codes(r), ["L008"]);
+  const checked = lower("(self, w) => { const [, b] = w.board; if (b) b.up = true; }", "onFrame", "Hammer");
+  assert.deepEqual(codes(checked), []);
+  const b = checked.kernel?.body.find((s) => s.k === "let" && s.name === "b");
+  assert.ok(b?.k === "let" && b.value?.k === "index" && b.value.index.k === "num" && b.value.index.v === 1, "b is the item at index 1: the hole skipped index 0");
 });
 
 test("tuple destructuring of something that is not a list is L003", () => {

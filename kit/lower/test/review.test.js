@@ -119,3 +119,56 @@ test("present tests a possibly-empty entity; any other value tests truthiness", 
   ]);
   assert.deepEqual(ops(/** @type {Kernel} */ (prog.results[1].kernel)), ["truthy"]);
 });
+
+test("a name read in its own temporal dead zone is rejected, where it would read the outer name", () => {
+  for (const src of [
+    "(self, w) => { const x = { a: 1 }; { const { a: x } = x; self.ttl = x; } }",
+    "(self, w) => { const x = [4, 5]; { const [x] = x; if (!x) return; self.ttl = x; } }",
+    "(self, w) => { const m = [1]; for (const m of m) { self.ttl = m; } }",
+    "(self, w) => { const x = 1; { const x = x + 1; self.ttl = x; } }",
+    "(self, w) => { const x = x + 1; self.ttl = x; }",
+    "(self, w) => { const { a, b: c } = { a: 1, b: a }; self.ttl = c; }",
+  ]) {
+    const r = lower(src);
+    assert.equal(r.ok, false, src);
+    assert.deepEqual(codes(r), ["L001"], src);
+    assert.match(r.diagnostics[0].message, /before|initializer|its own/, src);
+  }
+});
+
+test("a callback parameter or a later declaration may reuse a name that is still being declared", () => {
+  for (const src of [
+    "(self, w) => { const m = w.board.find((m) => m.up); if (!m) return; self.ttl = m.ttl; }",
+    "(self, w) => { const x = 1; const y = x + 1; self.ttl = y; }",
+    "(self, w) => { const x = 1; { const x = 2; self.ttl = x; } }",
+    "(self, w) => { for (const m of w.board) { self.ttl = m.ttl; } }",
+  ]) assert.deepEqual(codes(lower(src)), [], src);
+});
+
+test("the dead zone runs from the start of the block: a read before a later declaration never reads an outer name", () => {
+  for (const src of [
+    "(self, w) => { const x = 1; { const y = x + 1; const x = 2; self.ttl = y + x; } }",
+    "(self, w) => { const b = 5; { const a = b, b = 1; self.ttl = a + b; } }",
+    "(self, w) => { const n = 3; { const m = w.board.find((e) => e.ttl > n); const n = 1; if (!m) return; self.ttl = n; } }",
+    "(self, w) => { const x = 1; { { self.ttl = x; } const x = 2; } }",
+    "(self, w) => { const x = 1; { for (const m of w.board) { self.ttl = x + m.ttl; } const x = 2; } }",
+    "(self, w) => { self.ttl = x; const x = 1; }",
+  ]) {
+    const r = lower(src);
+    assert.equal(r.ok, false, src);
+    assert.deepEqual(codes(r), ["L001"], src);
+    assert.match(r.diagnostics[0].message, /before its declaration finishes/, src);
+  }
+});
+
+test("blocks keep their own names: siblings do not interfere, later reads are fine, and let and narrowing still work", () => {
+  for (const src of [
+    "(self, w) => { { const x = 1; self.ttl = x; } { const x = 2; self.ttl = self.ttl + x; } }",
+    "(self, w) => { const x = 1; { const x = 2; self.ttl = x; } self.ttl = self.ttl + x; }",
+    "(self, w) => { { const x = 1; self.ttl = x; } const x = 2; self.ttl = self.ttl + x; }",
+    "(self, w) => { let x = 0; if (self.up) { x = 5; } self.ttl = x; }",
+    "(self, w) => { const m = w.rng.pick(w.board); if (!m) return; const y = m.ttl; self.ttl = y; }",
+  ]) {
+    assert.deepEqual(codes(lower(src)), [], src);
+  }
+});

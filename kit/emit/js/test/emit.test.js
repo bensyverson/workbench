@@ -103,7 +103,7 @@ test("a counted loop with break, spawn, struct literals and a postfix value", ()
 
 test("method calls, emits and draw results pass through to the host", () => {
   /** @type {Signatures} */
-  const sigs = { events: {}, methods: { "Mole.pop": { params: [], returns: "void", effects: [] } } };
+  const sigs = { events: {}, methods: { "Mole.pop": { arity: 0, params: [], returns: "void", effects: [] } } };
   const { fn } = emit("(self, w) => { if (!self.up && (w.frame + self.stay) % 150 === 0) self.pop(); w.emit(\"whack\", { cell: self.ttl }); }", "onFrame", "Mole", { sigs });
   /** @type {unknown[]} */
   const log = [];

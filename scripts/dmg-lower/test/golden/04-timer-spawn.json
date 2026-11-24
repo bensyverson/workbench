@@ -32,7 +32,7 @@
             "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [23, 24] },
             "args": [{ "k": "str", "v": "order", "t": { "enum": ["order"] }, "span": [31, 38] }],
             "effects": ["read param order"],
-            "t": { "enum": ["random", "sweep"] },
+            "t": { "enum": ["random", "sweep"], "declared": true },
             "span": [23, 39]
           },
           { "k": "str", "v": "sweep", "t": { "enum": ["sweep"] }, "span": [44, 51] }

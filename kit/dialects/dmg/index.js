@@ -2,6 +2,8 @@
 // `w` and the HUD's `at` offer a runtime lambda, with types and effects, and the
 // calling convention of every slot. Built per program from its declarations.
 
+import { dialectEnum } from "../../ir/types.js";
+
 /** @import { Type, Coerce, Effect, EffectVerb } from "../../ir/ir.js" */
 /** @import { Environment, ObjectDecl, Member, SlotDecl, SlotRef, FnSig } from "../../lower/environment.js" */
 /** @import { DmgDeclarations, AttrDecl } from "./decls.js" */
@@ -50,7 +52,7 @@ function attrType(a) {
   if (a.min != null) store.min = a.min;
   if (a.max != null) store.max = a.max;
   if (a.type === "enum") store.values = a.values ?? [];
-  const t = a.type === "bool" ? BOOL : a.type === "enum" ? { enum: a.values ?? [] } : F64;
+  const t = a.type === "bool" ? BOOL : a.type === "enum" ? dialectEnum(a.values ?? []) : F64;
   return { t, store };
 }
 
@@ -76,7 +78,7 @@ export function dmgEnvironment(d) {
       visible: value(BOOL, `read ${kind}.visible`, { type: "bool" }),
       alive: value(BOOL, `read ${kind}.alive`, { type: "bool" }),
       id: value(F64), index: value(F64), row: value(F64), col: value(F64),
-      group: value("str"), kind: value({ enum: [kind] }),
+      group: value("str"), kind: value(dialectEnum([kind])),
       world: value(W),
       destroy: fn([], VOID, [`destroy ${kind}`]),
       hits: fn([anyEntity], BOOL, [`read ${kind}.x`]),
@@ -114,7 +116,7 @@ export function dmgEnvironment(d) {
       keys: Object.fromEntries(Object.entries(d.params).map(([name, p]) => {
         const opts = p.options ?? [];
         /** @type {Type} */
-        const t = p.kind === "toggle" ? BOOL : p.kind === "choice" && opts.every((o) => typeof o === "string") ? { enum: /** @type {string[]} */ (opts) } : F64;
+        const t = p.kind === "toggle" ? BOOL : p.kind === "choice" && opts.every((o) => typeof o === "string") ? dialectEnum(/** @type {string[]} */ (opts)) : F64;
         return [name, { params: [], returns: t }];
       })),
     },
@@ -147,7 +149,7 @@ export function dmgEnvironment(d) {
   for (const m of d.world.methods) world[m] = { kind: "method", owner: WORLD, name: m };
   objects[WORLD] = { label: "the world", members: world };
 
-  const buttons = /** @type {Type} */ ({ enum: BUTTONS });
+  const buttons = /** @type {Type} */ (dialectEnum(BUTTONS));
   const xy = /** @type {Type} */ ({ struct: { x: F64, y: F64 } });
   objects.Input = {
     label: "w.input",
@@ -212,7 +214,7 @@ export function dmgEnvironment(d) {
 
   /** @param {string} kind @returns {Type} */
   const drawResult = (kind) => {
-    const sprites = { enum: d.comps[kind]?.sprites ?? [] };
+    const sprites = dialectEnum(d.comps[kind]?.sprites ?? []);
     return { union: [sprites, { struct: { sprite: sprites, x: F64, y: F64, flipX: BOOL, flipY: BOOL }, optional: ["sprite", "x", "y", "flipX", "flipY"] }, "null"] };
   };
 
@@ -264,7 +266,7 @@ function slotOf(ref, d, drawResult) {
     case "on": return slot({ params: isWorld ? [W, "payload"] : [self, "payload", W], returns: VOID, space: `event ${ref.key}` });
     case "timer": return slot({ params: [W, W], returns: VOID, space: "tick" });
     case "done": return slot({ params: [W, W], returns: BOOL, space: "tick" });
-    case "bot": return slot({ params: [W, W], returns: { union: [{ enum: BUTTONS }, "null"] }, space: "tick" });
+    case "bot": return slot({ params: [W, W], returns: { union: [dialectEnum(BUTTONS), "null"] }, space: "tick" });
     case "every": case "after":
       return slot({ params: [W], returns: F64, space: "timer interval", forbid: [...STATE_CHANGES, "hud"], forbidWhy: "a timer's interval is read whenever it re-arms" });
     case "hud":

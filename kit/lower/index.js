@@ -25,6 +25,7 @@ export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
  * @property {Type} returns  What it returns (inferred for methods), even when it failed.
  * @property {Effect[]} effects
  * @property {Type[]} params  Its parameters' types.
+ * @property {number | null} arity  The parameters it declares after the slot's own; null when it did not parse.
  */
 
 /**
@@ -45,7 +46,7 @@ const PARAM_NAMES = /** @type {Record<string, string>} */ ({ World: "w", At: "at
  * @returns {LowerResult}
  */
 export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
-  const failed = (/** @type {Diagnostic[]} */ diagnostics) => ({ ok: false, kernel: null, diagnostics, emits: [], calls: [], returns: /** @type {Type} */ ("unknown"), effects: [], params: [] });
+  const failed = (/** @type {Diagnostic[]} */ diagnostics) => ({ ok: false, kernel: null, diagnostics, emits: [], calls: [], returns: /** @type {Type} */ ("unknown"), effects: [], params: [], arity: null });
   const parsed = parseLambda(src);
   if (!parsed.ok) return failed(parsed.diagnostics);
   const subset = checkSubset(parsed.ast, src);
@@ -65,7 +66,7 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
     ir: "kernel", name: slot.id, slot: slot.kind, space: decl.space,
     params, returns, locals: L.locals.filter((l) => l.kind !== "param"), body, effects, src, span: [ast.range[0], ast.range[1]],
   };
-  return { ok: !L.failed, kernel, diagnostics, emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t) };
+  return { ok: !L.failed, kernel, diagnostics, emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t), arity: Math.max(0, ast.params.length - decl.params.length) };
 }
 
 /**
@@ -224,8 +225,10 @@ function infer(lambdas, results, decls) {
   const callArgs = {};
   for (const r of results) {
     for (const e of r.emits) if (!(e.name in sigs.events)) sigs.events[e.name] = e.t;
-    for (const c of r.calls) (callArgs[c.key] ??= []).push(c);
   }
+  // A call site counts only when the code it is in is reached from a runtime lambda, so an unreached helper decides nothing.
+  const live = liveCalls(lambdas, results);
+  for (const r of results) for (const c of r.calls) if (live.has(c)) (callArgs[c.key] ??= []).push(c);
   /** @type {Record<string, boolean>} */
   const failed = {};
   lambdas.forEach((l, i) => {
@@ -233,12 +236,38 @@ function infer(lambdas, results, decls) {
     const key = `${l.slot.on}.${l.slot.key}`;
     const r = results[i];
     const calls = [...new Set(r.calls.map((c) => c.key))];
-    const { params, conflicts } = joinCallSites(callArgs[key] ?? [], key);
-    sigs.methods[key] = { params, ...(conflicts.length ? { conflicts } : {}), returns: r.returns, effects: r.effects, ...(calls.length ? { calls } : {}) };
+    const arity = r.arity ?? callArgs[key]?.[0]?.args.length ?? 0;
+    const { params, conflicts } = joinCallSites(callArgs[key] ?? [], key, arity);
+    sigs.methods[key] = { arity, params, ...(conflicts.length ? { conflicts } : {}), returns: r.returns, effects: r.effects, ...(calls.length ? { calls } : {}) };
     failed[key] = !r.ok;
   });
   for (const [key, sig] of Object.entries(sigs.methods)) {
     if (reachable(sigs, key).some((k) => failed[k] ?? true)) sig.partial = true;
   }
   return sigs;
+}
+
+/**
+ * The call sites in code a runtime lambda reaches: those of every lambda that is not a
+ * method or helper, and, transitively, of each method or helper those call.
+ * @param {Array<{ slot: SlotRef }>} lambdas
+ * @param {LowerResult[]} results
+ * @returns {Set<CallSite>}
+ */
+function liveCalls(lambdas, results) {
+  const callable = (/** @type {SlotRef} */ s) => s.kind === "method" || s.kind === "helper";
+  const byKey = new Map(lambdas.flatMap((l, i) => (callable(l.slot) ? [[`${l.slot.on}.${l.slot.key}`, results[i]]] : [])));
+  /** @type {Set<CallSite>} */
+  const live = new Set();
+  /** @type {LowerResult[]} */
+  const stack = lambdas.flatMap((l, i) => (callable(l.slot) ? [] : [results[i]]));
+  const done = new Set(stack);
+  while (stack.length) {
+    for (const c of /** @type {LowerResult} */ (stack.pop()).calls) {
+      live.add(c);
+      const callee = byKey.get(c.key);
+      if (callee && !done.has(callee)) { done.add(callee); stack.push(callee); }
+    }
+  }
+  return live;
 }

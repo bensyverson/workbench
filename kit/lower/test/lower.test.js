@@ -62,7 +62,7 @@ test("statements record their effects and the kernel sums them", () => {
 
 test("every node carries a type and a span inside the source", () => {
   const src = "(self, w) => {\n  if (self.rise) self.rise--;\n  if (!self.up && (w.frame + self.stay) % 150 === 0) self.pop();\n}";
-  const k = ok(src, "onFrame", "Mole", { sigs: { events: {}, methods: { "Mole.pop": { params: [], returns: "void", effects: ["write Mole.up"] } } } });
+  const k = ok(src, "onFrame", "Mole", { sigs: { events: {}, methods: { "Mole.pop": { arity: 0, params: [], returns: "void", effects: ["write Mole.up"] } } } });
   const all = nodes(k.body);
   assert.ok(all.length > 10);
   for (const n of all) {
@@ -104,7 +104,7 @@ test("compound assignment loads, operates and stores through the coercion of the
 });
 
 test("a world attribute store carries the attribute's bounds", () => {
-  const k = ok("(w, pts) => { w.score = w.score + pts; }", "method", "World", { key: "award", sigs: { events: {}, methods: { "World.award": { params: ["f64"], returns: "void", effects: [] } } } });
+  const k = ok("(w, pts) => { w.score = w.score + pts; }", "method", "World", { key: "award", sigs: { events: {}, methods: { "World.award": { arity: 1, params: ["f64"], returns: "void", effects: [] } } } });
   const s = k.body[0];
   if (s.k !== "store") return assert.fail();
   assert.deepEqual(s.place.store, { type: "u16", max: 9999 });
@@ -180,7 +180,7 @@ test("Math intrinsics are pure calls on doubles", () => {
 
 test("a method call on an entity records the call and the callee's effects", () => {
   /** @type {import("../environment.js").Signatures} */
-  const sigs = { events: {}, methods: { "Mole.whack": { params: [], returns: "bool", effects: /** @type {import("../../ir/ir.js").Effect[]} */ (["write Mole.up"]) } } };
+  const sigs = { events: {}, methods: { "Mole.whack": { arity: 0, params: [], returns: "bool", effects: /** @type {import("../../ir/ir.js").Effect[]} */ (["write Mole.up"]) } } };
   const k = ok("(w, e) => { if (w.board.at(e.cell).whack()) w.toast(\"WHACK\", \"+100\"); }", "on", "World", { key: "whack", sigs: { ...sigs, events: { whack: { struct: { cell: "f64" } } } } });
   assert.ok(k.effects.includes("call Mole.whack"));
   assert.ok(k.effects.includes("write Mole.up"));

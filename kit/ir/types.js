@@ -85,9 +85,10 @@ export function join(a, b) {
 
 /**
  * The one type of two values that must share one, by a closed list, or null when they do
- * not: the same type; two string literals or enums, giving the enum of both; a string
- * literal or enum and `str`, giving `str`; a value and null (or a possibly-empty value),
- * giving possibly empty. Dialect, entity and struct types join only with themselves, and
+ * not: the same type; two string literals, giving the enum of both; a dialect enum and a
+ * literal that is one of its members, giving the dialect enum; a string literal or enum and
+ * `str`, giving `str`; a value and null (or a possibly-empty value), giving possibly empty.
+ * Dialect enums, entity and struct types join only with themselves, `void` joins with nothing, and
  * `unknown` (an error already reported) yields to the other side. Unlike `join` it never
  * falls back to a union, which is why call-site parameters and array items use it.
  * @param {Type} a
@@ -97,6 +98,8 @@ export function join(a, b) {
 export function strictJoin(a, b) {
   if (a === "unknown") return b;
   if (b === "unknown" || sameType(a, b)) return a;
+  // A void value is not a value: it never becomes a parameter's type, not even as possibly empty.
+  if (a === "void" || b === "void") return null;
   const isOpt = (/** @type {Type} */ t) => typeof t === "object" && "opt" in t;
   const inner = (/** @type {Type} */ t) => (typeof t === "object" && "opt" in t ? t.opt : t);
   if (a === "null" || b === "null" || isOpt(a) || isOpt(b)) {
@@ -105,10 +108,37 @@ export function strictJoin(a, b) {
     const both = rest.length === 2 ? strictJoin(rest[0], rest[1]) : rest[0];
     return both === null ? null : optional(both);
   }
-  if (typeof a === "object" && typeof b === "object" && "enum" in a && "enum" in b) return { enum: [...new Set([...a.enum, ...b.enum])].sort() };
+  if (typeof a === "object" && typeof b === "object" && "enum" in a && "enum" in b) return joinEnums(a, b);
   if (a === "str" && typeof b === "object" && "enum" in b) return "str";
   if (b === "str" && typeof a === "object" && "enum" in a) return "str";
   return null;
+}
+
+/**
+ * Two enums by the strict list. Enums built of string literals give the enum of every
+ * member. A dialect enum is nominal: a literal enum meets it by membership (and gives it),
+ * and two dialect enums join only when they have the same members.
+ * @param {{ enum: string[], declared?: true }} a
+ * @param {{ enum: string[], declared?: true }} b
+ * @returns {Type | null}
+ */
+function joinEnums(a, b) {
+  const within = (/** @type {string[]} */ x, /** @type {string[]} */ y) => x.every((v) => y.includes(v));
+  if (a.declared && b.declared) return within(a.enum, b.enum) && within(b.enum, a.enum) ? a : null;
+  if (a.declared) return within(b.enum, a.enum) ? a : null;
+  if (b.declared) return within(a.enum, b.enum) ? b : null;
+  return { enum: [...new Set([...a.enum, ...b.enum])].sort() };
+}
+
+/**
+ * A dialect's enum: a closed set the dialect declares (sprite names, choice options,
+ * buttons, an entity's kind). Marked `declared`, which is how it differs from the enum of
+ * a string literal; see `strictJoin`.
+ * @param {string[]} values
+ * @returns {Type}
+ */
+export function dialectEnum(values) {
+  return { enum: values, declared: true };
 }
 
 /**

@@ -107,6 +107,8 @@ export interface HelperSource {
 /** Where one argument of a call is: its lambda, its line there, and its range in that lambda's source. */
 export interface ArgSite {
   slot: string;
+  /** The slot's owner. A lambda shared by several kinds has one slot id and one site per owner. */
+  on: string;
   line: number;
   range: [number, number];
 }
@@ -130,6 +132,8 @@ export interface SiteConflict extends ArgSite {
 
 /** A program method's signature, inferred from its body and its call sites. */
 export interface MethodSig {
+  /** How many parameters it declares after the slot's own; a call with another count is L015. */
+  arity: number;
   /** The strict join of the call sites' argument types, one per parameter. */
   params: Type[];
   /** The call sites that disagree with `params`; each is reported where it is. */

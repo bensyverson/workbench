@@ -154,3 +154,11 @@ test("a not-empty item is usable without a check, and the emitted code still rea
   const k = ok("(self, w) => { const [ox, oy] = [3, 2]; w.score = ox * 10 + oy; }");
   assert.ok(k.body.length > 0);
 });
+
+test("an array literal with a hole is a diagnostic, not a crash", () => {
+  /** @type {ReturnType<typeof lower> | undefined} */
+  let r;
+  assert.doesNotThrow(() => { r = lower("(self, w) => { const l = [1, , 2]; self.ttl = l.length; }"); });
+  assert.deepEqual(codes(/** @type {ReturnType<typeof lower>} */ (r)), ["L012"]);
+  assert.match(/** @type {ReturnType<typeof lower>} */ (r).diagnostics[0].message, /hole/i);
+});

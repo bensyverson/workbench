@@ -146,3 +146,38 @@ test("emitted helpers run, and a caller sees them through its scope", () => {
   caller(self, {});
   assert.equal(self.ttl, (4 + 1) * 2 + 7);
 });
+
+/** @param {ReturnType<typeof lowerProgram>} r */
+const lambdaErrors = (r) => r.results.map((x) => x.diagnostics.filter((d) => d.severity === "error").map((d) => d.code));
+
+test("a pure helper may be called inside a query callback; one with an effect may not", () => {
+  const pure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(x) => x * 2")]);
+  assert.deepEqual(lambdaErrors(pure)[0], []);
+  const impure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(o) => { o.ttl = 1; return 1; }")]);
+  assert.deepEqual(lambdaErrors(impure)[0], ["L006"]);
+  const unknown = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(x) => nope")]);
+  assert.deepEqual(lambdaErrors(unknown)[0], ["L014"], "a helper that does not lower is still unknown");
+});
+
+test("a list or struct value has no identity: === and !== on one are L003, baked or not", () => {
+  for (const [c, src] of /** @type {const} */ ([
+    [konst("D", "[1, 2]"), "(self) => { self.up = D === D; }"],
+    [konst("D", "{ x: 1 }"), "(self) => { self.up = D === D; }"],
+    [konst("D", "[1, 2]"), "(self) => { self.up = D !== D; }"],
+    [konst("D", "[1, 2]"), "(self) => { self.up = D === [1, 2]; }"],
+    [konst("D", "{ x: 1 }"), "(self) => { self.up = { x: 1 } === D; }"],
+    [konst("D", "1"), "(self, w) => { self.up = w.board === w.board; }"],
+  ])) {
+    const r = lowerProgram(environment, [frame(src)], [c]);
+    assert.deepEqual(lambdaErrors(r)[0], ["L003"], src);
+    assert.match(r.results[0].diagnostics[0].tip, /fields/, "the tip says what to compare");
+  }
+});
+
+test("a baked list or struct constant's items and fields still compare", () => {
+  const r = lowerProgram(environment, [frame("(self) => { self.up = D[0] === 1 && E.x === 1 && D.length === 2; }")], [konst("D", "[1, 2]"), konst("E", "{ x: 1 }")]);
+  assert.deepEqual(lambdaErrors(r)[0], []);
+  const s = { up: false };
+  instantiate(emitKernel(/** @type {import("../../ir/ir.js").Kernel} */ (r.results[0].kernel)))(s, {});
+  assert.equal(s.up, true);
+});
