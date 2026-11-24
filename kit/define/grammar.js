@@ -32,6 +32,8 @@ export class BuildError extends Error {
 const PROBES = new Set(PROBE_LIST);
 /** The namespace unit names (.fn, .const) declare into, beside the Dialect's own names. */
 const UNITS = "\0unit";
+/** The namespace every stateful construct instance's name is in, whatever its construct. */
+const STATES = "\0state";
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 
 /**
@@ -92,6 +94,7 @@ class Program {
     const inst = { construct: c, opened, parent, children: [], calls: [], loc: at.loc, file: at.file };
     this.report(f.errors, c.name, at);
     specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") this.declare(/** @type {T.NameTag} */ (s), c.name, made[i], at, true); });
+    if (c.def.state) this.declareState(c, String(opened.name ?? c.name), at);
     /** @type {Call} */
     const call = { slot: "(opens)", args: made, loc: at.loc, file: at.file, found: f };
     this.track(call, at);
@@ -120,6 +123,18 @@ class Program {
       const dialect = spec === null && this.g.dialect.library.some((u) => u.name === value) ? "the Library" : spec === null && this.ownNames().has(value) ? `the ${this.g.dialect.name} Dialect` : null;
       this.diagnostics.push(diag("B002", dialect ? `'${value}' is already defined by ${dialect}; a second one would replace it${dialect === "the Library" ? " inside the Library too" : ""}` : `'${value}' is already declared${ns === UNITS ? " as a helper or constant" : ` as a ${ns}`}`, `rename it`, at));
     } else set.add(value);
+  }
+
+  /**
+   * Declares a stateful instance's name; B002 when another stateful instance has it, since stateOf(name) and
+   * `states` find an instance by name alone.
+   * @param {Construct} c @param {string} value @param {{ file: string, loc: Loc }} at
+   */
+  declareState(c, value, at) {
+    const set = this.names.get(STATES) ?? new Set();
+    this.names.set(STATES, set);
+    if (set.has(value)) this.diagnostics.push(diag("B002", `'${value}' already names a construct with state; stateOf('${value}') could not tell the two apart`, `rename this ${c.name}`, at));
+    else set.add(value);
   }
 
   /** The Dialect's own names, which units may not take. */
