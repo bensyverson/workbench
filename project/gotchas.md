@@ -25,3 +25,7 @@ The survey agent (job 4ZsFh5) found every command refused as "too complex to ver
 ## 2026-11-24: a subagent's Write of a file named like a report may be refused
 
 In dogfood trial 1 the harness refused two of three agents' Write of `REPORT.md` ("Subagents should return findings as text, not write report files"); one wrote it with a shell heredoc, one returned it as text for the main thread to save. When a trial's hand-in includes a report file, tell the agent in the brief to write it with a shell heredoc if Write is refused, or have it return the report and save it yourself. In trial 2 (2026-11-24) the brief gave the heredoc fallback word for word, and the Haiku agent still returned the report as text: plan to save a returned report yourself, and mark it as saved by the integrator.
+
+## 2026-11-24: a subagent launched in the repo cannot be blind to our design
+
+The architecture consult's blind pass (leaf `Cy9u98`) was told not to read `project/` or `kit/`, but it still turned up many repo files: every agent started in the checkout auto-loads `AGENTS.md`, whose overview and doc list name the current design, and file searches walk the tree. For a truly independent design, copy the allowed inputs into a scratch directory outside the repo, start the agent there, and say so in the brief; a "do not read" list is not isolation.
