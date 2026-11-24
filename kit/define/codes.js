@@ -44,6 +44,7 @@ export const BUILD_CODES = Object.freeze({
   B012: "A top-level binding a lambda reads that is neither the arrow function its declaration writes nor plain data",
   B013: "A free name the file declares only inside build-time code, not at its top level",
   B014: "A member of the params known only at run time (fields' u.t), read by build-time code",
+  B015: "The params read by build-time code other than by name ($.name): with in, a spread, Object.keys, JSON.stringify or a rest pattern",
 });
 
 /** Letters a Dialect's own check codes may not start with. */

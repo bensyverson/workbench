@@ -2,7 +2,7 @@
 // builder has its slots, its child constructs and (forwarded) its ancestors' methods; an unknown method
 // throws B001 at once, everything else is collected with the call site and thrown by `.build()`.
 
-import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST } from "./validate-grammar.js";
+import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST, OBJECT_PROBES } from "./validate-grammar.js";
 import { refuse, isDialect } from "./dialect.js";
 import { didYouMean, dialectError } from "./codes.js";
 import { TAG, kindOf } from "./tags.js";
@@ -12,7 +12,7 @@ import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
 import { freeNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 import { unitOf, PLAIN } from "./scope.js";
-import { noteRoot, noteCall } from "./params.js";
+import { noteRoot, noteCall, noteConvention } from "./params.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Found } from "./shapes.js" */
@@ -70,6 +70,7 @@ export function defineGrammar(dialect, def) {
   for (const c of Object.values(cs)) for (let a = /** @type {Construct | null} */ (c); a; a = a.parent) c.rejected = { ...(a.def.rejected ?? {}), ...c.rejected };
   /** @type {Compiled} */
   const g = { dialect, def: /** @type {Record<string, any>} */ (def), constructs: cs, root: cs[def.root] };
+  noteConvention(dialect.def.params);
   const builder = (/** @type {unknown[]} */ ...args) => new Program(g).open(g.root, null, args, callSite());
   return Object.assign(builder, {
     dialect,
@@ -192,10 +193,22 @@ class Program {
   /** The params declared so far, by name: each declaration, its `value` the default (for run). */
   declared() {
     const slot = this.paramSlot();
-    /** @type {Map<string, Record<string, unknown>>} */
+    /** @type {Map<string, unknown>} */
     const out = new Map();
-    for (const c of this.root?.calls ?? []) if (slot !== undefined && c.slot === slot && typeof c.args[0] === "string") out.set(c.args[0], /** @type {Record<string, unknown>} */ (c.args[1]));
+    for (const c of this.root?.calls ?? []) if (slot !== undefined && c.slot === slot && typeof c.args[0] === "string") out.set(c.args[0], c.args[1]);
     return out;
+  }
+
+  /**
+   * Puts the host's values into the params' declarations, so the record says what was built (run checked them).
+   * @param {Record<string, unknown>} values
+   */
+  useValues(values) {
+    const slot = this.paramSlot();
+    for (const c of this.root?.calls ?? []) {
+      const [n, decl] = c.args;
+      if (slot !== undefined && c.slot === slot && typeof n === "string" && Object.hasOwn(values, n) && decl !== null && typeof decl === "object") c.args = [n, { ...decl, value: values[n] }, ...c.args.slice(2)];
+    }
   }
 
   /** The root slot that declares params, if the Grammar names one. @returns {string | undefined} */
@@ -248,6 +261,10 @@ class Program {
       const m = matchArgs(specs, args);
       for (const e of m.found.errors) Object.assign(e, valueNotLambda(e, args, slot));
       this.report(m.found.errors, `${what}, .${slot}`, at);
+      if (inst === this.root && slot === this.paramSlot() && typeof args[0] === "string" && PROBES.has(args[0]) && !OBJECT_PROBES.includes(args[0])) {
+        const via = this.dialectParams()?.name ?? "$";
+        this.diagnostics.push(diag("B004", `${what}, .${slot}: '${args[0]}' cannot name a param: runtimes and test libraries probe it on every object, so ${via}.${args[0]} would not read the param`, `rename the param, .${slot}("${args[0]}Value", …)`, at, { arg: 0 }));
+      }
       specs.forEach((sp, i) => { if (sp[TAG] === "name" && typeof m.args[i] === "string") this.declare(/** @type {T.NameTag} */ (sp), c.name, /** @type {string} */ (m.args[i]), at); else if (sp[TAG] === "name" && i < args.length) this.diagnostics.push(diag("B004", `${what}, .${slot}: argument ${i + 1} must be a name (a string), not ${typeof args[i]}`, `.${slot}("name", …)`, at)); });
       call = { slot, args: m.args, loc: at.loc, file: at.file, found: m.found };
       this.track(call, at);

@@ -67,9 +67,9 @@ test("lower() gives each param's binding time, and bindingText prints one line p
   assert.deepEqual(out.params.unused, { build: [], kernels: [], live: true });
   const text = bindingText(out).split("\n");
   assert.equal(text.length, 4);
-  assert.match(text[0], /^topN\s+folded at build, read by t\.limit#1 \(binding-time\.test\.js:\d+\)$/);
+  assert.match(text[0], /^topN\s+folded at build, read at binding-time\.test\.js:\d+ \(before t\.limit#1\)$/);
   assert.match(text[1], /^minUnits\s+uniform, read by t\.filter#0$/);
-  assert.match(text[2], /^both\s+folded at build, read by t\.limit#1 \(binding-time\.test\.js:\d+\); also read by t\.filter#0$/);
+  assert.match(text[2], /^both\s+folded at build, read at binding-time\.test\.js:\d+ \(before t\.limit#1\); also read by t\.filter#0$/);
   assert.match(text[3], /^unused\s+uniform, not read$/);
 });
 

@@ -39,7 +39,11 @@ export function checkExport(file, exported) {
   const refused = REFUSED.test(src.split("\n")[0].trimEnd());
   // Outside a "type": "module" package a file with no ESM syntax loads as CommonJS, whose default is {}.
   if (!/\bexport\b/.test(src)) exported = undefined;
-  if (typeof exported === "function") return /** @type {(params: any) => unknown} */ (exported);
+  if (typeof exported === "function" && exported.length === 1) return /** @type {(params: any) => unknown} */ (exported);
+  if (typeof exported === "function") {
+    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file}'s default export is a function of ${exported.length} parameters; a Program is a function of one parameter, the params, which the kit calls with $.`, fix: `take the params as its one parameter: ${FORM}` });
+    return null;
+  }
   if (isBuilder(exported)) {
     session.add({ file, line: 1, code: "C001", severity: "error", message: `${file} exports the builder chain itself; a Program is a function of its params, which the kit calls with $.`, fix: `wrap the chain: ${FORM}` });
     return null;
@@ -59,15 +63,25 @@ export function checkExport(file, exported) {
 
 /**
  * An example's module scope, as the builder takes it: its top-level bindings (from the export the load hook
- * appends), each top-level declaration's initializer text (a helper's must be its own) and the names its text
- * declares only inside build-time code.
+ * appends), each top-level `const` declaration's initializer text (a helper's must be its own) and the names its
+ * text declares only inside build-time code.
  * @param {string} file @param {Record<string, unknown>} mod
  * @returns {import("../../../kit/define/define.js").BuildOptions}
  */
 export function moduleScope(file, mod) {
   const get = mod.__defineTrialScope;
   const text = session.sources[file] ?? "";
-  return { scope: typeof get === "function" ? get() : {}, sources: Object.fromEntries(topLevelBindings(text).map((b) => [b.name, b.init])), buildTime: buildTimeNames(text) };
+  return { scope: typeof get === "function" ? get() : {}, sources: helperSources(text), buildTime: buildTimeNames(text) };
+}
+
+/**
+ * Each top-level `const` declaration's initializer text, by name: what vouches for a helper. A `let`'s does not,
+ * since the binding may be reassigned to an arrow made by other code with the same text.
+ * @param {string} text
+ * @returns {Record<string, string>}
+ */
+export function helperSources(text) {
+  return Object.fromEntries(topLevelBindings(text).filter((b) => b.keyword === "const").map((b) => [b.name, b.init]));
 }
 
 /**

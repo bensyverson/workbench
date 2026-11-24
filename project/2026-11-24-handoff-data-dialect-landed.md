@@ -29,15 +29,17 @@ Every commit the last handoff left unreviewed was reviewed, and so was every cod
 - **B002 also refuses a top-level name that clashes with the Program's own `.fn`/`.const`.** The ruling named only Dialect and Library names; the integrating agent extended it.
 - **B002 fires on unread top-level bindings too.** A fields file with a top-level `min`, `mix` or `color`, or a data file with `year` or `round`, is refused even if no lambda reads it. That follows "one name, one meaning", but it may be stricter than wanted.
 - **Composition checker:** may a cave's `.carve` read another part's output (`game.out`)? `cave.md` is ambiguous. Settle it before a composition rerun.
-- **Binding-time attribution** is by call order plus line (the design's fourth fork, not asked). It stands until a trial says otherwise.
+- **Binding-time attribution** is by call order plus line (the design's fourth fork, not asked). `bindingText` now says where the read was: `read at 05-query.js:22 (before top.limit#5)`.
+- **`constructor`, `valueOf` and `toString` stay legal param names** (a fields test from `f4f8152` protects them), while the other runtime-probe names (`then`, `inspect`, `prototype` …) are refused as params (B004). Confirm or overrule.
+- **The `$` proxy refuses `in`, spread, `Object.keys` and `console.log($)` (new B015)**: read each param by name.
 
 ## Review
 
-Every code commit this session has been reviewed except **`c7ed99f`**. Its reviewer (`rev-bind`) was still running at the time of writing; see the addendum below. Kept probes live in `local/rev-*-probes/` (gitignored, named `*.probe.js`; see the gotcha).
+Every code commit this session was reviewed, and each review's findings were fixed. The last round: the review of `c7ed99f` (binding time, module-scope fixes) found one medium bug (a valid helper with a trailing comment, a leading comment or wrapping parens was refused as B012) and six low ones, all fixed in the final commit (leaf `tIbqDV`). **That final commit is not itself reviewed**; review it first. Kept probes live in `local/rev-*-probes/` (gitignored, asserting, named `*.probe.js`; see the gotcha).
 
 ## Prerelease
 
-`npm run test:prerelease`: 16 of 16 on the merged tree after `62bec66` (37 s), with the planted-fault report unchanged (JS 24/26, GLSL 21/24). The `bindbuild` agent also ran it in its worktree for `c7ed99f`: 16 of 16. A final run is recorded in the addendum.
+`npm run test:prerelease` over the final tree (2026-11-24, end of session): 16 tests, 16 pass, 0 fail, 37.5 s. The planted-fault report reads as before: JS 24/26 caught, GLSL 21/24, with the same five escapes.
 
 ## Next
 

@@ -87,6 +87,7 @@ The checker prints the kit's own codes (`D…` from `defineDialect` and `defineG
 | B012 | a top-level binding a lambda reads that is neither the arrow function its declaration writes (not one made by another function) nor plain data |
 | B013 | a free name your file declares only inside build-time code (a loop variable, a function's local), not at its top level |
 | B014 | a member of the params that exists only while the Program runs (fields' `u.t`), read by build-time code |
+| B015 | the params read by build-time code other than by name (`"topN" in $`, a spread, `Object.keys($)`, `JSON.stringify($)`, a rest pattern) |
 
 A lambda's body is type-checked by lowering, whose codes start with `L` (an unknown member, a type mismatch …), `P` (does not parse) or `S` (outside the Runtime Subset); each is printed at its line inside the lambda, with the lambda's id.
 
@@ -94,7 +95,7 @@ A lambda's body is type-checked by lowering, whose codes start with `L` (an unkn
 
 | Code | Refused when |
 |---|---|
-| C001 | an example file that neither exports its Program as a function of the params, `($) => program(…)…`, nor starts with `// REFUSED: <code>`; or exports the chain itself, or what `.build()` returns; or cannot be loaded |
+| C001 | an example file that neither exports its Program as a function of the params, `($) => program(…)…`, nor starts with `// REFUSED: <code>`; or exports a function that does not take exactly one parameter, the chain itself, or what `.build()` returns; or cannot be loaded |
 | C005 | a function in your definitions (`environment`, a convention function, a check, `init`, `step`) threw while an example was checked; printed at the line that threw |
 | LOAD | a definition file that cannot be loaded at all (a syntax error, an exception, no define call) |
 

@@ -108,6 +108,7 @@ const FAILING = [
   { code: "B012", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst WIDTH = new Map();` }, { file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`) + 1, message: /WIDTH.*Map/ },
   { code: "B013", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nfunction setup() { const WIDTH = 0.01; return WIDTH; }` }, { file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`) + 1, message: /WIDTH.*build-time/ },
   { code: "B014", why: "a run-time-only member of the params, read at build", edits: [{ file: EX1, from: "{ value: 2, min: 0, max: 8 }", to: "{ value: $.now, min: 0, max: 8 }" }], file: EX1, line: lineOf(EX1, ".param("), message: /\$\.now.*runs/ },
+  { code: "B015", why: "the params read other than by name", edits: [{ file: EX1, from: "{ value: 2, min: 0, max: 8 }", to: "{ value: Object.keys($).length + 2, min: 0, max: 8 }" }], file: EX1, line: lineOf(EX1, ".param("), message: /by name/ },
   { code: "B002", why: "a top-level binding named like a Dialect name", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst sin = 1;` }], file: EX1, line: lineOf(EX1, "export default") + 1, message: /top-level 'sin'/ },
   // When lowering: construct state, conventions and each lambda's body.
   { code: "B003", why: "a state namespace, at that step", edits: [{ file: EX1, from: `.mute("glow")`, to: `.mute("glw")` }], file: EX1, line: lineOf(EX1, ".mute("), message: /glw.*did you mean 'glow'/i },
@@ -241,6 +242,17 @@ test("C001 refuses a bare builder chain: a Program is a function of its params, 
   const r = await checkEdited([{ file: EX1, from: "export default ($) => program", to: "export default program" }]);
   assert.deepEqual(r.diagnostics.map((d) => `${d.file} ${d.code}`), [`${EX1} C001`], show(r.diagnostics));
   assert.match(r.diagnostics[0].fix, /export default \(\$\) => program/);
+});
+
+test("C001 refuses a function that does not take the params as its one parameter; another name for it is fine", async () => {
+  for (const to of ["export default () => program", "export default ($, more) => program"]) {
+    const r = await checkEdited([{ file: EX2, from: "export default ($) => program", to }]);
+    assert.deepEqual(r.diagnostics.map((d) => `${d.file} ${d.code}`), [`${EX2} C001`], `${to}\n${show(r.diagnostics)}`);
+    assert.match(r.diagnostics[0].message, /one parameter/);
+    assert.match(r.diagnostics[0].fix, /export default \(\$\) => program/);
+  }
+  const ok = await checkEdited([{ file: EX2, from: "export default ($) => program", to: "export default (params) => program" }]);
+  assert.equal(show(ok.diagnostics), "");
 });
 
 test("an example whose Program the builder refuses is not lowered", async () => {

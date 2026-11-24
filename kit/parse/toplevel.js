@@ -83,8 +83,10 @@ function regexMayStart(out) {
   if (/[\w$]/.test(p)) {
     let w = "";
     while (k >= 0 && /[\w$]/.test(out[k])) w = out[k--] + w;
-    return BEFORE_REGEX.has(w);
+    while (k >= 0 && /\s/.test(out[k])) k--;
+    return BEFORE_REGEX.has(w) && out[k] !== "."; // `o.typeof / 2`: a keyword as a property name is a value
   }
+  if ((p === "+" || p === "-") && out[k - 1] === p) return false; // `i++ / 2`: a postfix operator ends a value
   return !")]}\"".includes(p);
 }
 
@@ -237,8 +239,24 @@ function startsStatement(b, at) {
  * @typedef {object} Binding
  * @property {string} name
  * @property {"const" | "let"} keyword
- * @property {string} init  The initializer's source text, exactly as written.
+ * @property {string} init  The initializer's source text as written, from its first to its last character of code
+ *   (comments around it and parens wrapping all of it left out), so an arrow's is what `String(fn)` gives.
  */
+
+/**
+ * The initializer between `from` and `to`, from its first to its last character of code in the blanked text `b`
+ * (so without the comments around it) and without parens that wrap all of it.
+ * @param {string} code @param {string} b @param {number} from @param {number} to
+ */
+function initText(code, b, from, to) {
+  for (;;) {
+    while (from < to && /\s/.test(b[from])) from++;
+    while (to > from && /\s/.test(b[to - 1])) to--;
+    if (b[from] !== "(" || matching(b, from) !== to - 1) return code.slice(from, to);
+    from++;
+    to--;
+  }
+}
 
 /**
  * Each plain-named `const` and `let` a program declares at its top level, with its initializer's
@@ -256,7 +274,7 @@ export function topLevelBindings(code) {
     for (const d of declaration(b, k.end).declarators) {
       if (d.eq < 0) continue;
       const name = b.slice(d.from, d.eq).trim();
-      if (IDENT.test(name)) out.push({ name, keyword: /** @type {"const" | "let"} */ (k.word), init: code.slice(d.eq + 1, d.to).trim() });
+      if (IDENT.test(name)) out.push({ name, keyword: /** @type {"const" | "let"} */ (k.word), init: initText(code, b, d.eq + 1, d.to) });
     }
   }
   return out;

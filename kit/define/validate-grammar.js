@@ -16,6 +16,12 @@ const SLOT_KINDS = Object.freeze(["decl", "unit"]);
 export const SHAPE_NAMES = Object.freeze(["number", "string", "boolean", "string[]", "number[]"]);
 /** Properties a runtime or test library probes on any object; the builder answers them with undefined, so no slot or construct may take one. */
 export const PROBES = Object.freeze(["then", "toJSON", "constructor", "inspect", "asymmetricMatch", "nodeType", "$$typeof", "valueOf", "toString", "prototype"]);
+/**
+ * The probes that are Object.prototype's own members. A param may take one of these names, since a lambda reads
+ * it like any other (`u.constructor`), and the run's `$` answers a declared one by name; any other probe is B004
+ * as a param's name.
+ */
+export const OBJECT_PROBES = Object.freeze(["constructor", "valueOf", "toString"]);
 /** Methods every builder has, which no slot or construct may take. */
 export const KIT_METHODS = Object.freeze(["check", "build"]);
 

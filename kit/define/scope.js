@@ -80,9 +80,9 @@ export function bake(v, seen = new Set()) {
  * A helper's free names resolve against the module scope, which is right only when the arrow is the one its
  * top-level declaration writes: one made by another function (`const triple = mk(3)`) closes over that
  * function's locals, which `String(fn)` loses. So an arrow is a helper only when its text is `source`, the
- * initializer text of the name's top-level declaration.
+ * initializer text of the name's top-level `const` declaration (a `let` may have been reassigned).
  * @param {string} name @param {unknown} v
- * @param {string} [source]  the initializer text of the name's top-level declaration, when the host found one
+ * @param {string} [source]  the initializer text of the name's top-level `const` declaration, when the host found one
  * @returns {{ unit: { name: string, kind: "fn" | "const", src: string }, ast?: ArrowFunctionExpression } | { code: string, reason: string, tip: string }}
  */
 export function unitOf(name, v, source) {
@@ -90,7 +90,7 @@ export function unitOf(name, v, source) {
     const r = lambdaSource(v);
     if ("error" in r) return { code: "B007", reason: r.error, tip: `write it as an arrow function: const ${name} = (…) => …` };
     if (String(v) !== source) {
-      const why = source === undefined ? "no top-level declaration of it writes this arrow function" : `its top-level declaration is \`const ${name} = ${source.length > 40 ? `${source.slice(0, 40)}…` : source}\`, not this arrow function`;
+      const why = source === undefined ? `no top-level \`const ${name} = …\` declaration writes this arrow function` : `its top-level declaration is \`const ${name} = ${source.length > 40 ? `${source.slice(0, 40)}…` : source}\`, not this arrow function`;
       return { code: "B012", reason: `it is a function made by other code (${why}), so the names it closes over are lost`, tip: `declare it at the top level as the arrow itself, const ${name} = (…) => …, with every value it needs a parameter, a top-level constant or written into its text` };
     }
     return { unit: { name, kind: "fn", src: r.src }, ast: r.ast };

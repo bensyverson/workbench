@@ -83,7 +83,7 @@ test("example 5: a filter on year(date), a join typed from the other table at it
   assert.deepEqual(record.table[0].calls.at(-1), { slot: "limit", args: [10] });
   const { kernels, states } = lowered(record);
   const lines = bindingText(program.lower(record)).split("\n");
-  assert.match(lines[0], /^topN\s+folded at build, read by top\.limit#5 \(05-query\.js:22\)$/);
+  assert.match(lines[0], /^topN\s+folded at build, read at 05-query\.js:22 \(before top\.limit#5\)$/);
   assert.match(lines[1], /^year\s+uniform, read by top\.filter#0$/);
   // the filter and the two agg lambdas: .limit($.topN) is a folded value now, not a lambda
   assert.equal(Object.keys(kernels).length, 3);

@@ -1,28 +1,28 @@
 // Binding-time parameters (project/2026-11-24-binding-time-design.md, Option A as ruled): a Program file exports
 // a function of its params, `($) => program(…)…`, and `run` calls it with a recording `$`. Build-time code that
 // reads `$.topN` gets a plain value, which the record keeps where it went (the record is folded), and the read is
-// kept in the record's `reads`, landing on the builder call that came next. The same param read inside a lambda
+// kept in the record's `reads`, placed before the builder call that came next. The same param read inside a lambda
 // is a Kernel read, a uniform. Lowering reports each param's binding time (`bindings`), `bindingText` prints it,
 // and `needsRebuild` says whether a change of values needs `run` again. Builds are synchronous, so one open run
 // at a time is safe.
 
 import { callSite } from "./site.js";
 import { didYouMean } from "./codes.js";
-import { PROBES } from "./validate-grammar.js";
+import { PROBES, OBJECT_PROBES } from "./validate-grammar.js";
 import { BuildError, programOf } from "./grammar.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Loc } from "../parse/ast.js" */
 
 /**
- * One build-time read of a param: its name, the value build-time code got, the builder call it landed on (null
- * when no call came after it) and where the read was.
+ * One build-time read of a param: its name, the value build-time code got, the builder call made next after it
+ * (null when none came after; it orders the read, not who used the value) and where the read was.
  * @typedef {{ param: string, value: unknown, by: string | null, file: string, loc: Loc }} Read
  */
 
 /**
  * What a run's Program tells the run: its params as declared so far, and its Dialect's params convention.
- * @typedef {{ declared(): Map<string, Record<string, unknown>>, paramSlot(): string | undefined, dialectParams(): T.DialectDef["params"] }} RunProgram
+ * @typedef {{ declared(): Map<string, unknown>, paramSlot(): string | undefined, dialectParams(): T.DialectDef["params"] }} RunProgram
  */
 
 /** @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, closed: boolean }} Run */
@@ -59,34 +59,109 @@ function refusal(code, message, tip) {
   return { code, severity: "error", message, tip, loc: at.loc, range: [0, 0], file: at.file };
 }
 
+/** The params conventions of every Dialect a Grammar was defined over, for a read made before a Program opens. */
+const conventions = /** @type {Set<NonNullable<T.DialectDef["params"]>>} */ (new Set());
+
 /**
- * The `$` build-time code reads: a param's value (the host's, else the declared one), each read recorded.
+ * A Grammar was defined over a Dialect: its params convention, if any, names run-time-only members that a read
+ * before any Program opens can still be told about (B014, not B003).
+ * @param {T.DialectDef["params"]} conv
+ */
+export function noteConvention(conv) {
+  if (conv) conventions.add(conv);
+}
+
+/**
+ * B014 for a read of a run-time-only member through `conv`.
+ * @param {NonNullable<T.DialectDef["params"]>} conv @param {string} prop
+ */
+function runtimeOnly(conv, prop) {
+  const via = conv.name;
+  return new BuildError([{ ...refusal("B014", `${via}.${prop} is known only while the Program runs, not when it is built: build-time code cannot read it`, `read it inside the lambda: (…) => … ${via}.${prop} …`), fix: `${via}.${prop}` }]);
+}
+
+/**
+ * B015: the params read other than by name (`in`, spread, Object.keys, JSON.stringify, a rest pattern), which a
+ * recording `$` could neither answer truly nor record.
+ * @param {Run} run @param {string} how @param {string} [prop]
+ */
+function notByName(run, how, prop) {
+  if (run.closed) throw new Error(`the params were read (${how}) after run() returned: read them while the Program is built`);
+  const via = run.program?.dialectParams()?.name ?? "$";
+  const fix = prop === undefined ? undefined : `${via}.${prop}`;
+  return new BuildError([{ ...refusal("B015", `build-time code reads the params ${how}: only a read of one param by name is answered and recorded`, `read each param by name, ${fix ?? `${via}.name`}`), ...(fix ? { fix } : {}) }]);
+}
+
+/** @param {unknown} v @returns {v is Record<string, unknown>} */
+const isObject = (v) => v !== null && typeof v === "object";
+
+/** "a number", "a string" … for a refusal. @param {unknown} v */
+const typeName = (v) => (v === null ? "null" : typeof v === "object" ? "an object" : `a ${typeof v}`);
+
+/**
+ * Why the host's value does not fit the param's declaration, or null: it must have the declared value's type, be
+ * finite when a number, lie inside `min..max` and be one of `options` when the declaration has them.
+ * @param {unknown} value @param {Record<string, unknown>} decl
+ * @returns {string | null}
+ */
+function misfit(value, decl) {
+  if (typeof value !== typeof decl.value) return `is ${typeName(decl.value)} param, not ${typeName(value)}`;
+  if (typeof value === "number" && !Number.isFinite(value)) return `takes a finite number, not ${value}`;
+  const { min, max, options } = decl;
+  if (typeof value === "number" && ((typeof min === "number" && value < min) || (typeof max === "number" && value > max))) return `takes a value inside ${typeof min === "number" ? min : "-∞"}..${typeof max === "number" ? max : "∞"}, not ${value}`;
+  if (Array.isArray(options) && !options.includes(value)) return `takes one of ${options.map((o) => JSON.stringify(o)).join(", ")}, not ${JSON.stringify(value)}`;
+  return null;
+}
+
+/**
+ * Throws when a host value does not fit its declaration (a host's mistake, not the Program's).
+ * @param {string} name @param {unknown} value @param {Record<string, unknown>} decl
+ */
+function checkValue(name, value, decl) {
+  const why = misfit(value, decl);
+  if (why) throw new TypeError(`run({ values }): '${name}' ${why}`);
+}
+
+/**
+ * The `$` build-time code reads: a param's value (the host's, else the declared one), each read recorded. Only a
+ * read by name is answered; `in`, spread, Object.keys and the like are B015.
  * @param {Run} run
  */
 function paramsProxy(run) {
   return new Proxy({}, {
     get(_, prop) {
       if (prop === Symbol.toPrimitive) return () => "[the params]";
-      if (typeof prop === "symbol" || PROBES.includes(prop)) return undefined;
+      if (typeof prop === "symbol") return undefined;
+      // a probe is answered with nothing, unless it is Object.prototype's and the Program declares a param of it
+      if (PROBES.includes(prop) && !(OBJECT_PROBES.includes(prop) && !run.closed && run.program?.declared().has(prop))) return undefined;
       if (run.closed) throw new Error(`the params were read (.${prop}) after run() returned: read them while the Program is built`);
       const program = run.program;
-      if (!program) throw new BuildError([refusal("B003", `build-time code reads the param '${prop}' before the Program declares it`, `open the Program and declare it first, .param("${prop}", { value: … }), then read it`)]);
-      const conv = program.dialectParams();
-      const via = conv?.name ?? "$";
-      if (conv?.runtime?.includes(prop)) {
-        throw new BuildError([{ ...refusal("B014", `${via}.${prop} is known only while the Program runs, not when it is built: build-time code cannot read it`, `read it inside the lambda: (…) => … ${via}.${prop} …`), fix: `${via}.${prop}` }]);
+      if (!program) {
+        const conv = [...conventions].find((c) => c.runtime?.includes(prop));
+        if (conv) throw runtimeOnly(conv, prop);
+        throw new BuildError([refusal("B003", `build-time code reads the param '${prop}' before the Program declares it`, `open the Program and declare it first, .param("${prop}", { value: … }), then read it`)]);
       }
+      const conv = program.dialectParams();
+      if (conv?.runtime?.includes(prop)) throw runtimeOnly(conv, prop);
       const declared = program.declared();
       const decl = declared.get(prop);
       const slot = program.paramSlot() ?? "param";
-      if (!decl) throw new BuildError([refusal("B003", `there is no param '${prop}' declared before this read.${didYouMean(prop, [...declared.keys()])}`, `declare it before reading it: .${slot}("${prop}", { value: … })`)]);
+      if (!declared.has(prop)) throw new BuildError([refusal("B003", `there is no param '${prop}' declared before this read.${didYouMean(prop, [...declared.keys()])}`, `declare it before reading it: .${slot}("${prop}", { value: … })`)]);
       const own = Object.hasOwn(run.values, prop);
-      const value = own ? run.values[prop] : decl.value;
-      if (own && typeof value !== typeof decl.value) throw new TypeError(`run({ values }): '${prop}' is ${typeof decl.value === "object" ? "an object" : `a ${typeof decl.value}`} param, not ${typeof value}`);
+      const value = own ? run.values[prop] : isObject(decl) ? decl.value : undefined;
+      if (own && isObject(decl)) checkValue(prop, value, decl);
       const at = callSite();
       run.pending.push({ param: prop, value, file: at.file, loc: at.loc });
       return value;
     },
+    has(_, prop) {
+      if (typeof prop === "symbol") return false;
+      const conv = run.program ? run.program.dialectParams() : [...conventions].find((c) => c.runtime?.includes(prop));
+      if (!run.closed && conv?.runtime?.includes(prop)) throw runtimeOnly(conv, prop);
+      throw notByName(run, `with \`"${prop}" in …\``, prop);
+    },
+    ownKeys() { throw notByName(run, "as a whole (a spread, Object.keys, JSON.stringify or a rest pattern lists them)"); },
+    getOwnPropertyDescriptor(_, prop) { throw notByName(run, "through a property descriptor", typeof prop === "string" ? prop : undefined); },
   });
 }
 
@@ -114,7 +189,14 @@ export function run(programFn, options = {}) {
   try {
     out = programFn(paramsProxy(ctx));
   } catch (e) {
-    if (e instanceof BuildError) return { record: null, diagnostics: e.diagnostics };
+    if (e instanceof BuildError) {
+      // The host's typo is still its own mistake, though the Program stopped before declaring every param (so a
+      // param declared after the stop is reported too; the message says where the code stopped).
+      const declared = ctx.program?.declared() ?? new Map();
+      const unknown = Object.keys(values).find((k) => !declared.has(k));
+      if (ctx.program && unknown !== undefined) throw new TypeError(`run({ values }): the Program declares no param '${unknown}'.${didYouMean(unknown, [...declared.keys()])} (Its code stopped at ${e.diagnostics.map((d) => d.code).join(", ")} before declaring any more: ${e.diagnostics[0]?.message})`, { cause: e });
+      return { record: null, diagnostics: e.diagnostics };
+    }
     throw e;
   } finally {
     current = null;
@@ -124,7 +206,12 @@ export function run(programFn, options = {}) {
   if (!program || program !== ctx.program) throw new TypeError(`run(programFn): programFn($) must return the Program's builder chain (without .build()), not ${out === null || typeof out !== "object" ? String(out) : "an object"}`);
   for (const r of ctx.pending) ctx.reads.push({ ...r, by: null });
   const declared = program.declared();
-  for (const k of Object.keys(values)) if (!declared.has(k)) throw new TypeError(`run({ values }): the Program declares no param '${k}'.${didYouMean(k, [...declared.keys()])}`);
+  for (const [k, v] of Object.entries(values)) {
+    if (!declared.has(k)) throw new TypeError(`run({ values }): the Program declares no param '${k}'.${didYouMean(k, [...declared.keys()])}`);
+    const decl = declared.get(k);
+    if (isObject(decl)) checkValue(k, v, decl); // a malformed declaration is the Program's B004, found below
+  }
+  program.useValues(values);
   const diagnostics = program.analyze(build).diagnostics;
   if (diagnostics.some((d) => d.severity === "error")) return { record: null, diagnostics };
   const record = program.build(build);
@@ -142,7 +229,7 @@ export function needsRebuild(record, changed) {
 }
 
 /**
- * One param's binding time: the build-time reads (each landing on a builder call) and the Kernels that read it.
+ * One param's binding time: the build-time reads (each with the builder call made next) and the Kernels that read it.
  * `live` (a uniform, changed without a rebuild) holds when build-time code did not read it.
  * @typedef {{ build: Array<{ by: string | null, file: string, loc: Loc }>, kernels: string[], live: boolean }} Binding
  */
@@ -186,17 +273,17 @@ function readsMember(node, object, member) {
 
 /**
  * One line per param: its name and its binding time, as a workbench page or an agent tool shows it beside the
- * Kernel listings. `topN   folded at build, read by top.limit#9 (05-query.js:21)`, `year   uniform, read by
- * top.filter#0`.
+ * Kernel listings: where each build-time read was and the builder call made next, then the Kernels that read it.
+ * `topN   folded at build, read at 05-query.js:22 (before top.limit#5)`, `year   uniform, read by top.filter#0`.
  * @param {{ params: Record<string, Binding> }} lowered  what a Grammar's lower() returned
  */
 export function bindingText(lowered) {
   const entries = Object.entries(lowered.params ?? {});
   const width = Math.max(0, ...entries.map(([n]) => n.length));
   return entries.map(([n, b]) => {
-    const at = [...new Set(b.build.map((r) => `${r.by ?? "build-time code"} (${r.file.replace(/^.*\//, "")}:${r.loc.start.line})`))];
+    const at = [...new Set(b.build.map((r) => `${r.file.replace(/^.*\//, "")}:${r.loc.start.line} (${r.by ? `before ${r.by}` : "after the last builder call"})`))];
     const text = at.length
-      ? `folded at build, read by ${at.join(", ")}${b.kernels.length ? `; also read by ${b.kernels.join(", ")}` : ""}`
+      ? `folded at build, read at ${at.join(", ")}${b.kernels.length ? `; also read by ${b.kernels.join(", ")}` : ""}`
       : b.kernels.length ? `uniform, read by ${b.kernels.join(", ")}` : "uniform, not read";
     return `${n.padEnd(width)}   ${text}`;
   }).join("\n");
