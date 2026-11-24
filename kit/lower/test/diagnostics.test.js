@@ -26,7 +26,7 @@ test("every lowering code has a test below", () => {
   assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015"]);
 });
 
-test("L001: a free identifier the dialect does not declare", () => {
+test("L001: a free identifier the environment does not declare", () => {
   const { d, text } = only("L001", "(self) => { if (self.up) placeFood(self); }");
   assert.equal(text, "placeFood");
   assert.match(d.message, /placeFood/);

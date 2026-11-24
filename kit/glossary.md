@@ -25,9 +25,9 @@ The kit's terms, as ruled on 2026-11-23 ([nomenclature decision](../project/2026
 - **Lambda**: a function in a slot.
   - A **Build-time Lambda** is full JavaScript, run once while the Program is built; its result is folded in as data.
   - A **Runtime Lambda** is in the Runtime Subset and is lowered to a Kernel.
-- **Environment**: what lowering resolves names and types against: a Dialect plus one Program's declarations (its components, attributes, events). In code it is still named `Dialect` (`kit/lower/dialect.d.ts`); a rename is filed.
+- **Environment**: what lowering resolves names and types against: a Dialect plus one Program's declarations (its components, attributes, events). In code it is `Environment` (`kit/lower/environment.d.ts`).
 - **Kernel**: a lowered Runtime Lambda: a typed function in the IR, plus the Iteration Space it runs over.
-- **Iteration Space**: what a Kernel runs over: per entity, per pixel, once per tick. ("Domain" means the subject area, as in Domain Language, never this.) In code it is still the `domain` field of a Kernel; a rename is filed.
+- **Iteration Space**: what a Kernel runs over: per entity, per pixel, once per tick. ("Domain" means the subject area, as in Domain Language, never this.) In code it is the `space` field of a Kernel.
 - **IR**: the core intermediate representation (`kit/ir`): types, Kernels, effects, declarations and spans. Every front end lowers into it and every backend reads it. Say "core IR" only when contrasting it with another form.
 - **LIR**: the lower IR, planned for backends that are not JavaScript. In it, a store's integer rule becomes explicit wrap and clamp operations. A form a Dialect adds above the IR gets a descriptive name, such as "the DMG entity form," not another acronym.
 - **DMG Spec**: what the DMG Workbench's own `.build()` produces. The DMG's code calls it "IR"; in ours it is always the DMG Spec.

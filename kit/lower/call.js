@@ -9,7 +9,7 @@ import { HELPER_OWNER } from "./codes.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Effect } from "../ir/ir.js" */
-/** @import { FnSig } from "./dialect.js" */
+/** @import { FnSig } from "./environment.js" */
 /** @import { Lowerer } from "./lowerer.js" */
 /** @import { Resolved } from "./expr.js" */
 
@@ -23,12 +23,12 @@ export function call(L, node) {
   const callee = node.callee;
   const args = /** @type {AST.Expression[]} */ (node.arguments);
   const noCallbacks = () => {
-    for (const a of args) if (a.type === "ArrowFunctionExpression") L.error("L005", a, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.dialect.queries.join(", ")}.`);
+    for (const a of args) if (a.type === "ArrowFunctionExpression") L.error("L005", a, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.environment.queries.join(", ")}.`);
   };
   if (callee.type === "Identifier") {
     if (!L.lookup(callee.name) && L.sigs.helpers?.[callee.name]?.kind === "fn") { noCallbacks(); return helperCall(L, node, callee.name, args); }
     const f = expr(L, callee);
-    const o = typeof f.t === "object" && "obj" in f.t ? L.dialect.objects[f.t.obj] : undefined;
+    const o = typeof f.t === "object" && "obj" in f.t ? L.environment.objects[f.t.obj] : undefined;
     if (f.t === "unknown") return bad(node);
     if (!o?.call) { L.error("L003", callee, `'${callee.name}' is not a function.`, "Call only dialect functions and methods."); return bad(node); }
     noCallbacks();
@@ -39,7 +39,7 @@ export function call(L, node) {
   const recv = expr(L, callee.object);
   if (callee.computed) { computed(L, recv, callee); return bad(node); }
   const name = /** @type {AST.Identifier} */ (callee.property).name;
-  if (typeof recv.t === "object" && "list" in recv.t && /** @type {string[]} */ (L.dialect.queries).includes(name)) return query(L, node, recv, /** @type {import("./dialect.js").QueryName} */ (name));
+  if (typeof recv.t === "object" && "list" in recv.t && /** @type {string[]} */ (L.environment.queries).includes(name)) return query(L, node, recv, /** @type {import("./environment.js").QueryName} */ (name));
   noCallbacks();
   const r = resolveOn(L, recv, name, callee);
   if (!r) return bad(node);
@@ -143,7 +143,7 @@ function emitCall(L, node, r, name, args, effects, label) {
 
 /**
  * `from` and every method it calls, directly or not.
- * @param {import("./dialect.js").Signatures} sigs
+ * @param {import("./environment.js").Signatures} sigs
  * @param {string} from
  * @returns {string[]}
  */

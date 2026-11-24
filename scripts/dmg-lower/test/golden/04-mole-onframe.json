@@ -2,7 +2,7 @@
   "ir": "kernel",
   "name": "Mole.onFrame#0",
   "slot": "onFrame",
-  "domain": "entity Mole",
+  "space": "entity Mole",
   "params": [{ "name": "self", "t": { "ref": "Mole" }, "kind": "param" }],
   "returns": "void",
   "locals": [{ "name": "t0", "t": "f64", "kind": "temp" }],

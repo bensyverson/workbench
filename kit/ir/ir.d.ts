@@ -133,7 +133,7 @@ export interface Local {
   source?: string;
 }
 
-/** A function plus the domain it runs over. */
+/** A function plus the Iteration Space it runs over. */
 export interface Kernel {
   ir: "kernel";
   /** The slot it fills, e.g. `Mole.onFrame#0`. */
@@ -141,7 +141,7 @@ export interface Kernel {
   /** The dialect's slot kind, e.g. `onFrame`. */
   slot: string;
   /** What it runs over, e.g. `entity Mole`, `tick`, `render`. */
-  domain: string;
+  space: string;
   params: Local[];
   returns: Type;
   locals: Local[];

@@ -1,6 +1,6 @@
 # DMG lowering pipeline
 
-M1's pipeline over one DMG preset: build it with the [oracle](../dmg-oracle/README.md), read its declarations, describe them to the kit's DMG dialect, lower every runtime lambda to IR as one program, and emit each kernel as JS.
+M1's pipeline over one DMG preset: build it with the [oracle](../dmg-oracle/README.md), read its declarations, describe them to the kit's DMG dialect as an environment, lower every runtime lambda to IR as one program, and emit each kernel as JS.
 
 ```js
 import { loadDmg } from "../dmg-oracle/load.js";
@@ -9,7 +9,7 @@ import { lowerPreset, emitEntry } from "./pipeline.js";
 
 const dmg = loadDmg();
 const { entries, sigs } = lowerPreset(dmg, "04");
-// entries: { slot (the oracle's, which can swap the lambda), ref (the dialect's view), result (kernel or diagnostics) }
+// entries: { slot (the oracle's, which can swap the lambda), ref (the environment's view), result (kernel or diagnostics) }
 const { emitted, fn } = emitEntry(entries[0]);   // throws if the entry did not lower
 const build = dmg.build("04");
 swapLambda(build.spec, entries[0].slot.id, fn);

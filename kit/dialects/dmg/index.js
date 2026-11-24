@@ -3,7 +3,7 @@
 // calling convention of every slot. Built per program from its declarations.
 
 /** @import { Type, Coerce, Effect, EffectVerb } from "../../ir/ir.js" */
-/** @import { Dialect, ObjectDecl, Member, SlotDecl, SlotRef, FnSig } from "../../lower/dialect.js" */
+/** @import { Environment, ObjectDecl, Member, SlotDecl, SlotRef, FnSig } from "../../lower/environment.js" */
 /** @import { DmgDeclarations, AttrDecl } from "./decls.js" */
 
 /** The world object's name in types and effects. */
@@ -55,11 +55,11 @@ function attrType(a) {
 }
 
 /**
- * The dialect for one DMG program.
+ * The environment for one DMG program: the DMG dialect plus that program's declarations.
  * @param {DmgDeclarations} d
- * @returns {Dialect}
+ * @returns {Environment}
  */
-export function dmgDialect(d) {
+export function dmgEnvironment(d) {
   const kinds = Object.keys(d.comps);
   /** @type {Type} */
   const anyEntity = kinds.length === 1 ? { ref: kinds[0] } : { union: kinds.map((k) => ({ ref: k })) };
@@ -232,8 +232,8 @@ function initFields(d, kind) {
  */
 function slotOf(ref, d, drawResult) {
   // A top-level helper has no `self`; a constant is evaluated once, before the game runs, so it may touch no state.
-  if (ref.kind === "helper") return { params: [], inferParams: true, returns: "infer", domain: `helper ${ref.key}`, forbid: [] };
-  if (ref.kind === "const") return { params: [], returns: "infer", domain: `constant ${ref.key}`, forbid: ALL_EFFECTS, forbidWhy: "a baked constant is computed once, so it may not read or change the game" };
+  if (ref.kind === "helper") return { params: [], inferParams: true, returns: "infer", space: `helper ${ref.key}`, forbid: [] };
+  if (ref.kind === "const") return { params: [], returns: "infer", space: `constant ${ref.key}`, forbid: ALL_EFFECTS, forbidWhy: "a baked constant is computed once, so it may not read or change the game" };
   const isWorld = ref.on === WORLD;
   if (!isWorld && !d.comps[ref.on]) return `'${ref.on}' is not a component of this game`;
   /** @type {Type} */
@@ -242,21 +242,21 @@ function slotOf(ref, d, drawResult) {
   /** @param {Omit<SlotDecl, "forbid"> & { forbid?: EffectVerb[] }} s */
   const slot = (s) => ({ forbid: [], ...s });
   switch (ref.kind) {
-    case "onFrame": return slot({ params: [self, W], returns: VOID, domain: isWorld ? "tick" : `entity ${ref.on}` });
-    case "init": return slot({ params: [self, W], returns: VOID, domain: isWorld ? "reset" : `spawn ${ref.on}` });
-    case "method": return slot({ params: [self], inferParams: true, returns: "infer", domain: `call ${ref.on}.${ref.key}` });
-    case "on": return slot({ params: isWorld ? [W, "payload"] : [self, "payload", W], returns: VOID, domain: `event ${ref.key}` });
-    case "timer": return slot({ params: [W, W], returns: VOID, domain: "tick" });
-    case "done": return slot({ params: [W, W], returns: BOOL, domain: "tick" });
-    case "bot": return slot({ params: [W, W], returns: { union: [{ enum: BUTTONS }, "null"] }, domain: "tick" });
+    case "onFrame": return slot({ params: [self, W], returns: VOID, space: isWorld ? "tick" : `entity ${ref.on}` });
+    case "init": return slot({ params: [self, W], returns: VOID, space: isWorld ? "reset" : `spawn ${ref.on}` });
+    case "method": return slot({ params: [self], inferParams: true, returns: "infer", space: `call ${ref.on}.${ref.key}` });
+    case "on": return slot({ params: isWorld ? [W, "payload"] : [self, "payload", W], returns: VOID, space: `event ${ref.key}` });
+    case "timer": return slot({ params: [W, W], returns: VOID, space: "tick" });
+    case "done": return slot({ params: [W, W], returns: BOOL, space: "tick" });
+    case "bot": return slot({ params: [W, W], returns: { union: [{ enum: BUTTONS }, "null"] }, space: "tick" });
     case "every": case "after":
-      return slot({ params: [W], returns: F64, domain: "timer interval", forbid: [...STATE_CHANGES, "hud"], forbidWhy: "a timer's interval is read whenever it re-arms" });
+      return slot({ params: [W], returns: F64, space: "timer interval", forbid: [...STATE_CHANGES, "hud"], forbidWhy: "a timer's interval is read whenever it re-arms" });
     case "hud":
       if (!isWorld) return "a hud belongs to the world";
-      return slot({ params: [W, { obj: "At" }], returns: VOID, domain: "render", forbid: STATE_CHANGES, forbidWhy: renderWhy });
+      return slot({ params: [W, { obj: "At" }], returns: VOID, space: "render", forbid: STATE_CHANGES, forbidWhy: renderWhy });
     case "draw":
       if (isWorld) return "draw belongs to a component";
-      return slot({ params: [self, W], returns: drawResult(ref.on), domain: `render ${ref.on}`, forbid: [...STATE_CHANGES, "hud"], forbidWhy: renderWhy });
+      return slot({ params: [self, W], returns: drawResult(ref.on), space: `render ${ref.on}`, forbid: [...STATE_CHANGES, "hud"], forbidWhy: renderWhy });
   }
   return `the DMG has no '${ref.kind}' slot`;
 }

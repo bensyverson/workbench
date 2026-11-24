@@ -2,7 +2,7 @@
 // purity, effects through methods, reason codes, writable world built-ins, and ops.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lower, codes, dialect } from "./fixture.js";
+import { lower, codes, environment } from "./fixture.js";
 import { lowerProgram } from "../index.js";
 import { printKernel } from "../../ir/index.js";
 
@@ -50,30 +50,30 @@ test("a query callback may not assign a local of the enclosing lambda", () => {
 test("a render slot calling a method that failed to lower cannot be shown effect-free", () => {
   const draw = { src: "(self) => { self.pop(); return \"up\"; }", slot: { id: "Mole.draw", kind: "draw", on: "Mole" } };
   const method = (/** @type {string} */ src) => ({ src, slot: { id: "Mole.method(pop)", kind: "method", on: "Mole", key: "pop" } });
-  const subsetFail = lowerProgram(dialect, [method("(self) => { self.up = true; return `${self.ttl}`; }"), draw]);
+  const subsetFail = lowerProgram(environment, [method("(self) => { self.up = true; return `${self.ttl}`; }"), draw]);
   assert.deepEqual(codes(subsetFail.results[1]), ["L014"]);
-  const lowerFail = lowerProgram(dialect, [method("(self) => { const k = nope; self.ttl = 1; }"), draw]);
+  const lowerFail = lowerProgram(environment, [method("(self) => { const k = nope; self.ttl = 1; }"), draw]);
   assert.ok(codes(lowerFail.results[1]).includes("L014"), "the write it did lower is reported too, but its effects are not complete");
-  const partialRead = lowerProgram(dialect, [method("(self) => { const k = nope; return self.up; }"), draw]);
+  const partialRead = lowerProgram(environment, [method("(self) => { const k = nope; return self.up; }"), draw]);
   assert.deepEqual(codes(partialRead.results[1]), ["L014"]);
-  const writes = lowerProgram(dialect, [method("(self) => { self.up = true; }"), draw]);
+  const writes = lowerProgram(environment, [method("(self) => { self.up = true; }"), draw]);
   assert.deepEqual(codes(writes.results[1]), ["L004"]);
-  const reads = lowerProgram(dialect, [method("(self) => { return self.up; }"), draw]);
+  const reads = lowerProgram(environment, [method("(self) => { return self.up; }"), draw]);
   assert.deepEqual(codes(reads.results[1]), []);
   const onFrame = { src: "(self, w) => { self.pop(); }", slot: { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" } };
-  const tick = lowerProgram(dialect, [method("(self) => { const k = nope; self.up = true; }"), onFrame]);
+  const tick = lowerProgram(environment, [method("(self) => { const k = nope; self.up = true; }"), onFrame]);
   assert.deepEqual(codes(tick.results[1]), [], "a slot that forbids nothing needs no effects proved");
 });
 
 test("a method that calls itself, directly or through another, is unbounded", () => {
   const m = (/** @type {string} */ key, /** @type {string} */ src) => ({ src, slot: { id: `Mole.method(${key})`, kind: "method", on: "Mole", key } });
   const onFrame = { src: "(self, w) => { self.pop(); }", slot: { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" } };
-  const direct = lowerProgram(dialect, [m("pop", "(self) => { if (self.up) self.pop(); }"), onFrame]);
+  const direct = lowerProgram(environment, [m("pop", "(self) => { if (self.up) self.pop(); }"), onFrame]);
   assert.deepEqual(codes(direct.results[0]), ["L007"]);
-  const mutual = lowerProgram(dialect, [m("pop", "(self) => { self.whack(); }"), m("whack", "(self) => { self.pop(); }"), onFrame]);
+  const mutual = lowerProgram(environment, [m("pop", "(self) => { self.whack(); }"), m("whack", "(self) => { self.pop(); }"), onFrame]);
   assert.deepEqual(codes(mutual.results[0]), ["L007"]);
   assert.deepEqual(codes(mutual.results[1]), ["L007"]);
-  const chain = lowerProgram(dialect, [m("pop", "(self) => { self.whack(); }"), m("whack", "(self) => { self.up = false; }"), onFrame]);
+  const chain = lowerProgram(environment, [m("pop", "(self) => { self.whack(); }"), m("whack", "(self) => { self.up = false; }"), onFrame]);
   assert.deepEqual(chain.results.map(codes), [[], [], []]);
 });
 
@@ -113,7 +113,7 @@ test("present tests a possibly-empty entity; any other value tests truthiness", 
   assert.deepEqual(ops(ok("(self, w) => { const m = w.rng.pick(w.board); if (m) m.pop(); }")), ["present"]);
   assert.deepEqual(ops(ok("(self, w) => { const v = self.up ? 0 : null; if (v) w.score = 1; }")), ["truthy"]);
   assert.deepEqual(ops(ok("(self, w) => { if (self.ttl) w.score = 1; }")), ["truthy"]);
-  const prog = lowerProgram(dialect, [
+  const prog = lowerProgram(environment, [
     { src: "(self) => { if (self.up) return false; }", slot: { id: "Mole.method(whack)", kind: "method", on: "Mole", key: "whack" } },
     { src: "(self, w) => { if (self.whack()) w.score = 1; }", slot: { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" } },
   ]);

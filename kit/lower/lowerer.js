@@ -5,7 +5,7 @@ import { LineTable } from "../parse/lexer.js";
 
 /** @import { Diagnostic, Node, ArrowFunctionExpression } from "../parse/ast.js" */
 /** @import { Type, Expr, Stmt, Local, Effect, EffectVerb, Span } from "../ir/ir.js" */
-/** @import { Dialect, SlotRef, SlotDecl, Signatures } from "./dialect.js" */
+/** @import { Environment, SlotRef, SlotDecl, Signatures } from "./environment.js" */
 /** @import { LowerCode } from "./codes.js" */
 
 /**
@@ -27,15 +27,15 @@ const CHILD_KEYS = ["args", "test", "then", "else", "recv", "of", "value", "init
 
 export class Lowerer {
   /**
-   * @param {Dialect} dialect
+   * @param {Environment} environment
    * @param {string} src
    * @param {SlotRef} slot
    * @param {SlotDecl} decl
    * @param {Signatures} sigs
    * @param {ArrowFunctionExpression} ast
    */
-  constructor(dialect, src, slot, decl, sigs, ast) {
-    this.dialect = dialect;
+  constructor(environment, src, slot, decl, sigs, ast) {
+    this.environment = environment;
     this.src = src;
     this.slot = slot;
     this.decl = decl;

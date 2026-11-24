@@ -1,4 +1,4 @@
-// A dialect description in the kit's terms: what runtime lambdas may name, the
+// An environment in the kit's terms (a Dialect plus one Program's declarations): what runtime lambdas may name, the
 // types of those names, the effects they have, and each slot's calling convention.
 // Lowering resolves every identifier and member against this and nothing else.
 
@@ -62,14 +62,14 @@ export interface SlotDecl {
   inferParams?: boolean;
   /** `infer` takes the join of the body's returns (methods). */
   returns: Type | "infer";
-  domain: string;
+  space: string;
   /** Effect verbs this slot may not perform, e.g. writes during render. */
   forbid: EffectVerb[];
   /** Why `forbid` holds, for the diagnostic's tip. */
   forbidWhy?: string;
 }
 
-export interface Dialect {
+export interface Environment {
   name: string;
   /** Every named object type: entity kinds and the handles (`World`, `Input`, …). */
   objects: Record<string, ObjectDecl>;

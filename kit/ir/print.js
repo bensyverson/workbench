@@ -16,7 +16,7 @@ export function printKernel(k) {
   const params = k.params.map((p) => `${p.name}: ${showType(p.t)}`).join(", ");
   /** @type {string[]} */
   const lines = [];
-  lines.push(withComment(`kernel ${k.name}(${params}) -> ${showType(k.returns)}`, [k.domain]));
+  lines.push(withComment(`kernel ${k.name}(${params}) -> ${showType(k.returns)}`, [k.space]));
   lines.push(`  ; effects: ${k.effects.join(", ") || "none"}`);
   block(k.body, 1, lines);
   return lines.join("\n") + "\n";

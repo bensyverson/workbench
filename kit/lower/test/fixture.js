@@ -1,11 +1,11 @@
 // A hand-written DMG program's declarations, shaped like presets 04–07, and a helper
 // that lowers one lambda against them. Shared by the lowering tests.
 
-import { dmgDialect } from "../../dialects/dmg/index.js";
+import { dmgEnvironment } from "../../dialects/dmg/index.js";
 import { lowerLambda } from "../index.js";
 
 /** @import { DmgDeclarations } from "../../dialects/dmg/decls.js" */
-/** @import { SlotRef, Signatures } from "../dialect.js" */
+/** @import { SlotRef, Signatures } from "../environment.js" */
 
 /** @type {DmgDeclarations} */
 export const DECLS = {
@@ -45,7 +45,7 @@ export const DECLS = {
   sfx: ["pop", "fizz"],
 };
 
-export const dialect = dmgDialect(DECLS);
+export const environment = dmgEnvironment(DECLS);
 
 /**
  * Lowers `src` as the slot `kind` on `on` (an entity kind or `World`).
@@ -57,7 +57,7 @@ export const dialect = dmgDialect(DECLS);
 export function lower(src, kind = "onFrame", on = "Mole", opts = {}) {
   /** @type {SlotRef} */
   const slot = { id: `${on}.${kind}`, kind, on, key: opts.key };
-  return lowerLambda(dialect, src, slot, opts.sigs);
+  return lowerLambda(environment, src, slot, opts.sigs);
 }
 
 /**

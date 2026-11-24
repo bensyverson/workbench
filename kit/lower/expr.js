@@ -9,7 +9,7 @@ import { assign, update } from "./assign.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Op, Place, Span } from "../ir/ir.js" */
-/** @import { Member } from "./dialect.js" */
+/** @import { Member } from "./environment.js" */
 /** @import { Lowerer } from "./lowerer.js" */
 
 /** @typedef {{ decl: Member, owner: string, recv: Expr }} Resolved */
@@ -107,7 +107,7 @@ export function expr(L, node, expected) {
     case "UpdateExpression": return update(L, node, true);
     case "ObjectExpression": return object(L, node, expected);
     case "ArrowFunctionExpression":
-      L.error("L005", node, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.dialect.queries.join(", ")}.`);
+      L.error("L005", node, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.environment.queries.join(", ")}.`);
       return bad(node);
     case "ArrayExpression":
       L.error("L012", node, "Array literals are not lowered yet.", "Use a declared list (w.board, w.pool(name)) instead of an array literal.");
@@ -140,11 +140,11 @@ export function identifier(L, node) {
     if (!h.value) { L.error("L014", node, `The constant '${node.name}' does not lower, so it cannot be baked in.`, `Fix ${node.name}'s diagnostics first: a constant is an expression of literals and other constants.`); return bad(node); }
     return inline(L, h.value, span);
   }
-  const g = L.dialect.globals[node.name];
+  const g = L.environment.globals[node.name];
   if (g) return L.ex({ k: "global", name: node.name, t: g, span });
-  const known = [...L.scopes.flatMap((s) => [...s.keys()]), ...Object.keys(L.dialect.globals)];
+  const known = [...L.scopes.flatMap((s) => [...s.keys()]), ...Object.keys(L.environment.globals)];
   const tip = node.name === "undefined" ? "Use null for an empty value."
-    : `Runtime lambdas see only their parameters and ${Object.keys(L.dialect.globals).join(", ")}; a top-level helper or constant is not visible, so pass it in or declare it.${didYouMean(node.name, known)}`;
+    : `Runtime lambdas see only their parameters and ${Object.keys(L.environment.globals).join(", ")}; a top-level helper or constant is not visible, so pass it in or declare it.${didYouMean(node.name, known)}`;
   L.error("L001", node, `'${node.name}' is not declared here.`, tip);
   return bad(node);
 }
@@ -239,14 +239,14 @@ export function resolveOn(L, recv, name, node) {
   let label = showType(t);
   if (typeof t === "object" && ("ref" in t || "obj" in t)) {
     owner = "ref" in t ? t.ref : t.obj;
-    const o = L.dialect.objects[owner];
+    const o = L.environment.objects[owner];
     members = o?.members;
     label = o?.label ?? owner;
   } else if (typeof t === "object" && "list" in t) {
-    const own = t.with ? L.dialect.objects[t.with]?.members ?? {} : {};
+    const own = t.with ? L.environment.objects[t.with]?.members ?? {} : {};
     owner = t.with ?? "list";
-    members = { ...L.dialect.list, ...own };
-    label = t.with ? L.dialect.objects[t.with]?.label ?? t.with : "a list";
+    members = { ...L.environment.list, ...own };
+    label = t.with ? L.environment.objects[t.with]?.label ?? t.with : "a list";
   } else if (typeof t === "object" && "struct" in t) {
     owner = "struct";
     members = Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, /** @type {Member} */ ({ kind: "value", t: v })]));

@@ -1,5 +1,5 @@
 // Lowering: one runtime lambda's syntax tree to an IR kernel, resolved and typed
-// against a dialect, or coded diagnostics saying why not.
+// against a environment, or coded diagnostics saying why not.
 
 import { parseLambda, checkSubset } from "../parse/index.js";
 import { Lowerer, dedupe } from "./lowerer.js";
@@ -12,7 +12,7 @@ export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
 
 /** @import { Diagnostic, ArrowFunctionExpression, Expression } from "../parse/ast.js" */
 /** @import { Kernel, Type, Effect, Stmt, Local } from "../ir/ir.js" */
-/** @import { Dialect, SlotRef, SlotDecl, Signatures, HelperDecl, HelperSource } from "./dialect.js" */
+/** @import { Environment, SlotRef, SlotDecl, Signatures, HelperDecl, HelperSource } from "./environment.js" */
 
 /**
  * @typedef {object} LowerResult
@@ -37,23 +37,23 @@ const PARAM_NAMES = /** @type {Record<string, string>} */ ({ World: "w", At: "at
 
 /**
  * Lowers one lambda, given its source and the slot it fills.
- * @param {Dialect} dialect
+ * @param {Environment} environment
  * @param {string} src
  * @param {SlotRef} slot
  * @param {Signatures} [sigs]  What the program inferred; `lowerProgram` supplies it.
  * @returns {LowerResult}
  */
-export function lowerLambda(dialect, src, slot, sigs = noSignatures()) {
+export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
   const failed = (/** @type {Diagnostic[]} */ diagnostics) => ({ ok: false, kernel: null, diagnostics, emits: [], calls: [], returns: /** @type {Type} */ ("unknown"), effects: [], params: [] });
   const parsed = parseLambda(src);
   if (!parsed.ok) return failed(parsed.diagnostics);
   const subset = checkSubset(parsed.ast, src);
   if (subset.some((d) => d.severity === "error")) return failed(subset);
-  const decl = dialect.slot(slot);
+  const decl = environment.slot(slot);
   if (typeof decl === "string") throw new Error(`cannot lower ${slot.id}: ${decl}`);
 
   const ast = parsed.ast;
-  const L = new Lowerer(dialect, src, slot, decl, sigs, ast);
+  const L = new Lowerer(environment, src, slot, decl, sigs, ast);
   const params = bindParams(L, ast, decl);
   const body = L.capture(() => lowerBody(L, ast, decl)).stmts;
   const returns = decl.returns === "infer" ? inferredReturn(L, body) : decl.returns;
@@ -61,7 +61,7 @@ export function lowerLambda(dialect, src, slot, sigs = noSignatures()) {
   const diagnostics = [...subset, ...L.diagnostics].sort((a, b) => a.range[0] - b.range[0]);
   /** @type {Kernel | null} */
   const kernel = L.failed ? null : {
-    ir: "kernel", name: slot.id, slot: slot.kind, domain: decl.domain,
+    ir: "kernel", name: slot.id, slot: slot.kind, space: decl.space,
     params, returns, locals: L.locals.filter((l) => l.kind !== "param"), body, effects, src, span: [ast.range[0], ast.range[1]],
   };
   return { ok: !L.failed, kernel, diagnostics, emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t) };
@@ -156,17 +156,17 @@ const helperSlot = (h) => ({ id: h.name, kind: h.kind === "fn" ? "helper" : "con
  * Lowers each constant, in order, to the expression every use of it is replaced by. A
  * constant is lowered as `() => (init)`, so it is held to the subset and may use only
  * literals, `Math` and the constants before it.
- * @param {Dialect} dialect
+ * @param {Environment} environment
  * @param {HelperSource[]} sources
  * @param {Record<string, HelperDecl>} decls  Every helper's name; updated with each constant's value.
  * @returns {Map<string, LowerResult>}
  */
-function lowerConstants(dialect, sources, decls) {
+function lowerConstants(environment, sources, decls) {
   /** @type {Map<string, LowerResult>} */
   const out = new Map();
   for (const h of sources) {
     if (h.kind !== "const") continue;
-    const r = lowerLambda(dialect, `() => (${h.src})`, helperSlot(h), noSignatures(decls));
+    const r = lowerLambda(environment, `() => (${h.src})`, helperSlot(h), noSignatures(decls));
     const k = r.kernel;
     const only = k && k.body.length === 1 && k.body[0].k === "return" && k.locals.length === 0 ? k.body[0].value : null;
     if (r.ok && !only) {
@@ -185,15 +185,15 @@ function lowerConstants(dialect, sources, decls) {
  * method and helper signatures (parameters from call sites, results and effects from
  * bodies) until they stop changing. A top-level helper function is lowered like a
  * method that has no `self`; a top-level constant is baked into each use.
- * @param {Dialect} dialect
+ * @param {Environment} environment
  * @param {Array<{ src: string, slot: SlotRef }>} lambdas
  * @param {HelperSource[]} [helperSources]
  * @returns {{ results: LowerResult[], sigs: Signatures, helpers: HelperResult[] }}
  */
-export function lowerProgram(dialect, lambdas, helperSources = []) {
+export function lowerProgram(environment, lambdas, helperSources = []) {
   /** @type {Record<string, HelperDecl>} */
   const decls = Object.fromEntries(helperSources.map((h) => [h.name, h.kind === "fn" ? { kind: "fn" } : { kind: "const", value: null }]));
-  const consts = lowerConstants(dialect, helperSources, decls);
+  const consts = lowerConstants(environment, helperSources, decls);
   const fns = helperSources.filter((h) => h.kind === "fn");
   const all = [...lambdas, ...fns.map((h) => ({ src: h.src, slot: helperSlot(h) }))];
   let sigs = noSignatures(decls);
@@ -201,7 +201,7 @@ export function lowerProgram(dialect, lambdas, helperSources = []) {
   let results = [];
   // Each pass can only add what the last one learned; a chain of n methods settles in n passes.
   for (let pass = 0; pass <= all.length + 1; pass++) {
-    results = all.map((l) => lowerLambda(dialect, l.src, l.slot, sigs));
+    results = all.map((l) => lowerLambda(environment, l.src, l.slot, sigs));
     const next = infer(all, results, decls);
     if (JSON.stringify(next) === JSON.stringify(sigs)) break;
     sigs = next;

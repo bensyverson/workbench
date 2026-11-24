@@ -6,7 +6,7 @@ import { emitKernel, instantiate } from "../index.js";
 import { lower } from "../../../lower/test/fixture.js";
 
 /** @import { Kernel } from "../../../ir/ir.js" */
-/** @import { Signatures } from "../../../lower/dialect.js" */
+/** @import { Signatures } from "../../../lower/environment.js" */
 
 /**
  * Lowers and emits, asserting both succeed.

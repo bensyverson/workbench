@@ -1,24 +1,24 @@
 // The M1 pipeline over one DMG preset: build it with the oracle, describe its
-// program to the kit's DMG dialect, lower every runtime lambda to IR, and emit JS.
+// program to the kit's DMG environment, lower every runtime lambda to IR, and emit JS.
 
 import { lambdaSlots } from "../dmg-oracle/lambdas.js";
 import { topLevelBindings, topLevelRefs } from "../dmg-oracle/toplevel.js";
 import { parseLambda } from "../../kit/parse/index.js";
 import { declarationsOf } from "../dmg-oracle/declarations.js";
-import { dmgDialect, WORLD } from "../../kit/dialects/dmg/index.js";
+import { dmgEnvironment, WORLD } from "../../kit/dialects/dmg/index.js";
 import { lowerProgram } from "../../kit/lower/index.js";
 import { emitKernel, instantiate, emitHelpers } from "../../kit/emit/js/index.js";
 
 /** @import { Slot } from "../dmg-oracle/lambdas.js" */
 /** @import { DmgBuild } from "../dmg-oracle/dmg.js" */
-/** @import { SlotRef, Signatures, Dialect, HelperSource } from "../../kit/lower/dialect.js" */
+/** @import { SlotRef, Signatures, Environment, HelperSource } from "../../kit/lower/environment.js" */
 /** @import { LowerResult, HelperResult } from "../../kit/lower/index.js" */
 /** @import { Emitted } from "../../kit/emit/js/emit.js" */
 
 /**
  * @typedef {object} Entry
  * @property {Slot} slot    The oracle's slot, which can swap the lambda.
- * @property {SlotRef} ref  The slot as the dialect sees it, for one of the parts that runs it.
+ * @property {SlotRef} ref  The slot as the environment sees it, for one of the parts that runs it.
  * @property {LowerResult} result
  * @property {() => Record<string, (...args: any[]) => unknown>} scope  The program's helpers, made callable once.
  */
@@ -46,7 +46,7 @@ export function helperSources(code, lambdaSrcs) {
 }
 
 /**
- * The dialect's view of an oracle slot, for the part `user` that runs it.
+ * The environment's view of an oracle slot, for the part `user` that runs it.
  * @param {Slot} slot
  * @param {string} user  A component name, or the game's name for the world.
  * @param {string} game
@@ -63,20 +63,20 @@ export function slotRef(slot, user, game) {
  * lambda run by several parts is lowered once per part.
  * @param {{ build(id: string): DmgBuild }} dmg
  * @param {string} id
- * @returns {{ build: DmgBuild, dialect: Dialect, entries: Entry[], sigs: Signatures, helpers: HelperResult[] }}
+ * @returns {{ build: DmgBuild, environment: Environment, entries: Entry[], sigs: Signatures, helpers: HelperResult[] }}
  */
 export function lowerPreset(dmg, id) {
   const build = dmg.build(id);
   const spec = build.spec;
-  const dialect = dmgDialect(declarationsOf(spec));
+  const environment = dmgEnvironment(declarationsOf(spec));
   const pairs = lambdaSlots(spec).flatMap((slot) => slot.usedBy.map((user) => ({ slot, ref: slotRef(slot, user, spec.name) })));
   const code = build.code ?? /** @type {{ presets?: Array<{ id: string, code: string }> }} */ (dmg).presets?.find((p) => p.id === id)?.code ?? "";
   const sources = helperSources(code, pairs.map((p) => p.slot.src));
-  const { results, sigs, helpers } = lowerProgram(dialect, pairs.map((p) => ({ src: p.slot.src, slot: p.ref })), sources);
+  const { results, sigs, helpers } = lowerProgram(environment, pairs.map((p) => ({ src: p.slot.src, slot: p.ref })), sources);
   /** @type {Record<string, (...args: any[]) => unknown> | null} */
   let made = null;
   const scope = () => (made ??= helperScope(helpers));
-  return { build, dialect, entries: pairs.map((p, i) => ({ ...p, result: results[i], scope })), sigs, helpers };
+  return { build, environment, entries: pairs.map((p, i) => ({ ...p, result: results[i], scope })), sigs, helpers };
 }
 
 /**

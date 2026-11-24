@@ -9,7 +9,7 @@ formatJSON(kernel);   // the diffable JSON form: standard JSON, short nodes on o
 printKernel(kernel);  // a listing for people: one statement per line, effects as comments
 ```
 
-- **A kernel** ([`ir.d.ts`](ir.d.ts)) is a function plus its domain (`entity Mole`, `tick`, `render`): parameters, locals, a body of statements, the effects the body has, and the lambda's source.
+- **A kernel** ([`ir.d.ts`](ir.d.ts)) is a function plus its iteration space (`entity Mole`, `tick`, `render`): parameters, locals, a body of statements, the effects the body has, and the lambda's source.
 - **Every node has a `span`**, `[start, end]` offsets into the kernel's `src`, the parser's `range`. Every expression has a type `t`; every statement has `effects` (`read Mole.ttl`, `write World.next`, `rng`, `emit whack`, …), and the kernel sums them.
 - **Types:** `f64`, `bool`, `str`, `null`, `void`, enums of strings, entity references, optionals, lists with a maximum length, structs, unions, and dialect handles (`{ obj: "World" }`). Numbers are always `f64`; a sized integer is a store rule on a place. Why, and how it matches the DMG runtime: [the M1 plan](../../project/2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR".
 - **Evaluation is left to right**; `cond`, `and` and `or` are lazy. Statements that cannot sit inside an expression (stores, a query's loop) come before it, so the IR is never ambiguous about order.

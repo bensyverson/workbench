@@ -1,20 +1,20 @@
 # kit/lower: from syntax tree to IR
 
-Lowers a runtime lambda, parsed by [kit/parse](../parse/README.md), to an [IR](../ir/README.md) kernel. Every identifier and member is resolved, and every expression typed, against a **dialect description**; whatever cannot be lowered comes back as a coded diagnostic with a one-line `tip`. No Node built-ins.
+Lowers a runtime lambda, parsed by [kit/parse](../parse/README.md), to an [IR](../ir/README.md) kernel. Every identifier and member is resolved, and every expression typed, against an **environment**; whatever cannot be lowered comes back as a coded diagnostic with a one-line `tip`. No Node built-ins.
 
 ```js
 import { lowerLambda, lowerProgram } from "./kit/lower/index.js";
-import { dmgDialect } from "./kit/dialects/dmg/index.js";
+import { dmgEnvironment } from "./kit/dialects/dmg/index.js";
 
-const dialect = dmgDialect(declarations);              // what one program declares
-const r = lowerLambda(dialect, src, { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" });
+const environment = dmgEnvironment(declarations);              // what one program declares
+const r = lowerLambda(environment, src, { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" });
 // r.ok, r.kernel (null on any error), r.diagnostics (parser, subset and lowering, in source order)
 
-const { results, sigs, helpers } = lowerProgram(dialect, lambdas, helperSources); // a whole program: infers payloads and method and helper signatures
+const { results, sigs, helpers } = lowerProgram(environment, lambdas, helperSources); // a whole program: infers payloads and method and helper signatures
 ```
 
-- **The dialect** ([`dialect.d.ts`](dialect.d.ts)) names the objects a lambda can reach (entity kinds, the world, input, …) with their members' types, store rules and effects; the list operations that take callbacks; the free globals (`Math`); and each slot's calling convention, domain, and the effects it forbids. A dialect is data plus one `slot()` lookup.
-- **The DMG dialect** ([`../dialects/dmg/`](../dialects/dmg/index.js)) is built from a program's declarations ([`decls.d.ts`](../dialects/dmg/decls.d.ts)): attributes with their types, baked constants, methods, params, pools, the board, aliases and sounds. `scripts/dmg-oracle/declarations.js` reads them from a built spec. It describes `self`, `w` (`frame`, `param`, `rand`, `rng`, `board`, `pool`, `spawn`, `emit`, `sfx`, `toast`, `input`, `grid`, `all`, `one`, `log`, `end`, `overlap`), the HUD's `at(c, r).text(fmt, …)` and `Math`. `w.bg` is not described yet.
+- **The environment** ([`environment.d.ts`](environment.d.ts)), a dialect plus one program's declarations, names the objects a lambda can reach (entity kinds, the world, input, …) with their members' types, store rules and effects; the list operations that take callbacks; the free globals (`Math`); and each slot's calling convention, iteration space, and the effects it forbids. An environment is data plus one `slot()` lookup.
+- **The DMG dialect** ([`../dialects/dmg/`](../dialects/dmg/index.js)) becomes an environment, via `dmgEnvironment(declarations)`, when combined with a program's declarations ([`decls.d.ts`](../dialects/dmg/decls.d.ts)): attributes with their types, baked constants, methods, params, pools, the board, aliases and sounds. `scripts/dmg-oracle/declarations.js` reads them from a built spec. It describes `self`, `w` (`frame`, `param`, `rand`, `rng`, `board`, `pool`, `spawn`, `emit`, `sfx`, `toast`, `input`, `grid`, `all`, `one`, `log`, `end`, `overlap`), the HUD's `at(c, r).text(fmt, …)` and `Math`. `w.bg` is not described yet.
 - **Whole-program inference.** DMG events and methods are untyped, so `lowerProgram` takes an event's payload type from its emit sites, a method's parameter types from its call sites, and its result and effects from its body, repeating until nothing changes. A method call's effects include the callee's.
 - **Queries** (`filter`, `find`, `some`, `every`, `reduce`) take a callback with an expression body, which lowering inlines as an `each` loop over the list. The callback may read the enclosing lambda's locals; it may not change them, write state, or call anything with an effect other than a read (L006).
 - **Evaluation order is JavaScript's.** Operands and arguments go left to right, and each receiver is evaluated once: `w.board.at(w.rng.int(9)).ttl += 30` saves the mole to a temporary, reads `ttl`, then evaluates the right side, then stores. When an operand spills statements (a nested assignment, a lazy branch), the operands before it that could change are saved first.

@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { emitKernel, instantiate } from "../index.js";
-import { lower, dialect } from "../../../lower/test/fixture.js";
+import { lower, environment } from "../../../lower/test/fixture.js";
 import { lowerProgram } from "../../../lower/index.js";
 
 /** @import { Kernel } from "../../../ir/ir.js" */
@@ -165,7 +165,7 @@ test("reduce evaluates its list before its initial value", () => {
     { src: "(self) => { self.world.sfx(\"pop\"); return self.world.board.filter((m) => m.up); }", slot: { id: "Mole.method(pop)", kind: "method", on: "Mole", key: "pop" } },
     { src: "(self, w) => { w.score = self.pop().reduce((a, m) => a + 1, w.rng.int(3)); }", slot: { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" } },
   ];
-  const { results } = lowerProgram(dialect, lambdas);
+  const { results } = lowerProgram(environment, lambdas);
   const k = /** @type {Kernel} */ (results[1].kernel);
   assert.ok(k, results[1].diagnostics.map((d) => d.message).join("; "));
   /** @type {string[]} */

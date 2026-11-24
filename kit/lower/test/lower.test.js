@@ -34,7 +34,7 @@ function nodes(v, out = []) {
 
 test("a stateful onFrame lowers to loads, an unwrapped temp, a coercing store, and a compare of the temp", () => {
   const k = ok("(self) => { if (self.up && --self.ttl === 0) self.up = false; }");
-  assert.equal(k.domain, "entity Mole");
+  assert.equal(k.space, "entity Mole");
   assert.deepEqual(k.params.map((p) => [p.name, p.t]), [["self", { ref: "Mole" }]]);
   const [outer] = k.body;
   assert.equal(outer.k, "if");
@@ -179,7 +179,7 @@ test("Math intrinsics are pure calls on doubles", () => {
 });
 
 test("a method call on an entity records the call and the callee's effects", () => {
-  /** @type {import("../dialect.js").Signatures} */
+  /** @type {import("../environment.js").Signatures} */
   const sigs = { events: {}, methods: { "Mole.whack": { params: [], returns: "bool", effects: /** @type {import("../../ir/ir.js").Effect[]} */ (["write Mole.up"]) } } };
   const k = ok("(w, e) => { if (w.board.at(e.cell).whack()) w.toast(\"WHACK\", \"+100\"); }", "on", "World", { key: "whack", sigs: { ...sigs, events: { whack: { struct: { cell: "f64" } } } } });
   assert.ok(k.effects.includes("call Mole.whack"));

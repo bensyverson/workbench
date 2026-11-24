@@ -1,4 +1,4 @@
-// What one DMG program declares, as plain data: the input to `dmgDialect`. The
+// What one DMG program declares, as plain data: the input to `dmgEnvironment`. The
 // oracle side reads it from a built spec (scripts/dmg-oracle/declarations.js); tests
 // write it by hand. Nothing here is DMG code, only the shape of a program.
 

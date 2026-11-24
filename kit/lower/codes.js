@@ -3,7 +3,7 @@
 
 /** Each code and what it means; the tests check that every one is exercised. */
 export const LOWER_CODES = Object.freeze({
-  L001: "A free identifier the dialect does not declare",
+  L001: "A free identifier the environment does not declare",
   L002: "An unknown member",
   L003: "A type mismatch",
   L004: "An effect the slot does not allow",

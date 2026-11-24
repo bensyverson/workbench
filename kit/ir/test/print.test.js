@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { printKernel, showType } from "../index.js";
 import { lower } from "../../lower/test/fixture.js";
 
-test("a kernel prints as a listing with its domain, types, coercing stores and effects", () => {
+test("a kernel prints as a listing with its iteration space, types, coercing stores and effects", () => {
   const r = lower("(self) => { if (self.up && --self.ttl === 0) self.up = false; }");
   assert.ok(r.kernel);
   assert.equal(printKernel(r.kernel), [

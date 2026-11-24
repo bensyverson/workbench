@@ -1,7 +1,7 @@
 // Lowering a whole program: event payloads and method signatures inferred across lambdas.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dialect } from "./fixture.js";
+import { environment } from "./fixture.js";
 import { lowerProgram } from "../index.js";
 
 const LAMBDAS = [
@@ -12,7 +12,7 @@ const LAMBDAS = [
 ];
 
 test("payloads come from emit sites and method signatures from bodies and call sites", () => {
-  const { results, sigs } = lowerProgram(dialect, LAMBDAS);
+  const { results, sigs } = lowerProgram(environment, LAMBDAS);
   for (const r of results) assert.deepEqual(r.diagnostics.map((d) => `${d.code} ${d.message}`), []);
   assert.deepEqual(sigs.events.whack, { struct: { cell: "f64" } });
   assert.deepEqual(sigs.methods["Mole.whack"].returns, "bool");
@@ -24,13 +24,13 @@ test("payloads come from emit sites and method signatures from bodies and call s
 
 test("a payload field no emit site sends is an unknown member", () => {
   const bad = [...LAMBDAS, { src: "(w, e) => { w.next = e.row; }", slot: { id: "g.on(whack)#1", kind: "on", on: "World", key: "whack" } }];
-  const { results } = lowerProgram(dialect, bad);
+  const { results } = lowerProgram(environment, bad);
   assert.deepEqual(results[4].diagnostics.map((d) => d.code), ["L002"]);
   assert.deepEqual(results[0].diagnostics, []);
 });
 
 test("emit sites that disagree on a payload are a signature conflict", () => {
   const bad = [...LAMBDAS, { src: "(w) => { w.emit(\"whack\", { cell: \"x\" }); }", slot: { id: "timer(t)", kind: "timer", on: "World" } }];
-  const { results } = lowerProgram(dialect, bad);
+  const { results } = lowerProgram(environment, bad);
   assert.deepEqual(results[4].diagnostics.map((d) => d.code), ["L014"]);
 });

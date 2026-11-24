@@ -7,7 +7,7 @@ import { check, expr, test, bad, seq } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Stmt, Span } from "../ir/ir.js" */
-/** @import { QueryName } from "./dialect.js" */
+/** @import { QueryName } from "./environment.js" */
 /** @import { Lowerer } from "./lowerer.js" */
 
 /**

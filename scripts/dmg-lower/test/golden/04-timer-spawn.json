@@ -2,7 +2,7 @@
   "ir": "kernel",
   "name": "timer(spawn)",
   "slot": "timer",
-  "domain": "tick",
+  "space": "tick",
   "params": [{ "name": "w", "t": { "obj": "World" }, "kind": "param" }],
   "returns": "void",
   "locals": [
