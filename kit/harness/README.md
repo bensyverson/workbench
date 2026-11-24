@@ -6,10 +6,10 @@ M2's "done when": the same fields Program, through three evaluators, agreeing. I
 2. the **emitted JS** ([kit/emit/js](../emit/js/README.md)), and
 3. the **emitted GLSL** ([kit/emit/glsl](../emit/glsl/README.md)), run on a WebGL2 context and read back as floats,
 
-and reports per pair the worst difference, the pixel and param set it came from, and the source line. JS against the interpreter must match **bit for bit** (`Object.is` on every f32 component); GLSL against the interpreter must fall within `GLSL_TOLERANCE` (proposal D5: floats within a tolerance the target declares). No Node built-ins: the library runs in a page. The CLI that launches the page is [scripts/shader-diff](../../scripts/shader-diff/README.md).
+and reports per pair the worst difference, the pixel and param set it came from, and the source line. JS against the interpreter must match **bit for bit** (`Object.is` on every f32 component); GLSL against the interpreter must fall within the figure the GLSL target declares (proposal D5: floats within a tolerance the target declares), or within a case's own override, which must state its reason. No Node built-ins: the library runs in a page. The CLI that launches the page is [scripts/shader-diff](../../scripts/shader-diff/README.md).
 
 ```js
-import { standardCases, runCase, GLSL_TOLERANCE } from "./kit/harness/index.js";
+import { standardCases, runCase, glslFigure } from "./kit/harness/index.js";
 
 const [swirl] = standardCases();
 const r = await runCase(swirl, { render });   // `render` runs shader jobs somewhere with a GPU; omit it for JS alone
@@ -27,7 +27,7 @@ r.glslVsInterp.at;                             // { kernel, line, text, jsLine, 
 | `evaluate.js`, `compare.js`, `locate.js` | a pixel function over a grid; the worst difference of two sets of buffers; the `return` that made a pixel, found again in the author's lambda and in both line maps |
 | `run.js` | `runCase`, and its parts (`referencePixels`, `compareJs`, `compareGlsl`, `shaderJob`); the `Render` type |
 | `gl.js`, `page.js`, `page.html` | the GLSL half: `renderJobs(gl, jobs)` compiles each shader and reads the pixels back (DOM-free, the context is handed in); `page.js` is the thin part that makes a canvas and sets `window.workbenchHarness` |
-| `tolerance.js` | `GLSL_TOLERANCE`, the figure the GLSL target declares |
+| `target.js` | `glslFigure()`, `targetFigure(dialect, target)` and `figureFor(case)`: the figure comes from the Dialect's target declaration, and a case's override is checked here |
 | `faults.js`, `sensitivity.js` | planted faults and the run that plants each in each backend |
 
 ## Conventions
@@ -41,9 +41,11 @@ r.glslVsInterp.at;                             // { kernel, line, text, jsLine, 
 
 A shader gives only its output, so the finest place a difference can be named is the **`return` statement** the interpreter took for the worst pixel (`at`: the line in the author's lambda, the emitted JS function's line, the shader's line). It does not say which operation drifted. For a closer look, run the interpreter's `onNode` hook on that pixel ([kit/interp](../interp/README.md)).
 
-## The GLSL tolerance
+## The GLSL figure
 
-`GLSL_TOLERANCE = 1e-3` per color component. It is measured, not derived: the figure, the renderer it was measured on, its headroom and the evidence are in [the M2 findings](../../project/2026-11-23-m2-findings.md). It belongs to the GLSL target and lives here only because `kit/emit/glsl` was finished by another leaf; it should move there, with the fields Dialect's `targets.glsl.compare` pointing at it.
+The GLSL target declares `compare: { kind: "tolerance", figure: 1e-3 }` in `FIELDS_DIALECT.targets` ([kit/dialects/fields](../dialects/fields/README.md); the shape `defineDialect` resolves `tolerance(1e-3)` to), and JS declares `{ kind: "exact" }`. The harness reads the figure from there (`glslFigure()`) and keeps no constant of its own. The figure is per color component and measured, not derived: the renderer, its headroom and the evidence are in [the M2 findings](../../project/2026-11-23-m2-findings.md).
+
+**One figure per target; a case may override it only with a reason** (Ben's ruling, the M2 findings' open ruling 1). A case carries `override: { figure, reason }`. `figureFor(case)` refuses an override whose reason is missing or blank, or whose figure is not a positive number, so `runCase` and `runFaults` throw. An accepted override is on the result (`CaseResult.override`, `runFaults(...).overrides`), is printed by `shader-diff` as `GLSL figure overridden to <figure> for this case: <reason>`, and is named with its reason in the problem `faultProblems` reports for a control it loosened. The one case that uses it is `stressCase()`: `domain-warp` at the edge of its ranges, held to 1e-2 with the recorded reason (worst 5.18e-3 in the findings, 4.85e-3 on a rerun; cause not established). `options.tolerance` (the CLI's `--tolerance`) is the caller's own figure for every case and wins over both.
 
 ## Tests
 

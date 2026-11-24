@@ -6,9 +6,9 @@ import { prepare, uniformValues } from "./pipeline.js";
 import { evaluateGrid } from "./evaluate.js";
 import { compare, rgbOf } from "./compare.js";
 import { locate } from "./locate.js";
-import { GLSL_TOLERANCE } from "./tolerance.js";
+import { figureFor } from "./target.js";
 
-/** @import { Case } from "./cases.js" */
+/** @import { Case, Override } from "./cases.js" */
 /** @import { Comparison, Shape } from "./compare.js" */
 /** @import { Location } from "./locate.js" */
 /** @import { Plant, Pipeline } from "./pipeline.js" */
@@ -33,6 +33,8 @@ import { GLSL_TOLERANCE } from "./tolerance.js";
  * @property {PairResult | null} glslVsJs
  * @property {string | null} glslError  Why the shader did not compile, link or run.
  * @property {boolean} planted  False when a fault given to `prepare` changed nothing: the run is then no evidence.
+ * @property {number} tolerance  The figure the GLSL pairs were held to: the target's, the case's override, or the caller's `options.tolerance`.
+ * @property {Override | null} override  The case's override, with its reason, when it has one.
  */
 
 /**
@@ -118,12 +120,13 @@ function shapeOf(c) {
  * @returns {Promise<CaseResult>}
  */
 export async function runCase(c, options = {}) {
-  const tolerance = options.tolerance ?? GLSL_TOLERANCE;
+  const { figure, override } = figureFor(c);
+  const tolerance = options.tolerance ?? figure;
   const p = prepare(c.program, options.plant);
   const ref = referencePixels(p, c);
   const { js, pair: jsVsInterp } = compareJs(p, c, ref);
   /** @type {CaseResult} */
-  const result = { name: c.name, shape: shapeOf(c), jsVsInterp, glslVsInterp: null, glslVsJs: null, glslError: null, planted: p.planted };
+  const result = { name: c.name, shape: shapeOf(c), jsVsInterp, glslVsInterp: null, glslVsJs: null, glslError: null, planted: p.planted, tolerance, override };
   if (!options.render) return result;
   const [shader] = await options.render([shaderJob(p, c, options.id ?? c.name)]);
   if (shader.error) return { ...result, glslError: shader.error };

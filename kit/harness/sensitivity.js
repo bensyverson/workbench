@@ -6,7 +6,7 @@ import { standardCases } from "./cases.js";
 import { prepare } from "./pipeline.js";
 import { referencePixels, compareJs, compareGlsl, shaderJob } from "./run.js";
 import { FAULTS } from "./faults.js";
-import { GLSL_TOLERANCE } from "./tolerance.js";
+import { figureFor, glslFigure } from "./target.js";
 
 /**
  * The scale the faults run at: a 74-pixel panel and a 65 by 44 warp, a fraction of the standard grids so that dozens
@@ -36,6 +36,14 @@ export const FAULT_SCALE = 0.49;
  */
 
 /**
+ * @typedef {object} FaultsResult
+ * @property {FaultRow[]} rows
+ * @property {Array<{ case: string, jsExact: boolean, glslWorst: number | null, tolerance?: number }>} controls  `tolerance`: the figure the control's case was held to.
+ * @property {number} tolerance  The target's declared figure (or the caller's), for a control that carries none.
+ * @property {Array<{ case: string, figure: number, reason: string }>} overrides  The cases that overrode the figure, each with its reason.
+ */
+
+/**
  * @param {PairResult} pair
  * @returns {string | null}
  */
@@ -46,14 +54,17 @@ function where(pair) {
 /**
  * What is wrong with a `runFaults` result, one line each; empty when the run is a clean verdict: every control
  * clean, every fault planted and compared, every escape explained.
- * @param {{ rows: FaultRow[], controls: Array<{ case: string, jsExact: boolean, glslWorst: number | null }>, tolerance: number }} result
+ * A control held to an overriding figure says so, with the reason.
+ * @param {FaultsResult} result
  * @returns {string[]}
  */
 export function faultProblems(result) {
   const out = [];
   for (const c of result.controls) {
     if (!c.jsExact) out.push(`control ${c.case}: JS differs from the interpreter with no fault planted`);
-    if (c.glslWorst !== null && !(c.glslWorst <= result.tolerance)) out.push(`control ${c.case}: GLSL differs by ${c.glslWorst} with no fault planted`);
+    const figure = c.tolerance ?? result.tolerance;
+    const override = result.overrides.find((o) => o.case === c.case);
+    if (c.glslWorst !== null && !(c.glslWorst <= figure)) out.push(`control ${c.case}: GLSL differs by ${c.glslWorst} with no fault planted${override ? `; held to ${figure} (override: ${override.reason})` : ""}`);
   }
   for (const r of result.rows) {
     if (!r.planted) out.push(`not planted: ${r.id} (${r.target})`);
@@ -67,12 +78,14 @@ export function faultProblems(result) {
 /**
  * Plants every fault in every backend it applies to. JS faults run here; GLSL faults need `render` and are skipped
  * (with `caught: null`) when there is none.
- * @param {{ render?: Render, scale?: number, tolerance?: number, faults?: Fault[] }} [options]
- * @returns {Promise<{ rows: FaultRow[], controls: Array<{ case: string, jsExact: boolean, glslWorst: number | null }>, tolerance: number }>}
+ * @param {{ render?: Render, scale?: number, tolerance?: number, faults?: Fault[], cases?: import("./cases.js").Case[] }} [options]  `tolerance` is the caller's figure for every case; `cases` replaces the standard cases (an override with no reason is refused).
+ * @returns {Promise<FaultsResult>}
  */
 export async function runFaults(options = {}) {
-  const tolerance = options.tolerance ?? GLSL_TOLERANCE;
-  const cases = standardCases(options.scale ?? FAULT_SCALE);
+  const cases = options.cases ?? standardCases(options.scale ?? FAULT_SCALE);
+  const figures = new Map(cases.map((c) => [c.name, figureFor(c)]));
+  const toleranceOf = (/** @type {import("./cases.js").Case} */ c) => options.tolerance ?? /** @type {{ figure: number }} */ (figures.get(c.name)).figure;
+  const overrides = cases.flatMap((c) => { const o = figures.get(c.name)?.override; return o ? [{ case: c.name, figure: o.figure, reason: o.reason }] : []; });
   const faults = options.faults ?? FAULTS;
   /** @type {Map<string, Float32Array[]>} */
   const refs = new Map();
@@ -107,7 +120,7 @@ export async function runFaults(options = {}) {
       const r = results[i];
       // A shader that does not compile was never compared, so it is neither caught nor escaped.
       if (r.error) { x.row.error = r.error; return; }
-      const { pair } = compareGlsl(x.p, x.c, refOf(x.c), r.sets, tolerance);
+      const { pair } = compareGlsl(x.p, x.c, refOf(x.c), r.sets, toleranceOf(x.c));
       Object.assign(x.row, { caught: pair.over > 0, worst: pair.worst.diff, at: where(pair) });
     });
   }
@@ -121,11 +134,11 @@ export async function runFaults(options = {}) {
     let glslWorst = null;
     if (options.render) {
       const [r] = await options.render([shaderJob(p, c, `control ${c.name}`)]);
-      glslWorst = r.error ? Infinity : compareGlsl(p, c, ref, r.sets, tolerance).pair.worst.diff;
+      glslWorst = r.error ? Infinity : compareGlsl(p, c, ref, r.sets, toleranceOf(c)).pair.worst.diff;
     }
-    controls.push({ case: c.name, jsExact, glslWorst });
+    controls.push({ case: c.name, jsExact, glslWorst, tolerance: toleranceOf(c) });
   }
-  return { rows, controls, tolerance };
+  return { rows, controls, tolerance: options.tolerance ?? glslFigure(), overrides };
 }
 
 /**

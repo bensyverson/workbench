@@ -8,8 +8,14 @@ import { domainWarp } from "../dialects/fields/programs/domain-warp.js";
 /** @typedef {Record<string, number | string | boolean>} ParamValues */
 
 /**
+ * A case's GLSL figure, when it must differ from the target's: stated with the reason, which is required.
+ * @typedef {{ figure: number, reason: string }} Override
+ */
+
+/**
  * One program over one grid and several param sets.
  * @typedef {object} Case
+ * @property {Override} [override]  Replaces the GLSL target's declared figure for this case; `figureFor` refuses it without a reason, and every report prints it.
  * @property {string} name
  * @property {FieldProgram} program
  * @property {number} width  Pixels across.
@@ -94,6 +100,12 @@ export function standardCases(scale = 1) {
   return [...remapCases(sz(150)), warpCase(w, Math.max(4, Math.round((w * 300) / 440)))];
 }
 
+/** @type {Override} */
+const STRESS_OVERRIDE = {
+  figure: 1e-2,
+  reason: "worst 5.18e-3 recorded on Apple's GPU through WebKit (5.2x the target's 1e-3; 4.85e-3 on the 2026-11-24 rerun): five octaves of noise chained twice at the largest k and seed amplify an f32 rounding difference; the cause is not established (fused multiply-add on this GPU is one candidate), see project/2026-11-23-m2-findings.md",
+};
+
 /**
  * `domain-warp` pushed to the edge of its declared ranges, to see how far the shader strays when the hash and the
  * sines get large arguments: the largest `scale`, `k` and `seed`, a `t` of ten minutes, every palette, level 2.
@@ -104,5 +116,5 @@ export function standardCases(scale = 1) {
 export function stressCase(scale = 1) {
   const width = Math.max(4, Math.round(132 * scale)), height = Math.max(4, Math.round((width * 300) / 440));
   const base = { ...defaults(domainWarp, width / height), scale: 8, k: 8, seed: 99, levels: 2 };
-  return { name: "domain-warp (stress)", program: domainWarp, width, height, sets: ["fog", "grey", "marble"].flatMap((palette) => [0, 600].map((t) => ({ label: `${palette}, t ${t}, scale 8, k 8, seed 99`, values: { ...base, palette, t } }))) };
+  return { name: "domain-warp (stress)", program: domainWarp, width, height, override: STRESS_OVERRIDE, sets: ["fog", "grey", "marble"].flatMap((palette) => [0, 600].map((t) => ({ label: `${palette}, t ${t}, scale 8, k 8, seed 99`, values: { ...base, palette, t } }))) };
 }

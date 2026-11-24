@@ -17,7 +17,7 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 
 ## Files
 
-- `index.js`: what to import: `field`, `lowerField`, `fieldsEnvironment`, `INTRINSICS`, `LIBRARY`, the types, and `FIELDS_DIALECT` (the Dialect as data: `numberType`, types, domains, intrinsics, library, targets).
+- `index.js`: what to import: `field`, `lowerField`, `fieldsEnvironment`, `INTRINSICS`, `LIBRARY`, the types, and `FIELDS_DIALECT` (the Dialect as data: `numberType`, types, domains, intrinsics, library, targets). `targets` says what each target accepts and how its output is compared with the interpreter: `js` is `{ kind: "exact" }`, `glsl` is `{ kind: "tolerance", figure: 1e-3 }` (the harness reads the figure from here; see [kit/harness](../../harness/README.md)).
 - `types.js`: `vec2`, `vec3`, `vec4`, `color` and the color aliases. `vec3` and `color` have one shape and are different types.
 - `environment.js`: `fieldsEnvironment(params)`, the [Environment](../../lower/environment.d.ts) lowering resolves against.
 - `intrinsics.js`: each intrinsic's signature, its JS and GLSL spellings and a reference implementation.

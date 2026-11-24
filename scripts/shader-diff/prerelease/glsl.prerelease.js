@@ -2,7 +2,7 @@
 // the planted faults. Skips with a message where sleepy (or its WebGL2 with float readback) is not available.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { standardCases, stressCase, runCase, runFaults, tally, GLSL_TOLERANCE } from "../../../kit/harness/index.js";
+import { standardCases, stressCase, runCase, runFaults, tally, glslFigure } from "../../../kit/harness/index.js";
 import { probeSleepy, sleepyRender } from "../sleepy.js";
 
 const probe = probeSleepy();
@@ -11,18 +11,18 @@ if (!probe.ok) console.log(skip);
 const render = sleepyRender();
 
 for (const c of standardCases()) {
-  test(`${c.name}: JS is exact and GLSL is within ${GLSL_TOLERANCE} of the interpreter over ${c.width}x${c.height} pixels and ${c.sets.length} param sets`, { skip }, async (t) => {
+  test(`${c.name}: JS is exact and GLSL is within ${glslFigure()} of the interpreter over ${c.width}x${c.height} pixels and ${c.sets.length} param sets`, { skip }, async (t) => {
     const r = await runCase(c, { render });
     assert.equal(r.glslError, null);
     assert.equal(r.jsVsInterp.exact, true, `JS: worst ${r.jsVsInterp.worst.diff} at ${r.jsVsInterp.worst.pixel}`);
     const g = /** @type {NonNullable<typeof r.glslVsInterp>} */ (r.glslVsInterp);
     assert.equal(g.over, 0, `GLSL: worst ${g.worst.diff} at pixel ${g.worst.pixel}, set ${g.worst.set}, ${JSON.stringify(g.at)}`);
-    t.diagnostic(`GLSL worst ${g.worst.diff} on ${probe.ok ? probe.renderer.renderer : "?"}; tolerance ${GLSL_TOLERANCE}`);
+    t.diagnostic(`GLSL worst ${g.worst.diff} on ${probe.ok ? probe.renderer.renderer : "?"}; tolerance ${r.tolerance}`);
   });
 }
 
-test("domain-warp at the edge of its ranges stays within 1e-2 (not the tolerance: this is how far it strays)", { skip }, async (t) => {
-  const r = await runCase(stressCase(), { render, tolerance: 1e-2 });
+test("domain-warp at the edge of its ranges stays within its overridden figure (1e-2, with the reason the case states)", { skip }, async (t) => {
+  const r = await runCase(stressCase(), { render });
   assert.equal(r.glslError, null);
   assert.equal(r.jsVsInterp.exact, true);
   const g = /** @type {NonNullable<typeof r.glslVsInterp>} */ (r.glslVsInterp);
@@ -38,7 +38,7 @@ test("every planted fault is caught in both backends, except the ones with a rec
   assert.deepEqual(rows.filter((r) => r.caught && r.escape).map((r) => `${r.id}/${r.target}`), [], "no escape claimed for a fault that was caught");
   for (const c of controls) {
     assert.equal(c.jsExact, true, c.case);
-    assert.ok(/** @type {number} */ (c.glslWorst) <= GLSL_TOLERANCE, `${c.case}: the unplanted shader differs by ${c.glslWorst}`);
+    assert.ok(/** @type {number} */ (c.glslWorst) <= (c.tolerance ?? glslFigure()), `${c.case}: the unplanted shader differs by ${c.glslWorst}`);
   }
   const x = tally(rows);
   t.diagnostic(`JS ${x.js.caught}/${x.js.planted} caught; GLSL ${x.glsl.caught}/${x.glsl.planted} caught; escaped: ${[...x.js.escaped, ...x.glsl.escaped].map((e) => `${e.id}/${e.target}`).join(", ")}`);

@@ -6,7 +6,7 @@ export { prepare, uniformValues } from "./pipeline.js";
 export { runCase, referencePixels, compareJs, compareGlsl, shaderJob } from "./run.js";
 export { compare, rgbOf } from "./compare.js";
 export { locate } from "./locate.js";
-export { GLSL_TOLERANCE } from "./tolerance.js";
+export { glslFigure, targetFigure, figureFor } from "./target.js";
 export { FAULTS } from "./faults.js";
 export { runFaults, faultProblems, tally, FAULT_SCALE } from "./sensitivity.js";
 export { renderJobs, describeRenderer, encodeFloats, decodeFloats } from "./gl.js";

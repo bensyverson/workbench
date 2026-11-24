@@ -55,7 +55,7 @@ function agree(program, uniforms) {
 const DEFAULTS = (/** @type {FieldProgram} */ p) => Object.fromEntries(Object.entries(p.params).map(([k, d]) => [k, d.value]));
 
 test("the fields Dialect's JS target is compared exactly", () => {
-  assert.equal(FIELDS_DIALECT.targets.js.compare, "exact");
+  assert.deepEqual(FIELDS_DIALECT.targets.js.compare, { kind: "exact" });
 });
 
 test("swirl: emitted JS is bit-identical to the interpreter", (t) => {

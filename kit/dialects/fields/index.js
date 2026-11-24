@@ -24,9 +24,13 @@ export const FIELDS_DIALECT = Object.freeze({
   domains: { pixel: { args: { uv: "vec2", u: "Uniforms" }, returns: "color", pure: true } },
   intrinsics: INTRINSICS,
   library: LIBRARY,
-  /** What each target accepts, and how its output is compared with the reference. */
+  /**
+   * What each target accepts, and how its output is compared with the reference: the shape `defineDialect`
+   * resolves `exact()` and `tolerance(figure)` to. The GLSL figure is the largest absolute difference allowed in
+   * any color component (a quarter of an 8-bit step), measured on one GPU: see `project/2026-11-23-m2-findings.md`.
+   */
   targets: {
-    js: { accepts: "*", compare: "exact" },
-    glsl: { accepts: { domains: ["pixel"] }, compare: "tolerance" },
+    js: { accepts: "*", compare: { kind: /** @type {const} */ ("exact") } },
+    glsl: { accepts: { domains: ["pixel"] }, compare: { kind: /** @type {const} */ ("tolerance"), figure: 1e-3 } },
   },
 });

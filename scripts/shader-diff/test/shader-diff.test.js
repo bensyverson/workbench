@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { main, describeCase } from "../cli.js";
-import { standardCases, runCase, GLSL_TOLERANCE } from "../../../kit/harness/index.js";
+import { standardCases, runCase, glslFigure } from "../../../kit/harness/index.js";
 import { findSleepy } from "../sleepy.js";
 
 /** Runs the CLI with its console output captured. */
@@ -41,7 +41,7 @@ test("faults --no-glsl runs the JS faults, and exits 0 because every escape has 
 test("a pair that differs is described with its pixel, set and source line", async () => {
   const c = standardCases(0.1)[0];
   const r = await runCase(c, { plant: { target: "js", text: (t) => t.replace("Math.sin", "Math.cos") } });
-  const text = describeCase(r, c, GLSL_TOLERANCE).join("\n");
+  const text = describeCase(r, c, glslFigure()).join("\n");
   assert.match(text, /JS vs interp .*component\(s\) over|worst/);
   assert.match(text, /at pixel \(\d+, \d+\) channel [rgb]/);
   assert.match(text, /pixel came from swirl\.pixel line \d+: /);

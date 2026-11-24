@@ -2,7 +2,7 @@
 // (through sleepy) GLSL; `stress` the edge of the sketches' ranges; `faults` the planted faults. A thin adapter over kit/harness.
 
 import { fileURLToPath } from "node:url";
-import { standardCases, stressCase, runCase, runFaults, faultProblems, tally, GLSL_TOLERANCE, FAULT_SCALE } from "../../kit/harness/index.js";
+import { standardCases, stressCase, runCase, runFaults, faultProblems, tally, glslFigure, FAULT_SCALE } from "../../kit/harness/index.js";
 import { probeSleepy, sleepyRender } from "./sleepy.js";
 
 /** @import { CaseResult, PairResult } from "../../kit/harness/run.js" */
@@ -15,7 +15,7 @@ const USAGE = `shader-diff: the fields comparison harness, interpreter against e
   faults [--scale 0.49] [--no-glsl] [--json] planted faults in each backend; which are caught and which escape
   renderer                                  what WebGL reports for the page's context (vendor, renderer)
 
-JS is held to identical bits; GLSL to ${GLSL_TOLERANCE} per color component (--tolerance <n> overrides it).
+JS is held to identical bits; GLSL to ${glslFigure()} per color component, the figure its target declares (a case may override it, and says why; --tolerance <n> overrides every figure).
 GLSL runs through \`sleepy\` (headless WebKit), outside the sandbox; with no sleepy the GLSL half is skipped with a message.
 Exit codes: 0 all as expected, 1 a pair differs / a fault not marked as an escape was missed, 2 usage error or sleepy missing for a run that needs it.`;
 
@@ -47,6 +47,7 @@ export function describeCase(r, c, tolerance) {
   const sets = c.sets.map((s) => s.label).join("; ");
   const out = [`${r.name}  ${c.width}x${c.height} pixels, ${c.sets.length} param sets (${sets})`];
   out.push(...describePair("JS vs interp", r.jsVsInterp, "exact"));
+  if (r.override) out.push(`  GLSL figure overridden to ${r.override.figure} for this case: ${r.override.reason}`);
   if (r.glslError) out.push(`  GLSL did not run: ${r.glslError}`);
   else if (r.glslVsInterp) out.push(...describePair("GLSL vs interp", r.glslVsInterp, `tolerance ${tolerance}`));
   return out;
@@ -73,8 +74,9 @@ export async function main(argv) {
   /** @param {string} name */
   const flag = (name) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
   const json = rest.includes("--json");
-  const tolerance = flag("--tolerance") !== undefined ? Number(flag("--tolerance")) : GLSL_TOLERANCE;
-  if (Number.isNaN(tolerance) || tolerance < 0) { console.error(`--tolerance needs a number of at least 0, got '${flag("--tolerance")}'`); return 2; }
+  /** The caller's figure for every case; absent, each case is held to its target's (or its own override). */
+  const tolerance = flag("--tolerance") !== undefined ? Number(flag("--tolerance")) : undefined;
+  if (tolerance !== undefined && (Number.isNaN(tolerance) || tolerance < 0)) { console.error(`--tolerance needs a number of at least 0, got '${flag("--tolerance")}'`); return 2; }
   if (verb === "renderer") {
     const probe = probeSleepy();
     console.log(JSON.stringify(probe));
@@ -88,9 +90,9 @@ export async function main(argv) {
     let failed = false;
     const all = [];
     for (const c of cases) {
-      const r = await runCase(c, { ...(render ? { render } : {}), tolerance });
+      const r = await runCase(c, { ...(render ? { render } : {}), ...(tolerance !== undefined ? { tolerance } : {}) });
       all.push(r);
-      if (!json) console.log(describeCase(r, c, tolerance).join("\n"));
+      if (!json) console.log(describeCase(r, c, r.tolerance).join("\n"));
       if (!r.jsVsInterp.exact || r.glslError || (r.glslVsInterp && r.glslVsInterp.over > 0)) failed = true;
     }
     if (json) console.log(JSON.stringify(all.map((r) => ({ ...r, shape: r.shape }))));
@@ -100,11 +102,12 @@ export async function main(argv) {
   }
   if (verb === "faults") {
     const scale = Number(flag("--scale") ?? FAULT_SCALE);
-    const result = await runFaults({ ...(render ? { render } : {}), scale, tolerance });
+    const result = await runFaults({ ...(render ? { render } : {}), scale, ...(tolerance !== undefined ? { tolerance } : {}) });
     const t = tally(result.rows);
     const problems = faultProblems(result);
     if (json) { console.log(JSON.stringify({ ...result, tally: t, problems })); return problems.length ? 1 : 0; }
-    console.log(`scale ${scale}; JS exact, GLSL tolerance ${tolerance}`);
+    console.log(`scale ${scale}; JS exact, GLSL tolerance ${result.tolerance}`);
+    for (const o of result.overrides) console.log(`override: ${o.case} is held to ${o.figure}: ${o.reason}`);
     for (const r of result.rows) {
       const state = !r.planted ? "NOT PLANTED" : r.caught === null ? (r.error ? "NO SHADER" : "skipped") : r.caught ? "caught" : "ESCAPED";
       console.log(`${r.id.padEnd(28)} ${r.target.padEnd(4)} ${state.padEnd(11)} worst ${r.worst === null ? "-" : r.worst.toExponential(2)}  ${r.what}`);
