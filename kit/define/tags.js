@@ -19,7 +19,7 @@ function splitAs(a) {
 
 /** @param {unknown} n @param {unknown} elem @param {unknown} [options] @returns {T.VectorTag} */
 export const vector = (n, elem, options) => ({ [TAG]: "vector", n, elem, options });
-/** A nominal scalar. Not built yet: defineDialect refuses it (D016). @param {unknown} of @param {unknown} [options] @returns {T.ScalarTag} */
+/** A nominal scalar, declared in types: a named type stored as `of` ("f64"), compared only with its own kind. @param {unknown} of @param {unknown} [options] @returns {T.ScalarTag} */
 export const scalar = (of, options) => ({ [TAG]: "scalar", of, options });
 /** @returns {T.ExactTag} */
 export const exact = () => ({ [TAG]: "exact" });

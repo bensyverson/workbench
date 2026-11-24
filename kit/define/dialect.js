@@ -3,11 +3,11 @@
 
 import { validateDialect } from "./validate-dialect.js";
 import { resolveType, resolveMember, intrinsicSig, checkType } from "./types.js";
-import { isPlainObject } from "./tags.js";
+import { isPlainObject, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
-import { dialectVector } from "../ir/types.js";
+import { dialectVector, dialectScalar } from "../ir/types.js";
 
-/** @import { Type, VecType, EffectVerb } from "../ir/ir.js" */
+/** @import { Type, VecType, ScalarType, EffectVerb } from "../ir/ir.js" */
 /** @import { Environment, ObjectDecl, SlotDecl, SlotRef } from "../lower/environment.js" */
 /** @import { UnitDecl } from "../dialects/fields/decls.js" */
 /** @import * as T from "./define.js" */
@@ -64,16 +64,20 @@ export function defineDialect(def) {
   refuse("defineDialect", validateDialect(def));
   /** @type {Record<string, VecType>} */
   const vectors = {};
+  /** @type {Record<string, ScalarType>} */
+  const scalars = {};
   /** @type {Record<string, Record<string, string>>} */
   const componentAliases = {};
   for (const [n, v] of Object.entries(def.types ?? {})) {
+    // A nominal scalar is a type name only: unlike a vector, a lambda cannot call it to make one.
+    if (kindOf(v) === "scalar") { scalars[n] = dialectScalar(n, "f64"); continue; }
     const vec = /** @type {T.VectorTag} */ (v);
     vectors[n] = dialectVector(n, /** @type {2 | 3 | 4} */ (vec.n), /** @type {"f32" | "f64"} */ (vec.elem));
     const aliases = /** @type {{ aliases?: Record<string, string> } | undefined} */ (vec.options)?.aliases;
     if (aliases) componentAliases[n] = { ...aliases };
   }
   /** @type {Resolver} */
-  const statics = { vectors };
+  const statics = { vectors, scalars };
   const targetNames = Object.keys(def.targets);
 
   /** @type {Record<string, T.Intrinsic>} */
@@ -102,7 +106,7 @@ export function defineDialect(def) {
     library,
     targets: /** @type {T.Dialect["targets"]} */ (targets),
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
-    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, vectors, componentAliases, program, states),
+    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, program, states),
   });
   MADE.add(dialect);
   return dialect;
@@ -110,16 +114,18 @@ export function defineDialect(def) {
 
 /**
  * One Program's Environment.
- * @param {T.DialectDef} def @param {Record<string, VecType>} vectors @param {Record<string, Record<string, string>>} componentAliases
+ * @param {T.DialectDef} def @param {{ vectors: Record<string, VecType>, scalars: Record<string, ScalarType> }} named  the types declared in `types`
+ * @param {Record<string, Record<string, string>>} componentAliases
  * @param {Record<string, any>} program @param {Map<string, unknown>} states
  * @returns {Environment}
  */
-function environmentOf(def, vectors, componentAliases, program, states) {
+function environmentOf(def, { vectors, scalars }, componentAliases, program, states) {
   /** @type {Record<string, ObjectDecl>} */
   const objects = {};
   /** @type {Resolver} */
   const r = {
     vectors,
+    scalars,
     objects: { has: (n) => n in objects || Object.hasOwn(def.objects ?? {}, n) },
     // An object type made on the spot (a table's row at one step): named by its label, numbered when the
     // label is taken by different members, so equal declarations share one object.
@@ -202,7 +208,7 @@ function checkConvention(c, def, objects, ref) {
   /** @type {Problem[]} */
   const out = [];
   // "unknown" is what a lambda that failed to lower returns; a state built from it stays quiet, as lowering does.
-  const scope = { vectors: new Set(Object.keys(def.types ?? {})), objects: new Set([...Object.keys(objects), "unknown"]) };
+  const scope = { types: new Set(Object.keys(def.types ?? {})), objects: new Set([...Object.keys(objects), "unknown"]) };
   if (!isPlainObject(c) || !Array.isArray(c.params) || c.returns === undefined) out.push({ code: "D011", path: ["slots", ref.kind], message: "a convention function must return { params, returns, space } or a reason string.", tip: "return { params: [...], returns: \"infer\", space: \"…\" }" });
   else {
     c.params.forEach((t, i) => checkType(t, scope, {}, ["slots", ref.kind, "params"], `slot convention '${ref.kind}' for ${ref.id}, param ${i + 1}`, out));

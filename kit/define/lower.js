@@ -50,6 +50,7 @@ class Cycle extends Error {
 export function fromCore(t) {
   if (typeof t === "string") return t;
   if ("vec" in t) return t.name ?? "unknown";
+  if ("scalar" in t) return t.scalar;
   if ("obj" in t) return t.obj;
   if ("tvar" in t) return t.tvar;
   if ("enum" in t) return t.declared ? enumOf(t.enum) : "str";

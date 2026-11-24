@@ -5,7 +5,7 @@
 import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST } from "./validate-grammar.js";
 import { refuse, isDialect } from "./dialect.js";
 import { didYouMean, RESERVED_LETTERS } from "./codes.js";
-import { TAG } from "./tags.js";
+import { TAG, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
 import { lambdaSource, constSource, found, where } from "./shapes.js";
 import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
@@ -66,6 +66,13 @@ export function defineGrammar(dialect, def) {
 
 /** @typedef {{ dialect: T.Dialect, def: Record<string, any>, constructs: Record<string, Construct>, root: Construct }} Compiled */
 
+/**
+ * The names in a Dialect's types a lambda can call: its vectors (constructors). A nominal scalar is a type
+ * name only, so calling it is B008.
+ * @param {Record<string, unknown> | undefined} types
+ */
+const callableTypes = (types) => Object.entries(types ?? {}).filter(([, v]) => kindOf(v) !== "scalar").map(([n]) => n);
+
 class Program {
   /** @param {Compiled} g */
   constructor(g) {
@@ -73,7 +80,7 @@ class Program {
     /** @type {T.BuildDiagnostic[]} */
     this.diagnostics = [];
     /** @type {Map<string, Set<string>>} */
-    this.names = new Map([[UNITS, new Set([...Object.keys(g.dialect.def.intrinsics ?? {}), ...g.dialect.library.map((u) => u.name), ...Object.keys(g.dialect.def.globals ?? {}), ...Object.keys(g.dialect.def.types ?? {}), ...Object.keys(g.dialect.def.conversions ?? {})])]]);
+    this.names = new Map([[UNITS, new Set([...Object.keys(g.dialect.def.intrinsics ?? {}), ...g.dialect.library.map((u) => u.name), ...Object.keys(g.dialect.def.globals ?? {}), ...callableTypes(g.dialect.def.types), ...Object.keys(g.dialect.def.conversions ?? {})])]]);
     /** @type {Instance | null} */
     this.root = null;
     /** @type {Array<{ ast: ArrowFunctionExpression, what: string, at: { file: string, loc: Loc } }>} */

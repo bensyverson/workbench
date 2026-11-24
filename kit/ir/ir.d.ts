@@ -30,7 +30,8 @@ export type Type =
   | { obj: string }
   /** A type variable in a dialect signature, bound per call. */
   | { tvar: string }
-  | VecType;
+  | VecType
+  | ScalarType;
 
 /**
  * A vector of `vec` components of one scalar type, read as `.x`, `.y`, `.z`, `.w`. `name` marks a
@@ -38,6 +39,15 @@ export type Type =
  * f32s. A vector without a name is structural (`f32x3`). See `dialectVector` in types.js.
  */
 export interface VecType { vec: 2 | 3 | 4; of: "f32" | "f64"; name?: string }
+
+/**
+ * A Dialect's nominal scalar: a named type stored as its backing number (`of`, always `f64`), such as a
+ * date held as milliseconds since the epoch. It compares (`lt` … `ge`, `eq`, `ne`) only with its own
+ * kind, no arithmetic, sign, bitwise or conversion operator takes it, and it is never tested for
+ * truthiness. The IR knows the name only as a name: what it means is the Dialect's, through its
+ * intrinsics. See `dialectScalar` in types.js.
+ */
+export interface ScalarType { scalar: string; of: "f64" }
 
 /** How a store coerces its value: the dialect's numeric rule for one place. */
 export interface Coerce {

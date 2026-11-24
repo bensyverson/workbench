@@ -1,4 +1,4 @@
-// defineDialect's checks: every problem in a Dialect definition, collected (D001–D008, D011–D013, D016).
+// defineDialect's checks: every problem in a Dialect definition, collected (D001–D008, D011–D013).
 // Adapted from the trial checker (scripts/define-trial/checker/dialect.js), which leaf O63kB5 retires.
 
 import { didYouMean } from "./codes.js";
@@ -7,6 +7,7 @@ import { isPlainObject, kindOf, describe } from "./tags.js";
 import { parseLambda, checkSubset } from "../parse/index.js";
 
 /** @import { Problem, TypeScope } from "./types.js" */
+/** @import * as T from "./define.js" */
 
 export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "environment"]);
 const DIALECT_REQUIRED = Object.freeze(["name", "numberType", "spaces", "targets", "slots"]);
@@ -39,6 +40,18 @@ function table(def, key, out) {
 }
 
 /**
+ * A nominal scalar in types: backed by "f64", with an optional { note } saying what the number holds.
+ * @param {string} n @param {T.ScalarTag} v @param {Array<string | number>} path @param {Problem[]} out
+ */
+function checkScalar(n, v, path, out) {
+  if (v.of !== "f64") out.push({ code: "D002", path, message: `scalar ${n}: its backing type ${describe(v.of)} must be "f64".`, tip: `${n}: scalar("f64", { note: "…" })` });
+  const o = v.options;
+  if (o !== undefined && !(isPlainObject(o) && Object.keys(o).every((k) => k === "note") && (o.note === undefined || typeof o.note === "string"))) {
+    out.push({ code: "D011", path, message: `scalar ${n}: its options must be { note }, a string saying what the number holds.`, tip: `${n}: scalar("f64", { note: "milliseconds since 1970-01-01, UTC" })` });
+  }
+}
+
+/**
  * @param {unknown} def
  * @returns {Problem[]}
  */
@@ -58,14 +71,14 @@ export function validateDialect(def) {
   if (def.environment !== undefined && typeof def.environment !== "function") out.push({ code: "D011", path: ["environment"], message: "environment must be a function of the program record.", tip: "environment(program) { return { objects, globals }; }" });
 
   /** @type {TypeScope} */
-  const scope = { vectors: new Set(), objects: new Set(objects.map(([n]) => n)) };
+  const scope = { types: new Set(), objects: new Set(objects.map(([n]) => n)) };
   const spaceNames = spaces.map(([n]) => n);
 
   for (const [n, v] of types) {
     const path = ["types", n];
-    if (kindOf(v) === "scalar") { out.push({ code: "D016", path, message: `types.${n} is a nominal scalar, which is not built yet.`, tip: `declare ${n} as "f64" with intrinsics for now; scalar() is a later leaf` }); continue; }
-    if (kindOf(v) !== "vector") { out.push({ code: "D011", path, message: `types.${n} is ${describe(v)}; types holds vectors.`, tip: `${n}: vector(2, "f32")` }); continue; }
-    scope.vectors.add(n);
+    if (kindOf(v) === "scalar") { scope.types.add(n); checkScalar(n, /** @type {T.ScalarTag} */ (v), path, out); continue; }
+    if (kindOf(v) !== "vector") { out.push({ code: "D011", path, message: `types.${n} is ${describe(v)}; types holds vectors and scalars.`, tip: `${n}: vector(2, "f32"), or ${n}: scalar("f64", { note: "…" })` }); continue; }
+    scope.types.add(n);
     if (!(v.n === 2 || v.n === 3 || v.n === 4)) out.push({ code: "D011", path, message: `vector ${n} has ${describe(v.n)} components; a vector has 2, 3 or 4.`, tip: `vector(3, "f32")` });
     if (v.elem !== "f32" && v.elem !== "f64") out.push({ code: "D002", path, message: `vector ${n}: its component type ${describe(v.elem)} must be "f32" or "f64".`, tip: `vector(2, "f32")` });
     if (v.options !== undefined) {

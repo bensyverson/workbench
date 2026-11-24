@@ -1,6 +1,6 @@
 // Operations on IR types: printing, assignability, joins, and type variables.
 
-/** @import { Type, VecType } from "./ir.js" */
+/** @import { Type, VecType, ScalarType } from "./ir.js" */
 
 /**
  * A compact, readable rendering: `Mole?`, `[Spark; 24]`, `{x: f64}`, `"a"|"b"`, a dialect's
@@ -24,6 +24,7 @@ export function showType(t) {
   if ("union" in t) return t.union.map(showType).join(" | ");
   if ("obj" in t) return t.obj;
   if ("vec" in t) return t.name ?? `${t.of}x${t.vec}`;
+  if ("scalar" in t) return t.scalar;
   return t.tvar;
 }
 
@@ -237,6 +238,27 @@ export function vectorOf(t) {
 }
 
 /**
+ * A Dialect's nominal scalar: `name` stored as an `of` (f64). Nominal, as a dialect's vector is: two
+ * scalars of different names (`date`, `stamp`) are different types, and neither is an f64, so no join,
+ * assignment or operator mixes them. Only the compares and `eq`/`ne` take it, with its own kind.
+ * @param {string} name
+ * @param {"f64"} of
+ * @returns {ScalarType}
+ */
+export function dialectScalar(name, of) {
+  return { scalar: name, of };
+}
+
+/**
+ * The nominal scalar type `t` is, or null.
+ * @param {Type} t
+ * @returns {ScalarType | null}
+ */
+export function namedScalar(t) {
+  return typeof t === "object" && "scalar" in t ? t : null;
+}
+
+/**
  * The largest whole number a counter of number type `t` counts to by ones without skipping or
  * stalling: 2^53 - 1 for an f64 and 2^24 - 1 for an f32 (`i + 1` of 2^24 is 2^24 again, so a
  * bound past it is never reached).
@@ -249,8 +271,8 @@ export function exactLimit(t) {
 
 /**
  * The number types `t` holds at any depth (an item of a list, a field of a struct, a member of a
- * union or of a possibly-empty value), as sorted names: "f32", "f64", and each vector type's
- * structural key. Reads a malformed type as holding none, for the verifier.
+ * union or of a possibly-empty value), as sorted names: "f32", "f64", and each vector or nominal
+ * scalar type's structural key. Reads a malformed type as holding none, for the verifier.
  * @param {unknown} t
  * @returns {string[]}
  */
@@ -258,7 +280,7 @@ function numberLeaves(t) {
   if (t === "f32" || t === "f64") return [t];
   if (typeof t !== "object" || t === null) return [];
   const o = /** @type {Record<string, unknown>} */ (t);
-  if ("vec" in o) return [canonical(o)];
+  if ("vec" in o || "scalar" in o) return [canonical(o)];
   if ("opt" in o) return numberLeaves(o.opt);
   if ("list" in o) return numberLeaves(o.list);
   if ("struct" in o) return typeof o.struct === "object" && o.struct !== null ? Object.values(o.struct).flatMap(numberLeaves) : [];
@@ -268,7 +290,7 @@ function numberLeaves(t) {
 
 /**
  * Whether a union of `members` mixes number types, which never mix: some member is or holds an
- * f32 or a vector (at any depth), and the members do not all hold the same number types. Two
+ * f32, a vector or a nominal scalar (at any depth), and the members do not all hold the same number types. Two
  * lists of f32 that differ only in length are no mix; a list of f32 and a list of f64 are.
  * @param {unknown[]} members
  * @returns {boolean}

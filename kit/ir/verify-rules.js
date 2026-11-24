@@ -1,7 +1,7 @@
 // The verifier's tables: which types a Kernel may hold, what each operator takes and
 // gives, and the effect verbs. A new value type or operator adds entries here.
 
-import { assignable, exactLimit, mixesNumbers, sameType, showType, vectorOf } from "./types.js";
+import { assignable, exactLimit, mixesNumbers, namedScalar, sameType, showType, vectorOf } from "./types.js";
 
 /** @import { Type, Op, EffectVerb, Expr, Stmt, Coerce } from "./ir.js" */
 
@@ -54,7 +54,7 @@ export function typeProblem(t, partial = false) {
   if ("union" in o) {
     const ms = o.union;
     if (!Array.isArray(ms) || ms.length < 2) return "a union has two or more members";
-    if (mixesNumbers(ms)) return "a union never mixes number types (f32, f64 and each vector type), even inside a list or struct";
+    if (mixesNumbers(ms)) return "a union never mixes number types (f32, f64, each vector type and each nominal scalar), even inside a list or struct";
     for (const m of ms) { const p = typeProblem(m, partial); if (p) return p; }
     return null;
   }
@@ -62,6 +62,11 @@ export function typeProblem(t, partial = false) {
     if (o.vec !== 2 && o.vec !== 3 && o.vec !== 4) return "a vector has 2, 3 or 4 components";
     if (!SCALARS.has(/** @type {string} */ (o.of))) return "a vector's components are f32 or f64";
     if (o.name !== undefined && !(typeof o.name === "string" && o.name !== "")) return "a dialect vector's name is a non-empty string";
+    return null;
+  }
+  if ("scalar" in o) {
+    if (o.of !== "f64") return "a nominal scalar is backed by f64";
+    if (!(typeof o.scalar === "string" && o.scalar !== "")) return "a nominal scalar's name is a non-empty string";
     return null;
   }
   return "not a type";
@@ -161,7 +166,7 @@ export const OPS = /** @type {Record<Op, OpRule>} */ ({
   eq: equality, ne: equality,
   not: uniform(1, bool, "a bool", "bool"),
   and: logic, or: logic,
-  truthy: uniform(1, (a) => a !== "void" && !vectorOf(a), "a value other than a vector", "bool"),
+  truthy: uniform(1, (a) => a !== "void" && !vectorOf(a) && !namedScalar(a), "a value other than a vector or a nominal scalar (a possibly-empty one is tested as an optional number is)", "bool"),
   f32: uniform(1, num, "an f64", "f32"),
   f64: uniform(1, (a) => a === "f32" || a === "unknown", "an f32", "f64"),
   present: uniform(1, (a) => typeof a === "object" && "opt" in a && entity(a.opt), "a possibly-empty entity reference", "bool"),
@@ -176,6 +181,10 @@ export const OPS = /** @type {Record<Op, OpRule>} */ ({
 function compare(args, t) {
   if (args.length !== 2) return `takes 2 operands, not ${args.length}`;
   const f32 = (/** @type {Type} */ a) => a === "f32" || a === "unknown";
+  const [a, b] = args;
+  const sa = namedScalar(a), sb = namedScalar(b);
+  // A nominal scalar orders only against its own kind; an `unknown` (partial) yields to it.
+  if (sa || sb) return (sa && sb ? sameType(sa, sb) : a === "unknown" || b === "unknown") ? (t === "bool" ? null : "gives bool") : "compares a nominal scalar only with its own kind";
   if (!(args.every(num) || args.every(str) || args.every(f32))) return "compares two numbers of one type or two strings";
   return t === "bool" ? null : "gives bool";
 }

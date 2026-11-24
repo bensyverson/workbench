@@ -20,7 +20,6 @@ export const DEFINE_CODES = Object.freeze({
   D013: "A library entry that is not { fn: src } or { const: src }, or whose source does not parse",
   D014: "A slot without a kind, or with a kind other than decl or unit",
   D015: "A construct state without record: \"calls\", init or step, or whose names clash with a Program namespace; an opt or rest argument that is not last",
-  D016: "A declaration the draft names that is not built yet (scalar)",
   D017: "Two things in a construct that the record would put under one key: an opening argument, a child construct, a slot's as, units",
   D018: "A slot or construct named like a property runtimes probe on every object (then, toJSON, inspect, …)",
   D019: "A lambda() in a construct's opens, which is not built yet",

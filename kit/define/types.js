@@ -4,7 +4,7 @@ import { didYouMean } from "./codes.js";
 import { TAG, tagged, isPlainObject, describe } from "./tags.js";
 import { dialectEnum, optional } from "../ir/types.js";
 
-/** @import { Type, VecType } from "../ir/ir.js" */
+/** @import { Type, VecType, ScalarType } from "../ir/ir.js" */
 /** @import { Member, FnSig } from "../lower/environment.js" */
 /** @import * as T from "./define.js" */
 
@@ -29,7 +29,7 @@ export function checkKeys(obj, allowed, required, path, what, out) {
 
 /**
  * @typedef {object} TypeScope
- * @property {Set<string>} vectors
+ * @property {Set<string>} types  names declared in `types`: vectors and nominal scalars
  * @property {Set<string>} objects
  */
 
@@ -41,12 +41,12 @@ export function checkKeys(obj, allowed, required, path, what, out) {
  */
 export function checkType(t, scope, allow, path, where, out) {
   if (typeof t === "string") {
-    if (BUILTIN_TYPES.includes(t) || scope.vectors.has(t) || scope.objects.has(t)) return;
+    if (BUILTIN_TYPES.includes(t) || scope.types.has(t) || scope.objects.has(t)) return;
     if (allow.typeVars && /^[A-Z]$/.test(t)) return;
     if (allow.infer && t === "infer") return;
-    const known = [...BUILTIN_TYPES, ...scope.vectors, ...scope.objects];
+    const known = [...BUILTIN_TYPES, ...scope.types, ...scope.objects];
     const why = /^[A-Z]$/.test(t) ? " A type variable is allowed only in an intrinsic's or a method's signature." : t === "infer" ? ` "infer" is allowed only as a slot convention's returns.` : /^(int|i32|u32|integer)$/i.test(t) ? " There is no integer type: a whole number is a number." : didYouMean(t, known);
-    out.push({ code: "D002", path, message: `${where}: the type '${t}' resolves to nothing.${why}`, tip: `use a built-in (${BUILTIN_TYPES.join(", ")}), a vector declared in types or an object declared in objects${allow.typeVars ? ", or a type variable such as \"T\"" : ""}` });
+    out.push({ code: "D002", path, message: `${where}: the type '${t}' resolves to nothing.${why}`, tip: `use a built-in (${BUILTIN_TYPES.join(", ")}), a vector or scalar declared in types or an object declared in objects${allow.typeVars ? ", or a type variable such as \"T\"" : ""}` });
     return;
   }
   const h = tagged(t);
@@ -79,11 +79,10 @@ export function checkType(t, scope, allow, path, where, out) {
       if (typeof h.label !== "string" || !isPlainObject(h.members)) bad("object() takes a label and an object of members.", `object("a row", { price: "f64" })`);
       else for (const [m, v] of Object.entries(h.members)) checkMember(v, scope, path, `${where}, member '${m}'`, out);
       return;
-    case "scalar":
-      out.push({ code: "D016", path, message: `${where}: scalar() is not built yet.`, tip: "the nominal scalar is a later leaf; declare the value as \"f64\" with intrinsics for now" });
-      return;
-    default:
-      out.push({ code: "D002", path, message: `${where}: ${h[TAG]}() makes ${h[TAG] === "vector" ? "a vector type, which is declared in types and then named" : "no type"}.`, tip: h[TAG] === "vector" ? `declare it in types (e.g. vec2: vector(2, "f32")) and write "vec2" here` : "use a type name or list(), opt(), struct(), union(), enumOf(), object()" });
+    default: {
+      const named = h[TAG] === "vector" ? ["a vector type", `vec2: vector(2, "f32")`, "vec2"] : h[TAG] === "scalar" ? ["a nominal scalar", `date: scalar("f64", { note: "…" })`, "date"] : null;
+      out.push({ code: "D002", path, message: `${where}: ${h[TAG]}() makes ${named ? `${named[0]}, which is declared in types and then named` : "no type"}.`, tip: named ? `declare it in types (e.g. ${named[1]}) and write "${named[2]}" here` : "use a type name or list(), opt(), struct(), union(), enumOf(), object()" });
+    }
   }
 }
 
@@ -141,6 +140,7 @@ export function checkMember(t, scope, path, where, out) {
  * returns its name; without it, an inline object type is an error (only conventions may make one).
  * @typedef {object} Resolver
  * @property {Record<string, VecType>} vectors
+ * @property {Record<string, ScalarType>} [scalars]  the nominal scalars declared in `types`
  * @property {(label: string, members: Record<string, unknown>) => string} [objectFor]
  * @property {{ has(name: string): boolean }} [objects]  declared object names, which win over a one-letter type variable
  */
@@ -153,6 +153,7 @@ export function checkMember(t, scope, path, where, out) {
 export function resolveType(t, r) {
   if (typeof t === "string") {
     if (t in r.vectors) return r.vectors[t];
+    if (r.scalars && Object.hasOwn(r.scalars, t)) return r.scalars[t];
     if (/^[A-Z]$/.test(t) && !r.objects?.has(t)) return { tvar: t };
     if (BUILTIN_TYPES.includes(t) || t === "unknown") return /** @type {Type} */ (t);
     return { obj: t };

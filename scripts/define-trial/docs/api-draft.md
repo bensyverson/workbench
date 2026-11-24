@@ -37,7 +37,7 @@ import { defineDialect, vector, exact, tolerance } from "kit/define";
 export const myDialect = defineDialect({
   name: "…",
   numberType: "f32" | "f64",     // the type of a bare number literal where nothing else gives one
-  types: { … },                  // vector types
+  types: { … },                  // vector and scalar types
   spaces: { … },                 // where Runtime Lambdas run
   objects: { … },                // handles with members, fixed for every Program
   globals: { … },                // free names every lambda may use, and their types

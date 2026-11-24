@@ -2,10 +2,11 @@
 // cannot stay inside one (a store, a query's loop, a lazy branch holding either)
 // spills into statements ahead of it, in evaluation order.
 
-import { assignable, itemAt, join, showType, strictJoin, vectorOf } from "../ir/types.js";
+import { assignable, itemAt, join, namedScalar, showType, strictJoin, vectorOf } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
+import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
 import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -98,6 +99,8 @@ export function expr(L, node, expected) {
       if (node.operator === "!") return L.ex({ k: "op", op: "not", args: [test(L, node.argument)], t: "bool", span });
       const arg = expr(L, node.argument);
       const op = node.operator === "-" ? "neg" : node.operator === "+" ? "pos" : "bnot";
+      const named = namedScalar(arg.t);
+      if (named) return refuseScalar(L, `'${node.operator}'`, named, node);
       if (op !== "bnot" && wide(arg.t)) return L.ex({ k: "op", op, args: [arg], t: arg.t, span });
       if (!assignable(arg.t, "f64")) mismatch(L, node.argument, arg.t, "f64", `'${node.operator}'`);
       return L.ex({ k: "op", op, args: [arg], t: "f64", span });
@@ -393,6 +396,10 @@ export function seq(L, thunks) {
  */
 export function binary(L, operator, a, b, node) {
   const span = spanOf(node);
+  if (namedScalar(a.t) || namedScalar(b.t)) {
+    const named = scalarBinary(L, operator, a, b, node);
+    if (named) return named;
+  }
   if (wide(a.t) || wide(b.t)) {
     const typed = typedBinary(L, operator, a, b, node);
     if (typed) return typed;
@@ -416,7 +423,7 @@ export function binary(L, operator, a, b, node) {
   if (operator in EQUALITY) {
     const loose = operator.length === 2;
     const comparable = assignable(a.t, b.t) || assignable(b.t, a.t) || (isStr(a) && isStr(b));
-    const prim = (/** @type {Type} */ t) => t === "f64" || t === "bool" || t === "str" || (typeof t === "object" && "enum" in t);
+    const prim = (/** @type {Type} */ t) => t === "f64" || t === "bool" || t === "str" || (typeof t === "object" && ("enum" in t || "scalar" in t));
     const compound = (/** @type {Expr} */ e) => { const t = typeof e.t === "object" && "opt" in e.t ? e.t.opt : e.t; return typeof t === "object" && ("list" in t || "struct" in t); };
     const nothing = (/** @type {Expr} */ e) => e.t === "null";
     if ((compound(a) && !nothing(b)) || (compound(b) && !nothing(a))) L.error("L003", node, `'${operator}' on a list or struct would compare identity, and a list or struct value has none here.`, "Compare their fields or items instead: a.x === b.x, a[0] === b[0].");
@@ -439,6 +446,7 @@ export function test(L, node) {
   if (node.type === "LogicalExpression" && node.operator !== "??") return logical(L, node, "test");
   const e = expr(L, node);
   if (e.t === "bool" || e.t === "unknown") return e;
+  if (scalarTest(L, node, e.t)) return bad(node);
   if (typeof e.t === "object" && "vec" in e.t) L.error("L003", node, "A vector is always true as a condition.", `Test a component instead: if (${L.src.slice(node.range[0], node.range[1])}.x !== 0).`);
   const op =typeof e.t === "object" && "opt" in e.t && isEntity(e.t.opt) ? "present" : "truthy";
   return L.ex({ k: "op", op, args: [e], t: "bool", span: e.span });
