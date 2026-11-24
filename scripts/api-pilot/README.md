@@ -10,6 +10,7 @@ The pilot of START.md and API.md (M3, leaf `qwgSOL`): fresh agents, given only t
 | `hidden/accept/`, `hidden/reject/` | the hidden programs (12 that must check clean, 21 that must each be refused; `hidden/README.md` says what each tests). Never shown to a pilot agent |
 | `reference/` | the reference implementation (`budget.dialect.js`, `budget.grammar.js`), its passing `examples/` and one `reject/` file per refusal; it passes every hidden program |
 | `score.js`, `score/` | the scorer: a hand-in's definitions over every hidden program |
+| `pilot-brief.md` | the brief the pilot agents got, word for word |
 | `test/` | the scorer's tests (in `npm test`), including that the reference passes the hidden set |
 
 ## Usage

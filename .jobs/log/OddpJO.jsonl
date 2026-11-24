@@ -641,3 +641,8 @@
 {"v":1,"rep":"OddpJO","seq":641,"ts":1795563315231,"actor":"revfix2","type":"claimed","task":"9SmO7S","data":{"duration":"2h","expires_at":1795570515}}
 {"v":1,"rep":"OddpJO","seq":642,"ts":1795563315284,"actor":"revfix2","type":"claimed","task":"WF11Hb","data":{"duration":"2h","expires_at":1795570515}}
 {"v":1,"rep":"OddpJO","seq":643,"ts":1795563315334,"actor":"revfix2","type":"claimed","task":"fvHm4t","data":{"duration":"2h","expires_at":1795570515}}
+{"v":1,"rep":"OddpJO","seq":644,"ts":1795563575893,"actor":"revfix2","type":"released","task":"8vtDhG","data":{"was_claimed_by":"revfix2","was_expires_at":1795570515}}
+{"v":1,"rep":"OddpJO","seq":645,"ts":1795563575948,"actor":"revfix2","type":"released","task":"qpL0HR","data":{"was_claimed_by":"revfix2","was_expires_at":1795570515}}
+{"v":1,"rep":"OddpJO","seq":646,"ts":1795563575996,"actor":"revfix2","type":"released","task":"9SmO7S","data":{"was_claimed_by":"revfix2","was_expires_at":1795570515}}
+{"v":1,"rep":"OddpJO","seq":647,"ts":1795563576044,"actor":"revfix2","type":"released","task":"WF11Hb","data":{"was_claimed_by":"revfix2","was_expires_at":1795570515}}
+{"v":1,"rep":"OddpJO","seq":648,"ts":1795563576092,"actor":"revfix2","type":"released","task":"fvHm4t","data":{"was_claimed_by":"revfix2","was_expires_at":1795570515}}
