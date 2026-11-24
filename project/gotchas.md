@@ -20,7 +20,7 @@ The survey agent (job 4ZsFh5) found every command refused as "too complex to ver
 
 ## 2026-11-24: every `.js` under a `test/` folder runs as a test
 
-`node --test` (and so `npm test`) runs every `.js` file under any directory named `test/`, not only `*.test.js`. A fixture that is candidate code (it imports a module only a hook supplies, such as the define-trial's `kit/define`) fails there as a test file. Keep such fixtures beside `test/`, as `scripts/define-trial/fixtures/` does, and exclude them from `tsconfig.json`.
+`node --test` (and so `npm test`) runs every `.js` file under any directory named `test/`, not only `*.test.js`. A fixture that is candidate code (it imports a module only a hook supplies, such as the define-trial's `kit/define`) fails there as a test file. Keep such fixtures beside `test/`, as `scripts/define-trial/fixtures/` does, and exclude them from `tsconfig.json`. The same goes for every folder of candidate code that imports `kit/define` (trial hand-ins, hidden programs, a reference): `npm run typecheck` fails on the bare `kit/define` import, so add the folder to `tsconfig.json`'s `exclude` before committing it (2026-11-24: `scripts/api-pilot/runs` cost a failed commit).
 
 ## 2026-11-24: a subagent's Write of a file named like a report may be refused
 

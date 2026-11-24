@@ -35,9 +35,9 @@ export default ($) => budget("household")
 - `.param(name, { value, min, max })` declares a number param; `value` lies within `min..max`. Lambdas read it as `$.name`, and may read any declared param. Build-time code may read it too, as in `.horizon($.months)`, but only after its `.param` call. Param names are separate from flow and account names.
 - `.account(name, { opening })` opens an account. `opening` is a number, at least 0. Account names are unique in a Program. An account may have no flows.
 - Inside an account, in any order: `.inflow(name, lambda)`, `.outflow(name, lambda)` and `.transfer(toAccount, lambda)`. Each lambda gives an amount (a number) for one month. Inflow and outflow names are unique within an account. A transfer has no name of its own, and an account may have several transfers, to the same account or to others.
-- A flow's lambda takes up to three parameters:
+- Every lambda in an account (an inflow's, an outflow's or a transfer's) takes up to three parameters:
   - `m`, the month: `m.index` (0 for the first planned month), `m.year` and `m.month` (1 to 12), all numbers, and `m.date`.
-  - `f`, this month's amounts of the inflows and outflows **declared earlier in the same account**, by name (`f.salary`). So `f` grows as the account is built. A transfer's lambda gets the same `f`, and a transfer never appears in `f`. Reading a flow declared later, or one in another account, is an error.
+  - `f`, this month's amounts of the inflows and outflows **declared earlier in the same account**, by name (`f.salary`). So `f` grows as the account is built. A transfer never appears in `f`. Reading a flow declared later, or one in another account, is an error.
   - `balance`, the account's balance at the start of the month, before any of this month's flows.
 - `m.date` is a **month** value. Months compare only with months (`===`, `<`, `<=` …), never with numbers, and take no arithmetic. `monthOf(year, month)` makes one from any two numbers.
 - Lambdas may use `Math.min`, `Math.max`, `Math.round` and `Math.abs`, and nothing else from `Math`. A top-level helper follows the same rules as a lambda, so it may use these, `monthOf` and other helpers.
