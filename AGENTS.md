@@ -31,6 +31,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
 - [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
 - [scripts/define-trial/README.md](scripts/define-trial/README.md) — the Definition API dogfood trial: the draft API, the strict rules and the checker's codes
+- [scripts/define-probes/README.md](scripts/define-probes/README.md) — failing probes from the kit/define review, each the red test of a fix leaf
 
 ## Local rulings
 

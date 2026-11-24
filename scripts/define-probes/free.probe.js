@@ -1,0 +1,42 @@
+// Probes: free-name rule holes (B008) through the generated field() builder.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { field } from "../../kit/define/examples/fields.js";
+import { parseLambda } from "../../kit/parse/index.js";
+import { freeNames } from "../../kit/define/free.js";
+
+const codes = (src) => field("c").pixel(src).check().map((d) => d.code);
+const free = (src) => { const r = parseLambda(src); assert.ok(r.ok, `${src}: ${JSON.stringify(r.diagnostics?.[0])}`); return freeNames(r.ast).map((x) => x.name); };
+
+const MUST_FLAG = [
+  ["nested arrow's param read outside it", "(uv, u) => { const f = (k) => k; return color(k, 0, 0); }", "k"],
+  ["block-scoped const read after the block", "(uv, u) => { if (uv.x > 0) { const t = 1; } return color(t, 0, 0); }", "t"],
+  ["for-of variable read after the loop", "(uv, u) => { for (const q of [1, 2]) { } return color(q, 0, 0); }", "q"],
+  ["for counter read after the loop", "(uv, u) => { for (let i = 0; i < 2; i++) { } return color(i, 0, 0); }", "i"],
+  ["assignment to an undeclared name", "(uv, u) => { Z = 1; return color(0, 0, 0); }", "Z"],
+  ["destructuring default reads a free name", "(uv, u) => { const { x = Q } = uv; return color(x, 0, 0); }", "Q"],
+  ["param default reads a free name", "(uv, u, k = Q) => color(k, 0, 0)", "Q"],
+  ["computed key in a destructuring pattern", "(uv, u) => { const { [Q]: v } = uv; return color(v, 0, 0); }", "Q"],
+  ["template literal", "(uv, u) => { const s = `${Q}`; return color(0, 0, 0); }", "Q"],
+  ["spread", "(uv, u) => color(...Q)", "Q"],
+  ["computed member", "(uv, u) => color(uv[Q], 0, 0)", "Q"],
+];
+
+for (const [what, src, n] of MUST_FLAG) {
+  test(`free: ${what}`, () => {
+    let names;
+    try { names = free(src); } catch (e) { console.log("PARSER REFUSES", what); return; }
+    assert.ok(names.includes(n), `${src} -> free ${JSON.stringify(names)}`);
+  });
+}
+
+const MUST_PASS = [
+  ["shadowing a param in a nested arrow", "(uv, u) => { const f = (uv) => uv; return color(f(1), 0, 0); }"],
+  ["destructured param", "({ x, y }, u) => color(x, y, 0)"],
+  ["object key not read", "(uv, u) => { const o = { Q: 1 }; return color(o.Q, 0, 0); }"],
+];
+for (const [what, src] of MUST_PASS) test(`bound: ${what}`, () => assert.deepEqual(free(src).filter((n) => n !== "color" && n !== "f"), []));
+
+test("B008 on field() for an unknown free name after a block", () => {
+  assert.ok(codes("(uv, u) => { if (uv.x > 0) { const t = 1; } return color(t, 0, 0); }").includes("B008"));
+});

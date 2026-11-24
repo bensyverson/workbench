@@ -1,0 +1,29 @@
+// Probes: where lower()'s diagnostics point.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { defineDialect, defineGrammar, exact, name, lambda } from "../../kit/define/index.js";
+import { program } from "../../kit/define/fixtures/table-dialect.js";
+
+const lineHere = () => Number(new Error().stack?.match(/pinning\.probe\.test\.js:(\d+)/)?.[1]);
+
+test("B011 in a by-slot construct points at the refused call, not the construct's opening", () => {
+  const d = defineDialect({
+    name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+    slots: { k: (ref) => (ref.index === 1 ? "not second" : { params: [], returns: "f64", space: "s" }) },
+  });
+  const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()], slots: { k: { kind: "decl", args: [lambda("k")] } } } } });
+  const open = lineHere() + 1;
+  const b = g("x")
+    .k("() => 1")
+    .k("() => 2");
+  const r = g.lower(b.build());
+  assert.deepEqual(r.diagnostics.map((x) => x.code), ["B011"]);
+  assert.equal(/** @type {any} */ (r.diagnostics[0]).loc.start.line, open + 2, `pinned at line ${/** @type {any} */ (r.diagnostics[0]).loc.start.line}; the construct opens at ${open}, the refused call is at ${open + 2}`);
+});
+
+test("an L diagnostic in the flat list says which lambda it belongs to", () => {
+  const r = program.lower(program("p").source("s", { a: "f64" }).table("t", "s").filter("(row) => row.a > 0").filter("(row) => row.zz > 0").build());
+  assert.equal(r.diagnostics.length, 1);
+  const d = /** @type {any} */ (r.diagnostics[0]);
+  assert.ok(d.file || d.slot || d.ref || d.id, `no file, slot or ref on ${JSON.stringify(d)}`);
+});
