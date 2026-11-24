@@ -90,6 +90,8 @@ These are facts from building and reading workbenches, stated without our design
 
 ## 6. A third party's reading of Jig (verify it)
 
+> **Corrected 2026-11-24 (by the consultant's pass 1, checked in its Appendix D):** "multi-level compilation" is wrong for Jig: its L0–L6 are text views of one compile (`ir.js` `irText`), not successive lowerings. Jig is layered: `import/jig` is a spec with no kernel, `jigcad` the implementation, and behavior capture (tracing) lives in Candela, not Jig. And §1's "CAD + FEA + path tracer" is not only an ambition: Jig already composes them (`fea.js` with CalculiX, `cadpkg.js` feeding Candela). The blind pass was also not fully blind: the auto-loaded `AGENTS.md` names the current kit's parts (see `gotchas.md`).
+
 Summarized from screenshots another agent produced:
 
 - Jig sits at the intersection of Lisp metaprogramming, staged embedded DSLs, parametric CAD (persistent feature histories), incremental compilation (content-addressed caching of feature results), constraint programming (sketch solving), compiler-as-a-service (retained, queryable `Program` objects), multi-level compilation (features → parameters → constraints → topology → placement → meshes), resource-oriented identity (stable feature, body and component ids) and domain-specific lowering through a geometric kernel.
