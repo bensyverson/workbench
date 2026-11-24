@@ -11,6 +11,8 @@
 - **`f32` and fixed-size vectors become IR value types.** Today every value is an `f64`. Integer sizes stay on storage (store rules), as before. This is the one change M2 makes to the core, and H2's test of it.
 - **No wasm in M2.** GLSL is the first backend with no host to lean on, so it owns the first LIR stage, with an IR verifier after each lowering. Wasm follows later, on that LIR.
 - **Source material:** the Uncommon Math book is `local/uncommon-math-0.1.0.html`. It is gitignored, a 4.8 MB single-page app whose chapters are built from JS data. Two of its fragment sketches are ported both ways for H3; which two is the plan's first leaf (a survey).
+- **GLSL runs through `sleepy` outside a page** (2026-11-23, Ben; job DR0XNq). The comparison harness is kit code in a page, so it runs in any browser. Agents and the prerelease suite run that page with `sleepy` (`/opt/homebrew/bin/sleepy`, a headless WebKit browser for agents; `sleepy eval <url> --js …`). A probe page got WebGL2, compiled a GLSL ES 3.00 fragment shader, and read back the expected pixels, with `EXT_color_buffer_float` for float readback. No npm dependency is added. Where `sleepy` is absent, the test skips with a message saying so. `npm test` stays free of GLSL.
+- **The sketches' integer hash is a Dialect intrinsic** (2026-11-23, Ben; job rSIftv). `domain-warp` hashes with 32-bit integer math (`Math.imul`, `^`, `>>>`). It becomes a fields intrinsic, `ihash(ix, iy, seed) -> f32`: the JS spelling is the book's own code, the GLSL spelling uses `uint` arithmetic (which wraps), and the interpreter has a reference implementation. The core stays as ruled, with no integer value types, and the comparison against the book's `frag` stays exact. `u32` as a value type waits until a Program needs integer arithmetic in its own code.
 
 ## Inputs
 
@@ -36,6 +38,8 @@ M2 adds a second Dialect (`fields`) next to the DMG one, and it changes the core
 **Already decided, binding every leaf:** the rulings above; one front end (the parser; tracing stays in the backlog); the glossary's terms; no code copied from ds-js-os, Candela or CJI ([the passes note](2026-11-23-passes-queries-and-several-irs.md), "Ruling on reuse"); checks run in the browser as the baseline, and Node is an extra ([delivery decisions](2026-11-23-delivery-decisions.md)); `kit/` imports no Node built-ins.
 
 **The open decision.** The browser runs GLSL (WebGL2 works inside an artifact; [M0](2026-11-23-m0-platform-probe.md)), but Node does not, and agents test in Node. Either the kit's GLSL comparison runs only in a page and agents drive that page, or a headless browser becomes a dev dependency so `npm test` can run it. It is a dependency and so Ben's call; the leaf below states the options.
+
+> **Decided 2026-11-23 (Ben; job DR0XNq):** neither. GLSL runs through `sleepy`, the headless WebKit browser already on the machine, which runs WebGL2 and reads float pixels back. See the rulings above.
 
 ## Tasks
 
