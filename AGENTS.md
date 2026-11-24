@@ -15,6 +15,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [kit/glossary.md](kit/glossary.md) — the kit's terms (Dream Code, Language Definition, Dialect, Grammar, Environment, Kernel, IR, LIR …), capitalized when used as terms
 - [kit/parse/README.md](kit/parse/README.md) — the subset parser: API, diagnostic codes, fixits
 - [kit/ir/README.md](kit/ir/README.md) — the core IR: kernels, types, effects, spans, the JSON form and the listing
+- [kit/query/README.md](kit/query/README.md) — read-only queries over Kernels: who writes a place, what a region reads (helpers looked through), reachable helpers, purity
 - [kit/lower/README.md](kit/lower/README.md) — lowering to IR: dialect descriptions, the DMG dialect, program inference, diagnostic codes
 - [kit/dialects/fields/README.md](kit/dialects/fields/README.md) — the fields Dialect: typed vectors and operators, intrinsics with each target's spelling, the Library, the `field` Grammar and the two H3 sketches
 - [kit/define/README.md](kit/define/README.md) — the Definition API: `defineDialect` (a Dialect as data → Environment, intrinsic table, Library), `defineGrammar` (the generated builder, its B codes and record) and lowering a record with construct state

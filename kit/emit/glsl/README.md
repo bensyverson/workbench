@@ -38,7 +38,7 @@ The comparison harness shares these; they are the part to check first when a sha
 
 ## What the target refuses
 
-Before any lowering, [`capabilities.js`](capabilities.js) checks the kernel and the helpers it reaches against what the Dialect declares for `glsl` (`accepts: { domains: ["pixel"] }`): its space, its effects (only calls to the program's own helpers and reads of declared uniforms are allowed), and that a pixel kernel returns a `vec3` or `vec4`. A refusal is **T001**, in the proposal's §6 words:
+Before any lowering, [`capabilities.js`](capabilities.js) checks the kernel and the helpers it reaches against what the Dialect declares for `glsl` (`accepts: { domains: ["pixel"] }`): its space, its effects (only calls to the program's own helpers and reads of declared uniforms are allowed), and that a pixel kernel returns a `vec3` or `vec4`. The helpers it reaches and their purity come from [kit/query](../../query/README.md) (`reachableHelpers`, `impurities`). A uniform read records no effect (it is a load of a read-only place), so the uniform allowance admits only a `read` effect a Dialect might record; a load of an undeclared uniform is the LIR's R005. A refusal is **T001**, in the proposal's §6 words:
 
 > Target `glsl` cannot take `Mole.onFrame#0`: it writes entity state and emits an event. Shader targets accept pure kernels over `pixel`.
 

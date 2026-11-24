@@ -2,7 +2,8 @@
 // Capability check, then the LIR (kit/lir) and its verifier, then text with a line map.
 
 import { lowerToLir } from "../../lir/index.js";
-import { capabilityDiagnostics, reachableHelpers } from "./capabilities.js";
+import { capabilityDiagnostics } from "./capabilities.js";
+import { reachableHelpers } from "../../query/index.js";
 import { emitProgram, showLineMap, RESOLUTION, OUTPUT } from "./emit.js";
 import { glslType } from "./text.js";
 
