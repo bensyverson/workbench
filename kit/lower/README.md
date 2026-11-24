@@ -10,7 +10,7 @@ const dialect = dmgDialect(declarations);              // what one program decla
 const r = lowerLambda(dialect, src, { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" });
 // r.ok, r.kernel (null on any error), r.diagnostics (parser, subset and lowering, in source order)
 
-const { results, sigs } = lowerProgram(dialect, lambdas); // a whole program: infers payloads and method signatures
+const { results, sigs, helpers } = lowerProgram(dialect, lambdas, helperSources); // a whole program: infers payloads and method and helper signatures
 ```
 
 - **The dialect** ([`dialect.d.ts`](dialect.d.ts)) names the objects a lambda can reach (entity kinds, the world, input, …) with their members' types, store rules and effects; the list operations that take callbacks; the free globals (`Math`); and each slot's calling convention, domain, and the effects it forbids. A dialect is data plus one `slot()` lookup.
@@ -22,7 +22,11 @@ const { results, sigs } = lowerProgram(dialect, lambdas); // a whole program: in
 - **Effects through methods.** A method's effects include its callees'. A slot that forbids effects (`draw`, `hud`, `every`, `after`), or a query callback, may not call a method whose effects are unknown because it, or a method it calls, does not lower (L014).
 - **Narrowing.** A possibly-empty reference (`w.rng.pick(…)`, `w.spawn(…)`) must be checked before use: `if (m) …`, `if (!m) return;`, `m && m.up`. Only `const` locals narrow. A test of such a reference lowers to `present`; any other value tested as a condition lowers to `truthy`, JavaScript's truthiness.
 - **Writable world built-ins.** Besides declared attributes, `w.oamStart` (`u8`) and `w.over` (`bool`; true ends the game) are writable, as the runtime's world allows. `return f()` in a slot that returns nothing lowers when `f()` returns nothing.
-- **Not lowered yet** (L012): destructuring, `for…of`, array literals, `??` and logical assignment, `let` without a value, list indexing (`w.board[i]`). String methods are unknown members (L002).
+- **`for…of`** over a list (`w.board`, a `filter` result, any list-typed value) lowers to an `each` loop; the binding must be `const`. The body is lowered even when the loop is rejected, so errors inside it show. The item is the list's item type.
+- **Destructuring.** `const { x, y } = p` takes a struct's fields (L002 for a field it lacks; an entity is not a struct, L003); `const [a, b] = list` takes a list's items by position, each typed possibly empty like any list index. Patterns nest and work as a `for…of` binding. The value is evaluated once.
+- **List indexing.** `list[i]` has the item type made possibly empty, as `find`'s result is, and so must be checked before use (L008): bind it to a `const` and test it, or `if (!m) return;`. `i` must be a number. Storing into `list[i]`, or calling it, stays rejected (L012). Any other computed name is L009.
+- **Top-level helpers.** The program's top-level `const f = (…) => …` are lowered like methods that have no `self` (slot kind `helper`, keyed `$.name` in `sigs.methods`): parsed, held to the subset, parameter types from the first call site that reaches them and the rest checked against it, result and effects from the body, no recursion (L007), a caller's effects including the callee's. A call lowers to a `helper` IR node and the helper's own kernel is a separate kernel. A helper that does not lower makes every caller fail (L014): its code would not exist. A top-level `const` that is not an arrow is a **baked constant**: lowered as `() => (init)` with every effect forbidden, and each use is replaced by a copy of its value, so a constant bounds a loop. A constant is read-only (L013), and where a key must be written out (`w.sfx(NAME)`) it still must be (L011). The caller passes `lowerProgram` the sources (`{ name, kind, src }`); `scripts/dmg-lower` finds them in a preset. Top-level `let` and `function` declarations are not helpers. Function declarations would need a parser change; no preset has one.
+- **Not lowered yet** (L012): array literals, `??` and logical assignment, `let` without a value. String methods are unknown members (L002).
 
 ## Codes
 
@@ -34,14 +38,14 @@ const { results, sigs } = lowerProgram(dialect, lambdas); // a whole program: in
 | L004 | An effect the slot forbids, such as a write in `draw` or `hud` |
 | L005 | A callback that is not the argument of a declared query |
 | L006 | A query callback with an effect, or that assigns a local |
-| L007 | A loop whose bound cannot be checked: its counter does not start at an integer or a param, its bound is not a constant, a param or a list's length, or the body changes the counter; or a recursive method |
+| L007 | A loop whose bound cannot be checked: its counter does not start at an integer or a param, its bound is not a constant, a param or a list's length, or the body changes the counter; or a step other than one (the tip suggests counting the iterations and computing the value inside the loop); or a recursive method or helper |
 | L008 | A possibly-empty value used without a check |
 | L009 | A dynamic property name on anything but a list (`self[k]`) |
 | L010 | More parameters than the slot passes |
 | L011 | A name argument (param, pool, sound, event) that is not a literal, or names nothing declared |
-| L012 | A subset construct lowering does not handle yet |
+| L012 | A subset construct lowering does not handle yet (array literals, a `for…of` binding that is not `const`, storing into a list element) |
 | L013 | A store to a read-only place: a baked constant, a built-in, a `const` |
-| L014 | A signature lowering cannot infer (no call site, no emit site), emit sites that disagree, or a call from an effect-checked position to a method whose effects are unknown |
+| L014 | A signature lowering cannot infer (no call site, no emit site), emit sites that disagree, a call from an effect-checked position to a method whose effects are unknown, or a call to a helper or constant that does not lower |
 | L015 | The wrong number of arguments |
 
 Each has a test that reads its tip, in [`test/diagnostics.test.js`](test/diagnostics.test.js).

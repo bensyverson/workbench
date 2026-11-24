@@ -1,7 +1,35 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inventory } from "../inventory.js";
-import { topLevelNames, topLevelRefs } from "../toplevel.js";
+import { topLevelNames, topLevelRefs, topLevelBindings } from "../toplevel.js";
+
+test("topLevelBindings gives each top-level const's source text, split at depth-0 commas", () => {
+  const code = [
+    "// const nope = 1;",
+    "const N = 5;",
+    "const ROWS = 5, COLS = 9;",
+    "const nth = (seed, i) => {",
+    "  const inner = [1, 2, 3];",
+    "  return ((seed * 97 + i) >>> 0) % 9;",
+    "};",
+    "const S = \"a; b, (c\", T = `x${1}`;",
+    "const sq = (n) => n * n",
+    "let mutable = 3;",
+    "function f() { return 1; }",
+    "const { d, e } = pair;",
+    "Game(\"x\");",
+  ].join("\n");
+  const found = topLevelBindings(code);
+  assert.deepEqual(found.map((b) => [b.name, b.keyword]), [["N", "const"], ["ROWS", "const"], ["COLS", "const"], ["nth", "const"], ["S", "const"], ["T", "const"], ["sq", "const"], ["mutable", "let"]]);
+  const by = Object.fromEntries(found.map((b) => [b.name, b.init]));
+  assert.equal(by.N, "5");
+  assert.equal(by.ROWS, "5");
+  assert.equal(by.COLS, "9");
+  assert.equal(by.nth, "(seed, i) => {\n  const inner = [1, 2, 3];\n  return ((seed * 97 + i) >>> 0) % 9;\n}");
+  assert.equal(by.S, "\"a; b, (c\"");
+  assert.equal(by.T, "`x${1}`");
+  assert.equal(by.sq, "(n) => n * n");
+});
 
 test("topLevelNames lists a program's top-level consts, lets, vars and functions", () => {
   const code = `// const nope = 1;\nconst A = 1;\nlet b = 2, c = 3;\nvar d;\nfunction f() { const inner = 1; }\nasync function g() {}\n  const indented = 1;\nGame("x");`;

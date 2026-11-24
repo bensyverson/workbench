@@ -108,6 +108,8 @@ export interface RuntimeOptions {
 
 export interface DmgBuild {
   name: string;
+  /** The program's source, when the loader built it from source. */
+  code?: string;
   spec: DmgSpec;
   runtime(opts?: RuntimeOptions): DmgRuntime;
 }

@@ -56,6 +56,8 @@ function saved(L, e) {
  */
 function writableLocal(L, target) {
   const b = L.lookup(target.name);
+  const top = L.sigs.helpers?.[target.name];
+  if (!b && top) { L.error("L013", target, `'${target.name}' is a top-level ${top.kind === "const" ? "constant" : "function"} of the program.`, "A baked constant cannot change at run time; keep changing state in an attribute."); return null; }
   if (!b) { identifier(L, target); return null; }
   if (b.kind !== "let") { L.error("L013", target, `'${target.name}' is ${b.kind === "param" ? "a parameter" : "const"}.`, "Declare it with let to change it, or use a new name."); return null; }
   if (L.pure > 0) { L.error("L006", target, `A query callback must be pure, but this changes '${target.name}'.`, "Keep callbacks pure: compute the change after the query, from its result."); return null; }

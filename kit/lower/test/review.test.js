@@ -77,12 +77,12 @@ test("a method that calls itself, directly or through another, is unbounded", ()
   assert.deepEqual(chain.results.map(codes), [[], [], []]);
 });
 
-test("indexing a list is not lowered yet (L012); a dynamic name is L009", () => {
+test("an indexed list item is possibly empty (L008) until checked; a dynamic name is L009", () => {
   const r = lower("(self, w) => { w.board[0].up = true; }");
-  assert.deepEqual(codes(r), ["L012"]);
-  assert.match(r.diagnostics[0].message, /index/i);
-  assert.deepEqual(codes(lower("(self, w) => { w.score = w.board[1].ttl; }")), ["L012"]);
-  assert.deepEqual(codes(lower("(self, w) => { w.board[0].pop(); }")), ["L012"]);
+  assert.deepEqual(codes(r), ["L008"]);
+  assert.deepEqual(codes(lower("(self, w) => { w.score = w.board[1].ttl; }")), ["L008"]);
+  assert.deepEqual(codes(lower("(self, w) => { w.board[0].pop(); }")), ["L008"]);
+  assert.deepEqual(codes(lower("(self, w) => { const m = w.board[0]; if (m) m.pop(); }")), []);
   assert.deepEqual(codes(lower("(self) => { const k = \"up\"; self[k] = false; }")), ["L009"]);
   assert.deepEqual(codes(lower("(self) => { const k = \"pop\"; self[k](); }")), ["L009"]);
 });

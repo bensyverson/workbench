@@ -76,6 +76,17 @@ test("L007: a loop whose bound is not a constant, a param or a declared size", (
   assert.match(start.d.tip, /starting from an integer or a param/);
 });
 
+test("L007: a step other than one is rejected, and the tip suggests counting the iterations", () => {
+  for (const step of ["x += 8", "x += w.next", "x -= 1", "x--", "x = x + 8", "x *= 2"]) {
+    const { d } = only("L007", `(w) => { for (let x = 0; x < 80; ${step}) w.sfx("pop"); }`, "timer", "World");
+    assert.match(d.tip, /count the iterations/i, step);
+    assert.match(d.tip, /inside the loop/, step);
+  }
+  const bound = only("L007", "(self) => { for (let i = 0; i < self.ttl; i++) self.rise++; }");
+  assert.doesNotMatch(bound.d.tip, /count the iterations/i);
+  assert.deepEqual(codes(lower("(w) => { for (let i = 0; i < 10; i++) w.next = i * 8; }", "timer", "World")), []);
+});
+
 test("L006 also covers a callback assigning the enclosing lambda's local", () => {
   const { d, text } = only("L006", "(w) => { let n = 0; w.board.filter((m) => (n = n + 1) > 2); }", "timer", "World");
   assert.equal(text, "n");
@@ -107,15 +118,15 @@ test("L011: a name argument that must be a literal, or names nothing declared", 
 });
 
 test("L012: a subset construct lowering does not handle yet", () => {
-  const { d } = only("L012", "(w) => { for (const m of w.board) m.up = false; }", "timer", "World");
-  assert.match(d.message, /for…of/);
-  const index = only("L012", "(w) => { w.board[0].up = false; }", "timer", "World");
+  const { d } = only("L012", "(w) => { for (let m of w.board) m.up = false; }", "timer", "World");
+  assert.match(d.tip, /const/);
+  const index = only("L012", "(w) => { w.board[0] = w.board[1]; }", "timer", "World");
   assert.equal(index.text, "w.board[0]");
-  assert.match(index.d.tip, /find|at\(i\)/);
+  assert.match(index.d.tip, /field of the item/);
 });
 
 test("L012 on a declaration still declares its names, so their uses add no L001", () => {
-  assert.deepEqual(codes(lower("(w) => { const { x, y } = w.input.axis(); w.next = x + y; }", "timer", "World")), ["L012"]);
+  assert.deepEqual(codes(lower("(w) => { const [x, y] = w.frame; w.next = x + y; }", "timer", "World")), ["L003"]);
   assert.deepEqual(codes(lower("(w) => { let d; w.next = d; }", "timer", "World")), ["L012"]);
 });
 

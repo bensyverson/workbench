@@ -1,3 +1,3 @@
 // The JavaScript backend.
 
-export { emitKernel, instantiate } from "./emit.js";
+export { emitKernel, instantiate, emitHelpers } from "./emit.js";

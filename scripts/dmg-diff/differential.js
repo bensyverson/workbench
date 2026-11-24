@@ -78,7 +78,8 @@ export function builder(dmg, c) {
   return () => {
     const r = dmg.DSL.run(code, c.overrides ? { overrides: c.overrides } : undefined);
     if (!r.build) throw new Error(`${c.label}: build failed: ${r.error?.message ?? "no build"}`);
-    return r.build;
+    // The source stays with the build, as loadDmg's builds keep it, so lowering finds the program's top-level helpers.
+    return Object.assign(r.build, { code });
   };
 }
 
@@ -123,7 +124,7 @@ export function emitGroup(group, transform) {
   for (const e of group.slice(1)) {
     if (emitEntry(e).emitted.source !== emitted.source) throw new Error(`${id}: the parts that run this fragment lambda emit different code, so one swapped function cannot stand for them all`);
   }
-  return instantiate({ ...emitted, source: transform ? transform(id, emitted.source) : emitted.source });
+  return instantiate({ ...emitted, source: transform ? transform(id, emitted.source) : emitted.source }, group[0].scope());
 }
 
 /**

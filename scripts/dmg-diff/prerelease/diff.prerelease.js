@@ -41,5 +41,5 @@ test("every lowered lambda of every preset, swapped in alone and all at once, ma
   }
   const lowered = survey(dmg).filter((r) => r.status === "lowered").length;
   assert.equal([...swapped.values()].reduce((a, b) => a + b, 0), lowered, "the swapped lambdas are the survey's lowered ones");
-  assert.equal(lowered, 105);
+  assert.equal(lowered, 107);
 });

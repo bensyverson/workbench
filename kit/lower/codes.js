@@ -22,6 +22,9 @@ export const LOWER_CODES = Object.freeze({
 
 /** @typedef {keyof typeof LOWER_CODES} LowerCode */
 
+/** The owner of a program's top-level helpers in a signature key, as `Mole` is of a method: `$.name`. */
+export const HELPER_OWNER = "$";
+
 /**
  * " Did you mean 'x'?" for the closest of `names` to `name`, or "".
  * @param {string} name

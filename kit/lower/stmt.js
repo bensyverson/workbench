@@ -2,8 +2,9 @@
 // returns, and expressions evaluated for their effects.
 
 import { assignable, join } from "../ir/types.js";
-import { expr, test, facts, check } from "./expr.js";
+import { expr, test, facts, check, describe } from "./expr.js";
 import { assign, update } from "./assign.js";
+import { bindPattern, patternNames } from "./pattern.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Expr, Stmt, Span, Type } from "../ir/ir.js" */
@@ -37,9 +38,7 @@ export function statement(L, node) {
       L.emit({ k: node.type === "BreakStatement" ? "break" : "continue", span });
       return;
     case "EmptyStatement": return;
-    case "ForOfStatement":
-      L.error("L012", node, "for…of is not lowered yet.", "Use a query (filter, find, some, every, reduce) or a counted for loop.");
-      return;
+    case "ForOfStatement": return forOf(L, node);
     default:
       L.error("L012", node, `${node.type} is not lowered.`, "Rewrite it with the constructs in the runtime subset.");
   }
@@ -80,31 +79,54 @@ export function effect(L, node) {
 function declaration(L, node) {
   for (const d of node.declarations) {
     // On failure the names are still declared, with an unknown type, so their uses report nothing more.
-    if (d.id.type !== "Identifier") {
-      L.error("L012", d.id, "Destructuring is not lowered yet.", "Declare each field on its own: const x = p.x;");
+    if (!d.init) {
+      const first = patternNames(d.id)[0] ?? "x";
+      L.error("L012", d, `'${first}' has no initial value.`, `Give it one: let ${first} = 0;`);
       for (const n of patternNames(d.id)) L.declare(n, "unknown", "let");
       continue;
     }
-    if (!d.init) { L.error("L012", d, `'${d.id.name}' has no initial value.`, `Give it one: let ${d.id.name} = 0;`); L.declare(d.id.name, "unknown", "let"); continue; }
     const v = expr(L, d.init);
-    // A let may later hold any string, so its type is not the literal it starts with.
-    const t = node.kind === "let" && typeof v.t === "object" && "enum" in v.t ? "str" : v.t;
-    const name = L.declare(d.id.name, t, node.kind === "const" ? "const" : "let");
-    L.emit({ k: "let", name, t, value: v, span: spanOf(d) });
+    const kind = node.kind === "const" ? "const" : "let";
+    if (d.id.type === "Identifier") {
+      // A let may later hold any string, so its type is not the literal it starts with.
+      const t = kind === "let" && typeof v.t === "object" && "enum" in v.t ? "str" : v.t;
+      const name = L.declare(d.id.name, t, kind);
+      L.emit({ k: "let", name, t, value: v, span: spanOf(d) });
+    } else bindPattern(L, d.id, v, kind);
   }
 }
 
 /**
- * The identifiers a destructuring pattern binds.
- * @param {AST.Pattern} p
- * @returns {string[]}
+ * `for (const x of list)`: an `each` loop over a bounded list. The body is lowered even when the
+ * list is not one, so errors inside it still show. A destructured binding is taken apart in the body.
+ * @param {Lowerer} L
+ * @param {AST.ForOfStatement} node
  */
-function patternNames(p) {
-  if (p.type === "Identifier") return [p.name];
-  if (p.type === "ObjectPattern") return p.properties.flatMap((q) => patternNames(q.value));
-  if (p.type === "ArrayPattern") return p.elements.flatMap((q) => (q ? patternNames(q) : []));
-  if (p.type === "AssignmentPattern") return patternNames(p.left);
-  return [];
+function forOf(L, node) {
+  const decl = node.left.type === "VariableDeclaration" && node.left.declarations.length === 1 ? node.left : null;
+  const target = decl?.declarations[0].id ?? null;
+  const list = expr(L, node.right);
+  /** @type {Type} */
+  let item = "unknown";
+  let max = 0;
+  if (typeof list.t === "object" && "list" in list.t) { item = list.t.list; max = list.t.max; }
+  else if (list.t !== "unknown") L.error("L003", node.right, `for…of needs a list, not ${describe(list.t)}.`, "Loop over a declared list (w.board, w.pool(name)), a filter result, or use a counted for loop.");
+  if (!target || !decl) {
+    L.error("L012", node.left, "A for…of needs its own binding.", "Declare it: for (const x of list).");
+  } else if (decl.kind !== "const") {
+    L.error("L012", node.left, "A for…of binding must be const.", "Write for (const x of list); the item is not reassigned.");
+  }
+  let name = "";
+  const body = L.capture(() => {
+    if (target?.type === "Identifier") name = L.declare(target.name, item, "const");
+    else {
+      name = L.temp(item);
+      const local = L.ex({ k: "local", name, t: item, span: spanOf(node.left) });
+      if (target) bindPattern(L, target, local, "const");
+    }
+    statement(L, node.body);
+  });
+  if (target && decl?.kind === "const") L.emit({ k: "each", name, t: item, list, max, body: body.stmts, span: spanOf(node) });
 }
 
 /**
@@ -162,6 +184,12 @@ function forStatement(L, node) {
   const u = node.update;
   const counts = i && u && ((u.type === "UpdateExpression" && u.operator === "++" && u.argument.type === "Identifier" && u.argument.name === i)
     || (u.type === "AssignmentExpression" && u.operator === "+=" && u.left.type === "Identifier" && u.left.name === i && u.right.type === "Literal" && u.right.value === 1));
+  if (d && i && boundNode && u && !counts) {
+    // The counted rewrite keeps the step at one: count the iterations, and derive the value from the count.
+    L.error("L007", u, `This loop steps '${i}' by something other than one, so its bound cannot be checked.`,
+      `Count the iterations and compute the value inside the loop: for (let k = 0; k < n; k++) { const ${i} = start + k * step; … }.`);
+    return;
+  }
   if (!d || !i || !boundNode || !counts || !t || !u) { L.error("L007", node, "This loop's bound cannot be checked.", tip); return; }
   const writer = findWrite(node.body, i);
   if (writer) { L.error("L007", writer, `The loop body changes '${i}', so its bound cannot be checked.`, tip); return; }

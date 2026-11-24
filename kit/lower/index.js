@@ -6,12 +6,13 @@ import { Lowerer, dedupe } from "./lowerer.js";
 import { statements, statement, effect, inferredReturn } from "./stmt.js";
 import { check } from "./expr.js";
 import { reachable } from "./call.js";
+import { HELPER_OWNER } from "./codes.js";
 
-export { LOWER_CODES } from "./codes.js";
+export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
 
 /** @import { Diagnostic, ArrowFunctionExpression, Expression } from "../parse/ast.js" */
 /** @import { Kernel, Type, Effect, Stmt, Local } from "../ir/ir.js" */
-/** @import { Dialect, SlotRef, SlotDecl, Signatures } from "./dialect.js" */
+/** @import { Dialect, SlotRef, SlotDecl, Signatures, HelperDecl, HelperSource } from "./dialect.js" */
 
 /**
  * @typedef {object} LowerResult
@@ -25,8 +26,11 @@ export { LOWER_CODES } from "./codes.js";
  * @property {Type[]} params  Its parameters' types.
  */
 
-/** @returns {Signatures} */
-const noSignatures = () => ({ events: {}, methods: {} });
+/**
+ * @param {Record<string, HelperDecl>} [helpers]
+ * @returns {Signatures}
+ */
+const noSignatures = (helpers = {}) => ({ events: {}, methods: {}, helpers });
 
 /** The short names slot parameters go by, for messages. */
 const PARAM_NAMES = /** @type {Record<string, string>} */ ({ World: "w", At: "at" });
@@ -135,34 +139,86 @@ function collectEffects(stmts) {
 }
 
 /**
+ * @typedef {object} HelperResult
+ * @property {string} name
+ * @property {"fn" | "const"} kind
+ * @property {LowerResult} result  A function's kernel is a `helper` slot; a constant's returns its value.
+ */
+
+/**
+ * The slot a top-level helper or constant fills.
+ * @param {HelperSource} h
+ * @returns {SlotRef}
+ */
+const helperSlot = (h) => ({ id: h.name, kind: h.kind === "fn" ? "helper" : "const", on: HELPER_OWNER, key: h.name });
+
+/**
+ * Lowers each constant, in order, to the expression every use of it is replaced by. A
+ * constant is lowered as `() => (init)`, so it is held to the subset and may use only
+ * literals, `Math` and the constants before it.
+ * @param {Dialect} dialect
+ * @param {HelperSource[]} sources
+ * @param {Record<string, HelperDecl>} decls  Every helper's name; updated with each constant's value.
+ * @returns {Map<string, LowerResult>}
+ */
+function lowerConstants(dialect, sources, decls) {
+  /** @type {Map<string, LowerResult>} */
+  const out = new Map();
+  for (const h of sources) {
+    if (h.kind !== "const") continue;
+    const r = lowerLambda(dialect, `() => (${h.src})`, helperSlot(h), noSignatures(decls));
+    const k = r.kernel;
+    const only = k && k.body.length === 1 && k.body[0].k === "return" && k.locals.length === 0 ? k.body[0].value : null;
+    if (r.ok && !only) {
+      r.diagnostics.push({ code: "L012", severity: "error", message: `The constant '${h.name}' is not a single expression.`, tip: "Write it as one expression of literals, Math and earlier constants.", loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } }, range: [0, 0] });
+      r.ok = false;
+      r.kernel = null;
+    }
+    decls[h.name] = { kind: "const", value: r.ok ? only : null };
+    out.set(h.name, r);
+  }
+  return out;
+}
+
+/**
  * Lowers every lambda of a program, inferring event payloads (from emit sites) and
- * method signatures (parameters from call sites, results and effects from bodies)
- * until they stop changing.
+ * method and helper signatures (parameters from call sites, results and effects from
+ * bodies) until they stop changing. A top-level helper function is lowered like a
+ * method that has no `self`; a top-level constant is baked into each use.
  * @param {Dialect} dialect
  * @param {Array<{ src: string, slot: SlotRef }>} lambdas
- * @returns {{ results: LowerResult[], sigs: Signatures }}
+ * @param {HelperSource[]} [helperSources]
+ * @returns {{ results: LowerResult[], sigs: Signatures, helpers: HelperResult[] }}
  */
-export function lowerProgram(dialect, lambdas) {
-  let sigs = noSignatures();
+export function lowerProgram(dialect, lambdas, helperSources = []) {
+  /** @type {Record<string, HelperDecl>} */
+  const decls = Object.fromEntries(helperSources.map((h) => [h.name, h.kind === "fn" ? { kind: "fn" } : { kind: "const", value: null }]));
+  const consts = lowerConstants(dialect, helperSources, decls);
+  const fns = helperSources.filter((h) => h.kind === "fn");
+  const all = [...lambdas, ...fns.map((h) => ({ src: h.src, slot: helperSlot(h) }))];
+  let sigs = noSignatures(decls);
   /** @type {LowerResult[]} */
   let results = [];
   // Each pass can only add what the last one learned; a chain of n methods settles in n passes.
-  for (let pass = 0; pass <= lambdas.length + 1; pass++) {
-    results = lambdas.map((l) => lowerLambda(dialect, l.src, l.slot, sigs));
-    const next = infer(lambdas, results);
+  for (let pass = 0; pass <= all.length + 1; pass++) {
+    results = all.map((l) => lowerLambda(dialect, l.src, l.slot, sigs));
+    const next = infer(all, results, decls);
     if (JSON.stringify(next) === JSON.stringify(sigs)) break;
     sigs = next;
   }
-  return { results, sigs };
+  const byName = new Map(fns.map((h, i) => [h.name, results[lambdas.length + i]]));
+  const helpers = helperSources.map((h) => ({ name: h.name, kind: h.kind, result: /** @type {LowerResult} */ (h.kind === "fn" ? byName.get(h.name) : consts.get(h.name)) }));
+  return { results: results.slice(0, lambdas.length), sigs, helpers };
 }
 
 /**
  * @param {Array<{ slot: SlotRef }>} lambdas
  * @param {LowerResult[]} results
+ * @param {Record<string, HelperDecl>} decls
  * @returns {Signatures}
  */
-function infer(lambdas, results) {
-  const sigs = noSignatures();
+function infer(lambdas, results, decls) {
+  const sigs = noSignatures(decls);
   /** @type {Record<string, Type[]>} */
   const callArgs = {};
   for (const r of results) {
@@ -172,7 +228,7 @@ function infer(lambdas, results) {
   /** @type {Record<string, boolean>} */
   const failed = {};
   lambdas.forEach((l, i) => {
-    if (l.slot.kind !== "method") return;
+    if (l.slot.kind !== "method" && l.slot.kind !== "helper") return;
     const key = `${l.slot.on}.${l.slot.key}`;
     const r = results[i];
     const calls = [...new Set(r.calls.map((c) => c.key))];

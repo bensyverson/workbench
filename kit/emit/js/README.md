@@ -8,9 +8,14 @@ import { emitKernel, instantiate } from "./kit/emit/js/index.js";
 const e = emitKernel(kernel);  // { name, params, source, lines }
 const fn = instantiate(e);     // a callable function, via the Function constructor
 e.lines[i];                    // { span, start }: the source span line i + 1 came from
+
+// A program's top-level helpers are separate kernels; make them callable and hand them to each caller:
+const scope = emitHelpers(helperKernels.map(emitKernel));   // { name: fn }, able to call one another
+const caller = instantiate(emitKernel(k), scope);            // the helpers are in scope by name
 ```
 
 - **Numbers** are JS doubles, as the IR's `f64`. **A store is a plain assignment**: the DMG host's entity and world proxies apply each attribute's coercion and log its warnings, which the oracle trace compares, so the backend does not coerce a second time. Why the IR keeps the rule on the store: [the M1 plan](../../../project/2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR".
+- **`index`** emits `list[i]` (undefined out of range, as the IR says) and a **`helper`** call emits `name(args)`.
 - **No closures at run time.** Query callbacks were inlined by lowering; they come out as `for…of` loops over the list.
 - **Every compound expression is parenthesized**, so precedence is never at risk; a statement's own expression drops its outer pair.
 - **The line map** has one entry per emitted line. Statement lines point at their statement's span; the function's first and last lines point at the whole lambda.

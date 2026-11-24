@@ -42,7 +42,7 @@ test("the survey covers every preset and lambda; these are the M1 report's figur
   assert.equal(t.find((r) => r.preset === "02")?.total, 0, "preset 02 has no runtime lambdas");
   assert.equal(rows.length, 126);
   const n = (/** @type {string} */ s) => rows.filter((r) => r.status === s).length;
-  assert.deepEqual({ lowered: n("lowered"), helpers: n("helpers"), subset: n("subset"), notYet: n("not-yet") }, { lowered: 105, helpers: 11, subset: 1, notYet: 9 });
+  assert.deepEqual({ lowered: n("lowered"), helpers: n("helpers"), subset: n("subset"), notYet: n("not-yet") }, { lowered: 107, helpers: 9, subset: 3, notYet: 7 });
   assert.equal(rows.filter((r) => r.topLevelRefs.length > 0).length, 11, "the inventory's topLevelRefs count");
   for (const id of ["04", "05", "06", "07"]) assert.ok(rows.filter((r) => r.preset === id).every((r) => r.status === "lowered"), id);
 });
@@ -162,4 +162,10 @@ test("mutants through main: exit 1 for a miss in both modes", () => {
   const json = capture(() => main(["mutants", "--seeds", "7", "--frames", "5", "--json"]));
   assert.equal(text.code, 1);
   assert.equal(json.code, text.code);
+});
+
+test("a lambda that calls a top-level helper is swapped with the helper in scope, and matches", () => {
+  const r = runCase(dmg, { label: "14 default", preset: "14", why: "" }, { seed: 7, frames: 60 });
+  assert.ok(r.swapped.includes("memory.onFrame#0"), "the helper's caller lowered");
+  assert.deepEqual(r.mismatches, []);
 });

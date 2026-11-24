@@ -13,7 +13,8 @@ printKernel(kernel);  // a listing for people: one statement per line, effects a
 - **Every node has a `span`**, `[start, end]` offsets into the kernel's `src`, the parser's `range`. Every expression has a type `t`; every statement has `effects` (`read Mole.ttl`, `write World.next`, `rng`, `emit whack`, …), and the kernel sums them.
 - **Types:** `f64`, `bool`, `str`, `null`, `void`, enums of strings, entity references, optionals, lists with a maximum length, structs, unions, and dialect handles (`{ obj: "World" }`). Numbers are always `f64`; a sized integer is a store rule on a place. Why, and how it matches the DMG runtime: [the M1 plan](../../project/2026-11-23-m1-game-slice-plan.md), "Integer semantics in the IR".
 - **Evaluation is left to right**; `cond`, `and` and `or` are lazy. Statements that cannot sit inside an expression (stores, a query's loop) come before it, so the IR is never ambiguous about order.
-- **Loops are bounded:** `for` names its bound (`param burst`, `const 4`), and `each` runs over a list of at most `max` items.
+- **Loops are bounded:** `for` names its bound (`param burst`, `const 4`), and `each` runs over a list of at most `max` items (a query's loop, or a `for…of`).
+- **`index`** is `of[index]`, typed `{ opt }`: out of range gives JavaScript's `undefined`, and a C backend would bounds-check it. **`helper`** calls one of the program's top-level helper functions by name; a helper has its own kernel, slot kind `helper`, named for the helper.
 
 The listing of preset 04's `Mole.onFrame`:
 

@@ -5,6 +5,7 @@ import { assignable, showType, unify, substitute } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { query } from "./query.js";
 import { expr, check, mismatch, bad, seq, resolveOn, spanOf, computed } from "./expr.js";
+import { HELPER_OWNER } from "./codes.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Effect } from "../ir/ir.js" */
@@ -25,6 +26,7 @@ export function call(L, node) {
     for (const a of args) if (a.type === "ArrowFunctionExpression") L.error("L005", a, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.dialect.queries.join(", ")}.`);
   };
   if (callee.type === "Identifier") {
+    if (!L.lookup(callee.name) && L.sigs.helpers?.[callee.name]?.kind === "fn") { noCallbacks(); return helperCall(L, node, callee.name, args); }
     const f = expr(L, callee);
     const o = typeof f.t === "object" && "obj" in f.t ? L.dialect.objects[f.t.obj] : undefined;
     if (f.t === "unknown") return bad(node);
@@ -174,7 +176,7 @@ function methodCall(L, node, r, owner, name, args) {
     return bad(node);
   }
   // Both are reported without bailing out, so the call is still recorded and the next pass sees the same call graph.
-  const self = L.slot.kind === "method" ? `${L.slot.on}.${L.slot.key}` : null;
+  const self = L.slot.kind === "method" || L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;
   if (self && reachable(L.sigs, key).includes(self)) {
     L.error("L007", node, `${self} calls itself${key === self ? "" : ` through ${key}`}, so how long it runs cannot be bounded.`, "Replace the recursion with a counted for loop or a query.");
   }
@@ -188,3 +190,34 @@ function methodCall(L, node, r, owner, name, args) {
   return L.ex({ k: "method", owner, name, recv, args: rest, effects, t: sig?.returns ?? "unknown", span: spanOf(node) }, effects);
 }
 
+
+/**
+ * A call to one of the program's top-level helpers. Its signature comes from the program's
+ * inference, as a method's does, and it follows the same rules: its effects are the caller's,
+ * and it may not call itself. A helper that does not lower has no code to call.
+ * @param {Lowerer} L
+ * @param {AST.CallExpression} node
+ * @param {string} name
+ * @param {AST.Expression[]} args
+ * @returns {Expr}
+ */
+function helperCall(L, node, name, args) {
+  const key = `${HELPER_OWNER}.${name}`;
+  const sig = L.sigs.methods[key];
+  if (sig && args.length !== sig.params.length) {
+    L.error("L015", node, `${name} got ${args.length} argument${args.length === 1 ? "" : "s"}.`, `${name} takes ${sig.params.length}.`);
+    return bad(node);
+  }
+  const self = L.slot.kind === "method" || L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;
+  if (self && reachable(L.sigs, key).includes(self)) {
+    L.error("L007", node, `${self === key ? name : self.replace(`${HELPER_OWNER}.`, "")} calls itself${key === self ? "" : ` through ${name}`}, so how long it runs cannot be bounded.`, "Replace the recursion with a counted for loop or a query.");
+  }
+  // A call inside its own cycle is reported as recursion above, not again as a failure.
+  if (sig?.partial && !(self && reachable(L.sigs, key).includes(self))) {
+    L.error("L014", node, `The helper ${name} does not lower, so it, and anything that calls it, cannot be compiled.`, `Fix ${name}'s diagnostics first.`);
+  }
+  const vals = seq(L, args.map((a, i) => () => (sig ? check(L, a, sig.params[i], `argument ${i + 1} of ${name}`) : expr(L, a))));
+  L.calls.push({ key, args: vals.map((v) => v.t) });
+  const effects = /** @type {Effect[]} */ ([`call ${name}`, ...(sig?.effects ?? [])]);
+  return L.ex({ k: "helper", name, args: vals, effects, t: sig?.returns ?? "unknown", span: spanOf(node) }, effects);
+}

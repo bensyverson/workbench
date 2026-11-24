@@ -8,7 +8,7 @@ A headless harness around the DMG Workbench's own runtime, used as the reference
 - `encode.js`: the one encoding for every compared value. It is JSON-safe and keeps apart what JSON merges: NaN, undefined, -0 and the infinities become `{ "$": tag }` objects, an entity or the world inside a payload becomes `{ "$": "entity", kind, index }` / `{ "$": "world" }`, and a user object with its own `$` key is wrapped so it can't pass for a tag.
 - `inputs.js`: `inputTrace(seed, frames)` gives seeded button traces with their own PRNG.
 - `declarations.js`: `declarationsOf(spec)` reads what a built program declares (attribute types, baked constants, methods, params, pools, the board, aliases, sounds) into the plain data `kit/dialects/dmg` builds its dialect from.
-- `toplevel.js`: a lexical scan that finds which lambdas use top-level bindings of their preset program (see below).
+- `toplevel.js`: a lexical scan that finds which lambdas use top-level bindings of their preset program (see below), and `topLevelBindings(code)`, which gives each top-level `const`/`let`'s initializer source so the pipeline can lower helpers. `build(...)` keeps the program's source on the build as `code`.
 - `npm run inventory` writes `out/inventory.json`: every runtime lambda in all presets with kind, owner, source and `topLevelRefs`. That is 126 lambdas, and preset 02 has none.
 
 Always pass `seed` explicitly: the DMG UI ignores `Game.seed()` for the runtime RNG.

@@ -23,7 +23,7 @@ const PURE = new Set(["read", "input"]);
 const CONSTANT_KINDS = new Set(["num", "str", "bool", "null", "undef", "global"]);
 
 /** Expression fields that hold child expressions. */
-const CHILD_KEYS = ["args", "test", "then", "else", "recv", "of", "value", "init", "list"];
+const CHILD_KEYS = ["args", "test", "then", "else", "recv", "of", "value", "init", "list", "index"];
 
 export class Lowerer {
   /**

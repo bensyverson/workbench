@@ -89,6 +89,97 @@ function declaredNames(s, i) {
 }
 
 /**
+ * The index after the string, template or comment that starts at `i`, or `i` when none does.
+ * @param {string} s
+ * @param {number} i
+ * @returns {number}
+ */
+function skipLiteral(s, i) {
+  const c = s[i];
+  if (c === "/" && s[i + 1] === "/") { const e = s.indexOf("\n", i); return e < 0 ? s.length : e; }
+  if (c === "/" && s[i + 1] === "*") { const e = s.indexOf("*/", i + 2); return e < 0 ? s.length : e + 2; }
+  if (c === '"' || c === "'") {
+    let j = i + 1;
+    while (j < s.length && s[j] !== c) j += s[j] === "\\" ? 2 : 1;
+    return j + 1;
+  }
+  if (c === "`") {
+    let j = i + 1;
+    while (j < s.length && s[j] !== "`") {
+      if (s[j] === "\\") j += 2;
+      else if (s[j] === "$" && s[j + 1] === "{") j = scanTo(s, j + 2, (_, k, depth) => depth === 0 && s[k] === "}") + 1;
+      else j++;
+    }
+    return j + 1;
+  }
+  return i;
+}
+
+/**
+ * The index of the first character from `from` for which `stop` holds at bracket depth 0,
+ * skipping literals and comments; `s.length` when none does.
+ * @param {string} s
+ * @param {number} from
+ * @param {(s: string, i: number, depth: number) => boolean} stop
+ * @returns {number}
+ */
+function scanTo(s, from, stop) {
+  let depth = 0;
+  for (let i = from; i < s.length; i++) {
+    const skipped = skipLiteral(s, i);
+    if (skipped !== i) { i = skipped - 1; continue; }
+    if (stop(s, i, depth)) return i;
+    if ("([{".includes(s[i])) depth++;
+    else if (")]}".includes(s[i])) depth--;
+  }
+  return s.length;
+}
+
+/** Where a top-level statement ends: a `;`, or a line break after which the next line starts at column 0 with a name. */
+const statementEnd = (/** @type {string} */ s, /** @type {number} */ from) =>
+  scanTo(s, from, (t, i, depth) => depth === 0 && (t[i] === ";" || (t[i] === "\n" && /^[A-Za-z_$]/.test(t.slice(i + 1, i + 2)))));
+
+/**
+ * @typedef {object} Binding
+ * @property {string} name
+ * @property {"const" | "let"} keyword
+ * @property {string} init  The initializer's source text, exactly as written.
+ */
+
+/**
+ * Each plain-named `const` and `let` a program declares at its top level, with its initializer's
+ * source. A `const a = 1, b = 2` gives two. Destructuring declarations, `var` and functions are
+ * not listed.
+ * @param {string} code
+ * @returns {Binding[]}
+ */
+export function topLevelBindings(code) {
+  /** @type {Binding[]} */
+  const out = [];
+  let i = 0;
+  while (i < code.length) {
+    const skipped = skipLiteral(code, i);
+    if (skipped !== i) { i = skipped; continue; }
+    if (/\s/.test(code[i])) { i++; continue; }
+    const end = statementEnd(code, i);
+    const m = /^(?:export\s+)?(const|let)\s+/.exec(code.slice(i, end));
+    if (m) {
+      const bodyStart = i + m[0].length;
+      let from = bodyStart;
+      while (from <= end) {
+        const comma = Math.min(scanTo(code, from, (t, k, depth) => depth === 0 && t[k] === ","), end);
+        const part = code.slice(from, comma);
+        const d = /^\s*([A-Za-z_$][\w$]*)\s*=\s*/.exec(part);
+        if (d) out.push({ name: d[1], keyword: /** @type {"const" | "let"} */ (m[1]), init: part.slice(d[0].length).trim() });
+        from = comma + 1;
+      }
+    }
+    i = end + 1;
+  }
+  return out;
+}
+
+/**
  * The names a program declares at its top level (column 0): const, let, var and function.
  * @param {string} code
  * @returns {string[]}

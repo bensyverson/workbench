@@ -56,11 +56,24 @@ export function emitKernel(k) {
 
 /**
  * Turns emitted source into a callable function. Uses the Function constructor, so the page needs no build step.
+ * `scope` names what the function may call besides its parameters: the program's helpers.
  * @param {Emitted} e
+ * @param {Record<string, (...args: any[]) => unknown>} [scope]
  * @returns {(...args: any[]) => unknown}
  */
-export function instantiate(e) {
-  return new Function(`"use strict"; return (${e.source});`)();
+export function instantiate(e, scope = {}) {
+  return new Function(...Object.keys(scope), `"use strict"; return (${e.source});`)(...Object.values(scope));
+}
+
+/**
+ * Makes a program's helpers callable, each by its name, and able to call one another.
+ * @param {Emitted[]} helpers  Emitted helper kernels; a helper's name is its kernel's name.
+ * @returns {Record<string, (...args: any[]) => unknown>}
+ */
+export function emitHelpers(helpers) {
+  const names = helpers.map((h) => h.name);
+  const body = `"use strict";\n${helpers.map((h) => `const ${h.name} = (${h.source});`).join("\n")}\nreturn { ${names.join(", ")} };`;
+  return new Function(body)();
 }
 
 /**
@@ -138,6 +151,7 @@ function expr(e) {
     case "local": case "global": return e.name;
     case "load": return `${member(e.place.recv)}.${e.place.name}`;
     case "field": return `${member(e.of)}.${e.name}`;
+    case "index": return `${member(e.of)}[${top(e.index)}]`;
     case "list": return "[]";
     case "op": {
       const [a, b] = e.args.map(expr);
@@ -154,6 +168,7 @@ function expr(e) {
       const dot = e.fn.lastIndexOf(".");
       return dot < 0 ? `${recv || e.fn}(${args})` : `${recv}.${e.fn.slice(dot + 1)}(${args})`;
     }
+    case "helper": return `${e.name}(${e.args.map(expr).join(", ")})`;
     case "method": return `${member(e.recv)}.${e.name}(${e.args.map(expr).join(", ")})`;
     case "struct": return `({ ${Object.entries(e.fields).map(([k, v]) => `${IDENT.test(k) ? k : JSON.stringify(k)}: ${expr(v)}`).join(", ")} })`;
   }

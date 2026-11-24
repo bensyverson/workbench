@@ -49,7 +49,8 @@ export function loadDmg(htmlPath = DEFAULT_HTML) {
     const code = /^\d\d$/.test(idOrCode) ? preset(idOrCode).code : idOrCode;
     const result = DSL.run(code);
     if (!result.build) throw new Error(`build failed: ${result.error?.message ?? "no build produced"}`);
-    return result.build;
+    // The program's source stays with the build, so tooling can read its top-level helpers.
+    return Object.assign(result.build, { code });
   };
 
   return { DSL, presets, preset, build };

@@ -2,7 +2,7 @@
 // cannot stay inside one (a store, a query's loop, a lazy branch holding either)
 // spills into statements ahead of it, in evaluation order.
 
-import { assignable, join, showType } from "../ir/types.js";
+import { assignable, join, optional, showType } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
@@ -84,6 +84,7 @@ export function expr(L, node, expected) {
     }
     case "Identifier": return identifier(L, node);
     case "MemberExpression": {
+      if (node.computed) return index(L, node);
       const r = resolveMember(L, node);
       if (!r) return bad(node);
       return valueOf(L, r, node);
@@ -130,6 +131,15 @@ export function identifier(L, node) {
     const t = L.narrowed.has(b.name) && typeof b.t === "object" && "opt" in b.t ? b.t.opt : b.t;
     return L.ex({ k: "local", name: b.name, t, span });
   }
+  const h = L.sigs.helpers?.[node.name];
+  if (h?.kind === "fn") {
+    L.error("L003", node, `'${node.name}' is a function here.`, `Call it: ${node.name}(…).`);
+    return bad(node);
+  }
+  if (h?.kind === "const") {
+    if (!h.value) { L.error("L014", node, `The constant '${node.name}' does not lower, so it cannot be baked in.`, `Fix ${node.name}'s diagnostics first: a constant is an expression of literals and other constants.`); return bad(node); }
+    return inline(L, h.value, span);
+  }
   const g = L.dialect.globals[node.name];
   if (g) return L.ex({ k: "global", name: node.name, t: g, span });
   const known = [...L.scopes.flatMap((s) => [...s.keys()]), ...Object.keys(L.dialect.globals)];
@@ -137,6 +147,23 @@ export function identifier(L, node) {
     : `Runtime lambdas see only their parameters and ${Object.keys(L.dialect.globals).join(", ")}; a top-level helper or constant is not visible, so pass it in or declare it.${didYouMean(node.name, known)}`;
   L.error("L001", node, `'${node.name}' is not declared here.`, tip);
   return bad(node);
+}
+
+/**
+ * A copy of a baked constant's value at its use, spanned there so every span stays inside the lambda.
+ * @param {Lowerer} L
+ * @param {Expr} e
+ * @param {Span} span
+ * @returns {Expr}
+ */
+function inline(L, e, span) {
+  /** @type {Record<string, any>} */
+  const copy = { ...e, span };
+  for (const key of ["test", "then", "else", "recv", "of", "index"]) if (copy[key]) copy[key] = inline(L, copy[key], span);
+  if (copy.args) copy.args = copy.args.map((/** @type {Expr} */ a) => inline(L, a, span));
+  if (copy.fields) copy.fields = Object.fromEntries(Object.entries(copy.fields).map(([k, v]) => [k, inline(L, /** @type {Expr} */ (v), span)]));
+  if (copy.place) copy.place = { ...copy.place, recv: inline(L, copy.place.recv, span) };
+  return L.ex(/** @type {Expr} */ (copy));
 }
 
 /**
@@ -153,14 +180,37 @@ export function resolveMember(L, node) {
 }
 
 /**
- * Reports `obj[k]`: indexing a list is not lowered yet (L012); any other computed name cannot be checked (L009).
+ * `list[i]`: the item, or nothing when `i` is out of range, so it is typed possibly empty and
+ * must be checked before use, as a `find` result must. Any other computed name cannot be checked (L009).
+ * @param {Lowerer} L
+ * @param {AST.MemberExpression} node
+ * @returns {Expr}
+ */
+function index(L, node) {
+  const [recv, at] = seq(L, [() => expr(L, node.object), () => expr(L, /** @type {AST.Expression} */ (node.property))]);
+  let t = recv.t;
+  if (typeof t === "object" && "opt" in t) {
+    const what = L.src.slice(node.object.range[0], node.object.range[1]);
+    L.error("L008", node.object, `'${what}' may be empty here.`, `Check it first: if (!${what}) return;`);
+    t = t.opt;
+  }
+  if (typeof t === "object" && "list" in t) {
+    if (!assignable(at.t, "f64")) mismatch(L, node.property, at.t, "f64", "a list index");
+    return L.ex({ k: "index", of: recv, index: at, t: optional(t.list), span: spanOf(node) });
+  }
+  computed(L, recv, node);
+  return bad(node);
+}
+
+/**
+ * Reports `obj[k]` where it cannot be read as an item: storing into a list element or calling one (L012); any other computed name cannot be checked (L009).
  * @param {Lowerer} L
  * @param {Expr} recv  `obj`, already lowered.
  * @param {AST.MemberExpression} node
  */
 export function computed(L, recv, node) {
   if (typeof recv.t === "object" && "list" in recv.t) {
-    L.error("L012", node, "Indexing a list is not lowered yet.", "Use a query such as find, or the board's at(i), instead of list[i].");
+    L.error("L012", node, "A list element cannot be assigned or called here.", "Change a field of the item instead, after checking it exists: const m = list[i]; if (m) m.x = 1;");
     return;
   }
   if (recv.t === "unknown") return;

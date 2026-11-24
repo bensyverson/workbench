@@ -109,9 +109,11 @@ export function expr(e) {
       const dot = e.fn.lastIndexOf(".");
       return dot < 0 ? `${expr(e.recv)}(${args})` : `${expr(e.recv)}.${e.fn.slice(dot + 1)}(${args})`;
     }
+    case "helper": return `${e.name}(${e.args.map(expr).join(", ")})`;
     case "method": return `${expr(e.recv)}.${e.name}(${e.args.map(expr).join(", ")})`;
     case "struct": return `{ ${Object.entries(e.fields).map(([k, v]) => `${k}: ${expr(v)}`).join(", ")} }`;
     case "field": return `${expr(e.of)}.${e.name}`;
+    case "index": return `${expr(e.of)}[${expr(e.index)}]`;
     case "list": return "[]";
   }
 }

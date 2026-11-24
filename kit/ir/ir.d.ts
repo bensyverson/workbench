@@ -79,8 +79,12 @@ export type Expr =
   | (ExprBase & { k: "call"; fn: string; recv?: Expr; args: Expr[]; effects: Effect[] })
   /** A method the program defines on an entity kind or the world. */
   | (ExprBase & { k: "method"; owner: string; name: string; recv: Expr; args: Expr[]; effects: Effect[] })
+  /** A top-level helper function of the program, called by name; it has no receiver. */
+  | (ExprBase & { k: "helper"; name: string; args: Expr[]; effects: Effect[] })
   | (ExprBase & { k: "struct"; fields: Record<string, Expr> })
   | (ExprBase & { k: "field"; of: Expr; name: string })
+  /** `of[index]`: the item, or JavaScript's `undefined` when out of range, so its type is `{ opt }`. */
+  | (ExprBase & { k: "index"; of: Expr; index: Expr })
   /** A new empty list, filled by `push`. */
   | (ExprBase & { k: "list" });
 

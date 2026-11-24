@@ -13,6 +13,7 @@ export const WORLD = "World";
 const BUTTONS = ["up", "down", "left", "right", "A", "B", "start", "select", "a", "b"];
 
 /** Effects that change state; a render-time slot may perform none of them. */
+const ALL_EFFECTS = /** @type {EffectVerb[]} */ (["read", "input", "hud", "call", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
 const STATE_CHANGES = /** @type {EffectVerb[]} */ (["write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
 
 const F64 = /** @type {Type} */ ("f64");
@@ -230,6 +231,9 @@ function initFields(d, kind) {
  * @returns {SlotDecl | string}
  */
 function slotOf(ref, d, drawResult) {
+  // A top-level helper has no `self`; a constant is evaluated once, before the game runs, so it may touch no state.
+  if (ref.kind === "helper") return { params: [], inferParams: true, returns: "infer", domain: `helper ${ref.key}`, forbid: [] };
+  if (ref.kind === "const") return { params: [], returns: "infer", domain: `constant ${ref.key}`, forbid: ALL_EFFECTS, forbidWhy: "a baked constant is computed once, so it may not read or change the game" };
   const isWorld = ref.on === WORLD;
   if (!isWorld && !d.comps[ref.on]) return `'${ref.on}' is not a component of this game`;
   /** @type {Type} */
