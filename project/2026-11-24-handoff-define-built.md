@@ -11,21 +11,20 @@
 
 ## Rulings this session (Ben, 2026-11-24)
 
-- Dates are a **core nominal scalar** (leaf `vNfBwn`). Backing asked back: the recommendation is **f64 milliseconds since the Unix epoch, UTC**; confirm before building it.
+- Dates are a **core nominal scalar** (leaf `vNfBwn`), backed by **f64 milliseconds since the Unix epoch, UTC** (Ben confirmed at the end of the session).
 - Source schemas are **declared** in v0.
+- The README Quick Start becomes a **walkthrough** of one Program from source through IR to JS, GLSL and the harness, with an arrow-function lambda and a type error (leaf `oLpw71`).
 - Trial 2 runs **after the build**, with **two Sonnet agents and one Haiku agent**, the checker running the real builder (leaf `O63kB5`, now blocked by the six fixes and `vNfBwn`).
 
 ## Next
 
 1. Fix the six important leaves, each red-to-green from its probe, moving the probe into `kit/define/test/`. They touch `lower.js`, `record.js` and the validators; one agent in order is the natural carve (they share files).
-2. `vNfBwn`, the date scalar, once Ben confirms the backing.
+2. `vNfBwn`, the date scalar (backing ruled), and `oLpw71`, the README walkthrough: both small, independent of the fixes except that the walkthrough should use `kit/define` after its fixes land.
 3. `O63kB5`: `check` imports `kit/define` (its validators were copied from the checker; delete the copy), the packet is updated to the built API (the leaf's note lists what), then the trial.
 4. `iJtvVE`: re-declare fields in place through `kit/define` and delete the hand-written data.
 
 ## Open for Ben
 
-- The date scalar's backing (above).
-- Whether the README Quick Start should become a source → IR → JS → GLSL → harness walk-through with an arrow-function lambda and a type error (proposed when Ben said the shader example looked like a pass-through; it is not, but it reads like one). Not started.
 - Still open from earlier: Kernel queries (`dynUhe`), a second H3 round, `peep` image checks.
 
 ## Notes for the next session
