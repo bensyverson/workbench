@@ -6,3 +6,4 @@ export { defineDialect, DefinitionError } from "./dialect.js";
 export { defineGrammar, BuildError } from "./grammar.js";
 export { DEFINE_CODES, BUILD_CODES, didYouMean } from "./codes.js";
 export { vector, scalar, exact, tolerance, list, opt, struct, union, enumOf, object, name, ref, data, lambda, rest, oneOf, recordOf, listOf } from "./tags.js";
+export { run, needsRebuild, bindingText } from "./params.js";

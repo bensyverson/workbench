@@ -6,7 +6,7 @@
 // only a build-time step could read). The grid layout is left out (`.layout` is B009).
 import { program } from "../grammar.js";
 
-export default () => program("profile")
+export default ($) => program("profile")
   .source("survey", { csv: "data/survey.csv", columns: { team: "str", quarter: "str", age: "f64", score: "f64" } })
   .chart("ageHist", "survey")
   .mark("histogram")

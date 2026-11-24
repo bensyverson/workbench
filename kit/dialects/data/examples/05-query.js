@@ -1,10 +1,11 @@
 // @ts-nocheck: a lambda names the Dialect's free names ($, intrinsics), which TypeScript cannot see; the builder checks them (B008).
 // Dream Code example 5: a query over two tables. A table is named by a string, not `t.customers`;
-// `.sort("-total")` is `.sortDesc("total")` (the first is T002 with that fix); `.limit($.topN)` is a lambda;
+// `.sort("-total")` is `.sortDesc("total")` (the first is T002 with that fix); `.limit($.topN)` reads the param at
+// build time, so the record holds its value and run() records the read (`.limit(() => $.topN)` is B004, fix that);
 // the grid is a named view of the table, and the row layout with its controls is left out (B009).
 import { program } from "../grammar.js";
 
-export default () => program("top-customers")
+export default ($) => program("top-customers")
   .source("orders", { csv: "data/orders.csv", columns: { id: "f64", customer_id: "f64", placed_at: "date", amount: "f64" } })
   .source("customers", { csv: "data/customers.csv", columns: { id: "f64", name: "str", segment: "str" } })
   .param("topN", { min: 5, max: 50, value: 10 })
@@ -18,7 +19,7 @@ export default () => program("top-customers")
     orders: (g) => g.count(),
   })
   .sortDesc("total")
-  .limit(() => $.topN)
+  .limit($.topN)
   .chart("bars", "top")
   .mark("bar")
   .x("total")

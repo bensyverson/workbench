@@ -6,7 +6,7 @@
 // the host's: both are refused as B009.
 import { program } from "../grammar.js";
 
-export default () => program("first-look")
+export default ($) => program("first-look")
   .source("sales", { csv: "data/sales.csv", columns: { date: "date", region: "str", units: "f64", price: "f64" } })
   .view("first", "sales")
   .head(20);

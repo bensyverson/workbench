@@ -4,7 +4,7 @@
 // integer type (`"int"` is T001 with the fix); `dropNulls` and `dedupe` take the columns as arguments, not an array.
 import { program } from "../grammar.js";
 
-export default () => program("clean-sales")
+export default ($) => program("clean-sales")
   .source("raw", { csv: "data/sales.csv", header: true, columns: { date: "str", region: "str", units: "str", "Unit Price": "str" } })
   .table("sales", "raw")
   .rename({ "Unit Price": "price" })

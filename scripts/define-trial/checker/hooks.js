@@ -66,6 +66,10 @@ export const SCOPE_EXPORT = "__defineTrialScope";
  */
 export function withScope(text) {
   // The scan errs toward listing a name; one the module does not bind (or has not bound) is left out, not thrown.
-  const reads = topLevelNames(text).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !RESERVED.has(n)).map((n) => `try { o.${n} = ${n}; } catch {}`).join(" ");
-  return `${text}\n;export function ${SCOPE_EXPORT}() { const o = {}; ${reads} return o; }\n`;
+  const names = topLevelNames(text).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !RESERVED.has(n));
+  // The epilogue's own local must not shadow a binding it reads.
+  let out = "__scope";
+  while (names.includes(out)) out += "_";
+  const reads = names.map((n) => `try { ${out}.${n} = ${n}; } catch {}`).join(" ");
+  return `${text}\n;export function ${SCOPE_EXPORT}() { const ${out} = {}; ${reads} return ${out}; }\n`;
 }

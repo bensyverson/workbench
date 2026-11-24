@@ -15,8 +15,8 @@ const SELF = relative(process.cwd(), fileURLToPath(import.meta.url)) || "check.j
 const PRIMER = `usage: node ${SELF} <dir> [--json]
 
 Checks a Definition API trial hand-in against docs/rules.md: loads <dir>/${DIALECT_FILE}, <dir>/${GRAMMAR_FILE}
-and <dir>/${EXAMPLES_DIR}/*.js with the real kit/define, runs each example's Program through the generated
-builder (.check()) and lowers it, and prints every violation as
+and <dir>/${EXAMPLES_DIR}/*.js with the real kit/define, builds each example's Program, a function of its
+params, with kit/define's run() and lowers it, and prints every violation as
   <file>:<line>: <code> <message>
     fix: <what to write instead>
 D… codes are about the definition files, B… about a Program (the builder, construct state, conventions),

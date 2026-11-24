@@ -1,6 +1,6 @@
 import { program } from "../data.grammar.js";
 
-export default program("glow")
+export default ($) => program("glow")
   .param("speed", { value: 2, min: 0, max: 8 })
   .tags("warm", "slow")
   .const("RING", "0.3 + HALF * 0.1")

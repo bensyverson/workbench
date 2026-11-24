@@ -1,12 +1,12 @@
-// One example file: its export (C001), then its Program through the generated builder's .check() (every
-// B… code and the Dialect's own checks) and, when that is clean, the Grammar's lower(record): construct
-// state, slot conventions and every lambda's body (B003, B010, B011, L…). Each diagnostic is placed at a line
-// of a candidate file.
+// One example file: its export (C001: a function of the params, `($) => program(…)…`), then its Program built
+// by kit/define's run() (every B… code and the Dialect's own checks) and, when that is clean, the Grammar's
+// lower(record): construct state, slot conventions and every lambda's body (B003, B010, B011, L…). Each
+// diagnostic is placed at a line of a candidate file.
 
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames } from "../../../kit/parse/toplevel.js";
+import { buildTimeNames, topLevelBindings } from "../../../kit/parse/toplevel.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */
 
@@ -24,64 +24,80 @@ function isBuilder(v) {
   try { return /^\[\S+ builder '/.test(String(v)); } catch { return false; }
 }
 
+/** The export C001 asks for. */
+const FORM = "export default ($) => program(\"…\")…;";
+
 /**
- * C001: an example exports a builder chain, or begins with `// REFUSED: <code>`. Returns the builder.
+ * C001: an example's default export is its Program as a function of the params, `($) => program(…)…`, or the
+ * file begins with `// REFUSED: <code>`. Returns the function.
  * @param {string} file
  * @param {unknown} exported
- * @returns {any}
+ * @returns {((params: any) => unknown) | null}
  */
 export function checkExport(file, exported) {
   const src = session.sources[file] ?? "";
   const refused = REFUSED.test(src.split("\n")[0].trimEnd());
   // Outside a "type": "module" package a file with no ESM syntax loads as CommonJS, whose default is {}.
   if (!/\bexport\b/.test(src)) exported = undefined;
-  if (isBuilder(exported)) return exported;
+  if (typeof exported === "function") return /** @type {(params: any) => unknown} */ (exported);
+  if (isBuilder(exported)) {
+    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file} exports the builder chain itself; a Program is a function of its params, which the kit calls with $.`, fix: `wrap the chain: ${FORM}` });
+    return null;
+  }
   if (exported !== null && typeof exported === "object" && /\.build\(\)/.test(src)) {
-    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file} exports what .build() returns, not the builder chain.`, fix: "remove .build() from the end of the exported chain: export default program(…)…;" });
+    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file} exports what .build() returns, not a function returning the builder chain.`, fix: `remove .build() and wrap the chain: ${FORM}` });
     return null;
   }
   if (refused && exported === undefined) return null;
   session.add({
     file, line: 1, code: "C001", severity: "error",
-    message: exported === undefined ? `${file} neither exports a builder chain nor starts with // REFUSED: <code>.` : `${file}'s default export is not a builder chain.`,
-    fix: "end it with export default program(\"…\")…; (without .build()), or make its first line // REFUSED: <code> followed by the diagnostic and why",
+    message: exported === undefined ? `${file} neither exports its Program, ($) => program(…)…, nor starts with // REFUSED: <code>.` : `${file}'s default export is not a function of the params returning a builder chain.`,
+    fix: `end it with ${FORM} (without .build()), or make its first line // REFUSED: <code> followed by the diagnostic and why`,
   });
   return null;
 }
 
 /**
  * An example's module scope, as the builder takes it: its top-level bindings (from the export the load hook
- * appends) and the names its text declares only inside build-time code.
+ * appends), each top-level declaration's initializer text (a helper's must be its own) and the names its text
+ * declares only inside build-time code.
  * @param {string} file @param {Record<string, unknown>} mod
  * @returns {import("../../../kit/define/define.js").BuildOptions}
  */
 export function moduleScope(file, mod) {
   const get = mod.__defineTrialScope;
-  return { scope: typeof get === "function" ? get() : {}, buildTime: buildTimeNames(session.sources[file] ?? "") };
+  const text = session.sources[file] ?? "";
+  return { scope: typeof get === "function" ? get() : {}, sources: Object.fromEntries(topLevelBindings(text).map((b) => [b.name, b.init])), buildTime: buildTimeNames(text) };
 }
 
 /**
- * The example's Program through .check(), then, if it has no error, through the Grammar's lower().
+ * The example's Program built by run() (its params at their declared values), then, if it has no error, through
+ * the Grammar's lower().
  * @param {string} file
- * @param {any} builder  the example's exported chain
+ * @param {(params: any) => unknown} programFn  the example's default export
  * @param {any} grammar  the root builder defineGrammar returned, which has lower()
  * @param {import("../../../kit/define/define.js").BuildOptions} [options]  its module scope
  */
-export function runProgram(file, builder, grammar, options = {}) {
-  /** @type {KitDiagnostic[]} */
-  let found;
+export function runProgram(file, programFn, grammar, options = {}) {
+  /** @type {{ record: Record<string, any> | null, diagnostics: KitDiagnostic[] }} */
+  let built;
   try {
-    found = builder.check(options);
+    built = kit.run(programFn, options);
   } catch (e) {
-    reportThrown(e, file, "when its Program was checked");
+    if (e instanceof TypeError && /must return the Program's builder chain/.test(e.message)) {
+      const src = session.sources[file] ?? "";
+      session.add({ file, line: 1, code: "C001", severity: "error", message: `${file}'s default export does not return a builder chain${/\.build\(\)/.test(src) ? ": it returns what .build() returns" : ""}.`, fix: /\.build\(\)/.test(src) ? `remove .build() from the end of the chain: ${FORM}` : `return the chain: ${FORM}` });
+      return;
+    }
+    reportThrown(e, file, "when its Program was built");
     return;
   }
-  reportBuild(found, file);
-  if (found.some((d) => d.severity === "error")) return;
+  reportBuild(built.diagnostics, file);
+  if (!built.record) return;
   /** @type {{ diagnostics: KitDiagnostic[], lambdas: Array<{ ref: { id: string }, src: string }> }} */
   let lowered;
   try {
-    lowered = grammar.lower(builder.build(options));
+    lowered = grammar.lower(built.record);
   } catch (e) {
     // A convention function's result is checked as a static convention is, and refused the same way.
     if (e instanceof kit.DefinitionError && session.dialectSite) { session.report(session.dialectSite, e.diagnostics, ` (when ${file} was lowered)`); return; }

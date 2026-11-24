@@ -9,6 +9,7 @@ import { openKey } from "./record.js";
 /** @import * as T from "./define.js" */
 
 const GRAMMAR_KEYS = Object.freeze(["root", "constructs"]);
+const GRAMMAR_OPTIONAL = Object.freeze(["params"]);
 const CONSTRUCT_KEYS = Object.freeze(["opens", "parent", "slots", "record", "state", "names", "rejected", "check"]);
 const SLOT_KEYS = Object.freeze(["kind", "args", "unit", "once", "required", "as", "check"]);
 const SLOT_KINDS = Object.freeze(["decl", "unit"]);
@@ -61,7 +62,7 @@ export function validateGrammar(dialect, def) {
   const out = [];
   if (!dialect) out.push({ code: "D011", path: [], message: "defineGrammar's first argument is not a Dialect: pass what defineDialect returned.", tip: "defineGrammar(myDialect, { … })" });
   if (!isPlainObject(def)) return [...out, { code: "D011", path: [], message: `defineGrammar's second argument must be { root, constructs }, not ${describe(def)}.`, tip: `defineGrammar(d, { root: "program", constructs: { program: { … } } })` }];
-  checkKeys(def, GRAMMAR_KEYS, GRAMMAR_KEYS, [], "defineGrammar", out);
+  checkKeys(def, [...GRAMMAR_KEYS, ...GRAMMAR_OPTIONAL], GRAMMAR_KEYS, [], "defineGrammar", out);
   const raw = isPlainObject(def.constructs) ? def.constructs : {};
   if (def.constructs !== undefined && !isPlainObject(def.constructs)) out.push({ code: "D011", path: ["constructs"], message: "constructs must be an object of named constructs.", tip: "constructs: { program: { opens: [name()], slots: { … } } }" });
   /** @type {Record<string, any>} */
@@ -132,6 +133,18 @@ export function validateGrammar(dialect, def) {
 
   for (const cn of names) collideKeys(cs, cn, cn === def.root, out);
 
+  // The slot that declares the Program's params: a root decl slot whose first argument is the param's name and
+  // whose second is its declaration (its `value` the default a build-time read gets).
+  if (def.params !== undefined) {
+    const p = def.params;
+    const rootSlots = typeof def.root === "string" && cs[def.root] && isPlainObject(cs[def.root].slots) ? cs[def.root].slots : {};
+    const s = isPlainObject(p) && typeof p.slot === "string" && Object.hasOwn(rootSlots, p.slot) ? rootSlots[p.slot] : null;
+    if (isPlainObject(p)) checkKeys(p, ["slot"], ["slot"], ["params"], "params", out);
+    if (!(isPlainObject(s) && s.kind === "decl" && Array.isArray(s.args) && s.args.length === 2 && kindOf(s.args[0]) === "name" && kindOf(s.args[1]) === "data")) {
+      out.push({ code: "D011", path: ["params"], message: `params must be { slot } naming a slot of the root construct that takes a name and a declaration, (name("param"), data(ParamShape)), not ${describe(p)}.`, tip: `params: { slot: "param" }, with param: { kind: "decl", args: [name("param"), data({ value: "number" })], as: "params" } on the root` });
+    }
+  }
+
   for (const cn of names) {
     const slots = isPlainObject(cs[cn].slots) ? Object.keys(cs[cn].slots) : [];
     for (const child of names.filter((n) => cs[n].parent === cn && slots.includes(n))) out.push({ code: "D010", path: ["constructs", cn, "slots", child], message: `construct '${cn}' has a slot '${child}' and a child construct of that name.`, tip: `rename the slot or the construct` });
@@ -179,6 +192,7 @@ function collideKeys(cs, cn, isRoot, out) {
   if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => { if (kindOf(spec)) put(String(openKey(/** @type {T.Tagged} */ (spec), i)), `opening argument ${i + 1}`, Boolean(/** @type {any} */ (spec).as), "opening"); });
   for (const n of Object.keys(cs).filter((x) => cs[x].parent === cn)) put(n, `child construct '${n}'`, false, "child");
   if (isRoot) put("units", "the Program's units (its helpers and constants, the top-level bindings its lambdas read among them)", false, "units");
+  if (isRoot) put("reads", "the params build-time code read (kept by run)", false, "units");
   if (c.record === "calls") put("calls", "the calls", false, "calls");
   else for (const [sn, s] of Object.entries(isPlainObject(c.slots) ? c.slots : {})) {
     if (!isPlainObject(s)) continue;

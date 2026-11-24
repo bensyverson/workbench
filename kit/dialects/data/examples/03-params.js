@@ -3,7 +3,7 @@
 // build-time lambda is left out), a date param is a string value with `kind: "date"`, and the layout is left out.
 import { program } from "../grammar.js";
 
-export default () => program("filters")
+export default ($) => program("filters")
   .source("sales", { csv: "data/sales.csv", columns: { date: "date", region: "str", units: "f64", price: "f64" } })
   .param("minUnits", { min: 0, max: 500, step: 10, value: 50, label: "Minimum units" })
   .param("region", { options: ["All", "North", "South"], value: "All" })

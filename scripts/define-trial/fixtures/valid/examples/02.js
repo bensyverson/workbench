@@ -3,5 +3,5 @@
 // The part that fits is the Program below.
 import { program } from "../data.grammar.js";
 
-export default program("pasted")
+export default ($) => program("pasted")
   .pixel("(uv, u) => color(uv.x, 0, 0)");

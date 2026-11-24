@@ -33,3 +33,7 @@ The architecture consult's blind pass (leaf `Cy9u98`) was told not to read `proj
 ## 2026-11-24: probe files kept under `local/` run as tests
 
 `local/` is gitignored but not excluded from `node --test`'s glob, so a reviewer's `*.test.js` probe copied there (to keep it as a fix's red test) runs in `npm test` and the pre-commit hook, and a probe that is red by design fails the commit. Keep kept probes named `*.probe.js`.
+
+## 2026-11-24: an inline script with backticks may be refused as a removal
+
+In a worktree agent (leaf bqYGEM), a `node -e` edit script holding template literals was refused by the harness's removal check ("can't be sure it read this command the way the shell will"), and a command combining `cd` with `$PWD` was refused as too complex to verify. Write such a script to a file under `local/` (gitignored) and run it with absolute paths. If it rewrites text with `String.prototype.replace`, pass the replacement as a function: a replacement string holding `` $` `` (any doc that quotes `$` in backticks) splices in the text before the match.

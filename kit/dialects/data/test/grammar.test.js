@@ -60,7 +60,7 @@ test("example 1: a view given a lambda is layout, T007 with the fix; a view of n
 });
 
 test("example 5's grid is a named view of its table", () => {
-  assert.deepEqual(query().build().view, [{ name: "topRows", table: "top" }]);
+  assert.deepEqual(query({ topN: 10 }).build().view, [{ name: "topRows", table: "top" }]);
 });
 
 test("a chart's encodings are checked against its table's columns: an unknown one is B003 with the did-you-mean", () => {
@@ -117,7 +117,7 @@ test("example 7: fragments, column attributes and a chart's rule are B009 with a
 });
 
 test("layout, rendering, agent permissions and program-editing mutations are B009, each with a fix", () => {
-  const p = () => query();
+  const p = () => query({ topN: 10 });
   const refused = {
     layout: p().layout("row"), controls: p().controls("topN"), grid: p().table("g", "top").grid({ pageSize: 25 }), head: p().table("h", "top").head(20),
     run: p().run(), schema: p().schema("top"), title: p().title("Top"), vegaLite: p().vegaLite({}), render: p().render(), layer: p().layer(),

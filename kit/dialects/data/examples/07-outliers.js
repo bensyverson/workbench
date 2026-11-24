@@ -6,7 +6,7 @@
 // row, not the table's mean and spread, and the Dialect has no square root).
 import { program } from "../grammar.js";
 
-export default () => program("outliers")
+export default ($) => program("outliers")
   .source("sales", { csv: "data/sales.csv", columns: { price: "f64", weight: "f64" } })
   .param("lo", { value: 1, label: "Lowest price kept" })
   .param("hi", { value: 500, label: "Highest price kept" })

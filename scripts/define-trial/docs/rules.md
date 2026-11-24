@@ -23,16 +23,16 @@ If the tool you write files with refuses to write `REPORT.md`, write it from the
 
 ## The rules
 
-Each rule names the codes that enforce it. Run the checker as often as you like: `node <checker> <your directory>`. It loads your files with the real `kit/define`, runs every example's Program through the generated builder (`.check()`), and lowers every lambda of each Program that builds; it prints each diagnostic with its file and line, and a fix.
+Each rule names the codes that enforce it. Run the checker as often as you like: `node <checker> <your directory>`. It loads your files with the real `kit/define`, builds every example's Program (your `($) => program(…)…`, with its params at their declared values) through the generated builder, and lowers every lambda of each Program that builds; it prints each diagnostic with its file and line, and a fix.
 
 - **R1. Only the API's keys and helpers.** Every key in `defineDialect` and `defineGrammar` is one `api-draft.md` names; every import is one `kit/define` exports, and the only others are your own files. (D001, D011, D018, C006)
 - **R2. Every type name resolves** to a built-in, a declared vector, scalar or object, or a type variable. (D002)
 - **R3. Every intrinsic is complete:** a signature, a `ref`, and a spelling for every target that accepts a space. (D003, D004)
 - **R4. Every space is pure, every slot convention names a declared space, and every target accepts declared spaces only.** (D005, D006, D008, D012)
 - **R5. Names do not collide:** across intrinsics, globals, library entries, objects and types; between a child construct's methods and its parent's; between two things one record key would hold. (D007, D010, D017)
-- **R6. Each example file is a Program or a refusal.** Either it builds a Program with your generated builder and `export default`s the call chain (without `.build()`), or its first line is `// REFUSED: <code>` followed by the diagnostic your language gives for it (a `rejected` entry or a check), and why. A file may also hold a Program for the part that fits plus a `// REFUSED:` comment for the rest; that Program must itself check clean (R7). (C001; C007 if there are none)
+- **R6. Each example file is a Program or a refusal.** Either it `export default`s its Program as a function of the params that returns your generated builder's call chain, `export default ($) => program("…")…;` (without `.build()`), or its first line is `// REFUSED: <code>` followed by the diagnostic your language gives for it (a `rejected` entry or a check), and why. A file may also hold a Program for the part that fits plus a `// REFUSED:` comment for the rest; that Program must itself check clean (R7). (C001; C007 if there are none)
 - **R7. Every exported Program builds and lowers clean.** The generated builder accepts it (every `B…` code, and your own checks), its construct state threads without a loop or a refusal (B003, B010, B011), and every Runtime Lambda in it parses, obeys the free-name rule and type-checks against its slot convention (B007, B008, and lowering's `L…`, `P…` and `S…` codes). Your definitions' own functions (`environment`, convention functions, checks, `init`, `step`) must not throw on any example (C005).
-- **R8. Nothing outside the API is assumed.** No build-time lambdas (functions that run while the Program is built and return grammar), no effects, no fragments or mixins, no layout, no rendering, no integer type. Dates are a nominal scalar you declare (`scalar`). Where an example needs one, refuse it (R6) or report it as a gap (R9). (D012 for an impure space; the rest is read by hand)
+- **R8. Nothing outside the API is assumed.** No build-time lambdas (functions that run while the Program is built and return grammar) other than the Program's own `($) => …`, no effects, no fragments or mixins, no layout, no rendering, no integer type. Dates are a nominal scalar you declare (`scalar`). Where an example needs one, refuse it (R6) or report it as a gap (R9). (D012 for an impure space; the rest is read by hand)
 - **R9. The report.** `REPORT.md` has these sections, in order:
   1. **Difficulty**, 1 (easy) to 5 (could not do it), with one sentence why.
   2. **Per example**: one line each: fits, partly fits (what did not), or refused (why).
@@ -84,8 +84,9 @@ The checker prints the kit's own codes (`D…` from `defineDialect` and `defineG
 | B009 | a call to a `rejected` name |
 | B010 | a construct state that depends on itself through `stateOf` |
 | B011 | a slot convention function that refused the lambda (returned a reason) |
-| B012 | a top-level binding a lambda reads that is neither an arrow function nor plain data |
+| B012 | a top-level binding a lambda reads that is neither the arrow function its declaration writes (not one made by another function) nor plain data |
 | B013 | a free name your file declares only inside build-time code (a loop variable, a function's local), not at its top level |
+| B014 | a member of the params that exists only while the Program runs (fields' `u.t`), read by build-time code |
 
 A lambda's body is type-checked by lowering, whose codes start with `L` (an unknown member, a type mismatch …), `P` (does not parse) or `S` (outside the Runtime Subset); each is printed at its line inside the lambda, with the lambda's id.
 
@@ -93,7 +94,7 @@ A lambda's body is type-checked by lowering, whose codes start with `L` (an unkn
 
 | Code | Refused when |
 |---|---|
-| C001 | an example file that neither exports a builder chain nor starts with `// REFUSED: <code>`, or exports what `.build()` returns, or cannot be loaded |
+| C001 | an example file that neither exports its Program as a function of the params, `($) => program(…)…`, nor starts with `// REFUSED: <code>`; or exports the chain itself, or what `.build()` returns; or cannot be loaded |
 | C005 | a function in your definitions (`environment`, a convention function, a check, `init`, `step`) threw while an example was checked; printed at the line that threw |
 | LOAD | a definition file that cannot be loaded at all (a syntax error, an exception, no define call) |
 

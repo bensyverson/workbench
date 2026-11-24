@@ -8,6 +8,7 @@ const ParamShape = oneOf(
 
 export const program = defineGrammar(tint, {
   root: "tint",
+  params: { slot: "param" },
   constructs: {
     tint: {
       opens: [name()],

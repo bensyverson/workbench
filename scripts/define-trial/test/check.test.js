@@ -107,6 +107,7 @@ const FAILING = [
   // Module scope: the checker passes each example's top-level bindings and its build-time-only names (one line added after the import).
   { code: "B012", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst WIDTH = new Map();` }, { file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`) + 1, message: /WIDTH.*Map/ },
   { code: "B013", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nfunction setup() { const WIDTH = 0.01; return WIDTH; }` }, { file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`) + 1, message: /WIDTH.*build-time/ },
+  { code: "B014", why: "a run-time-only member of the params, read at build", edits: [{ file: EX1, from: "{ value: 2, min: 0, max: 8 }", to: "{ value: $.now, min: 0, max: 8 }" }], file: EX1, line: lineOf(EX1, ".param("), message: /\$\.now.*runs/ },
   { code: "B002", why: "a top-level binding named like a Dialect name", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst sin = 1;` }], file: EX1, line: lineOf(EX1, "export default") + 1, message: /top-level 'sin'/ },
   // When lowering: construct state, conventions and each lambda's body.
   { code: "B003", why: "a state namespace, at that step", edits: [{ file: EX1, from: `.mute("glow")`, to: `.mute("glw")` }], file: EX1, line: lineOf(EX1, ".mute("), message: /glw.*did you mean 'glow'/i },
@@ -116,7 +117,7 @@ const FAILING = [
   { code: "L002", why: "in a lambda given as source text", edits: [{ file: EX2, from: "color(uv.x, 0, 0)", to: "color(uv.x, u.aspct, 0)" }], file: EX2, line: lineOf(EX2, ".pixel("), message: /aspct/ },
   { code: "D002", why: "in what a convention function returned, when lowering", edits: [{ file: DIALECT, from: `state.channels), "Uniforms"]`, to: `state.channels), "Uniformz"]` }], file: DIALECT, message: /Uniformz/ },
   // The checker's own codes.
-  { code: "C001", edits: [{ file: EX1, from: "export default program", to: "const p = program" }], file: EX1, line: 1 },
+  { code: "C001", edits: [{ file: EX1, from: "export default ($) => program", to: "const p = program" }], file: EX1, line: 1 },
   { code: "C005", edits: [{ file: GRAMMAR, from: STEP_RETURN, to: "          return state.missing.channels;\n" }], file: GRAMMAR, line: lineOf(GRAMMAR, STEP_RETURN.trim()), message: /examples\/01\.js.*TypeError/ },
   { code: "C006", why: "an import in the Dialect", edits: [{ file: DIALECT, from: "import { defineDialect", to: `import os from "node:os";\nimport { defineDialect` }], file: DIALECT, line: lineOf(DIALECT, "import { defineDialect"), message: /node:os/ },
   { code: "C006", why: "a Node built-in in an example", edits: [{ file: EX1, from: "import { program }", to: `import fs from "node:fs";\nimport { program }` }], file: EX1, line: 1, message: /node:fs/ },
@@ -186,7 +187,7 @@ test("two lambdas with the same text are each reported at their own line, and an
 });
 
 test("a file's imports may be kit/define and the candidate's own files, and nothing else", async () => {
-  const r = await checkEdited([], { "helper.js": `export const x = 1;\n`, "examples/04.js": `import { x } from "../helper.js";\nimport { program } from "../data.grammar.js";\nexport default program("h").pixel("(uv, u) => color(uv.x, 0, 0)");\n` });
+  const r = await checkEdited([], { "helper.js": `export const x = 1;\n`, "examples/04.js": `import { x } from "../helper.js";\nimport { program } from "../data.grammar.js";\nexport default ($) => program("h").pixel("(uv, u) => color(uv.x, 0, 0)");\n` });
   assert.equal(show(r.diagnostics), "");
 });
 
@@ -234,6 +235,12 @@ test("C001 refuses an exported .build(), and a REFUSED file needs no Program", a
   const r = await checkEdited([{ file: EX2, from: `color(uv.x, 0, 0)");`, to: `color(uv.x, 0, 0)").build();` }]);
   assert.deepEqual(r.diagnostics.map((d) => `${d.file} ${d.code}`), [`${EX2} C001`], show(r.diagnostics));
   assert.match(r.diagnostics[0].fix, /\.build\(\)/);
+});
+
+test("C001 refuses a bare builder chain: a Program is a function of its params, ($) => program(…)…", async () => {
+  const r = await checkEdited([{ file: EX1, from: "export default ($) => program", to: "export default program" }]);
+  assert.deepEqual(r.diagnostics.map((d) => `${d.file} ${d.code}`), [`${EX1} C001`], show(r.diagnostics));
+  assert.match(r.diagnostics[0].fix, /export default \(\$\) => program/);
 });
 
 test("an example whose Program the builder refuses is not lowered", async () => {

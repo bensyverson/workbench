@@ -33,6 +33,8 @@ export const fields = defineDialect({
   /** Where a Kernel runs: over each pixel, from its position to a color, with no effects. */
   spaces: { pixel: { pure: true } },
   objects: { [UNIFORMS]: { label: "the uniforms (u)", members: BUILT_IN } },
+  /** A pixel reads the params as members of u; u.t and u.aspect exist only while the field runs (B014 at build). */
+  params: { object: UNIFORMS, name: "u", runtime: Object.keys(BUILT_IN) },
   intrinsics,
   library,
   /**

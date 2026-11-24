@@ -8,6 +8,7 @@ import { lowerProgram } from "../lower/index.js";
 import { didYouMean, dialectError } from "./codes.js";
 import { enumOf, opt, list, struct, union, kindOf } from "./tags.js";
 import { rematch, single, nameOf, setOwn, LOCS } from "./record.js";
+import { bindings } from "./params.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Type } from "../ir/ir.js" */
@@ -23,6 +24,7 @@ import { rematch, single, nameOf, setOwn, LOCS } from "./record.js";
  * @property {HelperResult[]} helpers  the Library units used, then the Program's own
  * @property {Array<T.BuildDiagnostic | LowerDiagnostic>} diagnostics  state refusals (B003, B010, B011), then each lambda's and helper's, each tied to its call or lambda
  * @property {Record<string, unknown>} states  each stateful construct instance's final state, by name
+ * @property {Record<string, import("./params.js").Binding>} params  each declared param's binding time: read at build (by which call) or only in Kernels (which)
  */
 
 /**
@@ -309,5 +311,9 @@ export function lowerRecord(g, record) {
     helpers: helperResults,
     diagnostics,
     states: Object.fromEntries([...finals].map(([i, s]) => [i.name, s])),
+    params: bindings(g, record, [
+      ...live.map((l, i) => ({ id: l.ref.id, kernel: results[i].kernel })),
+      ...helperResults.filter((h) => units.some((u) => u.name === h.name)).map((h) => ({ id: `helper '${h.name}'`, kernel: /** @type {any} */ (h.result).kernel })),
+    ]),
   };
 }

@@ -4,7 +4,7 @@
 // literal and `.view` are left out.
 import { program } from "../grammar.js";
 
-export default () => program("revenue-by-month")
+export default ($) => program("revenue-by-month")
   .source("sales", { csv: "data/sales.csv", columns: { date: "date", region: "str", units: "f64", price: "f64" } })
   .param("metric", { options: ["revenue", "units"], value: "revenue" })
   .table("monthly", "sales")

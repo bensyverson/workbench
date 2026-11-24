@@ -4,18 +4,22 @@ The third Dialect: tables of typed columns, cleaned, derived, filtered, grouped 
 
 ```js
 import { program } from "./index.js";
+import { run } from "../../define/index.js";
 
-const record = program("top-customers")
+// A Program is a function of its params; run() calls it with a $ that records each build-time read.
+const topCustomers = ($) => program("top-customers")
   .source("orders", { csv: "data/orders.csv", columns: { customer_id: "f64", placed_at: "date", amount: "f64" } })
   .source("customers", { csv: "data/customers.csv", columns: { id: "f64", name: "str" } })
   .param("year", { options: [2024, 2025, 2026], value: 2026 })
+  .param("topN", { value: 10, min: 5, max: 50 })
   .table("top", "orders")
   .filter((o) => year(o.placed_at) === $.year)                 // o is typed from the orders schema
   .join("customers", { on: { customer_id: "id" }, take: ["name"] })
   .groupBy("name")
   .agg({ total: (g) => g.sum("amount") })                      // g's sum takes only a numeric column of this step
-  .build();
-const { lambdas, diagnostics, states } = program.lower(record); // states.top.columns: { name: "str", total: "f64" }
+  .limit($.topN);                                              // read at build: the record holds the number
+const { record } = run(topCustomers);                          // record.reads: topN, read by top.limit#4
+const { lambdas, diagnostics, states, params } = program.lower(record); // params.year.live: a uniform
 ```
 
 ## Files
@@ -33,7 +37,7 @@ const { lambdas, diagnostics, states } = program.lower(record); // states.top.co
 
 **Intrinsics.** `dateOf`, `year`, `month` (1 to 12), `truncMonth` (the first of the month), `monthDiff(a, b)`, and `min`, `max`, `abs`, `round` on f64. JS only: the only target is `js`, compared exactly.
 
-**Params.** `$.name`: a number param is an f64, a toggle a bool, a date param a date, any other a str (a select of strings is a str, not an enum, so it compares with a column's str).
+**Params.** `$.name`: a number param is an f64, a toggle a bool, a date param a date, any other a str (a select of strings is a str, not an enum, so it compares with a column's str). The Grammar names `param` as its param slot and the Dialect `$` (the `Params` object) as how lambdas read them, so each example exports `($) => program(…)…` and is built with kit/define's `run` ([kit/define](../../define/README.md), "Binding-time params"): `$.topN` in build-time code is the plain value, folded into the record, and `$.year` in a lambda is a uniform. `limit` takes a number: `.limit($.topN)`, one form; `.limit(() => $.topN)` is `B004` with that fix. A chart's encodings and formats still take a `calc` lambda (a column chosen at run time). The data Dialect has no run-time-only member.
 
 **Codes.** Lambda errors keep lowering's codes: an unknown column is L002 with a did-you-mean (`row.revnue`), comparing a str with an f64 is L003 (`row.region > $.minUnits`). An unknown table, a view's table, or a column a call names as a ref (`trim`, `replace`, `dropNulls`, `dedupe`, `groupBy`, `sort`, `keepGroups`, and a chart's `x`, `y`, `color`, `tooltip`) is B003 with a did-you-mean; a table's is found by `.check()`, a column's only by `lower` (state refs need the state). The column names in a `cast` or `rename` map and in a join's `on` and `take` are data, not refs, so the Dialect checks them itself (T009, T003). The Dialect's own codes: **T001** a schema or cast names a type that is not a column type; **T002** a sort column with a leading `-`, fix `.sortDesc("total")`; **T003** a join or semiJoin key, or a taken column, that is not a column of its table; **T004** join keys of two types (the Dream Code's E-JOIN-TYPE; a key whose type a derive inferred, such as an enum of string literals, is not compared); **T005** a table whose source reads as SQL text; **T006** a source with no `columns` (no types are inferred from a CSV), with the schema to declare; **T007** a view given a lambda (layout) or no table, fix `.view("name", "table")`; **T008** a `keepGroups` lambda that does not give a bool; **T009** a `cast` or `rename` of a column the table does not have at that step, with the did-you-mean (it adds no column); **T010** a step that would give two columns one name: a rename onto a column the table keeps, or a join that takes a column the table already has (the table's own is kept; by default a join takes only the columns the table lacks). Names the kit does not build are B009, each with a fix in its tip (below).
 
@@ -47,7 +51,7 @@ Every example runs through the generated builder as its `examples/` file writes 
 | 2 Clean | `02-clean.js`: every step and the derive | `.cast({ units: "int" })`, T001 with `"f64"`; `row.revnue`, L002 with "revenue" |
 | 3 Params | `03-params.js`: three params, three filters | `$.minUnit`, L002; `row.region > $.minUnits`, L003; a select `from` a build-time lambda, B004 (its shape has no `from`); `.layout`, `.controls`, `.grid`, B009 |
 | 4 Group and chart | `04-group.js`: derives, groupBy, agg, a line chart | `.x("monht")`, B003 with "month" (at `lower`); `.title(…)`, B009 |
-| 5 Query | `05-query.js`: filter, join, groupBy, agg, sortDesc, limit, a bar chart, a view | `join("customer")`, B003; keys of two types, T004; `.sort("-total")`, T002 with `.sortDesc("total")`; pasted SQL, T005; `.sql(…)`, B009; `.layout`, B009 |
+| 5 Query | `05-query.js`: filter, join, groupBy, agg, sortDesc, limit, a bar chart, a view | `join("customer")`, B003; keys of two types, T004; `.sort("-total")`, T002 with `.sortDesc("total")`; pasted SQL, T005; `.sql(…)`, B009; `.layout`, B009; `.limit(() => $.topN)`, B004 with the fix `.limit($.topN)` |
 | 6 Profile | `06-profile.js`: one histogram per numeric column, the profile as one `agg`, the pivot in long form | `.charts(…)` (build-time fan-out), `.describe()`, `.pivot(…)`, `.layout`, B009 |
 | 7 Fragments | `07-outliers.js`: the winsorize as a derive between two params, a histogram | `.fragment(…)`, `.column(…)`, `.rule(…)`, `.quantiles(…)`, B009; `.winsorize(…)`, B001 (thrown at once, as every unknown method is) |
 
@@ -58,14 +62,14 @@ Changed in the examples, as the kit builds them: a source declares its schema; `
 Left out, and why:
 - **Views are one table's rows.** A view of a chart, and any layout of several, is the page's; a chart is shown by itself.
 - **Chart encodings are checked only by `lower`.** A table's columns exist only when it is lowered, so `.check()` and `.build()` do not catch `.x("monht")`. The chart has no state: its `names` ([kit/define](../../define/README.md)) give its `column` namespace from its table's final state, or a source's schema. (Until job NrXepo the chart had a state of its own, with `record: "calls"`, only to make its encodings state refs.) An encoding given as a lambda (`.y(() => $.metric)`) picks a column at run time and is not checked against the table at all.
-- **No build-time phase**, so nothing of example 6's E-PHASE: there is no build-time lambda for a param to leak into.
+- **No build-time lambdas besides the Program's own function of `$`**, so nothing of example 6's E-PHASE: a param read at build time is a plain value, and no member of `$` exists only at run time.
 - **Example 7's z-score**: a row lambda sees one row, not the table's mean and spread, and the Dialect has no square root.
 - **`int` result types**: counts are f64.
 - **Fixes live in tips.** A `rejected` entry takes a `fix` since job NrXepo, and a step's `ctx.error` since 6edf1f1, but this Grammar's B009s and T003, T004, T008, T009 and T010 keep theirs in `tip`: each is a sentence around a form, not a replacement for the call.
 
 ## Limits
 
-- **The IR carries little of this Dialect's meaning.** Of the 21 table calls in examples 2 to 5, 10 hold a Runtime Lambda, and of those only the derives, filters and the limit are whole computations; an aggregate's Kernel is one call to the group's host method (`g.sum("revenue")`). `rename`, `cast`, `trim`, `replace`, `dropNulls`, `dedupe`, `groupBy`, the grouping and summing of `agg`, `join`, `sort` and every chart encoding are not Kernels: their types live in the Grammar's `step`, and nothing in the kit runs them.
+- **The IR carries little of this Dialect's meaning.** Of the 21 table calls in examples 2 to 5, 10 hold a Runtime Lambda, and of those only the derives and filters are whole computations (the limit is now a number, folded at build); an aggregate's Kernel is one call to the group's host method (`g.sum("revenue")`). `rename`, `cast`, `trim`, `replace`, `dropNulls`, `dedupe`, `groupBy`, the grouping and summing of `agg`, `join`, `sort` and every chart encoding are not Kernels: their types live in the Grammar's `step`, and nothing in the kit runs them.
 - **No nullable columns.** A column is never `opt(…)`, so `dropNulls` narrows nothing. Lowering narrows an optional by `x != null` (a date at the epoch stays present, and it matches undefined too), but this Dialect does not give its lambdas optionals yet.
 
   > **Corrected 2026-11-24:** this said lowering narrows by `x !== null` and that a host must give null, never undefined. That premise was wrong: the core itself gives undefined for some empty values (`find` with no match, an index past the end), and `x !== null` no longer narrows.

@@ -15,9 +15,11 @@ export const data = defineDialect({
   spaces: { pixel: { pure: true } },
   objects: {
     Uniforms: { label: "the uniforms (u)", members: { t: "f32", aspect: "f32", started: "stamp" } },
-    Params: { label: "the params ($)", members: {} },
+    Params: { label: "the params ($)", members: { now: "f32" } },
   },
   globals: { $: "Params" },
+  // build-time code reads the params from the $ that run() passes; $.now exists only while the Program runs
+  params: { object: "Params", name: "$", runtime: ["now"] },
   intrinsics: {
     floor: {
       params: ["T"], returns: "T", numeric: "number", componentwise: true,

@@ -157,6 +157,7 @@ const RENDERING = { message: "rendering is the host's, not the Program's: a char
 
 export const program = defineGrammar(dialect, {
   root: "program",
+  params: { slot: "param" },
   constructs: {
     program: {
       opens: [name()],
@@ -226,7 +227,8 @@ export const program = defineGrammar(dialect, {
           },
         },
         sortDesc: { kind: "decl", args: [rest(col())] },
-        limit: { kind: "decl", args: [data(oneOf("number", lambda("calc")))] },
+        // a number, which build-time code may read from a param: .limit($.topN), not .limit(() => $.topN)
+        limit: { kind: "decl", args: [data("number")] },
       },
     },
     chart: {

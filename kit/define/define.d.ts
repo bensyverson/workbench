@@ -80,6 +80,8 @@ export interface DialectDef {
   environment?: (program: Record<string, any>) => EnvironmentAddition;
   /** The text view: the Dialect's screen and state as characters, sized for a model. What `state` is, the Dialect says. Required (D020). */
   text: (state: any) => string;
+  /** The object a lambda reads the Program's params through, the name it reads it by, and the members known only at run time, which build-time code may not read (B014). */
+  params?: { object: string; name: string; runtime?: string[] };
 }
 
 /** What a Dialect's constants may call. Stores and emits stay forbidden either way. */
@@ -142,11 +144,15 @@ export interface BuildDiagnostic extends Diagnostic {
 /**
  * What a host passes to `.check(options)` and `.build(options)`: the Program file's module scope.
  * `scope` is its top-level bindings by name (a lambda's free name one of them holds resolves into the record's
- * units: an arrow function as a helper, plain data as a constant); `buildTime` the names the file declares only
- * inside build-time code (`buildTimeNames(text)`), which a lambda reading one is told it cannot see (B013).
+ * units: an arrow function as a helper, plain data as a constant); `sources` each top-level declaration's
+ * initializer text by name (`topLevelBindings(text)`), since an arrow is a helper only when its text is its
+ * declaration's (else B012: another function made it, and its closure is lost); `buildTime` the names the file
+ * declares only inside build-time code (`buildTimeNames(text)`), which a lambda reading one is told it cannot
+ * see (B013).
  */
 export interface BuildOptions {
   scope?: Record<string, unknown>;
+  sources?: Record<string, string>;
   buildTime?: string[];
 }
 
@@ -207,4 +213,6 @@ export interface ConstructDef {
 export interface GrammarDef {
   root: string;
   constructs: Record<string, ConstructDef>;
+  /** The root slot that declares the Program's params (name, declaration with its `value`), which `run` reads them from. */
+  params?: { slot: string };
 }

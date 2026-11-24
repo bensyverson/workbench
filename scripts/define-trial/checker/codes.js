@@ -5,7 +5,7 @@
 
 /** Each code and when it is reported; the tests check that every one has a failing fixture. */
 export const CHECK_CODES = Object.freeze({
-  C001: "An example that neither exports a builder chain nor starts with // REFUSED: <code>",
+  C001: "An example that neither exports its Program as a function of the params, ($) => program(…)…, nor starts with // REFUSED: <code>",
   C005: "A function in the definitions (environment, a slot convention, a check, state init or step) threw while an example was checked",
   C006: "A definition file or example imports something other than \"kit/define\" or the candidate's own files (R1)",
   C007: "The hand-in has no example files (R6)",

@@ -12,6 +12,7 @@ import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
 import { freeNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 import { unitOf, PLAIN } from "./scope.js";
+import { noteRoot, noteCall } from "./params.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Found } from "./shapes.js" */
@@ -29,6 +30,16 @@ export class BuildError extends Error {
     this.code = diagnostics[0]?.code;
   }
 }
+
+/** The key a builder answers with its Program, for run(). */
+const PROGRAM = Symbol("program");
+
+/**
+ * The Program behind a builder, or undefined for anything else.
+ * @param {unknown} b
+ * @returns {Program | undefined}
+ */
+export const programOf = (b) => (b !== null && typeof b === "object" ? /** @type {any} */ (b)[PROGRAM] : undefined);
 
 /** Properties a runtime or test library probes on any object; they are not method calls. */
 const PROBES = new Set(PROBE_LIST);
@@ -74,13 +85,29 @@ export function defineGrammar(dialect, def) {
  */
 function checkOptions(o) {
   const x = /** @type {Record<string, unknown>} */ (o);
-  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError("build(options) and check(options) take { scope?, buildTime? }");
-  for (const k of Object.keys(x)) if (k !== "scope" && k !== "buildTime") throw new TypeError(`build(options): unknown key '${k}'; it takes { scope?, buildTime? }`);
+  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError("build(options) and check(options) take { scope?, sources?, buildTime? }");
+  for (const k of Object.keys(x)) if (k !== "scope" && k !== "sources" && k !== "buildTime") throw new TypeError(`build(options): unknown key '${k}'; it takes { scope?, sources?, buildTime? }`);
   if (x.scope !== undefined && (x.scope === null || typeof x.scope !== "object" || Array.isArray(x.scope))) throw new TypeError("build({ scope }): scope is an object of the file's top-level bindings, by name");
+  if (x.sources !== undefined && (x.sources === null || typeof x.sources !== "object" || Array.isArray(x.sources) || !Object.values(x.sources).every((s) => typeof s === "string"))) throw new TypeError("build({ sources }): sources is an object of each top-level declaration's initializer text, by name");
   if (x.buildTime !== undefined && !(Array.isArray(x.buildTime) && x.buildTime.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTime }): buildTime is a list of names");
 }
 
 /** @typedef {{ dialect: T.Dialect, def: Record<string, any>, constructs: Record<string, Construct>, root: Construct }} Compiled */
+
+/**
+ * B004's tip and fix when a lambda of no parameters stands where a value goes: pass its value, which build-time
+ * code computes (a param read there is a plain value), `.limit($.topN)` for `.limit(() => $.topN)`.
+ * @param {{ code: string, path: Array<string | number> }} e @param {unknown[]} args @param {string} slot
+ * @returns {{ tip?: string, fix?: string }}
+ */
+function valueNotLambda(e, args, slot) {
+  const v = e.code === "B004" && e.path.length === 1 ? args[/** @type {number} */ (e.path[0])] : undefined;
+  if (typeof v !== "function") return {};
+  const r = lambdaSource(v);
+  if ("error" in r || r.ast.params.length || r.ast.body.type === "BlockStatement") return {};
+  const fix = `.${slot}(${r.src.slice(r.ast.body.range[0], r.ast.body.range[1])})`;
+  return { fix, tip: `pass the value, not a lambda: build-time code reads a param as a plain value, ${fix}` };
+}
 
 /**
  * The names in a Dialect's types a lambda can call: its vectors (constructors). A nominal scalar is a type
@@ -108,6 +135,8 @@ class Program {
    * @param {Construct} c @param {Instance | null} parent @param {unknown[]} args @param {{ file: string, loc: Loc }} at
    */
   open(c, parent, args, at) {
+    if (parent) noteCall(this, `${c.name} ${JSON.stringify(typeof args[0] === "string" ? args[0] : c.name)}`);
+    else noteRoot(this);
     const specs = /** @type {T.Tagged[]} */ (c.def.opens ?? []);
     const { args: made, found: f } = matchArgs(specs, args);
     /** @type {Record<string, unknown>} */
@@ -128,7 +157,7 @@ class Program {
 
   /** @param {Found["errors"]} errors @param {string} what @param {{ file: string, loc: Loc }} at */
   report(errors, what, at) {
-    for (const e of errors) this.diagnostics.push(diag(e.code, `${what}: ${e.message}`, e.tip ?? (e.code === "B007" ? "pass an arrow function, (x) => …, or its source text" : "pass a value of the shape the slot declares"), at, { arg: e.path.length === 1 ? /** @type {number} */ (e.path[0]) : e.path, ...(e.lambda ? { lambda: e.lambda } : {}), ...(e.severity ? { severity: e.severity } : {}) }));
+    for (const e of errors) this.diagnostics.push(diag(e.code, `${what}: ${e.message}`, e.tip ?? (e.code === "B007" ? "pass an arrow function, (x) => …, or its source text" : "pass a value of the shape the slot declares"), at, { arg: e.path.length === 1 ? /** @type {number} */ (e.path[0]) : e.path, ...(e.lambda ? { lambda: e.lambda } : {}), ...(e.severity ? { severity: e.severity } : {}), ...(/** @type {{ fix?: string }} */ (e).fix ? { fix: /** @type {{ fix?: string }} */ (e).fix } : {}) }));
   }
 
   /**
@@ -160,6 +189,21 @@ class Program {
     else set.add(value);
   }
 
+  /** The params declared so far, by name: each declaration, its `value` the default (for run). */
+  declared() {
+    const slot = this.paramSlot();
+    /** @type {Map<string, Record<string, unknown>>} */
+    const out = new Map();
+    for (const c of this.root?.calls ?? []) if (slot !== undefined && c.slot === slot && typeof c.args[0] === "string") out.set(c.args[0], /** @type {Record<string, unknown>} */ (c.args[1]));
+    return out;
+  }
+
+  /** The root slot that declares params, if the Grammar names one. @returns {string | undefined} */
+  paramSlot() { return this.g.def.params?.slot; }
+
+  /** The Dialect's params convention. */
+  dialectParams() { return this.g.dialect.def.params; }
+
   /** The Dialect's own names, which units may not take. */
   ownNames() {
     const d = this.g.dialect.def;
@@ -180,6 +224,10 @@ class Program {
     const c = inst.construct;
     const s = c.def.slots[slot];
     const what = `${c.name} '${instanceName(inst)}'`;
+    // the call the build-time reads made since the last one land on: in a record: "calls" construct its index, as
+    // its lambdas' ids have it; elsewhere the count of this slot's earlier calls
+    const nth = c.def.record === "calls" ? inst.calls.length : inst.calls.filter((x) => x.slot === slot).length;
+    noteCall(this, `${instanceName(inst)}.${slot}${s.once ? "" : `#${nth}`}`);
     if (s.once && inst.calls.some((x) => x.slot === slot)) {
       this.diagnostics.push(diag("B006", `${what} already has a ${slot}: .${slot}(…) may be called once`, `remove the second .${slot}(…)`, at));
       return;
@@ -198,6 +246,7 @@ class Program {
     } else {
       const specs = /** @type {T.Tagged[]} */ (s.args);
       const m = matchArgs(specs, args);
+      for (const e of m.found.errors) Object.assign(e, valueNotLambda(e, args, slot));
       this.report(m.found.errors, `${what}, .${slot}`, at);
       specs.forEach((sp, i) => { if (sp[TAG] === "name" && typeof m.args[i] === "string") this.declare(/** @type {T.NameTag} */ (sp), c.name, /** @type {string} */ (m.args[i]), at); else if (sp[TAG] === "name" && i < args.length) this.diagnostics.push(diag("B004", `${what}, .${slot}: argument ${i + 1} must be a name (a string), not ${typeof args[i]}`, `.${slot}("name", …)`, at)); });
       call = { slot, args: m.args, loc: at.loc, file: at.file, found: m.found };
@@ -326,7 +375,7 @@ class Program {
           continue;
         }
         if (inScope) {
-          const r = unitOf(name, /** @type {Record<string, unknown>} */ (scope)[name]);
+          const r = unitOf(name, /** @type {Record<string, unknown>} */ (scope)[name], options.sources && Object.hasOwn(options.sources, name) ? options.sources[name] : undefined);
           if ("code" in r) {
             resolved.set(name, null);
             this.diagnostics.push(diag(r.code, `${src.what} reads the top-level '${name}', which a lambda cannot use: ${r.reason}. A lambda can read ${PLAIN}.`, r.tip, src.at, lambdaAt));
@@ -361,6 +410,7 @@ class Program {
     /** @type {any} */
     const proxy = new Proxy({}, {
       get(_, prop) {
+        if (prop === PROGRAM) return program;
         if (prop === Symbol.toPrimitive) return () => `[${inst.construct.name} builder '${instanceName(inst)}']`;
         if (typeof prop === "symbol" || PROBES.has(prop)) return undefined;
         if (prop === "check") return (/** @type {T.BuildOptions | undefined} */ o) => program.analyze(o).diagnostics;

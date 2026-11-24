@@ -111,6 +111,8 @@ export const data = defineDialect({
     Params: { label: "the params ($)", members: {} },
   },
   globals: { $: "Params" },
+  /** A lambda reads the params as members of $; build-time code reads them from the $ that run passes. */
+  params: { object: "Params", name: "$" },
   intrinsics: {
     dateOf: {
       params: ["f64", "f64", "f64"], returns: "date",

@@ -8,7 +8,7 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
 export const CONSTANT_CALLS = Object.freeze(["none", "pure"]);
 const DIALECT_REQUIRED = Object.freeze(["name", "numberType", "spaces", "targets", "slots"]);
@@ -53,6 +53,24 @@ function checkScalar(n, v, path, out) {
 }
 
 /**
+ * A Dialect's `params`: the object a lambda reads the Program's params through, the name it reads it by (for a
+ * message), and the members that exist only at run time, which build-time code may not read (B014).
+ * @param {unknown} p @param {Array<[string, unknown]>} objects @param {Problem[]} out
+ */
+function checkParams(p, objects, out) {
+  const tip = `params: { object: "Params", name: "$", runtime: ["t"] }`;
+  if (!isPlainObject(p)) { out.push({ code: "D011", path: ["params"], message: `params must be { object, name, runtime? }, not ${describe(p)}.`, tip }); return; }
+  checkKeys(p, ["object", "name", "runtime"], ["object", "name"], ["params"], "params", out);
+  const obj = objects.find(([n]) => n === p.object);
+  if (!obj) out.push({ code: "D011", path: ["params", "object"], message: `params.object ${describe(p.object)} is not one of the Dialect's objects.${typeof p.object === "string" ? didYouMean(p.object, objects.map(([n]) => n)) : ""}`, tip });
+  if ("name" in p && !(typeof p.name === "string" && /^[A-Za-z_$][\w$]*$/.test(p.name))) out.push({ code: "D011", path: ["params", "name"], message: `params.name must be the name a lambda reads the params by, an identifier, not ${describe(p.name)}.`, tip: `name: "$"` });
+  if (p.runtime === undefined) return;
+  const members = obj && isPlainObject(obj[1]) && isPlainObject(obj[1].members) ? Object.keys(obj[1].members) : [];
+  if (!Array.isArray(p.runtime) || !p.runtime.every((m) => typeof m === "string")) out.push({ code: "D011", path: ["params", "runtime"], message: "params.runtime must be a list of the object's member names.", tip });
+  else for (const m of p.runtime) if (obj && !members.includes(m)) out.push({ code: "D011", path: ["params", "runtime"], message: `params.runtime names '${m}', which is not a member of ${String(p.object)}.${didYouMean(m, members)}`, tip: `declare it in objects.${String(p.object)}.members, or leave it out` });
+}
+
+/**
  * @param {unknown} def
  * @returns {Problem[]}
  */
@@ -79,6 +97,8 @@ export function validateDialect(def) {
   // Every Dialect has a text view: what a model reads of its screen and state (architecture synthesis §3.3).
   if (typeof def.text !== "function") out.push({ code: "D020", path: ["text"], message: def.text === undefined ? "a Dialect needs text(state), its text view: its screen and state as characters, sized for a model." : `text must be a function of the Dialect's state, not ${describe(def.text)}.`, tip: "text(state) { return `…`; }, where state is what your Dialect's host shows (fields: a frame; data: a table)" });
   if (def.environment !== undefined && typeof def.environment !== "function") out.push({ code: "D011", path: ["environment"], message: "environment must be a function of the program record.", tip: "environment(program) { return { objects, globals }; }" });
+
+  if (def.params !== undefined) checkParams(def.params, objects, out);
 
   /** @type {TypeScope} */
   const scope = { types: new Set(), objects: new Set(objects.map(([n]) => n)) };

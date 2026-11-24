@@ -31,9 +31,10 @@ test("topLevelBindings gives each top-level const's source text, split at depth-
   assert.equal(by.sq, "(n) => n * n");
 });
 
-test("topLevelNames lists a program's top-level consts, lets, vars and functions", () => {
+test("topLevelNames lists a program's top-level consts, lets, vars and functions, however indented", () => {
   const code = `// const nope = 1;\nconst A = 1;\nlet b = 2, c = 3;\nvar d;\nfunction f() { const inner = 1; }\nasync function g() {}\n  const indented = 1;\nGame("x");`;
-  assert.deepEqual(topLevelNames(code), ["A", "b", "c", "d", "f", "g"]);
+  // An indented declaration at bracket depth 0 is top-level too (review AtIcKn, finding 3).
+  assert.deepEqual(topLevelNames(code), ["A", "b", "c", "d", "f", "g", "indented"]);
 });
 
 test("topLevelRefs finds identifiers that resolve to a top-level name", () => {

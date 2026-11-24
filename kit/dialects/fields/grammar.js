@@ -17,6 +17,7 @@ const ParamShape = oneOf(
 
 export const field = defineGrammar(fields, {
   root: "field",
+  params: { slot: "param" },
   constructs: {
     field: {
       opens: [name()],

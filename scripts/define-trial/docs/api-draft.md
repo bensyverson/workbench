@@ -203,11 +203,12 @@ import { defineGrammar, name, ref, data, lambda, opt, rest, oneOf, recordOf, lis
 
 export const program = defineGrammar(myDialect, {
   root: "program",
+  params: { slot: "param" },     // optional: the root slot that declares the Program's params (see "Params")
   constructs: { … },
 });
 ```
 
-The result is the root builder function: `program("name")` starts a Program.
+The result is the root builder function: `program("name")` starts a Program. A Program file exports it as a function of its params, `export default ($) => program("name")…;` (see "Params").
 
 ### Constructs
 
@@ -271,7 +272,7 @@ Any spec takes `{ as: "key" }` as a last argument, naming its record key: `ref("
 **Shapes:** `"number"`, `"string"`, `"boolean"`, `"string[]"`, `"number[]"`, an object of shapes (a key ending in `?` is optional: `{ value: "number", "min?": "number" }`), `oneOf(a, b, …)`, `enumOf([...])` (strings or numbers), `recordOf(shape)` (an object with any keys, each value of the shape), `listOf(shape)`. A shape may also hold `ref(ns)` (a string that must name something) and `lambda(convention)` (a Runtime Lambda), anywhere inside it. In a `oneOf`, among the forms a value fits, the one holding the most lambdas wins (the first on a tie), at any depth: so a string that parses as an arrow function is the lambda and any other string is the ref or text (`.y("() => 1")` is the lambda, `.y("a")` the ref), and `{ f: () => 1 }` against `oneOf({ f: lambda("v") }, { f: "string" })` is the lambda form. Text that looks like an arrow function (it holds `=>`) but does not parse stays text, with a B007 warning that names the parse error:
 
 ```js
-limit: { kind: "decl", args: [data(oneOf("number", lambda("scalar")))] },   // .limit(10) or .limit(() => $.topN)
+limit: { kind: "decl", args: [data("number")] },                           // .limit(10), or .limit($.topN): see "Params"
 agg:   { kind: "decl", args: [data(recordOf(lambda("group")))] },           // .agg({ total: g => g.sum("amount") })
 join:  { kind: "decl", args: [ref("table"), data({ on: recordOf("string"), "take?": listOf("string") })] },
 ```
@@ -342,13 +343,37 @@ Because only the text is read, **a lambda cannot see the variables around it**. 
 2. a Dialect global or intrinsic, or a Library operation;
 3. a helper or constant the Program declared with a unit slot (`.fn`, `.const`);
 4. `$`, if the Dialect declares it: the Program's parameters;
-5. a binding at the **top level of the file** (when the host passes the file's module scope, as the checker does): a top-level arrow function `const f = (…) => …` becomes a helper of the Program, and a top-level `const` holding plain data (a number, string or boolean, or an array or object of them) a baked constant with that value. A helper's own free names follow the same rule.
+5. a binding at the **top level of the file** (when the host passes the file's module scope, as the checker does): a top-level arrow function `const f = (…) => …` becomes a helper of the Program (only an arrow the declaration writes itself: one another function returns, `const f = make(3)`, is B012, since what it closes over is lost), and a top-level `const` holding plain data (a number, string or boolean, or an array or object of them) a baked constant with that value. A helper's own free names follow the same rule.
 
-Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused (B008), with a fix: move it to the top level, declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level binding that is neither an arrow function nor plain data (a `Map`, `null`, a class instance) is B012; a `function` declaration is B007 (write `const f = (…) => …`). A name your file declares only inside build-time code (a loop variable, a local of a function that builds the Program) is B013: the lambda cannot see it, so move it to the top level or write its value into the lambda's text, `` `(row) => row.units > ${cut}` ``. A top-level binding may not take the name of a Dialect or Library name, or of a `.fn` / `.const` (B002: rename it), so a name in a lambda has one meaning.
+Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused (B008), with a fix: move it to the top level, declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level binding that is neither such an arrow function nor plain data (a `Map`, `null`, a class instance, an object with a getter) is B012; a `function` declaration is B007 (write `const f = (…) => …`). A name your file declares only inside build-time code (a loop variable, a local of a function that builds the Program) is B013: the lambda cannot see it, so move it to the top level or write its value into the lambda's text, `` `(row) => row.units > ${cut}` ``. A top-level binding may not take the name of a Dialect or Library name, or of a `.fn` / `.const` (B002: rename it), so a name in a lambda has one meaning.
 
-**The host's side.** `.check(options)` and `.build(options)` take `{ scope, buildTime }`: `scope` the file's top-level bindings by name, `buildTime` the names declared only below the top level. The resolved helpers and constants are added to the root record's `units`. You do not pass these yourself in the trial: the checker does. In the same way, `$.topN` written outside a lambda (`.limit($.topN)`) means nothing: write `.limit(() => $.topN)` where the slot accepts a lambda.
+**The host's side.** `.check(options)` and `.build(options)` take `{ scope, sources, buildTime }`: `scope` the file's top-level bindings by name, `sources` each top-level declaration's initializer text, `buildTime` the names declared only below the top level. The resolved helpers and constants are added to the root record's `units`. You do not pass these yourself in the trial: the checker does, through `run` (see "Params").
 
 The body must be in the **Runtime Subset**: `const`/`let`, arithmetic, comparisons, `if`, ternaries, `for` loops with a bound the kit can check, calls to the names above. No `new`, no `this`, no closures that escape, no `async`, no template literals or other string building beyond what the Dialect declares.
+
+### Params, and when each is read
+
+A Program's params are declared by a root slot that takes a name and a declaration whose `value` is the default, `.param("topN", { value: 10, min: 5, max: 50 })`. The Grammar names that slot, `params: { slot: "param" }`, and the Dialect says which object lambdas read the params through, the name they read it by, and which of its members exist only while the Program runs: `params: { object: "Params", name: "$" }` (data), `params: { object: "Uniforms", name: "u", runtime: ["t", "aspect"] }` (fields). The kit owns no param construct; the shape of a declaration is yours.
+
+**A Program file exports a function of its params:**
+
+```js
+export default ($) => program("top-customers")
+  .param("topN", { min: 5, max: 50, value: 10 })
+  .param("year", { options: [2024, 2025, 2026], value: 2026 })
+  .table("top", "orders")
+  .filter((o) => year(o.placed_at) === $.year)    // in a lambda: a Kernel read, a uniform
+  .limit($.topN);                                 // at build time: the plain number 10
+```
+
+The host calls it with `run(programFn, { values, scope, sources, buildTime })`, which passes a `$` that answers each declared param with the host's value (else its declared `value`) and records the read. So a param read by **build-time code** (outside any lambda) is an ordinary value, folded into the record (`.limit($.topN)` records `limit` with `10`); build-time code may branch, loop and do arithmetic on it. Changing it means building again: `needsRebuild(record, ["topN"])` is true. The same param read **inside a lambda** is a Kernel read, a uniform, which changes without a rebuild. A param may be read in both places. `run` returns `{ record, diagnostics }` (no record when there is an error); the record keeps the reads under `reads` (`{ param, value, by, file, loc }`, `by` the builder call that came next, such as `top.limit#5`), and `lower(record)` adds `params`, each param's binding time (`{ build, kernels, live }`), which `bindingText(lowered)` prints:
+
+```
+topN   folded at build, read by top.limit#5 (05.js:22)
+year   uniform, read by top.filter#0
+```
+
+There is **one form** for a value a param gives a slot: `.limit($.topN)`. A lambda where the slot takes a value, `.limit(() => $.topN)`, is B004, with the fix `.limit($.topN)`. Reading a param at build time before its `.param` call, or one that is not declared, is B003 (with a did-you-mean). Reading a member that exists only while the Program runs (fields' `u.t`) at build time is B014: read it inside the lambda. The function's parameter may be named as the lambdas read the params (`$` in data, `u` in fields); a lambda's own `$` is the Dialect's global, so the two never clash.
 
 ### The record
 
@@ -384,8 +409,9 @@ The generated builder reports with the kit's diagnostic: `{ code, severity, mess
 | B009 | a call to a `rejected` name: its message and tip |
 | B010 | a construct state that depends on itself through `stateOf` |
 | B011 | a slot convention function that refused the lambda (it returned a reason string) |
-| B012 | a top-level binding a lambda reads that is neither an arrow function nor plain data |
+| B012 | a top-level binding a lambda reads that is neither the arrow function its declaration writes (not one made by another function) nor plain data |
 | B013 | a free name the file declares only inside build-time code, not at its top level |
+| B014 | a member of the params that exists only while the Program runs (fields' `u.t`), read by build-time code |
 
 ### Refusing what the language does not do
 

@@ -41,8 +41,9 @@ export const BUILD_CODES = Object.freeze({
   B009: "A call to a rejected name",
   B010: "A construct state that depends on itself through stateOf",
   B011: "A slot convention that refused the lambda (it returned a reason)",
-  B012: "A top-level binding a lambda reads that is neither an arrow function nor plain data",
+  B012: "A top-level binding a lambda reads that is neither the arrow function its declaration writes nor plain data",
   B013: "A free name the file declares only inside build-time code, not at its top level",
+  B014: "A member of the params known only at run time (fields' u.t), read by build-time code",
 });
 
 /** Letters a Dialect's own check codes may not start with. */

@@ -26,6 +26,12 @@ const g = defineGrammar(tiny, {
 /** The same, with no unit slot on the root. */
 const bare = defineGrammar(tiny, { root: "c", constructs: { c: { opens: [name()], slots: { keep: { kind: "decl", args: [lambda("keep")], once: true } } } } });
 
+/**
+ * The module scope a host gathers for these bindings: each arrow here is written as its own top-level
+ * declaration, so its declaration's initializer text is its String(fn) (a helper needs it to match, B012).
+ * @param {Record<string, unknown>} scope
+ */
+const top = (scope) => ({ scope, sources: Object.fromEntries(Object.entries(scope).filter(([, v]) => typeof v === "function").map(([k, v]) => [k, String(v)])) });
 /** "code message" for every diagnostic. @param {any[]} ds */
 const show = (ds) => ds.map((d) => `${d.code} ${d.message}`);
 /** Lowers a record, returning every diagnostic as "code message". @param {any} grammar @param {any} record */
@@ -40,7 +46,7 @@ test("a free name the scope holds as a number becomes a constant unit, and lower
 
 test("a free name the scope holds as an arrow function becomes a helper unit, and lowers as a helper Kernel", () => {
   const half = (v) => v * 0.5;
-  const record = g("c").keep((x) => half(x) + 1).build({ scope: { half } });
+  const record = g("c").keep((x) => half(x) + 1).build(top({ half }));
   assert.deepEqual(record.units, [{ name: "half", kind: "fn", src: String(half) }]);
   const out = g.lower(record);
   assert.deepEqual(show(out.diagnostics), []);
@@ -51,7 +57,7 @@ test("resolution is transitive: a helper's own free names resolve against the sc
   const SCALE = 3;
   const sq = (v) => v * v;
   const f = (v) => sq(v) * SCALE + sq(1);
-  const record = g("c").keep((x) => f(x) + SCALE).build({ scope: { f, sq, SCALE, unused: 9 } });
+  const record = g("c").keep((x) => f(x) + SCALE).build(top({ f, sq, SCALE, unused: 9 }));
   assert.deepEqual(record.units.map((u) => `${u.kind} ${u.name}`).sort(), ["const SCALE", "fn f", "fn sq"]);
   assert.deepEqual(lowered(g, record), []);
 });
@@ -97,7 +103,7 @@ test("a name the host lists as build-time only is B013 with a fix, not B008; an 
 
 test("a helper resolved from the scope that reads a build-time local is B013, naming the helper", () => {
   const h = (v) => v * depth;
-  const ds = g("c").keep((x) => h(x)).check({ scope: { h }, buildTime: ["depth"] });
+  const ds = g("c").keep((x) => h(x)).check({ ...top({ h }), buildTime: ["depth"] });
   assert.deepEqual(ds.map((d) => d.code), ["B013"]);
   assert.match(ds[0].message, /helper 'h'/);
 });
@@ -118,7 +124,7 @@ test("without a scope, build and check are as before: a free name is B008 and th
 
 test("a root with no unit slot takes resolved units under its record's units", () => {
   const sq = (v) => v * v;
-  const record = bare("c").keep((x) => sq(x)).build({ scope: { sq } });
+  const record = bare("c").keep((x) => sq(x)).build(top({ sq }));
   assert.deepEqual(record.units, [{ name: "sq", kind: "fn", src: String(sq) }]);
   assert.deepEqual(lowered(bare, record), []);
 });
@@ -130,7 +136,7 @@ test("the root construct may not put anything else under the record key units (D
 test("a fields Program's top-level helper and constant lower as in DMG: a helper Kernel, and a baked constant", () => {
   const RING = 0.3;
   const ring = (d) => fract(d / RING);
-  const record = field("rings").pixel((uv, u) => color(ring(length(uv)), RING, 0)).build({ scope: { RING, ring } });
+  const record = field("rings").pixel((uv, u) => color(ring(length(uv)), RING, 0)).build(top({ RING, ring }));
   const out = lowerField(record);
   assert.deepEqual(show(out.diagnostics), []);
   assert.ok(out.kernel);
@@ -143,7 +149,7 @@ test("a data Program's top-level constant and helper lower in a table's lambdas"
   const record = program("p")
     .source("sales", { csv: "s.csv", columns: { region: "str", units: "f64" } })
     .table("t", "sales").filter((row) => big(row.units) && row.region !== REGION)
-    .build({ scope: { MIN, big, REGION: "west" } });
+    .build(top({ MIN, big, REGION: "west" }));
   const out = program.lower(record);
   assert.deepEqual(show(out.diagnostics), []);
   assert.deepEqual(record.units.map((u) => u.name).sort(), ["MIN", "REGION", "big"]);
