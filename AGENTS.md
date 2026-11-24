@@ -2,7 +2,7 @@ IMPORTANT: As you implement features, keep the documentation in `project/` and `
 
 ## Overview
 
-The Workbench Kit prototype. A workbench is a domain language plus an IDE, an agent and a book, running as one page in the browser, including inside a Claude artifact. The kit is written once: a parser for a JavaScript subset, a typed IR, emitters and checks. Each workbench is then a few small generated files. Current work is milestone M1, which parses the DMG Workbench's runtime lambdas, lowers them to IR, emits them as JavaScript, and compares seeded runs against the original.
+The Workbench Kit prototype. A workbench is a domain language plus an IDE, an agent and a book, running as one page in the browser, including inside a Claude artifact. The kit is written once: a parser for a JavaScript subset, a typed IR, emitters and checks. Each workbench is then a few small generated files. M1 (the DMG game slice) and M2 (the fields shader slice) are done; current work is milestone M3, a minimal Definition API that declares a Dialect as data and generates its builder (see [the M3 plan](project/2026-11-24-m3-kit-v0-plan.md)).
 
 **Stack:** plain JavaScript ES modules, type-checked by TypeScript (`checkJs`, `strict`). Shared types live in `.d.ts` files. Tests use `node:test` on Node 26. There is no build step, and code in `kit/` must not import Node built-ins, because it also runs in the page. `npm install` sets up the pre-commit hook, which runs `npm run typecheck` and `npm test`. The fast suite takes about 5 s and has a 30 s budget: the hook warns when a run goes over it. Slow tests (long seeded runs, sweeps over every preset) go in a `prerelease/` folder beside `test/`, named `*.prerelease.js`; `npm test` skips them and `npm run test:prerelease` runs them. Run the prerelease suite once per session, at wrap-up before the handoff, and record a failure in the handoff. Sandboxed sessions: `git` and `npm` need the sandbox off for their home-directory files (see `project/agents/harness.md`).
 
@@ -10,8 +10,8 @@ Review baseline: 2026-11-23T15:00:00-06:00
 
 ## Documentation
 
-- README.md — not written yet; it comes when the kit has something to hand to users
-- [project/](project/) — dated plans, findings and decisions. The current plan is [M1: the game slice](project/2026-11-23-m1-game-slice-plan.md); the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md)
+- [README.md](README.md) — what the kit is, how to install it, and a runnable Quick Start
+- [project/](project/) — dated plans, findings and decisions. The current plan is [M3: Kit v0](project/2026-11-24-m3-kit-v0-plan.md) (the tracker holds its live state); the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md)
 - [kit/glossary.md](kit/glossary.md) — the kit's terms (Dream Code, Language Definition, Dialect, Grammar, Environment, Kernel, IR, LIR …), capitalized when used as terms
 - [kit/parse/README.md](kit/parse/README.md) — the subset parser: API, diagnostic codes, fixits
 - [kit/ir/README.md](kit/ir/README.md) — the core IR: kernels, types, effects, spans, the JSON form and the listing
@@ -29,6 +29,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [scripts/h3-trial/README.md](scripts/h3-trial/README.md) — the H3 trial kit: documentation packets in two styles, three sketch tasks, the checking tool and the log classifier
 - [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
 - [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
+- [scripts/define-trial/README.md](scripts/define-trial/README.md) — the Definition API dogfood trial: the draft API, the strict rules and the checker's codes
 
 ## Local rulings
 
