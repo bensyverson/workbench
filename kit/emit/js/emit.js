@@ -3,6 +3,7 @@
 // Every emitted line records the source span it came from.
 
 import { LineTable } from "../../parse/lexer.js";
+import { showType } from "../../ir/types.js";
 
 /** @import { Kernel, Stmt, Expr, Op, Span } from "../../ir/ir.js" */
 /** @import { Position } from "../../parse/ast.js" */
@@ -155,6 +156,8 @@ function expr(e) {
     case "array": return `[${e.items.map(expr).join(", ")}]`;
     case "list": return "[]";
     case "op": {
+      const wide = [e.t, ...e.args.map((x) => x.t)].find((t) => t === "f32" || (typeof t === "object" && "vec" in t));
+      if (wide) notYet(wide);
       const [a, b] = e.args.map(expr);
       const bin = BINARY[e.op];
       if (bin && e.args.length === 2) return `(${a} ${bin} ${b})`;
@@ -172,5 +175,16 @@ function expr(e) {
     case "helper": return `${e.name}(${e.args.map(expr).join(", ")})`;
     case "method": return `${member(e.recv)}.${e.name}(${e.args.map(expr).join(", ")})`;
     case "struct": return `({ ${Object.entries(e.fields).map(([k, v]) => `${IDENT.test(k) ? k : JSON.stringify(k)}: ${expr(v)}`).join(", ")} })`;
+    case "vec": return notYet(e.t);
   }
+}
+
+/**
+ * Refuses an f32 or vector operation: JavaScript's operators would compute it in doubles,
+ * or on objects, and give a wrong value with no error.
+ * @param {import("../../ir/ir.js").Type} t
+ * @returns {never}
+ */
+function notYet(t) {
+  throw new Error(`cannot emit ${showType(t)} values yet: f32 and vector emission is job ZDCBUt`);
 }

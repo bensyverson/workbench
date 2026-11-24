@@ -1,9 +1,10 @@
 // Operations on IR types: printing, assignability, joins, and type variables.
 
-/** @import { Type } from "./ir.js" */
+/** @import { Type, VecType } from "./ir.js" */
 
 /**
- * A compact, readable rendering: `Mole?`, `[Spark; 24]`, `{x: f64}`, `"a"|"b"`.
+ * A compact, readable rendering: `Mole?`, `[Spark; 24]`, `{x: f64}`, `"a"|"b"`, a dialect's
+ * vector by its name (`vec2`) and a structural one by its shape (`f32x2`).
  * @param {Type} t
  * @returns {string}
  */
@@ -22,6 +23,7 @@ export function showType(t) {
   }
   if ("union" in t) return t.union.map(showType).join(" | ");
   if ("obj" in t) return t.obj;
+  if ("vec" in t) return t.name ?? `${t.of}x${t.vec}`;
   return t.tvar;
 }
 
@@ -198,4 +200,27 @@ export function substitute(t, bound) {
   if ("union" in t) return { union: t.union.map((m) => substitute(m, bound)) };
   if ("struct" in t) return { ...t, struct: Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, substitute(v, bound)])) };
   return t;
+}
+
+/**
+ * A dialect's vector type: `name` over a structural shape of `n` components of `of`. Nominal,
+ * as a dialect's enum is: two dialect vectors with the same shape (`vec3`, `color`) are different
+ * types, and neither is the structural vector of its shape, so no join, assignment or operator
+ * mixes them.
+ * @param {string} name
+ * @param {2 | 3 | 4} n
+ * @param {"f32" | "f64"} of
+ * @returns {VecType}
+ */
+export function dialectVector(name, n, of) {
+  return { vec: n, of, name };
+}
+
+/**
+ * The vector type `t` is, or null.
+ * @param {Type} t
+ * @returns {VecType | null}
+ */
+export function vectorOf(t) {
+  return typeof t === "object" && "vec" in t ? t : null;
 }

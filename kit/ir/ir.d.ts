@@ -6,11 +6,12 @@
 export type Span = [number, number];
 
 /**
- * A value type. Numbers are plain doubles (`f64`) everywhere: a sized integer is a
- * storage rule on a place (see `Store`), not a value type.
+ * A value type. A number is a double (`f64`) or a single (`f32`), and the two never mix:
+ * a conversion is an explicit `f32` or `f64` op. A sized integer is a storage rule on a
+ * place (see `Coerce`), not a value type.
  */
 export type Type =
-  | "f64" | "bool" | "str" | "null" | "void"
+  | "f64" | "f32" | "bool" | "str" | "null" | "void"
   /** The type of an expression that already failed to lower; it silences cascades. */
   | "unknown"
   /** One of a fixed set of strings: sprite names, choice options, buttons. `declared` marks a dialect's enum, which is nominal; the enum of a string literal has no mark. */
@@ -28,7 +29,15 @@ export type Type =
   /** A handle onto something the dialect provides (the world, input, a HUD cell). */
   | { obj: string }
   /** A type variable in a dialect signature, bound per call. */
-  | { tvar: string };
+  | { tvar: string }
+  | VecType;
+
+/**
+ * A vector of `vec` components of one scalar type, read as `.x`, `.y`, `.z`, `.w`. `name` marks a
+ * dialect's vector type, which is nominal: `vec3` and `color` never meet, though both are three
+ * f32s. A vector without a name is structural (`f32x3`). See `dialectVector` in types.js.
+ */
+export interface VecType { vec: 2 | 3 | 4; of: "f32" | "f64"; name?: string }
 
 /** How a store coerces its value: the dialect's numeric rule for one place. */
 export interface Coerce {
@@ -61,6 +70,7 @@ export interface Place {
 interface ExprBase { t: Type; span: Span }
 
 export type Expr =
+  /** A number. Typed `f32`, `v` is already an f32 value (`Math.fround(v) === v`). */
   | (ExprBase & { k: "num"; v: number })
   | (ExprBase & { k: "str"; v: string })
   | (ExprBase & { k: "bool"; v: boolean })
@@ -88,11 +98,18 @@ export type Expr =
   /** An array literal: its type is `{ list, max, len }`, both the number of items; items are evaluated in order. */
   | (ExprBase & { k: "array"; items: Expr[] })
   /** A new empty list, filled by `push`. */
-  | (ExprBase & { k: "list" });
+  | (ExprBase & { k: "list" })
+  /** A vector built from its components, evaluated in order: one item per component, each of the vector's scalar type. */
+  | (ExprBase & { k: "vec"; items: Expr[] });
 
 /**
- * Operators. Arithmetic is on doubles with JavaScript's meaning (`rem` is `%`);
- * the bitwise ones go through int32 as in JavaScript. `and`/`or` take bools and
+ * Operators. Arithmetic is on doubles with JavaScript's meaning (`rem` is `%`), or on
+ * two f32s with the result rounded to f32; the bitwise ones take doubles and go through
+ * int32 as in JavaScript. On vectors, `add`, `sub`, `mul`, `div`, `neg` and `pos` are
+ * componentwise over one vector type, and `mul` (either order) and `div` (vector first)
+ * also take a scalar of the vector's scalar type. `f32` rounds an f64 to the nearest
+ * f32 (JavaScript's `Math.fround`); `f64` widens an f32 exactly. Each operator's operand
+ * and result types are `OPS` in verify-rules.js. `and`/`or` take bools and
  * short-circuit. `present` takes a possibly-empty entity reference (`{ opt: { ref } }`)
  * and is false only for null or undefined. `truthy` is JavaScript truthiness, for every
  * other value tested as a condition, optionals of numbers, bools and strings included:
@@ -102,7 +119,8 @@ export type Op =
   | "add" | "sub" | "mul" | "div" | "rem" | "pow" | "neg" | "pos"
   | "band" | "bor" | "bxor" | "bnot" | "shl" | "shr" | "ushr"
   | "eq" | "ne" | "lt" | "le" | "gt" | "ge"
-  | "not" | "and" | "or" | "truthy" | "present" | "concat";
+  | "not" | "and" | "or" | "truthy" | "present" | "concat"
+  | "f32" | "f64";
 
 interface StmtBase { span: Span; effects: Effect[] }
 

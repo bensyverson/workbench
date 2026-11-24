@@ -289,7 +289,10 @@ function showSafe(t) {
 
 /** Per expression kind: check its type against its operands, recursing through `sub`; add its own effects to `does`. */
 const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, { k: K }>, sub: Sub, bad: Bad, does: Effect[], path: string }) => void }} */ ({
-  num: ({ e, bad }) => { if (e.t !== "f64") bad(`A number is f64, not ${showSafe(e.t)}.`); },
+  num: ({ e, bad }) => {
+    if (e.t === "f32") { if (Math.fround(e.v) !== e.v || !Number.isFinite(e.v)) bad(`An f32 number holds a finite f32 value, not ${e.v}.`); }
+    else if (e.t !== "f64") bad(`A number is f64 or f32, not ${showSafe(e.t)}.`);
+  },
   str: ({ e, bad }) => { if (!sameType(e.t, { enum: [e.v] })) bad(`A string literal is typed by its value, ${JSON.stringify(e.v)}, not ${showSafe(e.t)}.`); },
   bool: ({ e, bad }) => { if (e.t !== "bool") bad(`A boolean is bool, not ${showSafe(e.t)}.`); },
   null: ({ e, bad }) => { if (e.t !== "null") bad(`null is typed null, not ${showSafe(e.t)}.`); },
@@ -355,7 +358,11 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
       if (!sameType(e.t, want)) bad(`Field '${e.name}' is ${showSafe(want)}, not ${showSafe(e.t)}.`);
     } else if (typeof of === "object" && "list" in of) {
       if (e.name !== "length" || e.t !== "f64") bad(`A list's only field is length, an f64; not '${e.name}': ${showSafe(e.t)}.`);
-    } else bad(`A field is read from a struct or a list, not ${showSafe(of)}.`);
+    } else if (typeof of === "object" && "vec" in of) {
+      const names = COMPONENTS.slice(0, of.vec);
+      if (!names.includes(e.name)) bad(`A ${showSafe(of)} has components ${names.join(", ")}, not '${e.name}'.`);
+      else if (e.t !== of.of) bad(`A component of ${showSafe(of)} is ${of.of}, not ${showSafe(e.t)}.`);
+    } else bad(`A field is read from a struct, a list or a vector, not ${showSafe(of)}.`);
   },
   index: ({ e, sub, bad }) => {
     sub(e.of, "of"); sub(e.index, "index");
@@ -377,7 +384,17 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
   list: ({ e, bad }) => {
     if (!(typeof e.t === "object" && "list" in e.t) || e.t.len !== undefined) bad(`A new list is a list type without a fixed length, not ${JSON.stringify(e.t)}.`);
   },
+  vec: ({ e, sub, bad }) => {
+    e.items.forEach((a, i) => sub(a, `items[${i}]`));
+    const t = e.t;
+    if (!(typeof t === "object" && "vec" in t)) { bad(`A vec node has a vector type, not ${showSafe(t)}.`); return; }
+    if (e.items.length !== t.vec) bad(`A ${showSafe(t)} is built from ${t.vec} components, not ${e.items.length}.`);
+    e.items.forEach((a, i) => { if (a.t !== t.of && a.t !== "unknown") bad(`Component ${i + 1} of a ${showSafe(t)} is ${t.of}, not ${showSafe(a.t)}.`); });
+  },
 });
+
+/** A vector's component names, in order; a vector of n components has the first n. */
+const COMPONENTS = ["x", "y", "z", "w"];
 
 /**
  * @typedef {(e: Expr, key: string) => Expr} Ex

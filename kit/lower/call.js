@@ -6,6 +6,7 @@ import { didYouMean } from "./codes.js";
 import { query } from "./query.js";
 import { expr, check, mismatch, bad, seq, resolveOn, spanOf, computed } from "./expr.js";
 import { HELPER_OWNER } from "./codes.js";
+import { numericCall } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Effect } from "../ir/ir.js" */
@@ -27,6 +28,10 @@ export function call(L, node) {
   };
   if (callee.type === "Identifier") {
     if (!L.lookup(callee.name) && L.sigs.helpers?.[callee.name]?.kind === "fn") { noCallbacks(); return helperCall(L, node, callee.name, args); }
+    if (!L.lookup(callee.name) && !L.sigs.helpers?.[callee.name]) {
+      const made = numericCall(L, node, callee.name, args);
+      if (made) { noCallbacks(); return made; }
+    }
     const f = expr(L, callee);
     const o = typeof f.t === "object" && "obj" in f.t ? L.environment.objects[f.t.obj] : undefined;
     if (f.t === "unknown") return bad(node);

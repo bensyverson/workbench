@@ -23,7 +23,7 @@ function only(code, ...args) {
 }
 
 test("every lowering code has a test below", () => {
-  assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015"]);
+  assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015", "L016"]);
 });
 
 test("L001: a free identifier the environment does not declare", () => {
@@ -146,4 +146,14 @@ test("L014: a signature lowering cannot infer", () => {
 test("L015: the wrong number of arguments", () => {
   const { d } = only("L015", "(w) => { w.sfx(); }", "timer", "World");
   assert.match(d.tip, /1/);
+});
+
+test("L016: a number literal that is not finite, which no number type or the IR's JSON form can hold", () => {
+  const { d, text } = only("L016", "(self) => { self.ttl = 1e999; }");
+  assert.equal(text, "1e999");
+  assert.match(d.message, /1e999/);
+  assert.match(d.message, /Infinity/);
+  assert.match(d.tip, /finite/);
+  assert.equal(only("L016", "(self) => { if (self.ttl < -1e400) self.up = false; }").text, "1e400");
+  assert.deepEqual(codes(lower("(self) => { self.ttl = 1.7e308; }")), [], "the largest finite doubles still lower");
 });

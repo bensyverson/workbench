@@ -6,6 +6,7 @@ import { assignable, itemAt, join, showType, strictJoin } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
+import { wide, infinite, asScalar, mixTip, typedBinary, components, isNumericName } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Op, Place, Span } from "../ir/ir.js" */
@@ -46,7 +47,7 @@ export const bad = (n) => ({ k: "null", t: "unknown", span: spanOf(n) });
  */
 export function check(L, node, expected, what) {
   if (node.type === "ConditionalExpression") return cond(L, node, (n) => check(L, n, expected, what));
-  const e = expr(L, node, expected);
+  const e = asScalar(L, expr(L, node, expected), expected);
   if (!assignable(e.t, expected)) mismatch(L, node, e.t, expected, what);
   return e;
 }
@@ -61,7 +62,8 @@ export function check(L, node, expected, what) {
 export function mismatch(L, node, got, expected, what) {
   const members = typeof expected === "object" && "union" in expected ? expected.union : [expected];
   const enums = members.flatMap((m) => (typeof m === "object" && "enum" in m ? m.enum : []));
-  const tip = enums.length ? `Use one of: ${enums.join(", ")}.` : `Give it a ${showType(expected)} value.`;
+  const here = { t: got, text: L.src.slice(node.range[0], node.range[1]) };
+  const tip = enums.length ? `Use one of: ${enums.join(", ")}.` : mixTip(L, here, { t: expected, text: null }) ?? `Give it a ${showType(expected)} value.`;
   L.error("L003", node, `This is ${describe(got)}, but ${what} needs ${showType(expected)}.`, tip);
 }
 
@@ -77,7 +79,7 @@ export function expr(L, node, expected) {
   switch (node.type) {
     case "Literal": {
       const v = node.value;
-      if (typeof v === "number") return L.ex({ k: "num", v, t: "f64", span });
+      if (typeof v === "number") return infinite(L, v, span) ?? L.ex({ k: "num", v, t: "f64", span });
       if (typeof v === "string") return L.ex({ k: "str", v, t: { enum: [v] }, span });
       if (typeof v === "boolean") return L.ex({ k: "bool", v, t: "bool", span });
       return L.ex({ k: "null", t: "null", span });
@@ -93,8 +95,9 @@ export function expr(L, node, expected) {
     case "UnaryExpression": {
       if (node.operator === "!") return L.ex({ k: "op", op: "not", args: [test(L, node.argument)], t: "bool", span });
       const arg = expr(L, node.argument);
-      if (!assignable(arg.t, "f64")) mismatch(L, node.argument, arg.t, "f64", `'${node.operator}'`);
       const op = node.operator === "-" ? "neg" : node.operator === "+" ? "pos" : "bnot";
+      if (op !== "bnot" && wide(arg.t)) return L.ex({ k: "op", op, args: [arg], t: arg.t, span });
+      if (!assignable(arg.t, "f64")) mismatch(L, node.argument, arg.t, "f64", `'${node.operator}'`);
       return L.ex({ k: "op", op, args: [arg], t: "f64", span });
     }
     case "BinaryExpression": {
@@ -144,6 +147,10 @@ export function identifier(L, node) {
   }
   const g = L.environment.globals[node.name];
   if (g) return L.ex({ k: "global", name: node.name, t: g, span });
+  if (isNumericName(L, node.name)) {
+    L.error("L003", node, `'${node.name}' is a function here.`, `Call it: ${node.name}(…).`);
+    return bad(node);
+  }
   const known = [...L.scopes.flatMap((s) => [...s.keys()]), ...Object.keys(L.environment.globals)];
   const tip = node.name === "undefined" ? "Use null for an empty value."
     : `Runtime lambdas see only their parameters and ${Object.keys(L.environment.globals).join(", ")}; a top-level helper or constant is not visible, so pass it in or declare it.${didYouMean(node.name, known)}`;
@@ -252,6 +259,9 @@ export function resolveOn(L, recv, name, node) {
   } else if (typeof t === "object" && "struct" in t) {
     owner = "struct";
     members = Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, /** @type {Member} */ ({ kind: "value", t: v })]));
+  } else if (typeof t === "object" && "vec" in t) {
+    owner = "vector";
+    members = components(t);
   }
   const decl = members?.[name];
   if (!decl) {
@@ -277,7 +287,7 @@ function valueOf(L, r, node) {
     L.error("L003", node, `'${name}' is a function here.`, `Call it: ${L.src.slice(node.range[0], node.range[1])}(…).`);
     return bad(node);
   }
-  if (r.owner === "list" || r.owner === "struct" || (typeof r.recv.t === "object" && "list" in r.recv.t && name === "length")) {
+  if (r.owner === "list" || r.owner === "struct" || r.owner === "vector" || (typeof r.recv.t === "object" && "list" in r.recv.t && name === "length")) {
     return L.ex({ k: "field", of: r.recv, name, t: r.decl.t, span });
   }
   return L.ex({ k: "load", place: placeOf(r, name), t: r.decl.t, span }, r.decl.effect ? [r.decl.effect] : []);
@@ -334,6 +344,10 @@ export function seq(L, thunks) {
  */
 export function binary(L, operator, a, b, node) {
   const span = spanOf(node);
+  if (wide(a.t) || wide(b.t)) {
+    const typed = typedBinary(L, operator, a, b, node);
+    if (typed) return typed;
+  }
   const isNum = (/** @type {Expr} */ e) => assignable(e.t, "f64");
   const isStr = (/** @type {Expr} */ e) => e.t !== "unknown" && assignable(e.t, "str");
   if (operator === "+") {
@@ -376,7 +390,8 @@ export function test(L, node) {
   if (node.type === "LogicalExpression" && node.operator !== "??") return logical(L, node, "test");
   const e = expr(L, node);
   if (e.t === "bool" || e.t === "unknown") return e;
-  const op = typeof e.t === "object" && "opt" in e.t && isEntity(e.t.opt) ? "present" : "truthy";
+  if (typeof e.t === "object" && "vec" in e.t) L.error("L003", node, "A vector is always true as a condition.", `Test a component instead: if (${L.src.slice(node.range[0], node.range[1])}.x !== 0).`);
+  const op =typeof e.t === "object" && "opt" in e.t && isEntity(e.t.opt) ? "present" : "truthy";
   return L.ex({ k: "op", op, args: [e], t: "bool", span: e.span });
 }
 

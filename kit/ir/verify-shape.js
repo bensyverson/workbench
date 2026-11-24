@@ -24,6 +24,7 @@ const EXPR = {
   index: { of: "expr", index: "expr" },
   array: { items: "exprs" },
   list: {},
+  vec: { items: "exprs" },
 };
 
 /** @type {Record<string, Record<string, Field>>} */

@@ -1,7 +1,7 @@
 // The verifier's tables: which types a Kernel may hold, what each operator takes and
-// gives, and the effect verbs. M2's value types add entries here.
+// gives, and the effect verbs. A new value type or operator adds entries here.
 
-import { assignable, sameType } from "./types.js";
+import { assignable, sameType, showType, vectorOf } from "./types.js";
 
 /** @import { Type, Op, EffectVerb, Expr, Stmt, Coerce } from "./ir.js" */
 
@@ -9,7 +9,10 @@ import { assignable, sameType } from "./types.js";
 export const EFFECT_VERBS = new Set(/** @type {EffectVerb[]} */ (["read", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "call", "hud", "input", "log", "end"]));
 
 /** The named types; `unknown` is not one: a Kernel holds only types that lowered. */
-const NAMED = new Set(["f64", "bool", "str", "null", "void"]);
+const NAMED = new Set(["f64", "f32", "bool", "str", "null", "void"]);
+
+/** A vector's scalar types: no integer or bool vectors. */
+const SCALARS = new Set(["f32", "f64"]);
 
 /**
  * Why `t` cannot appear in a Kernel, or null when it can. Never throws.
@@ -54,6 +57,12 @@ export function typeProblem(t, partial = false) {
     for (const m of ms) { const p = typeProblem(m, partial); if (p) return p; }
     return null;
   }
+  if ("vec" in o) {
+    if (o.vec !== 2 && o.vec !== 3 && o.vec !== 4) return "a vector has 2, 3 or 4 components";
+    if (!SCALARS.has(/** @type {string} */ (o.of))) return "a vector's components are f32 or f64";
+    if (o.name !== undefined && !(typeof o.name === "string" && o.name !== "")) return "a dialect vector's name is a non-empty string";
+    return null;
+  }
   return "not a type";
 }
 
@@ -93,16 +102,67 @@ const arith = uniform(2, num, "two numbers", "f64");
 const unary = uniform(1, num, "a number", "f64");
 const logic = uniform(2, bool, "two bools", "bool");
 
+/**
+ * Whether `t` is one of M2's number types, an f32 or a vector; an operator none of whose
+ * operands is keeps M1's rule exactly.
+ * @param {Type} t
+ */
+const wide = (t) => t === "f32" || vectorOf(t) !== null;
+
+/** @param {Type} t @returns {"f32" | "f64" | null} */
+const scalarOf = (t) => (t === "f32" || t === "f64" ? t : null);
+
+/**
+ * Arithmetic: M1's on f64s, or the same on two f32s or two of one vector type. `scale` says
+ * where a scalar of a vector's scalar type may stand for a vector: either side (`mul`), the
+ * right (`div`), or nowhere (`add`, `sub`); `vectors` false (`rem`, `pow`) takes scalars only.
+ * In a partial kernel, an `unknown` operand yields to the other.
+ * @param {"either" | "right" | "none"} scale
+ * @param {boolean} [vectors]
+ * @returns {OpRule}
+ */
+const componentwise = (scale, vectors = true) => (args, t) => {
+  if (args.length !== 2 || !args.some(wide)) return arith(args, t);
+  const [a, b] = args;
+  if (!vectors && args.some((x) => vectorOf(x))) return "takes scalars, not vectors";
+  if (a === "unknown" || b === "unknown") {
+    const x = a === "unknown" ? b : a;
+    const scaled = scale !== "none" && scalarOf(x) !== null && vectorOf(t)?.of === x;
+    return sameType(t, x) || scaled ? null : `gives ${showType(x)}`;
+  }
+  const va = vectorOf(a), vb = vectorOf(b);
+  /** @type {Type | null} */
+  let want = null;
+  if ((scalarOf(a) || va) && sameType(a, b)) want = a;
+  else if (scale === "either" && vb && vb.of === a) want = b;
+  else if (scale !== "none" && va && va.of === b) want = a;
+  const alternative = !vectors ? "" : scale === "either" ? ", or a vector and its scalar" : scale === "right" ? ", or a vector and then its scalar" : "";
+  if (!want) return `takes two of one number type${vectors ? " or vector type" : ""}${alternative}, not ${showType(a)} and ${showType(b)}`;
+  return sameType(t, want) ? null : `gives ${showType(want)}`;
+};
+
+/**
+ * `neg` and `pos`: M1's on an f64, or of the same type on an f32 or a vector.
+ * @type {OpRule}
+ */
+const sign = (args, t) => {
+  if (args.length !== 1 || !wide(args[0])) return unary(args, t);
+  return sameType(t, args[0]) ? null : `gives ${showType(args[0])}`;
+};
+
 /** What each operator takes and gives (ir.d.ts, `Op`). */
 export const OPS = /** @type {Record<Op, OpRule>} */ ({
-  add: arith, sub: arith, mul: arith, div: arith, rem: arith, pow: arith,
+  add: componentwise("none"), sub: componentwise("none"), mul: componentwise("either"), div: componentwise("right"),
+  rem: componentwise("none", false), pow: componentwise("none", false),
   band: arith, bor: arith, bxor: arith, shl: arith, shr: arith, ushr: arith,
-  neg: unary, pos: unary, bnot: unary,
+  neg: sign, pos: sign, bnot: unary,
   lt: compare, le: compare, gt: compare, ge: compare,
   eq: equality, ne: equality,
   not: uniform(1, bool, "a bool", "bool"),
   and: logic, or: logic,
-  truthy: uniform(1, (a) => a !== "void", "a value", "bool"),
+  truthy: uniform(1, (a) => a !== "void" && !vectorOf(a), "a value other than a vector", "bool"),
+  f32: uniform(1, num, "an f64", "f32"),
+  f64: uniform(1, (a) => a === "f32" || a === "unknown", "an f32", "f64"),
   present: uniform(1, (a) => typeof a === "object" && "opt" in a && entity(a.opt), "a possibly-empty entity reference", "bool"),
   concat: (args, t) => {
     if (args.length !== 2) return `takes 2 operands, not ${args.length}`;
@@ -114,7 +174,8 @@ export const OPS = /** @type {Record<Op, OpRule>} */ ({
 /** @type {OpRule} */
 function compare(args, t) {
   if (args.length !== 2) return `takes 2 operands, not ${args.length}`;
-  if (!(args.every(num) || args.every(str))) return "compares two numbers or two strings";
+  const f32 = (/** @type {Type} */ a) => a === "f32" || a === "unknown";
+  if (!(args.every(num) || args.every(str) || args.every(f32))) return "compares two numbers of one type or two strings";
   return t === "bool" ? null : "gives bool";
 }
 
@@ -122,6 +183,7 @@ function compare(args, t) {
 function equality(args, t) {
   if (args.length !== 2) return `takes 2 operands, not ${args.length}`;
   const [a, b] = args;
+  if (vectorOf(a) || vectorOf(b)) return "does not compare vectors; compare their components";
   if (!(assignable(a, b) || assignable(b, a) || (str(a) && str(b)))) return "compares values that can be equal";
   return t === "bool" ? null : "gives bool";
 }

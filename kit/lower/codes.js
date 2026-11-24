@@ -18,6 +18,7 @@ export const LOWER_CODES = Object.freeze({
   L013: "A store to a read-only place",
   L014: "A signature lowering cannot infer, that call sites disagree on, or whose effects are unknown",
   L015: "The wrong number of arguments",
+  L016: "A number literal no number type can hold: not finite (1e999), or past f32's finite range where it is an f32",
 });
 
 /** @typedef {keyof typeof LOWER_CODES} LowerCode */

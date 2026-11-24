@@ -2,7 +2,7 @@
 // types of those names, the effects they have, and each slot's calling convention.
 // Lowering resolves every identifier and member against this and nothing else.
 
-import type { Type, Coerce, Effect, EffectVerb } from "../ir/ir.js";
+import type { Type, Coerce, Effect, EffectVerb, VecType } from "../ir/ir.js";
 
 /** A callable signature. `{key}` in an effect is replaced by a keyed call's literal key. */
 export interface FnSig {
@@ -78,6 +78,14 @@ export interface Environment {
   queries: QueryName[];
   /** Free identifiers every lambda may use, e.g. `Math`. */
   globals: Record<string, Type>;
+  /**
+   * The dialect's vector types, by the name a lambda builds one with: `vec2(x, y)`. Each is
+   * usually a `dialectVector` (kit/ir/types.js), so the names stay nominal. Operators on them
+   * resolve on these types (D1); see kit/lower/numeric.js.
+   */
+  vectors?: Record<string, VecType>;
+  /** The calls that convert between f64 and f32, by the name a lambda calls, with the type each gives: `{ f32: "f32" }`. */
+  conversions?: Record<string, "f32" | "f64">;
   /** The calling convention of a slot, or a message saying why there is none. */
   slot(ref: SlotRef): SlotDecl | string;
 }

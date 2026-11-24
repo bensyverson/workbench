@@ -1,7 +1,7 @@
 // A text listing of a kernel, for people and agents: one statement per line, the
 // statement's effects as a trailing comment. The JSON form stays the source of truth.
 
-import { showType } from "./types.js";
+import { showType, vectorOf } from "./types.js";
 
 /** @import { Kernel, Stmt, Expr, Coerce, Effect } from "./ir.js" */
 
@@ -94,14 +94,14 @@ function coerce(c) {
  */
 export function expr(e) {
   switch (e.k) {
-    case "num": return String(e.v);
+    case "num": return e.t === "f32" ? f32Text(e.v) : String(e.v);
     case "str": return JSON.stringify(e.v);
     case "bool": return String(e.v);
     case "null": return "null";
     case "undef": return "undefined";
     case "local": case "global": return e.name;
     case "load": return `${expr(e.place.recv)}.${e.place.name}`;
-    case "op": return `${e.op}(${e.args.map(expr).join(", ")})`;
+    case "op": return `${e.op}${opSuffix(e)}(${e.args.map(expr).join(", ")})`;
     case "cond": return `(${expr(e.test)} ? ${expr(e.then)} : ${expr(e.else)})`;
     case "call": {
       const args = e.args.map(expr).join(", ");
@@ -116,5 +116,33 @@ export function expr(e) {
     case "index": return `${expr(e.of)}[${expr(e.index)}]`;
     case "array": return `[${e.items.map(expr).join(", ")}]`;
     case "list": return "[]";
+    case "vec": return `${showType(e.t)}(${e.items.map(expr).join(", ")})`;
   }
+}
+
+/**
+ * The shortest decimal that reads back, rounded to f32, as `v`, an f32 value: `0.1` for
+ * `Math.fround(0.1)`, where `String` would give 0.10000000149011612.
+ * @param {number} v
+ * @returns {string}
+ */
+export function f32Text(v) {
+  for (let digits = 1; digits < 9; digits++) {
+    const text = String(Number(v.toPrecision(digits)));
+    if (Math.fround(Number(text)) === v) return text;
+  }
+  return String(Number(v.toPrecision(9)));
+}
+
+/**
+ * The type an operator's listing names, `add.vec2(…)`, when it works on f32s or vectors:
+ * its result's, or for a compare its first operand's. Ops on f64 and the conversions,
+ * whose names say their type, are listed bare, as in M1.
+ * @param {Extract<Expr, { k: "op" }>} e
+ * @returns {string}
+ */
+function opSuffix(e) {
+  if (e.op === "f32" || e.op === "f64") return "";
+  const t = e.t === "bool" && e.args.length ? e.args[0].t : e.t;
+  return t === "f32" || vectorOf(t) ? `.${showType(t)}` : "";
 }

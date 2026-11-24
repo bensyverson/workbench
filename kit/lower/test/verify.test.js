@@ -3,8 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { lower, codes } from "./fixture.js";
-import { switches } from "../index.js";
+import { lower, codes, environment } from "./fixture.js";
+import { switches, lowerLambda } from "../index.js";
 
 /**
  * Lowers with the verifier switched on or off, restoring the switch after.
@@ -17,23 +17,38 @@ function lowerWith(on, ...args) {
   try { return lower(...args); } finally { switches.verify = was; }
 }
 
-// A literal past the largest double reads as Infinity, which the IR's JSON form cannot hold
-// (V012): today's lowering accepts it, so it shows the verifier at work inside lowering.
-const OVERFLOW = "(self) => { self.ttl = 1e999; }";
+// The planted fault: an environment that declares a member of a type no kernel may hold, a list
+// whose max is not a whole number (V003). Lowering trusts its environment's types, so it makes
+// the kernel, and only the verifier inside lowering catches the kit-side bug.
+const MOLE = environment.objects.Mole;
+/** @type {typeof environment} */
+const faulty = { ...environment, objects: { ...environment.objects, Mole: { ...MOLE, members: { ...MOLE.members, odd: { kind: "value", t: { list: "f64", max: 2.5 } } } } } };
+const FAULT = "(self) => { self.ttl = self.odd.length; }";
+
+/**
+ * Lowers FAULT against the faulty environment, with the verifier switched on or off.
+ * @param {boolean} on
+ */
+function lowerFault(on) {
+  const was = switches.verify;
+  switches.verify = on;
+  try { return lowerLambda(faulty, FAULT, { id: "Mole.onFrame", kind: "onFrame", on: "Mole" }); } finally { switches.verify = was; }
+}
 
 test("with the switch on, a kernel that breaks an invariant is a V error with no kernel", () => {
-  const r = lowerWith(true, OVERFLOW);
-  assert.deepEqual(codes(r), ["V012"]);
+  const r = lowerFault(true);
+  assert.deepEqual([...new Set(codes(r))], ["V003"]);
   assert.equal(r.ok, false);
   assert.equal(r.kernel, null);
   const d = r.diagnostics[0];
   assert.equal(d.severity, "error");
+  assert.match(d.message, /whole number/);
   assert.match(d.tip, /bug in the kit/);
-  assert.deepEqual(d.loc.start, { line: 1, column: 0 });
+  assert.equal(FAULT.slice(d.range[0], d.range[1]), "self.odd");
 });
 
 test("with the switch off, lowering does not verify", () => {
-  const r = lowerWith(false, OVERFLOW);
+  const r = lowerFault(false);
   assert.deepEqual(codes(r), []);
   assert.ok(r.kernel);
 });
