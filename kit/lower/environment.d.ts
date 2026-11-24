@@ -13,6 +13,11 @@ export interface FnSig {
   rest?: Type;
   returns: Type;
   effects: Effect[];
+  /**
+   * For a signature with a type variable: what the variable may be bound to. `number` is an f32, an
+   * f64 or a vector; `vector` only a vector. Absent, anything.
+   */
+  numeric?: "number" | "vector";
 }
 
 export type Member =
@@ -84,6 +89,18 @@ export interface Environment {
    * resolve on these types (D1); see kit/lower/numeric.js.
    */
   vectors?: Record<string, VecType>;
+  /**
+   * Other names for a vector type's components, by the vector type's name: `{ color: { r: "x", g: "y", b: "z" } }`.
+   * Lowering reads an alias as the component it names, so the IR only ever holds x, y, z and w.
+   */
+  componentAliases?: Record<string, Record<string, string>>;
+  /**
+   * The type of a number literal where nothing else gives it one: a let's initializer, a helper's
+   * argument, a ternary of literals, a for counter. Defaults to `f64`. A literal elsewhere takes the
+   * type of the value it meets (`uv * 0.5` is an f32 literal), and top-level constants stay untyped
+   * until each use.
+   */
+  numberType?: "f32" | "f64";
   /** The calls that convert between f64 and f32, by the name a lambda calls, with the type each gives: `{ f32: "f32" }`. */
   conversions?: Record<string, "f32" | "f64">;
   /** The calling convention of a slot, or a message saying why there is none. */

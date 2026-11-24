@@ -5,6 +5,7 @@ import { assignable, join } from "../ir/types.js";
 import { expr, test, facts, check, describe } from "./expr.js";
 import { assign, update } from "./assign.js";
 import { bindPattern, patternNames } from "./pattern.js";
+import { settle, clash } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Expr, Stmt, Span, Type } from "../ir/ir.js" */
@@ -87,7 +88,7 @@ function declaration(L, node) {
       for (const n of patternNames(d.id)) L.declare(n, "unknown", "let");
       continue;
     }
-    const v = expr(L, d.init);
+    const v = settle(L, expr(L, d.init));
     const kind = node.kind === "const" ? "const" : "let";
     if (d.id.type === "Identifier") {
       // A let may later hold any string, so its type is not the literal it starts with.
@@ -196,9 +197,10 @@ function forStatement(L, node) {
   const writer = findWrite(node.body, i);
   if (writer) { L.error("L007", writer, `The loop body changes '${i}', so its bound cannot be checked.`, tip); return; }
   L.scoped(() => {
-    const start = check(L, /** @type {AST.Expression} */ (d.init), "f64", `'${i}'`);
+    const counter = L.environment.numberType ?? "f64";
+    const start = check(L, /** @type {AST.Expression} */ (d.init), counter, `'${i}'`);
     if (!startOf(start)) { L.error("L007", /** @type {AST.Expression} */ (d.init), `'${i}' must start at an integer or a param for the loop's bound to be checked.`, tip); return; }
-    const name = L.declare(i, "f64", "let");
+    const name = L.declare(i, counter, "let");
     const mark = L.out.length;
     const cond = test(L, t);
     if (L.out.length > mark) { L.error("L007", t, "This loop's test needs statements of its own.", tip); return; }
@@ -263,7 +265,13 @@ function returnStatement(L, node) {
   const span = spanOf(node);
   const want = L.decl.returns;
   if (want === "infer") {
-    const v = node.argument ? expr(L, node.argument) : null;
+    let v = node.argument ? expr(L, node.argument) : null;
+    // A baked constant's value stays untyped until each use.
+    if (v && L.slot.kind !== "const") v = settle(L, v);
+    if (v && node.argument) {
+      const text = L.src.slice(node.argument.range[0], node.argument.range[1]);
+      for (const before of L.returns) if (clash(L, node, before, v.t, "This return and an earlier return are", null, text)) break;
+    }
     L.returns.push(v ? v.t : "void");
     L.emit({ k: "return", value: v, span });
     return;

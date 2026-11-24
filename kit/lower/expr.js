@@ -2,11 +2,11 @@
 // cannot stay inside one (a store, a query's loop, a lazy branch holding either)
 // spills into statements ahead of it, in evaluation order.
 
-import { assignable, itemAt, join, showType, strictJoin } from "../ir/types.js";
+import { assignable, itemAt, join, showType, strictJoin, vectorOf } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
-import { wide, infinite, asScalar, mixTip, typedBinary, components, isNumericName } from "./numeric.js";
+import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Op, Place, Span } from "../ir/ir.js" */
@@ -63,7 +63,7 @@ export function mismatch(L, node, got, expected, what) {
   const members = typeof expected === "object" && "union" in expected ? expected.union : [expected];
   const enums = members.flatMap((m) => (typeof m === "object" && "enum" in m ? m.enum : []));
   const here = { t: got, text: L.src.slice(node.range[0], node.range[1]) };
-  const tip = enums.length ? `Use one of: ${enums.join(", ")}.` : mixTip(L, here, { t: expected, text: null }) ?? `Give it a ${showType(expected)} value.`;
+  const tip = enums.length ? `Use one of: ${enums.join(", ")}.` : mixTip(L, here, { t: expected, text: null }) ?? vectorTip(L, expected) ?? `Give it a ${showType(expected)} value.`;
   L.error("L003", node, `This is ${describe(got)}, but ${what} needs ${showType(expected)}.`, tip);
 }
 
@@ -261,7 +261,7 @@ export function resolveOn(L, recv, name, node) {
     members = Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, /** @type {Member} */ ({ kind: "value", t: v })]));
   } else if (typeof t === "object" && "vec" in t) {
     owner = "vector";
-    members = components(t);
+    members = components(L, t);
   }
   const decl = members?.[name];
   if (!decl) {
@@ -288,7 +288,8 @@ function valueOf(L, r, node) {
     return bad(node);
   }
   if (r.owner === "list" || r.owner === "struct" || r.owner === "vector" || (typeof r.recv.t === "object" && "list" in r.recv.t && name === "length")) {
-    return L.ex({ k: "field", of: r.recv, name, t: r.decl.t, span });
+    const vec = vectorOf(r.recv.t);
+    return L.ex({ k: "field", of: r.recv, name: vec ? componentOf(L, vec, name) : name, t: r.decl.t, span });
   }
   return L.ex({ k: "load", place: placeOf(r, name), t: r.decl.t, span }, r.decl.effect ? [r.decl.effect] : []);
 }
@@ -468,6 +469,11 @@ export function cond(L, node, branch) {
   const c = test(L, node.test);
   const a = L.capture(() => branch(node.consequent), f.yes);
   const b = L.capture(() => branch(node.alternate), f.no);
+  // Two untyped arms have no type yet: the default gives it. A literal beside a typed arm takes that arm's type.
+  if (isUntyped(a.value) && isUntyped(b.value)) { a.value = settle(L, a.value); b.value = settle(L, b.value); }
+  else { a.value = asScalar(L, a.value, scalarOf(b.value.t)); b.value = asScalar(L, b.value, scalarOf(a.value.t)); }
+  const [x, y] = [a.value, b.value].map((v) => L.src.slice(v.span[0], v.span[1]));
+  if (clash(L, node, a.value.t, b.value.t, "The arms of this ternary are", x, y)) return bad(node);
   const t = join(a.value.t, b.value.t);
   if (!a.stmts.length && !b.stmts.length) return L.ex({ k: "cond", test: c, then: a.value, else: b.value, t, span });
   const name = L.temp(t);
@@ -496,7 +502,7 @@ function array(L, node) {
     L.error("L012", node, "An empty array literal has no item type.", "Use a declared list (w.board, w.pool(name)), or write the items out.");
     return bad(node);
   }
-  const items = seq(L, elements.map((el) => () => expr(L, el)));
+  const items = seq(L, elements.map((el) => () => settle(L, expr(L, el))));
   /** @type {Type} */
   let item = "unknown";
   items.forEach((e, i) => {
@@ -524,7 +530,7 @@ function object(L, node, expected) {
   const names = props.map((p) => (p.key.type === "Identifier" ? p.key.name : String(/** @type {AST.Literal} */ (p.key).value)));
   const vals = seq(L, props.map((p, i) => () => {
     const want = shape?.struct[names[i]];
-    return want ? check(L, p.value, want, `field '${names[i]}'`) : expr(L, p.value);
+    return want ? check(L, p.value, want, `field '${names[i]}'`) : settle(L, expr(L, p.value));
   }));
   /** @type {Record<string, Expr>} */
   const fields = {};

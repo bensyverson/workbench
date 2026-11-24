@@ -54,6 +54,7 @@ export function typeProblem(t, partial = false) {
   if ("union" in o) {
     const ms = o.union;
     if (!Array.isArray(ms) || ms.length < 2) return "a union has two or more members";
+    if (ms.some((m) => m === "f32" || (typeof m === "object" && m !== null && "vec" in m))) return "a union never holds an f32 or a vector, since numbers of different types never mix";
     for (const m of ms) { const p = typeProblem(m, partial); if (p) return p; }
     return null;
   }
@@ -209,6 +210,7 @@ export function ownerOf(t) {
 export function storeFits(c, t) {
   if (c.type === "bool") return t === "bool";
   if (c.type === "enum") return typeof t === "object" && "enum" in t && sameType({ enum: t.enum }, { enum: c.values ?? [] });
+  if (c.type === "f32") return t === "f32";
   return t === "f64";
 }
 

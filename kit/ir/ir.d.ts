@@ -42,11 +42,11 @@ export interface VecType { vec: 2 | 3 | 4; of: "f32" | "f64"; name?: string }
 /** How a store coerces its value: the dialect's numeric rule for one place. */
 export interface Coerce {
   /**
-   * `f64` checks only finiteness. Sized integers truncate toward zero, then clamp to
+   * `f64` and `f32` check only finiteness, of a place of that number type. Sized integers truncate toward zero, then clamp to
    * `min`/`max` when given, then wrap into the type's range. `fix` rounds to 1/256,
    * clamps, then wraps into [-128, 128).
    */
-  type: "u8" | "i8" | "u16" | "i16" | "fix" | "bool" | "enum" | "f64";
+  type: "u8" | "i8" | "u16" | "i16" | "fix" | "bool" | "enum" | "f64" | "f32";
   min?: number;
   max?: number;
   values?: string[];

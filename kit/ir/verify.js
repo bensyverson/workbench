@@ -269,10 +269,16 @@ class Checker {
     this.type(p.t, `${path}.t`, span);
     const owner = ownerOf(p.recv.t);
     if (owner !== p.owner) this.report("V002", `A field of ${showSafe(p.recv.t)} is owned by ${p.owner}.`, path, span);
-    if (p.store && !storeFits(p.store, p.t)) this.report("V002", `A ${showSafe(p.t)} place is stored as ${p.store.type}.`, path, span);
+    if (p.store && !storeFits(p.store, p.t)) this.report("V002", `${article(showSafe(p.t))} ${showSafe(p.t)} place is stored as ${p.store.type}.`, path, span);
     return does;
   }
 }
+
+/**
+ * "An" before a name said with a vowel sound (an enum, an f32), else "A".
+ * @param {string} name
+ */
+const article = (name) => (/^([aeiou]|f\d)/i.test(name) ? "An" : "A");
 
 /**
  * `showType`, for a type that may be malformed.
@@ -290,8 +296,10 @@ function showSafe(t) {
 /** Per expression kind: check its type against its operands, recursing through `sub`; add its own effects to `does`. */
 const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, { k: K }>, sub: Sub, bad: Bad, does: Effect[], path: string }) => void }} */ ({
   num: ({ e, bad }) => {
-    if (e.t === "f32") { if (Math.fround(e.v) !== e.v || !Number.isFinite(e.v)) bad(`An f32 number holds a finite f32 value, not ${e.v}.`); }
-    else if (e.t !== "f64") bad(`A number is f64 or f32, not ${showSafe(e.t)}.`);
+    if (e.t !== "f32" && e.t !== "f64") { bad(`A number is f64 or f32, not ${showSafe(e.t)}.`); return; }
+    if (!Number.isFinite(e.v)) bad(`A number is finite, not ${e.v}.`);
+    else if (Object.is(e.v, -0)) bad("A number is never negative zero; write the negation of 0.");
+    else if (e.t === "f32" && Math.fround(e.v) !== e.v) bad(`An f32 number holds a finite f32 value, not ${e.v}.`);
   },
   str: ({ e, bad }) => { if (!sameType(e.t, { enum: [e.v] })) bad(`A string literal is typed by its value, ${JSON.stringify(e.v)}, not ${showSafe(e.t)}.`); },
   bool: ({ e, bad }) => { if (e.t !== "bool") bad(`A boolean is bool, not ${showSafe(e.t)}.`); },
@@ -431,10 +439,12 @@ const STMT = /** @type {{ [K in Stmt["k"]]: (x: { c: Checker, s: Extract<Stmt, {
   },
   for: ({ c, s, path, ex }) => {
     ex(s.init, "init");
-    if (!assignable(s.init.t, "f64")) c.report("V002", `A for counter starts at an f64, not ${showSafe(s.init.t)}.`, path, s.span);
+    // The counter has its start's type: an f64, or an f32 where the Dialect's number type is f32.
+    const counter = s.init.t === "f32" ? "f32" : "f64";
+    if (!assignable(s.init.t, counter)) c.report("V002", `A for counter starts at an f64 or an f32, not ${showSafe(s.init.t)}.`, path, s.span);
     const scope = new Set();
     c.scopes.push(scope);
-    c.bind(s.name, "f64", path, s.span, scope);
+    c.bind(s.name, counter, path, s.span, scope);
     ex(s.test, "test");
     if (!assignable(s.test.t, "bool")) c.report("V002", `A for tests a bool, not ${showSafe(s.test.t)}.`, path, s.span);
     c.loops++;

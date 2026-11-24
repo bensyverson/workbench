@@ -25,6 +25,7 @@ The kit's terms, as ruled on 2026-11-23 ([nomenclature decision](../project/2026
 - **Lambda**: a function in a slot.
   - A **Build-time Lambda** is full JavaScript, run once while the Program is built; its result is folded in as data.
   - A **Runtime Lambda** is in the Runtime Subset and is lowered to a Kernel.
+- **Default number type**: the type a Dialect gives a number literal where nothing else does (`numberType` on the Environment): `f64` for the DMG Dialect, `f32` for fields. A literal elsewhere takes the type of the value it meets.
 - **Environment**: what lowering resolves names and types against: a Dialect plus one Program's declarations (its components, attributes, events). In code it is `Environment` (`kit/lower/environment.d.ts`).
 - **Kernel**: a lowered Runtime Lambda: a typed function in the IR, plus the Iteration Space it runs over.
 - **Iteration Space**: what a Kernel runs over: per entity, per pixel, once per tick. ("Domain" means the subject area, as in Domain Language, never this.) In code it is the `space` field of a Kernel.

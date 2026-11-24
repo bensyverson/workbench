@@ -28,12 +28,23 @@ export function showType(t) {
 }
 
 /**
- * Structural equality.
+ * `t` as JSON with every object's keys in sorted order, so two types that differ only in the
+ * order their fields were written in read the same. Arrays keep their order: a union's members
+ * and an enum's values are lists.
+ * @param {unknown} t
+ * @returns {string}
+ */
+function canonical(t) {
+  return JSON.stringify(t, (_, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) : v));
+}
+
+/**
+ * Structural equality, regardless of the order a type's fields were written in.
  * @param {Type} a
  * @param {Type} b
  */
 export function sameType(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return a === b || canonical(a) === canonical(b);
 }
 
 /**

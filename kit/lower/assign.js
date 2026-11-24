@@ -3,7 +3,8 @@
 // Evaluation order is JavaScript's: the receiver once, then (for a compound
 // assignment or update) the target's old value, then the right-hand side.
 
-import { assignable } from "../ir/types.js";
+import { assignable, showType, vectorOf } from "../ir/types.js";
+import { components, componentOf, componentNames } from "./numeric.js";
 import { expr, check, mismatch, bad, seq, binary, resolveMember, placeOf, identifier, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -24,6 +25,10 @@ export function placeFor(L, node, opts = {}) {
   if (!r) return null;
   const name = /** @type {AST.Identifier} */ (node.property).name;
   const d = r.decl;
+  if (d.kind === "value" && !d.store && r.owner === "vector") {
+    L.error("L013", node, `'${name}' is a component of a vector value, which cannot be changed in place here.`, "Change a component of a let vector (let a = v; a.x = 1;), or build a new vector from the old one's components.");
+    return null;
+  }
   if (d.kind !== "value" || !d.store) {
     L.error("L013", node, `'${name}' is read-only at run time.`, "Baked values are ROM constants and built-ins like frame belong to the runtime; declare an .attr to change it.");
     return null;
@@ -92,6 +97,8 @@ export function assign(L, node, wantValue) {
     return cur();
   }
   if (target.type !== "MemberExpression") { L.error("L012", target, "Destructuring assignment is not lowered yet.", "Assign each field on its own line."); return bad(node); }
+  const part = vectorPart(L, target);
+  if (part) return assignPart(L, node, wantValue, part);
   const p = placeFor(L, target, { once: op !== "=" });
   if (!p) return bad(node);
   const what = `${p.place.owner}.${p.place.name}`;
@@ -116,6 +123,53 @@ export function assign(L, node, wantValue) {
 }
 
 /**
+ * A component of a vector held in a local: `a.x`, `a.r`. Null when `target` is anything else.
+ * @param {Lowerer} L
+ * @param {AST.MemberExpression} target
+ * @returns {{ id: AST.Identifier, b: Binding, vec: import("../ir/ir.js").VecType, comp: string, label: string } | null}
+ */
+function vectorPart(L, target) {
+  if (target.computed || target.object.type !== "Identifier" || target.property.type !== "Identifier") return null;
+  const b = L.lookup(target.object.name);
+  const vec = b && !b.dead && !b.pending ? vectorOf(b.t) : null;
+  const name = target.property.name;
+  if (!b || !vec || !(name in components(L, vec))) return null;
+  return { id: target.object, b, vec, comp: componentOf(L, vec, name), label: `${target.object.name}.${name}` };
+}
+
+/**
+ * `a.x = v` and `a.x += v` on a let vector: the vector is rebuilt with that component changed, since
+ * a vector is a value and has no places inside it. As a value it yields what was computed.
+ * @param {Lowerer} L
+ * @param {AST.AssignmentExpression} node
+ * @param {boolean} wantValue
+ * @param {NonNullable<ReturnType<typeof vectorPart>>} part
+ * @returns {Expr}
+ */
+function assignPart(L, node, wantValue, part) {
+  const span = spanOf(node);
+  const { id, b, vec, comp, label } = part;
+  if (!writableLocal(L, id)) return bad(node);
+  const cur = () => L.ex({ k: "local", name: b.name, t: b.t, span: spanOf(id) });
+  const at = (/** @type {string} */ c) => L.ex({ k: "field", of: cur(), name: c, t: vec.of, span: spanOf(node.left) });
+  let v;
+  if (node.operator === "=") v = check(L, node.right, vec.of, label);
+  else {
+    const [old, r] = seq(L, [() => at(comp), () => expr(L, node.right)]);
+    v = binary(L, node.operator.slice(0, -1), old, r, node);
+    if (!assignable(v.t, vec.of)) mismatch(L, node, v.t, vec.of, label);
+  }
+  if (wantValue && !L.stable(v)) {
+    const name = L.temp(v.t);
+    L.emit({ k: "let", name, t: v.t, value: v, span: v.span });
+    v = L.ex({ k: "local", name, t: v.t, span: v.span });
+  }
+  const items = componentNames(vec).map((c) => (c === comp ? v : at(c)));
+  L.emit({ k: "set", name: b.name, value: L.ex({ k: "vec", items, t: b.t, span }), span });
+  return v;
+}
+
+/**
  * `++`/`--`. As a value, prefix yields the new number and postfix the old one, both unwrapped.
  * @param {Lowerer} L
  * @param {AST.UpdateExpression} node
@@ -125,8 +179,20 @@ export function assign(L, node, wantValue) {
 export function update(L, node, wantValue) {
   const span = spanOf(node);
   const op = node.operator === "++" ? "add" : "sub";
-  const one = () => L.ex({ k: "num", v: 1, t: "f64", span });
   const target = node.argument;
+  if (!wantValue && target.type === "MemberExpression" && vectorPart(L, target)) {
+    // `a.x++` as a statement is `a.x += 1`.
+    const one = /** @type {AST.Literal} */ ({ type: "Literal", value: 1, raw: "1", range: node.range, loc: node.loc });
+    return assign(L, /** @type {AST.AssignmentExpression} */ ({ type: "AssignmentExpression", operator: node.operator === "++" ? "+=" : "-=", left: target, right: one, range: node.range, loc: node.loc }), false);
+  }
+  /** The number type of the target: the step is one of it. */
+  let nt = /** @type {"f32" | "f64"} */ ("f64");
+  const one = () => L.ex({ k: "num", v: 1, t: nt, span });
+  const numeric = (/** @type {import("../ir/ir.js").Type} */ t) => {
+    if (t === "f32") { nt = "f32"; return; }
+    if (typeof t === "object" && "vec" in t) { L.error("L003", target, `'${node.operator}' counts a number, not ${showType(t)}.`, `Change a component instead: ${L.src.slice(target.range[0], target.range[1])}.x${node.operator}.`); return; }
+    if (!assignable(t, "f64")) mismatch(L, target, t, "f64", `'${node.operator}'`);
+  };
   /** @type {() => Expr} */
   let read;
   /** @type {(v: Expr) => void} */
@@ -134,25 +200,25 @@ export function update(L, node, wantValue) {
   if (target.type === "Identifier") {
     const b = writableLocal(L, target);
     if (!b) return bad(node);
-    if (!assignable(b.t, "f64")) mismatch(L, target, b.t, "f64", `'${node.operator}'`);
-    read = () => L.ex({ k: "local", name: b.name, t: "f64", span: spanOf(target) });
+    numeric(b.t);
+    read = () => L.ex({ k: "local", name: b.name, t: nt, span: spanOf(target) });
     write = (v) => { L.emit({ k: "set", name: b.name, value: v, span }); };
   } else if (target.type === "MemberExpression") {
     const p = placeFor(L, target, { once: true });
     if (!p) return bad(node);
-    if (!assignable(p.place.t, "f64")) mismatch(L, target, p.place.t, "f64", `'${node.operator}'`);
+    numeric(p.place.t);
     read = p.load;
     write = (v) => { L.emit({ k: "store", place: p.place, value: v, span }, [p.write]); };
   } else { L.error("L012", node, "This update target is not lowered.", "Update a local or a field."); return bad(node); }
-  const opExpr = (/** @type {Expr} */ x) => L.ex({ k: "op", op, args: [x, one()], t: "f64", span });
+  const opExpr = (/** @type {Expr} */ x) => L.ex({ k: "op", op, args: [x, one()], t: nt, span });
   if (!wantValue) { write(opExpr(read())); return bad(node); }
-  const name = L.temp("f64");
-  const local = () => L.ex({ k: "local", name, t: "f64", span });
+  const name = L.temp(nt);
+  const local = () => L.ex({ k: "local", name, t: nt, span });
   if (node.prefix) {
-    L.emit({ k: "let", name, t: "f64", value: opExpr(read()), span });
+    L.emit({ k: "let", name, t: nt, value: opExpr(read()), span });
     write(local());
   } else {
-    L.emit({ k: "let", name, t: "f64", value: read(), span });
+    L.emit({ k: "let", name, t: nt, value: read(), span });
     write(opExpr(local()));
   }
   return local();

@@ -5,7 +5,7 @@
 // context. None of this runs where no operand is an f32 or a vector, so M1's lowering
 // of f64 code is unchanged.
 
-import { sameType, showType, vectorOf } from "../ir/types.js";
+import { join, sameType, showType, vectorOf } from "../ir/types.js";
 import { bad, spanOf, seq, check, expr, mismatch } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -35,7 +35,7 @@ export const wide = (t) => t === "f32" || vectorOf(t) !== null;
  * @param {Type} t
  * @returns {"f32" | "f64" | null}
  */
-const scalarOf = (t) => (t === "f32" || t === "f64" ? t : vectorOf(t)?.of ?? null);
+export const scalarOf = (t) => (t === "f32" || t === "f64" ? t : vectorOf(t)?.of ?? null);
 
 /**
  * L016 for a literal that is not finite, or null when `v` is finite.
@@ -51,16 +51,30 @@ export function infinite(L, v, span) {
   return L.ex({ k: "null", t: "unknown", span });
 }
 
+/** The operators a number literal's arithmetic may pass through and still be untyped: `2 * 3` is a literal too. */
+const LITERAL_OPS = new Set(["neg", "pos", "add", "sub", "mul", "div", "rem", "pow"]);
+
 /**
- * `e` as a value of scalar type `s`: a number literal (maybe negated) typed f64 becomes an
- * f32 literal, rounded to f32 here, once. Anything else is returned as it is, for the caller to check.
+ * Whether `e` is an untyped number: a literal, or arithmetic on literals alone. Its f64 type is
+ * only the placeholder lowering gives a number before its context decides; `asScalar` and `settle`
+ * replace it. A typed f64 (a parameter, a conversion's result) is never one.
+ * @param {Expr} e
+ * @returns {boolean}
+ */
+export function isUntyped(e) {
+  return e.t === "f64" && (e.k === "num" || (e.k === "op" && LITERAL_OPS.has(e.op) && e.args.every(isUntyped)));
+}
+
+/**
+ * `e` as a value of scalar type `s`: an untyped number (see `isUntyped`) becomes an f32 one,
+ * each literal rounded to f32 here, once. Anything else is returned as it is, for the caller to check.
  * @param {Lowerer} L
  * @param {Expr} e
- * @param {Type | null} s
+ * @param {Type | null | undefined} s
  * @returns {Expr}
  */
 export function asScalar(L, e, s) {
-  if (s !== "f32" || e.t !== "f64") return e;
+  if (s !== "f32" || !isUntyped(e)) return e;
   if (e.k === "num") {
     const v = Math.fround(e.v);
     if (Number.isFinite(v)) return L.ex({ ...e, v, t: "f32" });
@@ -68,11 +82,52 @@ export function asScalar(L, e, s) {
     L.error("L016", e.span, `${text} is outside f32's finite range, so as an f32 it would be Infinity.`, `f32's finite values reach about ±${F32_MAX}; use a smaller number, or keep this value f64.`);
     return L.ex({ k: "null", t: "unknown", span: e.span });
   }
-  if (e.k === "op" && (e.op === "neg" || e.op === "pos") && e.args[0].k === "num") {
-    const arg = asScalar(L, e.args[0], s);
-    return arg.t === "f32" ? L.ex({ ...e, args: [arg], t: "f32" }) : arg;
-  }
-  return e;
+  if (e.k !== "op") return e;
+  const args = e.args.map((a) => asScalar(L, a, s));
+  if (args.some((a) => a.t !== "f32")) return L.ex({ k: "null", t: "unknown", span: e.span });
+  return L.ex({ ...e, args, t: "f32" });
+}
+
+/**
+ * `e` where nothing gives its type (a let's initializer, a helper's argument, a ternary of
+ * literals, an array's item): an untyped number takes the Environment's default number type.
+ * @param {Lowerer} L
+ * @param {Expr} e
+ * @returns {Expr}
+ */
+export const settle = (L, e) => asScalar(L, e, L.environment.numberType);
+
+/**
+ * Whether a value of type `t` mixes a number type with another type: an f32 or a vector that
+ * joined with something else into a union, which the IR does not hold.
+ * @param {Type} t
+ * @returns {boolean}
+ */
+function mixesNumbers(t) {
+  if (typeof t !== "object") return false;
+  if ("opt" in t) return mixesNumbers(t.opt);
+  return "union" in t && t.union.some((m) => wide(m) || mixesNumbers(m));
+}
+
+/**
+ * Reports (L003) two values that must share one type but are an f32 or a vector and something
+ * else, returning whether it did. `a` and `b` are described by `what`; `b`'s source is
+ * `bText` and `a`'s `aText` (null when `a` is no longer in the source, an earlier return).
+ * @param {Lowerer} L
+ * @param {AST.Node} node  Where to report.
+ * @param {Type} a
+ * @param {Type} b
+ * @param {string} what  e.g. "The arms of this ternary are".
+ * @param {string | null} aText
+ * @param {string} bText
+ * @returns {boolean}
+ */
+export function clash(L, node, a, b, what, aText, bText) {
+  if (a === "unknown" || b === "unknown" || !mixesNumbers(join(a, b))) return false;
+  const tip = mixTip(L, { t: a, text: aText }, { t: b, text: bText })
+    ?? (vectorOf(a) && vectorOf(b) ? `Build one from the other's components, such as ${ctor(L, /** @type {VecType} */ (vectorOf(a)))}(v.x, v.y${/** @type {VecType} */ (vectorOf(a)).vec > 2 ? ", v.z" : ""}), so both are ${showType(a)}.` : `Give both one type; ${showType(a)} and ${showType(b)} do not convert.`);
+  L.error("L003", node, `${what} ${showType(a)} and ${showType(b)}, which are different types.`, tip);
+  return true;
 }
 
 /**
@@ -173,13 +228,49 @@ export function typedBinary(L, operator, a, b, node) {
 }
 
 /**
- * The members of a vector: its components, each of its scalar type.
+ * The members of a vector: its components, each of its scalar type, and the environment's aliases for them.
+ * @param {Lowerer} L
  * @param {VecType} t
  * @returns {Record<string, import("./environment.js").Member>}
  */
-export function components(t) {
-  return Object.fromEntries(COMPONENTS.slice(0, t.vec).map((c) => [c, { kind: "value", t: t.of }]));
+export function components(L, t) {
+  const own = COMPONENTS.slice(0, t.vec);
+  const aliases = Object.keys(aliasesOf(L, t)).filter((a) => own.includes(aliasesOf(L, t)[a]));
+  return Object.fromEntries([...own, ...aliases].map((c) => [c, { kind: "value", t: t.of }]));
 }
+
+/**
+ * The tip for a value that should be vector type `t`: how to build one, or null when `t` is not a vector.
+ * @param {Lowerer} L
+ * @param {Type} t
+ * @returns {string | null}
+ */
+export function vectorTip(L, t) {
+  const v = vectorOf(t);
+  return v ? `Build one: ${ctor(L, v)}(${componentNames(v).join(", ")}), with an ${v.of} for each component.` : null;
+}
+
+/**
+ * The names of `t`'s components, in order.
+ * @param {VecType} t
+ */
+export const componentNames = (t) => COMPONENTS.slice(0, t.vec);
+
+/**
+ * The environment's alias names for `t`'s components, as alias to the component.
+ * @param {Lowerer} L
+ * @param {VecType} t
+ * @returns {Record<string, string>}
+ */
+const aliasesOf = (L, t) => (t.name ? L.environment.componentAliases?.[t.name] ?? {} : {});
+
+/**
+ * The component of `t` that `name` stands for: itself, or what an alias names.
+ * @param {Lowerer} L
+ * @param {VecType} t
+ * @param {string} name
+ */
+export const componentOf = (L, t, name) => aliasesOf(L, t)[name] ?? name;
 
 /**
  * A call to a vector type's name (construction) or to a conversion, or null when `name` is neither.
@@ -195,7 +286,7 @@ export function numericCall(L, node, name, args) {
   if (!v && !to) return null;
   const n = v ? v.vec : 1;
   if (args.length !== n) {
-    L.error("L015", node, `${name} got ${args.length} argument${args.length === 1 ? "" : "s"}.`, v ? `${name} takes ${n}: one ${v.of} per component.` : `${name} takes 1: the value to convert.`);
+    L.error("L015", node, `${name} got ${args.length} argument${args.length === 1 ? "" : "s"}.`, v ? `${name} takes ${n}: one ${v.of} per component.${fromVector(L, name, v, args)}` : `${name} takes 1: the value to convert.`);
     return bad(node);
   }
   const span = spanOf(node);
@@ -210,6 +301,42 @@ export function numericCall(L, node, name, args) {
   if (arg.t === target) L.error("L003", args[0], `${what} is already ${target}.`, `Remove the conversion: write ${what}.`);
   else if (arg.t !== from && arg.t !== "unknown") mismatch(L, args[0], arg.t, from, `${name}(…)`);
   return L.ex({ k: "op", op: target, args: [arg], t: target, span });
+}
+
+/**
+ * For `vec3(c)` with a vector `c`: the sentence naming the components to pass, or "".
+ * @param {Lowerer} L
+ * @param {string} name
+ * @param {VecType} v
+ * @param {AST.Expression[]} args
+ */
+function fromVector(L, name, v, args) {
+  if (args.length !== 1 || args[0].type !== "Identifier") return "";
+  const t = L.lookup(args[0].name)?.t;
+  const from = t ? vectorOf(t) : null;
+  if (!from) return "";
+  const x = args[0].name;
+  const parts = COMPONENTS.slice(0, v.vec).map((c) => (COMPONENTS.indexOf(c) < from.vec ? `${x}.${c}` : "0"));
+  return ` To make one from a ${showType(from)}, write its components: ${name}(${parts.join(", ")}).`;
+}
+
+/**
+ * Checks a call's type variable against its signature's `numeric` limit, reporting L003 when it is not
+ * what the intrinsic takes. Returns whether it is fine.
+ * @param {Lowerer} L
+ * @param {AST.Node} node
+ * @param {"number" | "vector"} limit
+ * @param {Map<string, Type>} bound
+ * @param {string} label  What is called, for the message.
+ * @returns {boolean}
+ */
+export function numericBinding(L, node, limit, bound, label) {
+  const t = [...bound.values()][0];
+  if (!t || t === "unknown") return true;
+  if (limit === "vector" ? vectorOf(t) : t === "f32" || t === "f64" || vectorOf(t)) return true;
+  const takes = limit === "vector" ? "a vector" : "numbers or vectors";
+  L.error("L003", node, `${label} takes ${takes}, not ${showType(t)}.`, limit === "vector" ? "Pass a vector value, such as a vec2 or a color." : "Pass an f32 or a vector.");
+  return false;
 }
 
 /**

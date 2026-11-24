@@ -6,7 +6,7 @@ import { didYouMean } from "./codes.js";
 import { query } from "./query.js";
 import { expr, check, mismatch, bad, seq, resolveOn, spanOf, computed } from "./expr.js";
 import { HELPER_OWNER } from "./codes.js";
-import { numericCall } from "./numeric.js";
+import { numericCall, settle, asScalar, scalarOf, numericBinding } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Effect } from "../ir/ir.js" */
@@ -106,13 +106,17 @@ function withSig(L, node, sig, fn, recv, args, effects, label, lead = []) {
   const vals = seq(L, [() => recv, ...args.map((a, i) => () => {
     const p = i < sig.params.length ? sig.params[i] : /** @type {Type} */ (sig.rest);
     if (JSON.stringify(p).includes("tvar")) {
-      const v = expr(L, a);
+      // A literal has no type of its own: it takes the one the variable is already bound to, else the default.
+      const lit = expr(L, a);
+      const prior = typeof p === "object" && "tvar" in p ? bound.get(p.tvar) : undefined;
+      const v = prior ? asScalar(L, lit, scalarOf(prior)) : settle(L, lit);
       if (!unify(p, v.t, bound)) mismatch(L, a, v.t, substitute(p, bound), `argument ${i + 1} of ${label}`);
       return v;
     }
     return check(L, a, p, `argument ${i + 1 + lead.length} of ${label}`);
   })]);
   const [r, ...rest] = vals;
+  if (sig.numeric && !numericBinding(L, node, sig.numeric, bound, label)) return bad(node);
   return L.ex({ k: "call", fn, recv: r, args: [...lead, ...rest], effects, t: substitute(sig.returns, bound), span: spanOf(node) }, effects);
 }
 
@@ -191,7 +195,7 @@ function argument(L, a, i, sig, what) {
     L.error("L014", a, conflict.message, conflict.tip);
     return e;
   }
-  return sig ? check(L, a, sig.params[i], what) : expr(L, a);
+  return sig ? check(L, a, sig.params[i], what) : settle(L, expr(L, a));
 }
 
 /**

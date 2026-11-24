@@ -249,9 +249,9 @@ test("V011: a node without a span inside the source", () => {
 
 test("V012: a kernel whose JSON form does not read back the same", () => {
   const r = rich();
-  assert.deepEqual(codes(broken(r, (k) => { k.body[3].value.items[0].v = Infinity; })), ["V012"], "Infinity reads back as null");
-  assert.deepEqual(codes(broken(r, (k) => { k.body[3].value.items[0].v = NaN; })), ["V012"], "NaN reads back as null");
-  assert.deepEqual(codes(broken(r, (k) => { k.body[3].value.items[0].v = -0; })), ["V012"], "-0 reads back as 0");
+  assert.deepEqual(codes(broken(r, (k) => { k.body[3].value.items[0].v = Infinity; })), ["V002", "V012"], "Infinity reads back as null (and the num rule rejects it itself)");
+  assert.deepEqual(codes(broken(r, (k) => { k.body[3].value.items[0].v = NaN; })), ["V002", "V012"], "NaN reads back as null (and the num rule rejects it itself)");
+  assert.deepEqual(codes(broken(r, (k) => { k.body[3].value.items[0].v = -0; })), ["V002", "V012"], "-0 reads back as 0 (and the num rule rejects it itself)");
   const fn = rich();
   /** @type {any} */ (fn.body[0]).note = () => 1;
   assert.deepEqual(codes(fn), ["V012"], "a function is dropped");
