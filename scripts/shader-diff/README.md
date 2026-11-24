@@ -18,7 +18,7 @@ node scripts/shader-diff/cli.js renderer          # what WebGL reports: vendor, 
 
 ## Planted faults
 
-[`kit/harness/faults.js`](../../kit/harness/faults.js) (`FAULTS`): 28 faults (operator swaps, constant nudges, swizzles, dropped roundings, spelling changes in what a backend emitted). Each is planted in one backend's copy of the lowered Kernels or its emitted text and run over the case that exercises it, at 0.49 scale; the interpreter stays the reference. A fault is caught when the pair holding the faulty backend differs: bit for bit for JS, beyond `GLSL_TOLERANCE` for GLSL. A fault that is expected to escape carries its reason (`escapes`), and `faults` fails if an escape has none, or if one claimed is caught. The recorded run is in the [M2 findings draft](../../project/2026-11-23-m2-findings-draft.md).
+[`kit/harness/faults.js`](../../kit/harness/faults.js) (`FAULTS`): 28 faults (operator swaps, constant nudges, swizzles, dropped roundings, spelling changes in what a backend emitted). Each is planted in one backend's copy of the lowered Kernels or its emitted text and run over the case that exercises it, at 0.49 scale; the interpreter stays the reference. A fault is caught when the pair holding the faulty backend differs: bit for bit for JS, beyond `GLSL_TOLERANCE` for GLSL. A fault that is expected to escape carries its reason (`escapes`), and `faults` fails if an escape has none, or if one claimed is caught. The recorded run is in the [M2 findings](../../project/2026-11-23-m2-findings.md).
 
 ## Tests
 

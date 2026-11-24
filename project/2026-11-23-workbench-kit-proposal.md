@@ -126,6 +126,8 @@ JavaScript is the first front end. YAML and canvas editing lower into the same I
 
 The whole IR has a JSON form that is diffable and readable by the agent.
 
+> **Corrected 2026-11-23 (M2):** the Types row lists more than the core has. M2 added `f32` and the vectors `vec2` to `vec4` of a scalar type (a Dialect's `color` or `vec2` is a nominal name over one); the core has **no** matrices, fixed-point values or fixed-length arrays as value types, integer sizes live on stores only, and there is no integer arithmetic (a shader's integer hash is an intrinsic, `ihash`). The table also omits a setting every Dialect needs: the **default number type** (`numberType`, DMG `f64`, fields `f32`), which M1 had hard-wired as `f64` in lowering and the verifier. And "each numeric type states its overflow rule" holds for stored integers only; `f32` has a rounding rule, not an overflow one. See [the M2 findings](2026-11-23-m2-findings.md), H2.
+
 ### 5.3 What is deliberately not in the core
 
 Entities, events, timers, frame loops, sprites, tables and queries. Each is a dialect construct built from kernels and effects. A shader dialect is almost nothing but pure kernels over pixels. A game dialect is kernels over entities, plus effects.
@@ -175,6 +177,8 @@ JavaScript has no operator overloading, so `uv + k * q` on vectors does not run 
 - **Recommended:** operators resolve on declared types. Runtime lambdas are always executed through the IR. Shader-style code reads naturally, and there is exactly one execution path.
 - **Cost:** a runtime lambda is no longer runnable as-is, so debugging goes through emitted code and spans, and the original closure cannot serve as a test oracle. A small reference interpreter over the IR takes that role (§12).
 - **Alternative:** keep strict JS semantics and write `add(uv, mul(k, q))`. Every lambda stays directly runnable, at the price of unpleasant shader code.
+
+> **Corrected 2026-11-23 (M2):** D1 was taken (Ben, before M2) and built. The reference interpreter (`kit/interp`) exists and is the oracle: emitted JS agrees with it to the bit, and emitted GLSL within a tolerance. D1's cost was smaller than feared: the parser needed no change, since `uv + k * q` is valid JavaScript and the meaning comes from lowering's operator resolution. Whether authors and models accept it is **provisional**: the first fresh-agent round found no confusion but barely used a vector operator ([the M2 findings](2026-11-23-m2-findings.md), H3).
 
 ### 5.8 A worked example
 
@@ -258,6 +262,8 @@ kernel Mole.onFrame(self: &Mole)   ; domain entity · read up · read/write ttl 
 
 **Why emit JavaScript when the source is JavaScript.** The emitted code is the code every other backend is compared against. It carries the dialect's numeric semantics and the optimisations, and it can be instrumented for stepping, tracing and cost counting.
 
+> **Corrected 2026-11-23 (M2):** two claims here changed. (1) The emitted JavaScript is **not** what the other backends are compared against: with typed operators there is no runnable closure and the JS is itself an output, so the **reference interpreter** is the oracle, and the emitted JS and the emitted GLSL are each compared with it (JS exactly, GLSL within a tolerance). (2) GLSL does not read the core IR directly, as §5.1's diagram draws it: the first **LIR** stage (`kit/lir`) sits between them, where f64 is narrowed explicitly or the Kernel refused, uniforms and choice indices become explicit, and operators GLSL cannot reproduce (`%` on f32) are refused. The capability message above is implemented as diagnostic T001, in nearly these words. See [the M2 findings](2026-11-23-m2-findings.md).
+
 **Native machine code.** The default answer is WebAssembly, plus C or Rust text for a host toolchain. Writing our own x86-64 or ARM64 object code is feasible for an IR this small, but it would be much slower than an optimising compiler's output and could not be run in the browser to test it. It is out of scope unless asked for (question Q1).
 
 ---
@@ -311,6 +317,8 @@ Dialect("fields", { kit: "^1" })
 ```
 
 Intrinsics written in the subset itself (`impl: "lib/fbm.js"`) reach every backend for free. That is also how a dialect shares helpers instead of pasting them.
+
+> **Corrected 2026-11-23 (M2):** this fluent `Dialect(...)` sketch was not built. The fields Dialect is hand-written data (`FIELDS_DIALECT` in `kit/dialects/fields/index.js`), an Environment function, a hand-written `field(name)` builder and `lowerField`; the generic Definition API is M3's. What the build changed against the sketch: (a) `.type("vec2", { of, n })` is a table of nominal vector types (`vec3` and `color` share one shape and never join); (b) `.domain` is an **Iteration Space** and the Kernel field is `space`; (c) the Dialect declares a **default number type** (`numberType: "f32"`), which the sketch lacks and the core needed; (d) an intrinsic's signature can limit a type variable to numbers or vectors (`numeric`), so `mix` and `length` are generic; (e) `impl: "lib/fbm.js"` became the **Library**, intrinsics written as Runtime Subset source in `library.js` and lowered like helpers; (f) `compare: "tolerance"` names no figure: the figure (`GLSL_TOLERANCE`, 1e-3) lives in `kit/harness/tolerance.js` and should move to the target; (g) no forbidden calls (every slot's `forbid` list is empty; `Math` is simply not a name, L001), no `.check`, no `texture` or `sample`, and no `tick` space. See [the M2 findings](2026-11-23-m2-findings.md), "What M3 should change".
 
 ### 8.2 Grammar
 
@@ -483,6 +491,8 @@ One tool, `eval`, over the lab API, as today. Its scope and its prompt are gener
 2. **Differential runs.** The same kernel inputs, or the same seed and input trace for a stateful program, go through two backends. The report names the first difference, the value that differed and the source line that last wrote it.
 3. **Exact where possible, tolerant where not.** Integer and fixed-point results must match bit for bit. Floating-point results from a GPU are compared within a tolerance the target declares.
 4. **A pixel debugger for free.** Because every shader kernel also has a JavaScript form, one pixel can be run on the CPU and stepped through.
+
+> **Corrected 2026-11-23 (M2):** the debugger steps the **reference interpreter**, not the emitted JavaScript (`kit/debugger`, through the interpreter's per-node `onNode` hook, which carries a span, a value and a depth). The emitted JS has a line map but no per-node stepping, and under typed operators the "JavaScript form" is an output, not a runnable closure. It was checked in a browser: a click gave pixel (75, 75) with a 157-step trace, and the GPU's byte matched the interpreter's in every channel for that pixel and three fixed ones (from job YqeZpz's note). Item 1 is built (`kit/interp`); item 3's tolerance is 1e-3 per color component, measured on one GPU. See [the M2 findings](2026-11-23-m2-findings.md).
 5. **Programs are tests.** Each example carries its own assertions. Each optimisation pass must leave differential results unchanged.
 6. **Spec checks.** No network assets, required comments present, every view placed, budgets met. This is what stops template drift.
 
@@ -556,6 +566,8 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 | M6 Regenerate | Revised prompts; one workbench built end to end; kit v1 frozen | No kit code was regenerated | |
 
 > **Corrected 2026-11-23 (M1):** the DMG presets are not numbered 01 to 22. Their ids are 01–08, 10–14, 20–26 and 30–31 (22 in all), and an id is a label, not a position: preset `10` is the ninth. M1 compared presets 04–07 instead of 01–05, because 01–03 have almost no runtime logic ([the M1 plan](2026-11-23-m1-game-slice-plan.md)), and lowered all 22 ([M1 findings](2026-11-23-m1-findings.md)).
+
+> **Corrected 2026-11-23 (M2):** M2 is done. One fields source drives the reference interpreter, emitted JS (identical bits) and emitted GLSL ES 3.00 (within 2.19e-4 per component on one GPU), with a pixel debugger. H2 is supported for two Dialects at the cost of changes to 14 existing source files (the "one change to the core" in the plan was wrong), and H3 is provisional. H2's test says "three dialects, one of each kind": M2 tried two. See [the M2 findings](2026-11-23-m2-findings.md).
 
 The thin slices come before the kit extraction on purpose. If the subset is uncomfortable to write in, we should learn that before building a kit around it.
 

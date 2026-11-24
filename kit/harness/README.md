@@ -43,7 +43,7 @@ A shader gives only its output, so the finest place a difference can be named is
 
 ## The GLSL tolerance
 
-`GLSL_TOLERANCE = 1e-3` per color component. It is measured, not derived: the figure, the renderer it was measured on, its headroom and the evidence are in [the M2 findings draft](../../project/2026-11-23-m2-findings-draft.md). It belongs to the GLSL target and lives here only because `kit/emit/glsl` was finished by another leaf; it should move there, with the fields Dialect's `targets.glsl.compare` pointing at it.
+`GLSL_TOLERANCE = 1e-3` per color component. It is measured, not derived: the figure, the renderer it was measured on, its headroom and the evidence are in [the M2 findings](../../project/2026-11-23-m2-findings.md). It belongs to the GLSL target and lives here only because `kit/emit/glsl` was finished by another leaf; it should move there, with the fields Dialect's `targets.glsl.compare` pointing at it.
 
 ## Tests
 
