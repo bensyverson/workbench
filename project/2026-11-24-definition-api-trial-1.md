@@ -65,6 +65,8 @@ In order of weight. Each is a recommendation for the revised draft, not yet buil
 
 ## For Ben
 
+> **Ruled 2026-11-24 (Ben):** a core nominal scalar for dates, yes; its backing was asked back, and the recommendation is f64 milliseconds since the Unix epoch, UTC (exact for whole milliseconds to 2^53, covers timestamps as well as dates, matches `Date.getTime()`; f32 cannot hold it). Source schemas are declared in v0. The trial reruns on the revised draft with two Sonnet agents and one Haiku agent; whether on paper or after the build was asked back.
+
 - **Dates, integers and nulls** (design decision 12): all three agents needed dates, in three incompatible workarounds. A core nominal scalar (a `date` any Dialect could declare, as vectors are declared) is the likely smallest change; it would be the first change to the core for H2.
 - **Schema inference from data** (example 1): all three declared source columns by hand. Recommendation: keep declared schemas in v0; threaded state (change 1) makes inference a later, contained addition (the initial state read from a sample).
 - **Whether to rerun the trial** on the revised draft before building, with the stronger checker. The local ruling says to rerun after changing the design; the cost is about 100k tokens per agent.

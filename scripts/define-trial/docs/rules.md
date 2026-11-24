@@ -24,13 +24,13 @@ Import only from `kit/define` (and between your own files). The checker supplies
 Each rule names the checker codes that enforce it. Run the checker as often as you like: `node <checker> <your directory>`. It prints each diagnostic with its file and line.
 
 - **R1. Only the draft's keys and helpers.** Every key in `defineDialect` and `defineGrammar` is one the draft names; every helper is one it exports. (D001, D011)
-- **R2. Every type name resolves** to a built-in, a declared vector or object, or a type variable. (D002)
+- **R2. Every type name resolves** to a built-in, a declared vector, scalar or object, or a type variable. (D002)
 - **R3. Every intrinsic is complete:** a signature, a `ref`, and a spelling for every target. (D003, D004)
 - **R4. Every space is pure, every slot convention names a declared space, and every target accepts declared spaces only.** (D005, D006, D008)
 - **R5. Names do not collide:** across intrinsics, globals, library entries and objects; and between a child construct's methods and its parent's. (D007, D010)
 - **R6. Each example file is a Program or a refusal.** Either it builds a Program with your generated builder and `export default`s the call chain (without `.build()`), or its first line is `// REFUSED: <code>` followed by the diagnostic your language gives for it (a `rejected` entry or a check), and why. A file may also hold a Program for the part that fits plus a `// REFUSED:` comment for the rest. (C001)
 - **R7. Lambdas obey the Runtime Subset and the free-name rule.** Every Runtime Lambda in an example parses in the Runtime Subset, and every free name in it is allowed by the free-name rule. (C002, C003, plus the parser's own `P…` and `S…` codes)
-- **R8. Nothing outside the draft is assumed.** No build-time lambdas (functions that run while the Program is built and return grammar), no effects, no fragments or mixins, no layout, no rendering, no integer or date type. Where an example needs one, refuse it (R6) or report it as a gap (R9). (D012 for an impure space; the rest is read by hand)
+- **R8. Nothing outside the draft is assumed.** No build-time lambdas (functions that run while the Program is built and return grammar), no effects, no fragments or mixins, no layout, no rendering, no integer type. Dates are a nominal scalar you declare (`scalar`). Where an example needs one, refuse it (R6) or report it as a gap (R9). (D012 for an impure space; the rest is read by hand)
 - **R9. The report.** `REPORT.md` has these sections, in order:
   1. **Difficulty**, 1 (easy) to 5 (could not do it), with one sentence why.
   2. **Per example**: one line each: fits, partly fits (what did not), or refused (why).
@@ -53,12 +53,13 @@ Each rule names the checker codes that enforce it. Run the checker as often as y
 | D006 | a target whose `accepts` names an undeclared space |
 | D007 | a name declared twice across intrinsics, globals, library and objects |
 | D008 | a compare mode other than `exact()` or `tolerance(figure)` with a positive figure |
-| D009 | a lambda slot whose `slot` names no slot convention |
+| D009 | a `lambda(convention)`, in an argument or a shape, that names no slot convention |
 | D010 | a child construct with a method of the same name as its parent's, or a `parent` that is not a construct |
 | D011 | a malformed argument spec or shape (`data()` with no shape, an unknown shape name) |
 | D012 | a space without `pure: true` |
 | D013 | a library entry that is not `{ fn: src }` or `{ const: src }`, or whose source does not parse |
-| D014 | a slot without a `kind`, or with a kind other than `decl`, `unit` or `lambda` |
+| D014 | a slot without a `kind`, or with a kind other than `decl` or `unit` |
+| D015 | a construct `state` without `record: "calls"`, without `init` or `step`, or whose `names` clash with a Program namespace; an `opt` or `rest` argument that is not last |
 
 ### Examples (`C…`): the example files
 

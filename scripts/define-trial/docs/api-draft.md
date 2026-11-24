@@ -1,6 +1,6 @@
 # The Definition API (draft)
 
-*Draft for review, 2026-11-24. Nothing here is built yet. You are being asked to use it on paper and say where it fails you.*
+*Draft for review, 2026-11-24, second revision. Nothing here is built yet. You are being asked to use it on paper and say where it fails you.*
 
 A **Domain Language** is a fluent JavaScript chain that people write Programs in, such as `field("swirl").param("angle", { value: 2.4 }).pixel((uv, u) => …).build()`. The functions inside it that run per pixel, per row or per entity are **Runtime Lambdas**: the kit does not run them as JavaScript. It reads their source, type-checks it against what the language declares, and compiles it for each target (JavaScript, GLSL).
 
@@ -23,9 +23,11 @@ Wherever a definition names a type, write its name as a string:
 | a declared object, e.g. `"Uniforms"` | a handle with members (see `objects`) |
 | a single capital letter, `"T"` | a type variable in an intrinsic's signature, bound per call |
 
-Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings; nominal: two enums with the same strings are different types).
+Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null; a lambda must check it before use), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings or numbers; nominal: two enums with the same values are different types), and `object(label, members)`, an object type made on the spot (see "Construct state").
 
-**There is no integer type and no date type.** A whole number is a number; there is no `int`. If your language needs either, say so in your report rather than inventing one.
+**There is no integer type.** A whole number is a number. If your language needs integers, say so in your report rather than inventing one.
+
+**Dates and other named scalars.** A Dialect may declare a **nominal scalar** in `types`: a named type stored as a number, which lambdas can compare (`<`, `===`) with its own kind only, and which no arithmetic operator accepts. `date: scalar("f64", { note: "milliseconds since 1970-01-01, UTC" })`. Operations on it (`year(d)`, `truncMonth(d)`) are intrinsics.
 
 ## `defineDialect`
 
@@ -60,7 +62,7 @@ types: {
 }
 ```
 
-A vector type is built by name in a lambda, `vec2(x, y)`, and read as `.x .y .z .w` (or its aliases). Vector types are **nominal**: `vec3` and `color` both hold three f32s and never mix. Operators work on them component by component (`a + b` on two `vec2`s; `v * 2` scales).
+A vector type is built by name in a lambda, `vec2(x, y)`, and read as `.x .y .z .w` (or its aliases). Vector types are **nominal**: `vec3` and `color` both hold three f32s and never mix. Operators work on them component by component (`a + b` on two `vec2`s; `v * 2` scales). `scalar(of, { note })` declares a nominal scalar (see "Types" above).
 
 ### `spaces`
 
@@ -151,7 +153,17 @@ slots: {
 }
 ```
 
-`returns: "infer"` takes the type of what the body returns. A convention may also be a function `(ref, program) => convention`, for languages where a lambda's parameter types depend on the Program (a row whose columns come from a table). `ref` is `{ id, kind, on, key }`: the lambda's id, the slot's name, the construct instance it sits on, and its leading name argument or index. Return a string instead of a convention to refuse the slot, with the string as the reason.
+`returns: "infer"` takes the type of what the body returns; a construct's state can read that type (see "Construct state").
+
+A convention may also be a function `(ref, program, state) => convention`, for languages where a lambda's parameter types depend on the Program or on where the lambda sits. `ref` is `{ id, kind, on, index, key }`:
+
+- `id`: the lambda's id, `<on>.<slot>#<index>`;
+- `kind`: the convention's name;
+- `on`: the **name** of the construct instance the lambda sits on (`"monthly"`), or the Program's name;
+- `index`: the call's position among that instance's calls, from 0, counting every slot;
+- `key`: the map key, when the lambda is one value of a `recordOf(lambda(…))` argument; otherwise absent.
+
+`state` is the construct's state just before this call (or `undefined` if the construct declares none). Return a string instead of a convention to refuse the slot, with the string as the reason.
 
 Helpers and constants (`fn` and `const` units, below) get their conventions from the kit; do not declare them.
 
@@ -167,12 +179,12 @@ environment(program) {
 }
 ```
 
-This is plain JavaScript and may compute anything from the record: a table's columns after each step, a component's attributes.
+This is plain JavaScript and may compute anything from the record. It runs **before** any lambda is lowered, so it cannot know a lambda's inferred type: anything that changes from one call to the next (a table's columns after each step) belongs in a construct's state, not here.
 
 ## `defineGrammar`
 
 ```js
-import { defineGrammar, name, ref, data, oneOf, rest } from "kit/define";
+import { defineGrammar, name, ref, data, lambda, opt, rest, oneOf, recordOf, listOf, enumOf, object } from "kit/define";
 
 export const program = defineGrammar(myDialect, {
   root: "program",
@@ -189,27 +201,30 @@ A **construct** is a thing a Program declares, with its own builder methods. The
 ```js
 constructs: {
   program: {
-    opens: [name()],              // program("revenue")
+    opens: [name()],                                   // program("revenue")
     slots: { … },
   },
-  chart: {
-    parent: "program",            // opened from the program builder: .chart("trend", …)
-    opens: [name("chart"), ref("table")],
+  table: {
+    parent: "program",                                 // opened from the program builder
+    opens: [name(), ref("table", { as: "from" })],     // .table("monthly", "sales")
+    record: "calls",                                   // keep its calls in order (see "The record")
+    state: { … },                                      // see "Construct state"
     slots: { … },
-    record: "calls",              // keep this construct's calls in order (see "The record")
   },
 }
 ```
 
 A child construct (`parent: "…"`) is opened by calling its name on the parent's builder. Its builder also has every method of its parent, so calling a parent method ends the child: `program("p").table("a", "raw").derive(…).table("b", "a")…`. A child and its parent may not have a method of the same name (D010).
 
-### Slots, three kinds
+### Slots, two kinds
 
-**Declaration slots** take data: names, references and values.
+**Declaration slots** take arguments: names, references, values and Runtime Lambdas.
 
 ```js
-param: { kind: "decl", args: [name("param"), data(ParamShape)], check: checkParam },
-sort:  { kind: "decl", args: [rest(data("string"))] },
+param:  { kind: "decl", args: [name("param"), data(ParamShape)], check: checkParam },
+pixel:  { kind: "decl", args: [lambda("pixel")], once: true, required: true },     // .pixel((uv, u) => …)
+derive: { kind: "decl", args: [data("string"), lambda("row")] },                   // .derive("revenue", row => …)
+sort:   { kind: "decl", args: [rest(ref("column"))] },
 ```
 
 **Unit slots** declare a helper function or a constant of the Program, by name and source. Lambdas call them by name.
@@ -219,27 +234,62 @@ fn:    { kind: "unit", unit: "fn" },      // .fn("ring", (d, r) => …)
 const: { kind: "unit", unit: "const" },   // .const("K", "0.5")
 ```
 
-**Runtime Lambda slots** take a Runtime Lambda, after any leading declaration arguments, and name the slot convention it is lowered with.
-
-```js
-pixel:  { kind: "lambda", slot: "pixel", once: true, required: true },
-derive: { kind: "lambda", slot: "derive", args: [name("column")] },   // .derive("revenue", row => …)
-```
-
 Options on any slot: `once: true` (at most one call), `required: true` (`.build()` refuses a construct without it), `as: "params"` (the record key; defaults to the slot's name), `check(call, ctx)` (see "Your own checks").
 
-### Arguments of a declaration
+### Arguments
 
 | Spec | Takes | The generated builder checks |
 |---|---|---|
-| `name(ns)` | a string that declares a name in namespace `ns` | it is an identifier, and not already declared in `ns` (B002) |
-| `ref(ns)` | a string naming something declared in `ns` | it exists, with a "did you mean" (B003) |
+| `name(ns)` | a string that declares a name in Program namespace `ns` | it is an identifier, and not already declared in `ns` (B002) |
+| `ref(ns)` | a string naming something in namespace `ns` | it exists, with a "did you mean" (B003) |
 | `data(shape)` | a value of this shape | the shape (B004) |
-| `rest(spec)` | any number of the same | each one |
+| `lambda(convention)` | a Runtime Lambda, lowered with that slot convention | its form (B007) and free names (B008); lowering checks its body |
+| `opt(spec)` | the spec, or nothing; only at the end of the list | as the spec, when given |
+| `rest(spec)` | any number of the same; only last | each one |
 
-A namespace is any string; names declared with `name("table")` anywhere in the Program are what `ref("table")` accepts. A `name()` with no namespace is the construct's own name.
+Any spec takes `{ as: "key" }` as a last argument, naming its record key: `ref("table", { as: "from" })`.
 
-Shapes: `"number"`, `"string"`, `"boolean"`, `"string[]"`, `"number[]"`, an object of shapes (a key ending in `?` is optional: `{ value: "number", "min?": "number" }`), `oneOf(a, b, …)`, `enumOf([...])`, `recordOf(shape)` (an object with any keys, each value of the shape), `listOf(shape)`.
+**Namespaces.** A Program namespace is any string: names declared with `name("table")` anywhere in the Program are what `ref("table")` accepts. A `name()` with no namespace is the construct's own name, declared in the namespace named after the construct (`name()` on `table` declares into `"table"`). A namespace may instead belong to a construct's **state** (see below): then `ref` resolves against the state just before the call, so `.groupBy("month")` is checked against the table's columns at that step.
+
+**Shapes:** `"number"`, `"string"`, `"boolean"`, `"string[]"`, `"number[]"`, an object of shapes (a key ending in `?` is optional: `{ value: "number", "min?": "number" }`), `oneOf(a, b, …)`, `enumOf([...])` (strings or numbers), `recordOf(shape)` (an object with any keys, each value of the shape), `listOf(shape)`. A shape may also hold `ref(ns)` (a string that must name something) and `lambda(convention)` (a Runtime Lambda), anywhere inside it:
+
+```js
+limit: { kind: "decl", args: [data(oneOf("number", lambda("scalar")))] },   // .limit(10) or .limit(() => $.topN)
+agg:   { kind: "decl", args: [data(recordOf(lambda("group")))] },           // .agg({ total: g => g.sum("amount") })
+join:  { kind: "decl", args: [ref("table"), data({ on: recordOf("string"), "take?": listOf("string") })] },
+```
+
+### Construct state
+
+Some constructs change as they are built: a table's columns change at every step, and the lambda in one step must be typed against the columns the steps before it left. A construct with `record: "calls"` may declare a **state** that the kit threads through its calls in order:
+
+```js
+state: {
+  // The state before the first call. `stateOf(name)` is another construct instance's final state.
+  init(opened, { program, stateOf }) {
+    const source = program.source?.[opened.from];
+    return { columns: source ? { ...source.columns } : { ...stateOf(opened.from).columns } };
+  },
+  // The state after one call. `inferred` is the inferred type of each lambda in the call: one type
+  // name (or compound type) for a lone lambda, an object of them for a recordOf(lambda(…)).
+  step(state, call, inferred) {
+    if (call.slot === "derive") return { columns: { ...state.columns, [call.args[0]]: inferred } };
+    if (call.slot === "agg") return { columns: { ...pick(state.columns, state.keys), ...inferred } };
+    return state;
+  },
+  // Namespaces read from the state: ref("column") on this construct resolves here.
+  names: { column: (state) => Object.keys(state.columns) },
+}
+```
+
+The kit builds a construct with state like this: it computes `init`, then for each call in order it checks the call's `ref`s against the current state, lowers the call's lambdas with their conventions (a convention function receives the current state as its third argument), and passes their inferred types to `step`. So a slot convention can type a row by the table as it stands:
+
+```js
+// in defineDialect's slots
+row: (ref, program, state) => ({ params: [object(`a row of ${ref.on}`, state.columns)], returns: "infer", space: "row" }),
+```
+
+`object(label, members)` makes an object type on the spot, with members as in `objects`. A `stateOf` that would loop (a table built from itself) is refused (B010). `environment(program)` runs before all of this and does not see state.
 
 ### Lambdas: the form, and the free-name rule
 
@@ -259,21 +309,20 @@ Because only the text is read, **a lambda cannot see the variables around it**. 
 3. a helper or constant the Program declared with a unit slot (`.fn`, `.const`);
 4. `$`, if the Dialect declares it: the Program's parameters.
 
-Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused at the call (B008), with a fix: declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level `const K = 3` in your file is **not** visible; declare it with `.const("K", "3")`.
+Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused at the call (B008), with a fix: declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level `const K = 3` in your file is **not** visible; declare it with `.const("K", "3")`. In the same way, `$.topN` written outside a lambda (`.limit($.topN)`) means nothing: write `.limit(() => $.topN)` where the slot accepts a lambda.
 
-The body must be in the **Runtime Subset**: `const`/`let`, arithmetic, comparisons, `if`, ternaries, `for` loops with a bound the kit can check, calls to the names above. No `new`, no `this`, no closures that escape, no `async`, no string building beyond what the Dialect declares.
+The body must be in the **Runtime Subset**: `const`/`let`, arithmetic, comparisons, `if`, ternaries, `for` loops with a bound the kit can check, calls to the names above. No `new`, no `this`, no closures that escape, no `async`, no template literals or other string building beyond what the Dialect declares.
 
 ### The record
 
-`.build()` returns the Program as plain data, the **record**. It is what `environment(program)` and your checks receive, and what the kit lowers.
+`.build()` returns the Program as plain data, the **record**. It is what `environment(program)`, `state.init` and your checks receive, and what the kit lowers. A lambda appears in it as its source text, wherever it was passed (the grammar says which arguments are lambdas, so a check can tell).
 
-- The opening arguments, under their namespace or `name`: `field("swirl")` gives `{ name: "swirl" }`.
+- The opening arguments, each under its `as`, else its namespace, else `name`: `field("swirl")` gives `{ name: "swirl" }`; `.table("monthly", "sales")` with the opens above gives `{ name: "monthly", from: "sales" }`.
 - A declaration slot whose first argument is `name(…)`: an object from each name to the rest (one value, or an array of several): `{ params: { angle: { value: 2.4 } } }`.
-- A declaration slot without a name: its arguments, or (unless `once`) a list of them, in call order.
+- A declaration slot without a name: its arguments (one value, or an array of several) with `once`; otherwise a list of them, in call order.
 - Unit slots: one list, `units: [{ name, kind: "fn" | "const", src }]`, in call order.
-- A lambda slot: its source text (with `once`), or a list of `{ …leading arguments, src }`.
-- Child constructs: a list of their records under the child's name.
-- With `record: "calls"`, a construct's slots are instead one ordered list, `calls: [{ slot, args }]`, so that steps of different kinds keep their order.
+- Child constructs: a list of their records under the child's name. A child's calls are in its own record, never in its parent's.
+- With `record: "calls"`, a construct's slots are instead one ordered list, `calls: [{ slot, args }]`, so that steps of different kinds keep their order. `ref.index` is a position in this list.
 
 ### Errors
 
@@ -283,9 +332,22 @@ The generated builder reports with the kit's diagnostic: `{ code, severity, mess
 - Everything else is collected. `.check()` returns the list; `.build()` throws a `BuildError` carrying all of them if any is an error, and otherwise returns the record.
 - A lambda's type errors (an unknown column, comparing a string with a number) come from the kit's lowering, with their own `L…` codes, a "did you mean" where one applies, and the span inside the lambda.
 
+| Code | Reported when |
+|---|---|
+| B001 | a method the construct does not have, with a "did you mean" |
+| B002 | a `name()` already declared in its namespace |
+| B003 | a `ref()` that names nothing, with a "did you mean" |
+| B004 | a value that does not fit its shape, naming the part that does not |
+| B005 | `.build()` on a construct missing a `required` slot |
+| B006 | a second call to a `once` slot |
+| B007 | a lambda that is not an arrow function or its source text, or does not parse |
+| B008 | a free name the free-name rule does not allow |
+| B009 | a call to a `rejected` name: its message and tip |
+| B010 | a construct state that depends on itself through `stateOf` |
+
 ### Refusing what the language does not do
 
-A construct may list names it deliberately does not offer, so that a person who tries one gets a reason and a fix instead of "no such method":
+A construct may list names it deliberately does not offer, so that a person who tries one gets a reason and a fix (B009) instead of "no such method". A child construct inherits its ancestors' rejections.
 
 ```js
 rejected: {
@@ -295,14 +357,14 @@ rejected: {
 
 ### Your own checks
 
-A slot's `check(call, ctx)` runs when the slot is called; a construct's `check(record, ctx)` runs at `.build()`. `call` is `{ slot, args }`; `ctx.program` is the record so far. Report with `ctx.error(code, message, { tip, arg, suggest, fix })`: `arg` is the argument's position, `suggest` a list of candidates for a "did you mean", `fix` the replacement text. Your codes start with the Dialect's own letter (pick one; not `B`, `D`, `L`, `P` or `S`).
+A slot's `check(call, ctx)` runs when the slot is called; a construct's `check(record, ctx)` runs at `.build()`. `call` is `{ slot, args }`. `ctx.program` is the record so far, with the construct being built last in its list; `ctx.state` is that construct's state before the call, when it has one. Report with `ctx.error(code, message, { tip, arg, suggest, fix })`: `arg` is the argument's position, or a path into it (`[1, "on", "customer_id"]`); `suggest` a list of candidates for a "did you mean"; `fix` the replacement text. Your codes start with the Dialect's own letter (pick one; not `B`, `C`, `D`, `L`, `P` or `S`).
 
 ## Worked example: the fields Dialect
 
 The whole of an existing language, a small one for per-pixel color. A Program is `field(name)`, with parameters, helpers and one pixel lambda.
 
 ```js
-import { defineDialect, defineGrammar, vector, exact, tolerance, name, data, oneOf, enumOf } from "kit/define";
+import { defineDialect, defineGrammar, vector, exact, tolerance, name, data, lambda, oneOf, enumOf } from "kit/define";
 
 export const fields = defineDialect({
   name: "fields",
@@ -369,7 +431,7 @@ export const field = defineGrammar(fields, {
         },
         fn:    { kind: "unit", unit: "fn" },
         const: { kind: "unit", unit: "const" },
-        pixel: { kind: "lambda", slot: "pixel", once: true, required: true },
+        pixel: { kind: "decl", args: [lambda("pixel")], once: true, required: true },
       },
     },
   },
