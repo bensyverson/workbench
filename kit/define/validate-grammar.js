@@ -4,6 +4,7 @@
 import { didYouMean } from "./codes.js";
 import { checkKeys, listed } from "./types.js";
 import { TAG, isPlainObject, kindOf, describe, tagged } from "./tags.js";
+import { openKey } from "./record.js";
 
 /** @import { Problem } from "./types.js" */
 /** @import * as T from "./define.js" */
@@ -13,6 +14,8 @@ const CONSTRUCT_KEYS = Object.freeze(["opens", "parent", "slots", "record", "sta
 const SLOT_KEYS = Object.freeze(["kind", "args", "unit", "once", "required", "as", "check"]);
 const SLOT_KINDS = Object.freeze(["decl", "unit"]);
 export const SHAPE_NAMES = Object.freeze(["number", "string", "boolean", "string[]", "number[]"]);
+/** Properties a runtime or test library probes on any object; the builder answers them with undefined, so no slot or construct may take one. */
+export const PROBES = Object.freeze(["then", "toJSON", "constructor", "inspect", "asymmetricMatch", "nodeType", "$$typeof", "valueOf", "toString", "prototype"]);
 /** Methods every builder has, which no slot or construct may take. */
 export const KIT_METHODS = Object.freeze(["check", "build"]);
 
@@ -88,7 +91,11 @@ export function validateGrammar(dialect, def) {
       if (typeof c.parent !== "string" || !cs[c.parent] || c.parent === cn) out.push({ code: "D010", path: [...path, "parent"], message: `construct '${cn}' has parent ${describe(c.parent)}, which is not ${c.parent === cn ? "another" : "a"} construct.${typeof c.parent === "string" ? didYouMean(c.parent, names.filter((n) => n !== cn)) : ""}`, tip: `parent: one of ${listed(names.filter((n) => n !== cn))}` });
       else if (typeof def.root === "string" && !ancestors(cs, cn).includes(def.root)) out.push({ code: "D010", path: [...path, "parent"], message: `construct '${cn}' does not reach the root through parent.`, tip: "make the parents form a tree under the root" });
     }
-    if (c.opens !== undefined) checkSpecs(c.opens, conventions, [...path, "opens"], `construct '${cn}', opens`, out);
+    if (PROBES.includes(cn)) out.push({ code: "D018", path, message: `construct '${cn}' takes a name that runtimes and test libraries probe on every object (${listed([...PROBES])}); its method could never be called.`, tip: `rename '${cn}'` });
+    if (c.opens !== undefined) {
+      checkSpecs(c.opens, conventions, [...path, "opens"], `construct '${cn}', opens`, out);
+      if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => { if (holdsLambda(spec)) out.push({ code: "D019", path: [...path, "opens", i], message: `construct '${cn}', opens, argument ${i + 1}: a lambda in an opening is not built yet; only a slot's lambdas are lowered.`, tip: `put the lambda in a decl slot of '${cn}'` }); });
+    }
     if (c.record !== undefined && c.record !== "calls") out.push({ code: "D011", path: [...path, "record"], message: `construct '${cn}': record must be "calls", not ${describe(c.record)}.`, tip: `record: "calls", or remove it` });
     if (c.check !== undefined && typeof c.check !== "function") out.push({ code: "D011", path: [...path, "check"], message: `construct '${cn}': check must be a function (record, ctx) => ….`, tip: "check(record, ctx) { … }" });
     if (c.state !== undefined) {
@@ -113,9 +120,12 @@ export function validateGrammar(dialect, def) {
     if (!isPlainObject(c.slots)) { out.push({ code: "D011", path: [...path, "slots"], message: `construct '${cn}': slots must be an object of named slots.`, tip: "slots: { … }" }); continue; }
     for (const [sn, s] of Object.entries(c.slots)) {
       if (KIT_METHODS.includes(sn)) out.push({ code: "D010", path: [...path, "slots", sn], message: `slot '${cn}.${sn}' takes the name of a method every builder has.`, tip: `rename it; ${listed([...KIT_METHODS])} are the kit's` });
+      if (PROBES.includes(sn)) out.push({ code: "D018", path: [...path, "slots", sn], message: `slot '${cn}.${sn}' takes a name that runtimes and test libraries probe on every object (${listed([...PROBES])}); the method could never be called.`, tip: `rename it` });
       checkSlot(s, conventions, [...path, "slots", sn], `slot '${cn}.${sn}'`, out);
     }
   }
+
+  for (const cn of names) collideKeys(cs, cn, out);
 
   for (const cn of names) {
     const slots = isPlainObject(cs[cn].slots) ? Object.keys(cs[cn].slots) : [];
@@ -127,6 +137,52 @@ export function validateGrammar(dialect, def) {
     }
   }
   return out;
+}
+
+/**
+ * Whether an argument spec is or holds a lambda (through opt, rest and data shapes).
+ * @param {unknown} spec
+ * @returns {boolean}
+ */
+function holdsLambda(spec) {
+  if (Array.isArray(spec)) return spec.some(holdsLambda);
+  const t = tagged(spec);
+  if (!t) return isPlainObject(spec) && Object.values(spec).some(holdsLambda);
+  switch (t[TAG]) {
+    case "lambda": return true;
+    case "opt": return holdsLambda(/** @type {any} */ (t).of);
+    case "rest": return holdsLambda(/** @type {any} */ (t).spec);
+    case "data": return holdsLambda(/** @type {any} */ (t).shape);
+    case "oneOf": return holdsLambda(/** @type {any} */ (t).of);
+    case "recordOf": case "listOf": return holdsLambda(/** @type {any} */ (t).of);
+    default: return false;
+  }
+}
+
+/**
+ * D017: two things of one construct that the record would put under one key. The keys are the opening
+ * arguments' (as, else namespace or name), the child constructs', a by-slot slot's (as, else its name),
+ * `units` when it has a unit slot, and `calls` for a record: "calls" construct.
+ * @param {Record<string, any>} cs @param {string} cn @param {Problem[]} out
+ */
+function collideKeys(cs, cn, out) {
+  const c = cs[cn];
+  /** @type {Map<string, Array<{ who: string, explicit: boolean, kind: "opening" | "child" | "slot" | "units" | "calls" }>>} */
+  const keys = new Map();
+  const put = (/** @type {string} */ key, /** @type {string} */ who, /** @type {boolean} */ explicit, /** @type {"opening" | "child" | "slot" | "units" | "calls"} */ kind) => keys.set(key, [...(keys.get(key) ?? []), { who, explicit, kind }]);
+  if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => { if (kindOf(spec)) put(String(openKey(/** @type {T.Tagged} */ (spec), i)), `opening argument ${i + 1}`, Boolean(/** @type {any} */ (spec).as), "opening"); });
+  for (const n of Object.keys(cs).filter((x) => cs[x].parent === cn)) put(n, `child construct '${n}'`, false, "child");
+  if (c.record === "calls") put("calls", "the calls", false, "calls");
+  else for (const [sn, s] of Object.entries(isPlainObject(c.slots) ? c.slots : {})) {
+    if (!isPlainObject(s)) continue;
+    if (s.kind === "unit") { if (!keys.get("units")?.some((w) => w.kind === "units")) put("units", `unit slots`, false, "units"); }
+    else put(typeof s.as === "string" ? s.as : sn, `slot '${sn}'`, typeof s.as === "string", "slot");
+  }
+  for (const [key, who] of keys) {
+    // a plain slot against a child of its name is D010's
+    if (who.length < 2 || who.every((w) => !w.explicit && (w.kind === "slot" || w.kind === "child"))) continue;
+    out.push({ code: "D017", path: ["constructs", cn], message: `construct '${cn}': ${who.map((w) => w.who).join(" and ")} would all be the record key '${key}'; the record keeps only one.`, tip: `give one of them another as: key` });
+  }
 }
 
 /**

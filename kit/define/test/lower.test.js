@@ -86,6 +86,16 @@ test("a table whose state depends on itself through stateOf is refused (B010)", 
   assert.match(String(r.diagnostics.find((d) => d.code === "B010")?.message), /a.*b|b.*a/);
 });
 
+test("B010 names each instance on a stateOf loop as depending on itself, and one that only reads a loop as reading it", () => {
+  const r = program.lower(source().table("a", "b").table("b", "a").table("c", "a").build());
+  const b010 = r.diagnostics.filter((d) => d.code === "B010").map((d) => d.message);
+  assert.equal(b010.length, 3);
+  assert.match(b010[0], /table 'a' depends on its own state through stateOf: a → b → a/);
+  assert.match(b010[1], /table 'b' depends on its own state through stateOf: b → a → b/);
+  assert.match(b010[2], /table 'c' reads, through stateOf, a state that depends on itself: a → b → a/);
+  assert.doesNotMatch(b010[2], /depends on its own state/);
+});
+
 test("a convention that returns a reason refuses the lambda (B011); every builder code is exercised", () => {
   const d = defineDialect({
     name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },

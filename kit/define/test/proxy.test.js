@@ -1,9 +1,9 @@
-// Probes: the generated builder under runtime probes (await, console.log, JSON, inspect, string coercion).
+// The generated builder under runtime probes (await, console.log, JSON, inspect, string coercion).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import util from "node:util";
-import { field } from "../../kit/define/examples/fields.js";
-import { BuildError } from "../../kit/define/index.js";
+import { field } from "../examples/fields.js";
+import { BuildError } from "../index.js";
 
 const b = () => field("p").param("k", { value: 1 });
 
@@ -29,15 +29,14 @@ test("Object.keys / spread / 'in' / structuredClone", () => {
   assert.doesNotThrow(() => "pixel" in b());
 });
 
-test("string coercion of a builder: coded diagnostic, not a raw TypeError", () => {
-  try { String(`${b()}`); } catch (e) {
-    assert.ok(e instanceof BuildError, `threw ${e?.constructor?.name}: ${e?.message}`);
-  }
+test("string coercion of a builder is a description, not a raw TypeError", () => {
+  assert.equal(`${b()}`, "[field builder 'p']");
+  assert.equal(String(b()), "[field builder 'p']");
 });
 
 test("assert.deepEqual on two builders does not throw a raw error", () => {
   try { assert.deepEqual(b(), b()); } catch (e) {
-    assert.ok(e instanceof assert.AssertionError || e instanceof BuildError, `threw ${e?.constructor?.name}: ${e?.message}`);
+    assert.ok(e instanceof assert.AssertionError || e instanceof BuildError, `threw ${e?.constructor?.name}: ${/** @type {any} */ (e)?.message}`);
   }
 });
 
@@ -57,7 +56,8 @@ test("bad args to a slot: coded diagnostics, never a raw TypeError", () => {
     () => field("p").param("k", { value: 1, min: 0, max: 1, extra: Symbol("s") }).pixel("(uv, u) => color(0,0,0)").build(),
     () => field("p").param("k", [1]).pixel("(uv, u) => color(0,0,0)").build(),
   ];
+  /** @type {string[]} */
   const raw = [];
-  cases.forEach((c, i) => { try { c(); raw.push(`${i}: no throw`); } catch (e) { if (!(e instanceof BuildError)) raw.push(`${i}: ${e?.constructor?.name} ${e?.message}`); } });
+  cases.forEach((c, i) => { try { c(); raw.push(`${i}: no throw`); } catch (e) { if (!(e instanceof BuildError)) raw.push(`${i}: ${e?.constructor?.name} ${/** @type {any} */ (e)?.message}`); } });
   assert.deepEqual(raw.filter((r) => !r.endsWith("no throw")), [], raw.join("\n"));
 });

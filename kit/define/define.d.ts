@@ -121,6 +121,8 @@ export interface BuildDiagnostic extends Diagnostic {
   arg?: number | Array<string | number>;
   /** The mechanical replacement text, when there is one (no range: the builder does not read the file). */
   fix?: string;
+  /** The Runtime Lambda it is about, on a refusal found when lowering (B011). */
+  ref?: DefineSlotRef;
 }
 
 /** What a slot's or construct's `check` receives besides the call or record. */

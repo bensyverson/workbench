@@ -21,8 +21,14 @@ import { rematch, single, LOCS } from "./record.js";
  * @property {import("../lower/environment.js").Environment} environment
  * @property {Array<{ ref: T.DefineSlotRef, src: string, result: LowerResult }>} lambdas  in record order
  * @property {HelperResult[]} helpers  the Library units used, then the Program's own
- * @property {Array<T.BuildDiagnostic | import("../parse/ast.js").Diagnostic>} diagnostics  state refusals (B003, B010, B011), then each lambda's and helper's
+ * @property {Array<T.BuildDiagnostic | LowerDiagnostic>} diagnostics  state refusals (B003, B010, B011), then each lambda's and helper's, each tied to its call or lambda
  * @property {Record<string, unknown>} states  each stateful construct instance's final state, by name
+ */
+
+/**
+ * A lowering diagnostic with where it belongs: `file` and `ref` for a lambda's (its `loc` is inside the lambda's
+ * source), `unit` for a helper's or constant's.
+ * @typedef {import("../parse/ast.js").Diagnostic & { file?: string, ref?: T.DefineSlotRef, unit?: string }} LowerDiagnostic
  */
 
 /** @typedef {{ slot: string, args: unknown[], index: number, once: boolean, at: { file: string, loc: Loc } }} RecCall */
@@ -30,10 +36,10 @@ import { rematch, single, LOCS } from "./record.js";
 
 const NOWHERE = { file: "", loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } } };
 
-/** A stateOf that comes back to an instance being built. */
+/** A stateOf that comes back to an instance being built: `chain` runs from that instance round to itself. */
 class Cycle extends Error {
-  /** @param {string[]} chain */
-  constructor(chain) { super(chain.join(" → ")); this.chain = chain; }
+  /** @param {RecInstance[]} chain */
+  constructor(chain) { super(chain.map((i) => i.name).join(" → ")); this.chain = chain; }
 }
 
 /**
@@ -76,10 +82,11 @@ function instancesOf(g, record) {
         const v = rec[s.as ?? sn];
         if (v === undefined) continue;
         const list = (/** @type {unknown[]} */ specs, /** @type {unknown} */ x) => (single(specs) ? [x] : /** @type {unknown[]} */ (x));
+        const here = (/** @type {number} */ n) => (LOCS.get(rec)?.slots?.[sn]?.[n]) ?? at(rec);
         if (kindOf(s.args[0]) === "name") {
-          for (const [n, rest] of Object.entries(v)) calls.push({ slot: sn, args: [n, ...list(s.args.slice(1), rest)], index: calls.length, once: false, at: at(rec) });
-        } else if (s.once) calls.push({ slot: sn, args: list(s.args, v), index: calls.length, once: true, at: at(rec) });
-        else for (const x of v) calls.push({ slot: sn, args: list(s.args, x), index: calls.length, once: false, at: at(rec) });
+          for (const [n, rest] of Object.entries(v)) calls.push({ slot: sn, args: [n, ...list(s.args.slice(1), rest)], index: calls.length, once: false, at: here(calls.filter((x) => x.slot === sn).length) });
+        } else if (s.once) calls.push({ slot: sn, args: list(s.args, v), index: calls.length, once: true, at: here(0) });
+        else for (const x of v) calls.push({ slot: sn, args: list(s.args, x), index: calls.length, once: false, at: here(calls.filter((y) => y.slot === sn).length) });
       }
     }
     out.push({ construct: c, rec, name: String(rec.name ?? c.name), calls, at: at(rec) });
@@ -127,14 +134,20 @@ export function lowerRecord(g, record) {
     for (const call of inst.calls) {
       const s = inst.construct.def.slots?.[call.slot];
       if (!s || s.kind !== "decl") continue;
-      const here = rematch(s.args, call.args).lambdas.map((l) => ({
+      const found = rematch(s.args, call.args).lambdas;
+      const several = found.filter((l) => l.key === undefined).length > 1;
+      let nth = 0;
+      const here = found.map((l) => ({
         inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}),
-        ref: /** @type {T.DefineSlotRef} */ ({ id: `${inst.name}.${call.slot}${call.once ? "" : `#${call.index}`}${l.key !== undefined ? `.${l.key}` : ""}`, kind: l.convention, on: inst.name, index: call.index, ...(l.key !== undefined ? { key: l.key } : {}) }),
+        // lambdas of one call with no recordOf key are told apart by their place in the call
+        ref: /** @type {T.DefineSlotRef} */ ({ id: `${inst.name}.${call.slot}${call.once ? "" : `#${call.index}`}${l.key !== undefined ? `.${l.key}` : several ? `.${nth++}` : ""}`, kind: l.convention, on: inst.name, index: call.index, ...(l.key !== undefined ? { key: l.key } : {}) }),
       }));
       byCall.set(call, here);
       lambdas.push(...here);
     }
   }
+  /** Lambdas the Dialect refused, by identity (never by message text). @type {Set<(typeof lambdas)[number]>} */
+  const refused = new Set();
   const units = unitsOf(instances);
   const helpers = [...g.dialect.libraryFor([...lambdas.map((l) => l.src), ...units.map((u) => u.src)]), ...units];
 
@@ -145,7 +158,8 @@ export function lowerRecord(g, record) {
   const usable = (l) => {
     const decl = env.slot(l.ref);
     if (typeof decl !== "string") return true;
-    diagnostics.push({ code: "B011", severity: "error", message: `the ${l.ref.kind} lambda of ${l.inst.name}, .${l.call.slot}: ${decl}`, tip: `the ${g.dialect.name} Dialect's '${l.ref.kind}' convention refused it here`, ...l.call.at, range: [0, 0] });
+    refused.add(l);
+    diagnostics.push({ code: "B011", severity: "error", message: `the ${l.ref.kind} lambda of ${l.inst.name}, .${l.call.slot}: ${decl}`, tip: `the ${g.dialect.name} Dialect's '${l.ref.kind}' convention refused it here`, ...l.call.at, range: [0, 0], ref: l.ref });
     return false;
   };
 
@@ -160,7 +174,7 @@ export function lowerRecord(g, record) {
   /** @param {RecInstance} inst */
   const finalState = (inst) => {
     if (finals.has(inst)) return finals.get(inst);
-    if (building.includes(inst)) throw new Cycle([...building.slice(building.indexOf(inst)), inst].map((i) => i.name));
+    if (building.includes(inst)) throw new Cycle([...building.slice(building.indexOf(inst)), inst]);
     building.push(inst);
     try {
       const st = inst.construct.def.state;
@@ -178,14 +192,15 @@ export function lowerRecord(g, record) {
         const here = byCall.get(call) ?? [];
         /** @type {Record<string, unknown>} */
         const keyed = {};
-        /** @type {unknown} */
-        let lone = "unknown";
+        /** @type {unknown[]} */
+        const unkeyed = [];
         for (const l of here) {
           states.set(l.ref.id, state);
           const t = usable(l) ? fromCore(lowerProgram(env, [{ src: l.src, slot: l.ref }], helpers).results[0].returns) : "unknown";
-          if (l.key !== undefined) keyed[l.key] = t; else lone = t;
+          if (l.key !== undefined) keyed[l.key] = t; else unkeyed.push(t);
         }
-        state = st.step(state, { slot: call.slot, args: call.args }, here.some((l) => l.key !== undefined) ? keyed : lone);
+        const inferred = here.some((l) => l.key !== undefined) ? keyed : unkeyed.length > 1 ? unkeyed : unkeyed[0] ?? "unknown";
+        state = st.step(state, { slot: call.slot, args: call.args }, inferred);
       }
       finals.set(inst, state);
       return state;
@@ -195,15 +210,18 @@ export function lowerRecord(g, record) {
     try { finalState(inst); } catch (e) {
       if (!(e instanceof Cycle)) throw e;
       failed.add(inst);
-      diagnostics.push({ code: "B010", severity: "error", message: `${inst.construct.name} '${inst.name}' depends on its own state through stateOf: ${e.chain.join(" → ")}`, tip: `build '${inst.name}' from something that is not built from it`, ...inst.at, range: [0, 0] });
+      const route = e.chain.map((i) => i.name).join(" → ");
+      // an instance on the loop depends on itself; one that only reads a looping state depends on something that does
+      if (e.chain.includes(inst)) diagnostics.push({ code: "B010", severity: "error", message: `${inst.construct.name} '${inst.name}' depends on its own state through stateOf: ${route}`, tip: `build '${inst.name}' from something that is not built from it`, ...inst.at, range: [0, 0] });
+      else diagnostics.push({ code: "B010", severity: "error", message: `${inst.construct.name} '${inst.name}' reads, through stateOf, a state that depends on itself: ${route}`, tip: `build '${e.chain[0].name}' from something that is not built from it`, ...inst.at, range: [0, 0] });
     }
   }
 
   // Every lambda, with its state fixed, through one program lowering (helpers inferred across all of them).
-  const live = lambdas.filter((l) => !failed.has(l.inst) && (l.inst.construct.def.state ? states.has(l.ref.id) && !diagnostics.some((d) => d.code === "B011" && d.message.startsWith(`the ${l.ref.kind} lambda of ${l.inst.name}, .${l.call.slot}:`)) : usable(l)));
+  const live = lambdas.filter((l) => !failed.has(l.inst) && (l.inst.construct.def.state ? states.has(l.ref.id) && !refused.has(l) : usable(l)));
   const { results, helpers: helperResults } = lowerProgram(env, live.map((l) => ({ src: l.src, slot: l.ref })), helpers);
-  for (const r of results) diagnostics.push(...r.diagnostics);
-  for (const h of helperResults) diagnostics.push(...h.result.diagnostics);
+  results.forEach((r, i) => diagnostics.push(...r.diagnostics.map((d) => ({ ...d, file: live[i].call.at.file, ref: live[i].ref }))));
+  for (const h of helperResults) diagnostics.push(...h.result.diagnostics.map((d) => ({ ...d, unit: h.name })));
   return {
     environment: env,
     lambdas: live.map((l, i) => ({ ref: l.ref, src: l.src, result: results[i] })),

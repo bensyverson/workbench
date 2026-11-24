@@ -1,15 +1,15 @@
-// Probes: lambdas dropped or mis-identified by kit/define/lower.js.
+// Lowering a record: no lambda dropped, mis-identified or given the wrong inferred type.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defineDialect, defineGrammar, exact, name, data, lambda, opt, rest, listOf } from "../../kit/define/index.js";
+import { defineDialect, defineGrammar, exact, name, data, lambda, opt, rest, listOf } from "../index.js";
 
-const tiny = (k) => defineDialect({
+const tiny = (/** @type {any} */ k) => defineDialect({
   name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
   slots: { k },
 });
 
-test("P1 stateful construct: a B011 on call #0 must not drop an accepted call #1 of the same slot", () => {
-  const d = tiny((ref) => (ref.index === 0 ? "not first" : { params: [], returns: "f64", space: "s" }));
+test("stateful construct: a B011 on call #0 must not drop an accepted call #1 of the same slot", () => {
+  const d = tiny((/** @type {any} */ ref) => (ref.index === 0 ? "not first" : { params: [], returns: "f64", space: "s" }));
   const g = defineGrammar(d, { root: "p", constructs: {
     p: { opens: [name()] },
     t: { parent: "p", opens: [name()], record: "calls",
@@ -22,7 +22,7 @@ test("P1 stateful construct: a B011 on call #0 must not drop an accepted call #1
   assert.deepEqual(r.lambdas.map((l) => l.ref.id), ["a.k#1"]);
 });
 
-test("P2 an absent opt() before another opt(): the lambda after it must still be lowered", () => {
+test("an absent opt() before another opt(): the lambda after it must still be lowered", () => {
   const d = tiny({ params: [], returns: "f64", space: "s" });
   const g = defineGrammar(d, { root: "p", constructs: {
     p: { opens: [name()], slots: { k: { kind: "decl", args: [opt(data("number")), opt(lambda("k"))] } } },
@@ -34,7 +34,7 @@ test("P2 an absent opt() before another opt(): the lambda after it must still be
   assert.equal(r.lambdas.length, 1, `record: ${JSON.stringify(rec)}; lambdas: ${r.lambdas.length}; diags: ${JSON.stringify(r.diagnostics.map((x) => x.code))}`);
 });
 
-test("P2b same with rest(lambda)", () => {
+test("same with rest(lambda)", () => {
   const d = tiny({ params: [], returns: "f64", space: "s" });
   const g = defineGrammar(d, { root: "p", constructs: {
     p: { opens: [name()], slots: { k: { kind: "decl", args: [opt(data("number")), rest(lambda("k"))] } } },
@@ -44,7 +44,7 @@ test("P2b same with rest(lambda)", () => {
   assert.equal(r.lambdas.length, 2, `record: ${JSON.stringify(rec)}; lambdas: ${r.lambdas.length}`);
 });
 
-test("P3 several lambdas in one call without recordOf keys get distinct ids", () => {
+test("several lambdas in one call without recordOf keys get distinct ids", () => {
   const d = tiny({ params: [], returns: "f64", space: "s" });
   const g = defineGrammar(d, { root: "p", constructs: {
     p: { opens: [name()], slots: { k: { kind: "decl", args: [data(listOf(lambda("k")))] } } },
@@ -54,7 +54,7 @@ test("P3 several lambdas in one call without recordOf keys get distinct ids", ()
   assert.equal(new Set(ids).size, ids.length, `ids: ${ids.join(", ")}`);
 });
 
-test("P3b a lambda in rest() spreads several lambdas in one call: distinct ids", () => {
+test("a lambda in rest() spreads several lambdas in one call: distinct ids", () => {
   const d = tiny({ params: [], returns: "f64", space: "s" });
   const g = defineGrammar(d, { root: "p", constructs: {
     p: { opens: [name()], slots: { k: { kind: "decl", args: [rest(lambda("k"))] } } },
@@ -64,18 +64,19 @@ test("P3b a lambda in rest() spreads several lambdas in one call: distinct ids",
   assert.equal(new Set(ids).size, ids.length, `ids: ${ids.join(", ")}`);
 });
 
-test("P5 two stateful instances with the same name in different constructs: each gets its own state", () => {
+test("a call's several unkeyed lambdas give step their types as a list; a lone lambda gives its type", () => {
+  /** @type {unknown[]} */
+  const seen = [];
   const d = defineDialect({
     name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
-    slots: { k: (_ref, _p, state) => ({ params: [], returns: /** @type {any} */ (state).ret, space: "s" }) },
+    slots: { k: (ref) => ({ params: [], returns: ref.id.endsWith(".1") ? "bool" : "infer", space: "s" }) },
   });
-  const mk = (ret) => ({ parent: "p", opens: [name()], record: "calls", state: { init: () => ({ ret }), step: (s) => s }, slots: {} });
-  const a = { ...mk("f64"), slots: { ka: { kind: "decl", args: [lambda("k")] } } };
-  const b = { ...mk("bool"), slots: { kb: { kind: "decl", args: [lambda("k")] } } };
-  const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()] }, a, b } });
-  const bl = g("x").a("same").ka("() => 1").b("same").kb("() => true");
-  assert.deepEqual(bl.check(), []);
-  const r = g.lower(bl.build());
-  assert.deepEqual(r.diagnostics.map((x) => x.code), [], JSON.stringify(r.diagnostics.map((x) => x.message)));
-  assert.equal(Object.keys(r.states).length, 2, `states: ${JSON.stringify(r.states)}`);
+  const g = defineGrammar(d, { root: "p", constructs: {
+    p: { opens: [name()] },
+    t: { parent: "p", opens: [name()], record: "calls",
+      state: { init: () => ({}), step: (s, call, inferred) => { seen.push([call.slot, inferred]); return s; } },
+      slots: { one: { kind: "decl", args: [lambda("k")] }, many: { kind: "decl", args: [rest(lambda("k"))] } } },
+  } });
+  g.lower(g("x").t("a").one("() => 1").many("() => 1", "() => true").build());
+  assert.deepEqual(seen, [["one", "f64"], ["many", ["f64", "bool"]]]);
 });

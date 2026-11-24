@@ -2,7 +2,7 @@
 // builder has its slots, its child constructs and (forwarded) its ancestors' methods; an unknown method
 // throws B001 at once, everything else is collected with the call site and thrown by `.build()`.
 
-import { validateGrammar, KIT_METHODS } from "./validate-grammar.js";
+import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST } from "./validate-grammar.js";
 import { refuse, isDialect } from "./dialect.js";
 import { didYouMean, RESERVED_LETTERS } from "./codes.js";
 import { TAG } from "./tags.js";
@@ -29,7 +29,7 @@ export class BuildError extends Error {
 }
 
 /** Properties a runtime or test library probes on any object; they are not method calls. */
-const PROBES = new Set(["then", "toJSON", "constructor", "inspect", "asymmetricMatch", "nodeType", "$$typeof", "valueOf", "toString", "prototype"]);
+const PROBES = new Set(PROBE_LIST);
 /** The namespace unit names (.fn, .const) declare into, beside the Dialect's own names. */
 const UNITS = "\0unit";
 const IDENT = /^[A-Za-z_$][\w$]*$/;
@@ -265,6 +265,7 @@ class Program {
     /** @type {any} */
     const proxy = new Proxy({}, {
       get(_, prop) {
+        if (prop === Symbol.toPrimitive) return () => `[${inst.construct.name} builder '${instanceName(inst)}']`;
         if (typeof prop === "symbol" || PROBES.has(prop)) return undefined;
         if (prop === "check") return () => program.check();
         if (prop === "build") return () => {

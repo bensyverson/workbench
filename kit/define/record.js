@@ -39,8 +39,12 @@ import { matchArg, matchShape, found } from "./shapes.js";
  * @property {string} file
  */
 
-/** Where the builder made each record and each recorded call, for diagnostics found when lowering. */
-export const LOCS = /** @type {WeakMap<object, { file: string, loc: Loc }>} */ (new WeakMap());
+/**
+ * Where the builder made each record and each recorded call, for diagnostics found when lowering. A by-slot
+ * record also keeps where each of its slots' calls were, in call order, since its values cannot be keys.
+ * @typedef {{ file: string, loc: Loc, slots?: Record<string, Array<{ file: string, loc: Loc }>> }} Site
+ */
+export const LOCS = /** @type {WeakMap<object, Site>} */ (new WeakMap());
 
 /**
  * The record key of an opening argument: its `as`, else its namespace, else `name`.
@@ -72,6 +76,8 @@ export function recordOf(inst) {
   const c = inst.construct;
   /** @type {Record<string, any>} */
   const rec = { ...inst.opened };
+  /** @type {Record<string, Array<{ file: string, loc: Loc }>>} */
+  const slotAt = {};
   if (c.def.record === "calls") {
     rec.calls = inst.calls.map((call) => {
       const made = { slot: call.slot, args: [...call.args] };
@@ -85,6 +91,7 @@ export function recordOf(inst) {
       else if (!s.once) rec[s.as ?? sn] = [];
     }
     for (const call of inst.calls) {
+      (slotAt[call.slot] ??= []).push({ file: call.file, loc: call.loc });
       const s = c.def.slots[call.slot];
       if (s.kind === "unit") rec.units.push({ name: call.args[0], kind: s.unit, src: call.args[1] });
       else if (s.args[0]?.[TAG] === "name") rec[s.as ?? call.slot][/** @type {string} */ (call.args[0])] = single(s.args.slice(1)) ? call.args[1] : call.args.slice(1);
@@ -93,7 +100,7 @@ export function recordOf(inst) {
     }
   }
   for (const child of c.children) rec[child.name] = inst.children.filter((i) => i.construct === child).map(recordOf);
-  LOCS.set(rec, { file: inst.file, loc: inst.loc });
+  LOCS.set(rec, { file: inst.file, loc: inst.loc, ...(c.def.record === "calls" ? {} : { slots: slotAt }) });
   return rec;
 }
 
@@ -115,7 +122,8 @@ export function matchArgs(specs, args) {
       break;
     }
     if (spec[TAG] === "opt") {
-      if (i < args.length && args[i] !== undefined) made.push(matchArg(/** @type {T.Tagged} */ (tagged(/** @type {T.OptTag} */ (spec).of)), args[i], i, out));
+      // an absent opt() still holds its place, so the arguments after it keep their positions in the record
+      made.push(i < args.length && args[i] !== undefined ? matchArg(/** @type {T.Tagged} */ (tagged(/** @type {T.OptTag} */ (spec).of)), args[i], i, out) : undefined);
       i++;
       continue;
     }
@@ -139,6 +147,7 @@ export function rematch(specs, args) {
     const s = spec[TAG] === "opt" ? /** @type {T.Tagged} */ (tagged(/** @type {T.OptTag} */ (spec).of)) : spec[TAG] === "rest" ? /** @type {T.Tagged} */ (tagged(/** @type {T.RestTag} */ (spec).spec)) : spec;
     const n = spec[TAG] === "rest" ? args.length - i : 1;
     for (let k = 0; k < n && i < args.length; k++, i++) {
+      if (spec[TAG] === "opt" && (args[i] === undefined || args[i] === null)) continue;
       if (s[TAG] === "data") matchShape(/** @type {T.DataTag} */ (s).shape, args[i], [i], out);
       else if (s[TAG] === "ref" || s[TAG] === "lambda") matchShape(s, args[i], [i], out);
     }

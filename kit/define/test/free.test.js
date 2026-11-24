@@ -1,12 +1,12 @@
-// Probes: free-name rule holes (B008) through the generated field() builder.
+// The free-name rule (B008): holes found in review through the generated field() builder.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { field } from "../../kit/define/examples/fields.js";
-import { parseLambda } from "../../kit/parse/index.js";
-import { freeNames } from "../../kit/define/free.js";
+import { field } from "../examples/fields.js";
+import { parseLambda } from "../../parse/index.js";
+import { freeNames } from "../free.js";
 
-const codes = (src) => field("c").pixel(src).check().map((d) => d.code);
-const free = (src) => { const r = parseLambda(src); assert.ok(r.ok, `${src}: ${JSON.stringify(r.diagnostics?.[0])}`); return freeNames(r.ast).map((x) => x.name); };
+const codes = (/** @type {string} */ src) => field("c").pixel(src).check().map((/** @type {any} */ d) => d.code);
+const free = (/** @type {string} */ src) => { const r = parseLambda(src); assert.ok(r.ok, `${src}: ${JSON.stringify(r.diagnostics?.[0])}`); return freeNames(r.ast).map((x) => x.name); };
 
 const MUST_FLAG = [
   ["nested arrow's param read outside it", "(uv, u) => { const f = (k) => k; return color(k, 0, 0); }", "k"],
