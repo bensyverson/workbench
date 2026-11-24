@@ -5,14 +5,14 @@
 import { appendFileSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { checkDir, CheckTargetError, DIALECT_FILE, GRAMMAR_FILE, EXAMPLES_DIR } from "./checker/index.js";
+import { checkDir, CheckTargetError, DIALECT_FILE, GRAMMAR_FILE, EXAMPLES_DIR, definitionFiles } from "./checker/index.js";
 
 /** @import { CheckResult } from "./checker/index.js" */
 
 export const EXIT = Object.freeze({ ok: 0, violations: 1, usage: 2, target: 4 });
 
 const SELF = relative(process.cwd(), fileURLToPath(import.meta.url)) || "check.js";
-const PRIMER = `usage: node ${SELF} <dir> [--json]
+const PRIMER = `usage: node ${SELF} <dir> [--json] [--lang <name>]
 
 Checks a Definition API trial hand-in against docs/rules.md: loads <dir>/${DIALECT_FILE}, <dir>/${GRAMMAR_FILE}
 and <dir>/${EXAMPLES_DIR}/*.js with the real kit/define, builds each example's Program, a function of its
@@ -22,7 +22,8 @@ params, with kit/define's run() and lowers it, and prints every violation as
 D… codes are about the definition files, B… about a Program (the builder, construct state, conventions),
 L…, P… and S… about a lambda's body (lowering), C… the checker's own rules; rules.md lists them all.
 Exit 0: no violations. 1: violations. 2: bad invocation. 4: <dir> or a definition file is missing.
---json prints the result as one JSON object instead.`;
+--json prints the result as one JSON object instead.
+--lang <name> checks <dir>/<name>.dialect.js and <name>.grammar.js instead (default: data).`;
 
 /**
  * The text the author reads.
@@ -42,7 +43,14 @@ export function format(r, dirArg) {
 async function main(argv) {
   if (argv.includes("--help") || argv.includes("-h")) { console.log(PRIMER); return EXIT.ok; }
   const json = argv.includes("--json");
-  const rest = argv.filter((a) => a !== "--json");
+  let rest = argv.filter((a) => a !== "--json");
+  let lang = "data";
+  const at = rest.indexOf("--lang");
+  if (at >= 0) {
+    lang = rest[at + 1] ?? "";
+    try { definitionFiles(lang); } catch (e) { console.error(`error: --lang: ${/** @type {Error} */ (e).message}\n\n${PRIMER}`); return EXIT.usage; }
+    rest = [...rest.slice(0, at), ...rest.slice(at + 2)];
+  }
   if (rest.length !== 1 || rest[0].startsWith("-")) { console.error(PRIMER); return EXIT.usage; }
   const dirArg = rest[0];
   const log = process.env.DEFINE_TRIAL_LOG;
@@ -50,7 +58,7 @@ async function main(argv) {
   const entry = { time: new Date().toISOString(), dir: resolve(dirArg) };
   let code;
   try {
-    const r = await checkDir(dirArg);
+    const r = await checkDir(dirArg, { lang });
     console.log(json ? JSON.stringify(r) : format(r, dirArg));
     Object.assign(entry, { ok: r.ok, loadError: null, diagnostics: r.diagnostics, files: r.files });
     code = r.ok ? EXIT.ok : EXIT.violations;

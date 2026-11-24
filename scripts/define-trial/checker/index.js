@@ -18,8 +18,21 @@ export { CHECK_CODES, RETIRED_CODES, LOAD } from "./codes.js";
 export { EXAMPLES_DIR } from "./examples.js";
 /** @typedef {import("./codes.js").CheckDiagnostic} CheckDiagnostic */
 
-export const DIALECT_FILE = "data.dialect.js";
-export const GRAMMAR_FILE = "data.grammar.js";
+/**
+ * The definition files of a language named `lang`: `<lang>.dialect.js` and `<lang>.grammar.js` (`data` by default,
+ * the define-trial's data-tools language; the API pilot's is `budget`).
+ * @param {string} [lang]
+ */
+export function definitionFiles(lang = "data") {
+  if (!/^[a-z][a-z0-9-]*$/.test(lang)) throw new TypeError(`a language name is a lower-case word (letters, digits, "-"), not '${lang}'`);
+  return { dialect: `${lang}.dialect.js`, grammar: `${lang}.grammar.js` };
+}
+
+/** The data-tools language's definition files, the default. */
+export const { dialect: DIALECT_FILE, grammar: GRAMMAR_FILE } = definitionFiles();
+
+/** The definition files of the check in progress (checks run one at a time). */
+let defs = definitionFiles();
 
 /** What a candidate may import from kit/define (its helpers and define calls), for a did-you-mean. */
 const EXPORTS = Object.keys(kit);
@@ -39,16 +52,19 @@ let queue = Promise.resolve();
 /**
  * Checks one candidate directory. Checks run one at a time (the candidate's kit/define reports to one session).
  * @param {string} dir
+ * @param {{ lang?: string }} [options]  `lang` names the definition files (definitionFiles)
  * @returns {Promise<CheckResult>}
  */
-export function checkDir(dir) {
-  const run = queue.then(() => checkNow(resolve(dir)));
+export function checkDir(dir, { lang = "data" } = {}) {
+  const files = definitionFiles(lang);
+  const run = queue.then(() => { defs = files; return checkNow(resolve(dir), lang); });
   queue = run.then(() => undefined, () => undefined);
   return run;
 }
 
-/** @param {string} dir @returns {Promise<CheckResult>} */
-async function checkNow(dir) {
+/** @param {string} dir @param {string} lang @returns {Promise<CheckResult>} */
+async function checkNow(dir, lang) {
+  const { dialect: DIALECT_FILE, grammar: GRAMMAR_FILE } = defs;
   if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CheckTargetError(`${dir} is not a directory; give the directory that holds ${DIALECT_FILE}, ${GRAMMAR_FILE} and ${EXAMPLES_DIR}/`);
   for (const f of [DIALECT_FILE, GRAMMAR_FILE]) if (!existsSync(join(dir, f))) throw new CheckTargetError(`${join(dir, f)} does not exist; rules.md's hand-in needs ${DIALECT_FILE} and ${GRAMMAR_FILE}`);
   const exDir = join(dir, EXAMPLES_DIR);
@@ -68,14 +84,14 @@ async function checkNow(dir) {
   let definitionsLoaded = true;
   try {
     await load(DIALECT_FILE);
-    if (!session.dialectSite) loadFailure(DIALECT_FILE, 1, `${DIALECT_FILE} does not call defineDialect.`, `write export const data = defineDialect({ … }), importing defineDialect from "${DEFINE_SPECIFIER}"`);
+    if (!session.dialectSite) loadFailure(DIALECT_FILE, 1, `${DIALECT_FILE} does not call defineDialect.`, `write export const ${lang} = defineDialect({ … }), importing defineDialect from "${DEFINE_SPECIFIER}"`);
   } catch (e) {
     definitionsLoaded = false;
     reportLoadError(e, DIALECT_FILE);
   }
   try {
     await load(GRAMMAR_FILE);
-    if (!session.grammar && !session.refused) { definitionsLoaded = false; loadFailure(GRAMMAR_FILE, 1, `${GRAMMAR_FILE} does not call defineGrammar.`, `write export const program = defineGrammar(data, { … }), importing defineGrammar from "${DEFINE_SPECIFIER}"`); }
+    if (!session.grammar && !session.refused) { definitionsLoaded = false; loadFailure(GRAMMAR_FILE, 1, `${GRAMMAR_FILE} does not call defineGrammar.`, `write export const program = defineGrammar(${lang}, { … }), importing defineGrammar from "${DEFINE_SPECIFIER}"`); }
   } catch (e) {
     definitionsLoaded = false;
     reportLoadError(e, GRAMMAR_FILE);
@@ -129,7 +145,7 @@ function reportLoadError(e, file) {
     return;
   }
   const isExample = file.startsWith(`${EXAMPLES_DIR}/`);
-  if (isExample && (where.file === DIALECT_FILE || where.file === GRAMMAR_FILE) && !(err instanceof SyntaxError)) { reportThrown(err, file, "while its builder calls ran"); return; }
+  if (isExample && (where.file === defs.dialect || where.file === defs.grammar) && !(err instanceof SyntaxError)) { reportThrown(err, file, "while its builder calls ran"); return; }
   const fix = err instanceof SyntaxError ? "fix the JavaScript syntax at that line" : "the file must load: only kit/define and your own files may be imported, and nothing may be read from outside them";
   if (where.file !== file && !where.file.startsWith(`${EXAMPLES_DIR}/`) && isExample) where = { file, line: 1 };
   // The Grammar importing a Dialect that failed to load fails with the Dialect's error, already reported.

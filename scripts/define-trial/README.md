@@ -23,6 +23,7 @@ The dogfood trials of the Definition API (M3): fresh agents get only the API doc
 node scripts/define-trial/check.js <dir>          # <dir> holds data.dialect.js, data.grammar.js, examples/*.js
 node scripts/define-trial/check.js <dir> --json   # the same result as one JSON object
 DEFINE_TRIAL_LOG=trial.jsonl node scripts/define-trial/check.js <dir>   # also log the invocation
+node scripts/define-trial/check.js <dir> --lang budget   # another language: <dir>/budget.dialect.js and budget.grammar.js
 ```
 
 Each violation prints as `<file>:<line>: <code> <message>` and a `  fix:` line; rules.md lists the codes. Exit 0 means no violations, 1 violations, 2 a bad invocation, 4 a missing directory or definition file. With `DEFINE_TRIAL_LOG` set, every invocation appends one JSON line: `time`, `dir`, `ok`, `diagnostics`, `files` (the text of every candidate file) and `loadError`.
