@@ -58,6 +58,9 @@ These are ruled on the evidence in [the M1 findings](2026-11-23-m1-findings.md),
 - **String functions (`repeat`, `toUpperCase`, …) are declared in a dialect only when a program needs them.** They are not part of the subset.
 - **A loop step other than ±1 stays rejected** until a range analysis can bound a loop whose start is an expression (backlog, "a range analysis on a small lattice"). L007's tip suggests the rewrite: count the iterations and compute the value inside the loop.
 - **Closures, `while` and spread stay rejected.** Each appears once in 126 lambdas and has a direct rewrite.
+- **Array literals lower as bounded lists** (2026-11-23, with Ben, after job m82n5e). `[a, b]` is typed `{ list: T, max: n }`, with `n` the literal's length, so an item read by index or by tuple destructuring is possibly empty and must be checked, the same as any index. There is no fixed-length tuple type in the core IR for now. Ben: "On some systems we will need to be very careful with arrays." A bounded list keeps every array's size known to a backend.
+- **`w.bg` is described in the DMG dialect** (2026-11-23, with Ben). The background map is dialect work, not a subset change. It gates five or six game lambdas.
+- **Parameter types across call sites: open** (2026-11-23). Today the first call site wins. Ben wants the language to stay as flexible as JavaScript looks, and is wary of what loose typing could break. Before ruling, he asked how Manuel's typed JavaScript (ds-js-os) handles this. Job FrMVgR.
 
 ## Integer semantics in the IR (2026-11-23, the IR leaf)
 

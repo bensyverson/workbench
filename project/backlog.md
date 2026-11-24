@@ -25,3 +25,7 @@ Interval ranges over the IR, to prove a sized store never wraps (so a C backend 
 ## 2026-11-23: tracing lambdas with symbolic proxies
 
 A second front end for pure, branch-free dialects: call the lambda with symbolic values and record a hash-consed expression graph, as Candela's `src/fx.js` does. It cannot branch, so it cannot replace parsing for game lambdas. Un-park when M2's shader dialect is designed.
+
+## 2026-11-23: a dream-code checker for phase 1 of the workflow
+
+This checks example programs (the "dream code" a model writes before any dialect exists) against themselves. It checks the subset, harvests the grammar through a recording proxy, builds a provisional environment from the examples' own declarations, and lowers in an "open world" mode that turns unknown intrinsics into a wishlist with joined signatures. Ben wants it ("a fascinating addition"). Design: [a dream-code checker](2026-11-23-dream-code-checker.md). It is parked only because it belongs to the kit's workflow, not to M1 or M2. Un-park when M3 is planned, alongside H4.
