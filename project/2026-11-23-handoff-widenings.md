@@ -36,20 +36,20 @@
 - **Optional chaining** (`?.`) stays rejected (S105) unless Dream Code keeps reaching for it. "Possibly empty" is an optional type underneath, narrowed by plain JS checks.
 - **Ben's working preference:** delegate implementation to Sonnet agents whenever they can do it.
 
-## Waiting on Ben
+## Answered by Ben at the end of the session
 
-1. **A literal's exact length** (raised at the end of the session). With bounded lists, an item of a literal is possibly empty even at a constant index below its length. For example, `const [ox, oy] = [3, 2]` makes `ox` possibly empty, which keeps 23 `Bird.onFrame#0` rejected. The proposal: a list literal also records its exact length, so a constant index or destructuring position below it is never empty. There would still be no tuple type. The main thread recommends it.
-2. **M2's five shaping questions.** They were asked; only the fifth is answered. Each has a recommendation:
-   1. **Typed operators (D1).** Operators take their meaning from Dialect types, and Runtime Lambdas run only through the IR. Recommended: yes. H3 tests it.
-   2. **A reference interpreter over the IR**, as M2's oracle. The JS and GLSL output are each compared to it within D5's tolerance. Recommended: yes. It becomes necessary once closures stop being runnable.
-   3. **`f32` and fixed-size vectors as IR value types.** Integer sizes stay on storage. Recommended: yes. This is the one change M2 makes to the core, and H2's test.
-   4. **Wasm early.** Recommended: not in M2. GLSL owns the first LIR stage, and wasm follows on that LIR.
-   5. **Source material:** *answered.* The Uncommon Math book is at `local/uncommon-math-0.1.0.html`. It is gitignored, a 4.8 MB single-page app whose chapters are built from JS data. Two of its fragment sketches are to be ported both ways for H3. They are not chosen yet; survey the book's data to pick them.
+1. **A literal's exact length: yes.** Recorded in the M1 plan's widenings section and filed as job `qL6eyA`, which is ready for a Sonnet agent.
+2. **M2's five shaping questions: all as recommended.** Recorded in [the M2 plan's opening section](2026-11-23-m2-shader-slice-plan.md):
+   - typed operators (D1);
+   - a reference interpreter as the oracle;
+   - `f32` and vectors as IR value types;
+   - no wasm in M2;
+   - the Uncommon Math book at `local/uncommon-math-0.1.0.html`.
 
 ## Next
 
-1. Get Ben's answers to the items above, and record them in the M2 plan's opening section.
-2. **Plan M2** as a dated doc with a `tasks:` block (`project/agents/planning.md`). Inputs:
+1. Run job `qL6eyA` (a literal's exact length) on a Sonnet agent.
+2. **Finish the M2 plan** ([its rulings are in](2026-11-23-m2-shader-slice-plan.md)) with a `tasks:` block (`project/agents/planning.md`). Inputs:
    - the M1 findings, "What M2 and M3 should change": GLSL owns the lower stage, there is a verifier after each lowering, and the differential check has limits;
    - [the passes note](2026-11-23-passes-queries-and-several-irs.md);
    - the backlog: LIR, range analysis, and the tracing front end (Candela suits branch-free shaders);
