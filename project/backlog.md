@@ -61,3 +61,11 @@ Emit a SELECT from a data-Dialect table pipeline, golden-tested, with no engine 
 ## 2026-11-24: the GLSL target's kernel shape is hard-coded, not declared
 
 `emitGlsl` (kit/emit/glsl/index.js) requires a kernel taking one `vec2` plus uniforms, computes `uv` from `gl_FragCoord`, and writes `vec4(color, 1.0)`. The slot's *name* (`pixel`) is the fields Dialect's, but "a fragment shader is a function from a position to a color" lives in the backend rather than in the Dialect's `targets.glsl` declaration. Parked because there is one shader Dialect and Ben's ruling is not to build for what does not exist yet. **Un-park when** a second shader Dialect or slot needs another mapping (textures, a vertex stage, a different output), or the Definition API's target declaration is opened for another reason.
+
+## 2026-11-24: a C compiler in the page, to check emitted C
+
+Compile the kit's emitted C inside the artifact (Zig or clang built as wasm, or TinyCC), run it, and compare with the reference interpreter. Parked because no C backend exists yet, a full compiler is about 10 MB or more against the 16 MiB page limit, and the same check runs with a native compiler wherever there is a shell (Node, CI). Un-park when the C export target exists and its check must run in the page itself; try TinyCC first, for size. See [backend direction](2026-11-24-backend-direction.md).
+
+## 2026-11-24: Linux in wasm (unkernel) as an opt-in sandbox
+
+Embed [unkernel](https://github.com/pithings/unkernel) so a workbench can run foreign native tools in the page: a tiny fixed toolset (TinyCC, SDCC) to check output, or a real shell for the in-page agent. Not a backend: its user programs run on an aarch64 emulator, well behind the wasm we emit. Parked because, inside an artifact, it cannot install packages (no fetch to other hosts), takes about 14 MB of the 16 MiB limit, runs one CPU (no `SharedArrayBuffer`), and its kernel is GPL-2.0, which sits badly with the delivery decisions' business-friendly aim. Un-park when a workbench needs a foreign tool no wasm port provides, and the size limit, the fetch rule or the licensing question has moved. See [backend direction](2026-11-24-backend-direction.md).
