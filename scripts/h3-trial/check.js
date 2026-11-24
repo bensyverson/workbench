@@ -10,6 +10,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { lowerField, INTRINSICS } from "../../kit/dialects/fields/index.js";
 import { run } from "../../kit/interp/index.js";
+import { BuildError } from "../../kit/define/index.js";
 
 /** @import { FieldProgram } from "../../kit/dialects/fields/decls.js" */
 /** @import { Kernel } from "../../kit/ir/ir.js" */
@@ -55,15 +56,15 @@ const buildWhere = (message) => {
 };
 
 /**
- * The entries for a refusal from the generated builder (B007, B008 and the other B codes), which stops the
+ * The entries for a refusal from the generated builder (B007, B008, the other B codes and the
+ * Grammar's own F codes), which stops the
  * sketch at `.build()`, before lowering: each is shaped like a lowering diagnostic so the classifier reads it.
  * @param {unknown} e
  * @returns {Entry[] | null}  null when `e` is not a build refusal
  */
 export function buildEntries(e) {
-  const ds = /** @type {{ diagnostics?: unknown }} */ (e)?.diagnostics;
-  if (!(e instanceof Error) || !Array.isArray(ds) || !ds.every((d) => typeof d?.code === "string" && /^B\d{3}$/.test(d.code))) return null;
-  return /** @type {import("../../kit/define/define.js").BuildDiagnostic[]} */ (ds).map((d) => {
+  if (!(e instanceof BuildError)) return null;
+  return e.diagnostics.map((d) => {
     const lines = (d.lambda?.src ?? "").split("\n");
     const line = d.lambda?.loc?.start.line ?? 1;
     return { where: buildWhere(d.message), code: d.code, severity: d.severity, message: d.message, tip: d.tip ?? "", line, text: (lines[line - 1] ?? "").trim() };

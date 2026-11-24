@@ -158,3 +158,14 @@ test("a call-style sketch that uses an operator on vectors is logged as a STYLE 
   assert.deepEqual(c.byStyle.call.byCode, { STYLE: 1 });
   assert.equal(c.all.plainJs, 1);
 });
+
+test("a Dialect-coded refusal at build (F002) is an entry, not a LOAD error", () => {
+  const r = checkBuilt(() => /** @type {any} */ (field("p")).param("t", { value: 1 }).pixel("(uv, u) => color(0, 0, 0)").build(), "typed");
+  assert.equal(r.ok, false);
+  assert.ok(r.entries.some((e) => e.code === "F002"), JSON.stringify(r.entries));
+});
+
+test("a B008 beside a Dialect-coded refusal is still counted", () => {
+  const r = checkBuilt(() => /** @type {any} */ (field("p")).param("t", { value: 1 }).pixel("(uv, u) => color(Math.sin(uv.x), 0, 0)").build(), "typed");
+  assert.deepEqual(r.entries.map((e) => e.code).sort(), ["B008", "F002"]);
+});
