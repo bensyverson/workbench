@@ -2,6 +2,8 @@
 
 *Draft 2 for discussion · 2026-11-23*
 
+> **Reviewed 2026-11-24:** two first-principles design consults kept this design's main bets (JS surface, parsed runtime lambdas, a Kernel-only typed core, D1, a declarative Definition API) and found it thin on binding time, module-scope capture, text views, dialects as portable packages, and composition across dialects (seam types, clocks, a scheduler). See [the architecture synthesis](2026-11-24-architecture-synthesis.md); its §6 lists the proposed changes.
+
 This document merges two earlier proposals (mine, and the one written by the agent that built the DMG Workbench) with the design goals and corrections that came out of the review conversation. It separates what we have observed from what we are guessing, and attaches a test to every guess.
 
 ---
