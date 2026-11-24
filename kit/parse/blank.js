@@ -124,9 +124,9 @@ function wordAt(out, k) {
   return { word: w, before: lastCode(out, k + 1) };
 }
 
-/** The word just before the code so far, when it is a name not read as a property (`o.if`), else "". @param {string[]} out */
-function keywordBefore(out) {
-  const k = lastCode(out);
+/** The word just before the code up to `end`, when it is a name not read as a property (`o.if`), else "". @param {string[]} out @param {number} [end] */
+function keywordBefore(out, end = out.length) {
+  const k = lastCode(out, end);
   if (k < 0 || !isNameUnit(out[k])) return { word: "", before: k };
   const w = wordAt(out, k);
   return out[w.before] === "." ? { word: "", before: w.before } : w;
@@ -135,7 +135,7 @@ function keywordBefore(out) {
 /** A `(` about to open after the code so far: whether it is a statement head, a `for` head, a function's parameters. @param {string[]} out @returns {Bracket} */
 function paren(out) {
   const { word, before } = keywordBefore(out);
-  const forAwait = word === "await" && keywordBefore(out.slice(0, before + 1)).word === "for";
+  const forAwait = word === "await" && keywordBefore(out, before + 1).word === "for";
   return { kind: "(", head: HEADS.has(word) || forAwait, forHead: word === "for" || forAwait, fn: functionKind(out) };
 }
 
@@ -155,8 +155,19 @@ function functionKind(out) {
     if (w.word !== "function") return null;
   }
   if (out[w.before] === ".") return null;
-  const at = w.before + 1 + out.slice(w.before + 1).join("").search(/\S/);
-  return startsStatement(out.join(""), at) ? "decl" : "expr";
+  return statementStartsAt((i) => out[i], k - "function".length + 1) ? "decl" : "expr";
+}
+
+/**
+ * Whether the `:` at `k` follows a label: a name at the start of a statement (nothing, a `;`, a `{` or a `}`
+ * before it), as in `l: {`, not `k ? x : {` or `case x:`.
+ * @param {string[]} out @param {number} k
+ */
+function isLabel(out, k) {
+  const e = lastCode(out, k);
+  if (e < 0 || !isNameUnit(out[e])) return false;
+  const { before } = wordAt(out, e);
+  return before < 0 || ";{}".includes(out[before]);
 }
 
 /**
@@ -171,7 +182,11 @@ function braceIsBlock(out, stack, fnClose) {
   if (p === ")") return fnClose.get(k) !== "expr";
   if (p === ">" && out[k - 1] === "=") return true; // an arrow's body: an arrow is never an operand of `/`
   if (";{}\"`]".includes(p)) return true;
-  if (p === ":") return stack[stack.length - 1]?.kind === "{" && /** @type {{ block: boolean }} */ (stack[stack.length - 1]).block; // `case 1: {`, not `{ a: {`
+  if (p === ":") {
+    const top = stack[stack.length - 1];
+    if (top === undefined) return isLabel(out, k); // a top-level `l: {`, not a ternary's `: {`
+    return top.kind === "{" && top.block; // `case 1: {` or a label in a block, not `{ a: {`
+  }
   if (isNameUnit(p)) {
     const { word } = wordAt(out, k);
     if (word === "of") return false; // `for (x of {…})`; `of {` is no statement
@@ -231,9 +246,12 @@ export function lineEnds(b, j) {
   let n = j + 1;
   while (n < b.length && /\s/.test(b[n])) n++;
   const next = b[n] ?? "";
-  if (!NAME_START.test(next) && next !== '"' && !/[0-9]/.test(next)) return false;
+  // `++` and `--` after a line break are prefix operators, a restricted production: the statement before ends
+  const prefixStep = (next === "+" || next === "-") && b[n + 1] === next;
+  if (!prefixStep && !NAME_START.test(next) && next !== '"' && !/[0-9]/.test(next)) return false;
   let p = j - 1;
   while (p >= 0 && /\s/.test(b[p])) p--;
+  if (prefixStep && p > 0 && (b[p] === "+" || b[p] === "-") && b[p - 1] === b[p]) return true; // `i++` ends a value
   return p < 0 || !/[=+\-*/%&|^!?:<>,.([{~]/.test(b[p]);
 }
 
@@ -243,16 +261,26 @@ export function lineEnds(b, j) {
  * @param {string} b @param {number} at
  */
 export function startsStatement(b, at) {
+  return statementStartsAt((i) => b[i], at);
+}
+
+/**
+ * startsStatement over a reader of single characters, so `blank` can ask of its output array without joining
+ * it: only the text just before `at` is read.
+ * @param {(i: number) => string} ch @param {number} at
+ */
+function statementStartsAt(ch, at) {
   let p = at - 1;
   for (;;) {
-    while (p >= 0 && /[ \t]/.test(b[p])) p--;
-    if (p < 0 || b[p] === ";" || b[p] === "}" || b[p] === "{") return true;
-    if (b[p] === "\n" || b[p] === "\r") {
-      while (p >= 0 && /\s/.test(b[p])) p--;
-      return p < 0 || !/[=+\-*/%&|^!?:<>,.([~]/.test(b[p]); // a line break ends the statement before, as lineEnds has it
+    while (p >= 0 && /[ \t]/.test(ch(p))) p--;
+    if (p < 0 || ch(p) === ";" || ch(p) === "}" || ch(p) === "{") return true;
+    if (ch(p) === "\n" || ch(p) === "\r") {
+      while (p >= 0 && /\s/.test(ch(p))) p--;
+      return p < 0 || !/[=+\-*/%&|^!?:<>,.([~]/.test(ch(p)); // a line break ends the statement before, as lineEnds has it
     }
-    const w = /(?:export|default|async)$/.exec(b.slice(Math.max(0, p - 6), p + 1));
-    if (!w || isNameUnit(b[p - w[0].length])) return false;
+    const from = Math.max(0, p - 6); // the longest of the three words is 7 characters
+    const w = /(?:export|default|async)$/.exec(Array.from({ length: p + 1 - from }, (_, q) => ch(from + q)).join(""));
+    if (!w || isNameUnit(ch(p - w[0].length))) return false;
     p -= w[0].length;
   }
 }

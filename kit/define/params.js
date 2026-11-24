@@ -147,13 +147,19 @@ export function misfit(value, decl) {
   return null;
 }
 
+/** The errors checkValue threw: the host's own mistake, never a knock-on of a refusal, so run() lets them through. */
+const HOST_ERRORS = new WeakSet();
+
 /**
  * Throws when a host value does not fit its declaration (a host's mistake, not the Program's).
  * @param {string} name @param {unknown} value @param {Record<string, unknown>} decl
  */
 function checkValue(name, value, decl) {
   const why = misfit(value, decl);
-  if (why) throw new TypeError(`run({ values }): '${name}' ${why}`);
+  if (!why) return;
+  const e = new TypeError(`run({ values }): '${name}' ${why}`);
+  HOST_ERRORS.add(e);
+  throw e;
 }
 
 /**
@@ -240,6 +246,7 @@ export function run(programFn, options = {}) {
   } catch (e) {
     settleEarly(ctx);
     if (e instanceof BuildError) return stopped([...ctx.refusals, ...e.diagnostics.filter((d) => !ctx.refusals.includes(d))], e);
+    if (e !== null && typeof e === "object" && HOST_ERRORS.has(e)) throw e;
     // an exception after a refusal (one build-time code caught, or a read before the Program opened, which
     // answered nothing) follows from it: the refusal is what to fix
     if (ctx.refusals.length) return stopped(ctx.refusals, e);

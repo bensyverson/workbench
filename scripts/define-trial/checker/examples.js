@@ -40,9 +40,9 @@ export function checkExport(file, exported) {
   const refused = REFUSED.test(src.split("\n")[0].trimEnd());
   // Outside a "type": "module" package a file with no ESM syntax loads as CommonJS, whose default is {}.
   if (!/\bexport\b/.test(src)) exported = undefined;
-  if (typeof exported === "function" && (exported.length === 1 || (exported.length === 0 && oneDefaultedParam(String(exported))))) return /** @type {(params: any) => unknown} */ (exported);
+  if (typeof exported === "function" && takesOneParam(exported)) return /** @type {(params: any) => unknown} */ (exported);
   if (typeof exported === "function") {
-    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file}'s default export is a function of ${paramList(String(exported))?.length ?? exported.length} parameters; a Program is a function of one parameter, the params, which the kit calls with $.`, fix: `take the params as its one parameter: ${FORM}` });
+    session.add({ file, line: 1, code: "C001", severity: "error", message: `${file}'s default export is ${describeParams(exported)}; a Program is a function of one parameter, the params, which the kit calls with $.`, fix: `take the params as its one parameter: ${FORM}` });
     return null;
   }
   if (isBuilder(exported)) {
@@ -89,13 +89,29 @@ function paramList(src) {
 }
 
 /**
- * Whether a function whose `length` is 0 declares exactly one parameter, which then has a default (`$ = {}`,
- * `{ topN } = {}`), so the kit's `$` still reaches it. A rest parameter would get a list, not the params.
- * @param {string} src
+ * Whether a function declares exactly one parameter, and not a rest parameter: `($) =>`, and also `($ = {}) =>`
+ * or `({ topN } = {}) =>`, whose `length` is 0 but which the kit's `$` still reaches. A second parameter (even
+ * a defaulted one) or a rest parameter is refused, and so is a class, whose first method's list is not its own.
+ * A function whose source is hidden (a bound one) is judged by its `length`.
+ * @param {Function} fn
  */
-function oneDefaultedParam(src) {
-  const ps = paramList(src);
-  return ps !== null && ps.length === 1 && !ps[0].startsWith("...");
+function takesOneParam(fn) {
+  const src = String(fn);
+  if (/^\s*class\b/u.test(src)) return false;
+  const ps = HIDDEN.test(src) ? null : paramList(src);
+  return ps === null ? fn.length === 1 : ps.length === 1 && !ps[0].startsWith("...");
+}
+
+/** The source of a function whose text is hidden (`function () { [native code] }`). */
+const HIDDEN = /\[native code\]\s*\}\s*$/u;
+
+/** What C001 says a default export is. @param {Function} fn */
+function describeParams(fn) {
+  const src = String(fn);
+  if (/^\s*class\b/u.test(src)) return "a class";
+  const ps = HIDDEN.test(src) ? null : paramList(src);
+  if (ps === null) return `a function of ${fn.length} parameters`;
+  return `a function of ${ps.length} parameters${ps.some((p) => p.startsWith("...")) ? ", one a rest parameter" : ""}`;
 }
 
 /**
