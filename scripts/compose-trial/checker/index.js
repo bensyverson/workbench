@@ -7,11 +7,12 @@ import { join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { session, candidateFrame } from "./session.js";
-import { installHooks, STUBS } from "./hooks.js";
+import { installHooks, isAllowedImport, importMessage } from "./hooks.js";
 import { scanFile } from "./source.js";
 import { unwrap, Program, Part } from "./handles.js";
 import { analyzeLambda, analyzeHelper } from "./lambdas.js";
 import { crossCheck, goals } from "./seams.js";
+import { staticBuildReads } from "./buildreads.js";
 
 export { CODES } from "./codes.js";
 /** @typedef {import("./codes.js").CheckDiagnostic} CheckDiagnostic */
@@ -44,15 +45,24 @@ export function checkDir(dir) {
   return run;
 }
 
-/** @param {string} dir @returns {Promise<CheckResult>} */
-async function checkNow(dir) {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CheckTargetError(`${dir} is not a directory; give the directory that holds ${PROGRAM_FILE} and ${LIB_DIR}/`);
-  if (!existsSync(join(dir, PROGRAM_FILE))) throw new CheckTargetError(`${join(dir, PROGRAM_FILE)} does not exist; rules.md's hand-in needs ${PROGRAM_FILE}`);
+/**
+ * The candidate's files: program.js, then lib/*.js in name order, and each one's text.
+ * @param {string} dir
+ */
+export function readCandidate(dir) {
   const libDir = join(dir, LIB_DIR);
   const libs = existsSync(libDir) ? readdirSync(libDir).filter((f) => f.endsWith(".js")).sort().map((f) => `${LIB_DIR}/${f}`) : [];
   const order = [PROGRAM_FILE, ...libs];
   /** @type {Record<string, string>} */
   const sources = Object.fromEntries(order.map((f) => [f, readFileSync(join(dir, f), "utf8")]));
+  return { order, libs, sources };
+}
+
+/** @param {string} dir @returns {Promise<CheckResult>} */
+async function checkNow(dir) {
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CheckTargetError(`${dir} is not a directory; give the directory that holds ${PROGRAM_FILE} and ${LIB_DIR}/`);
+  if (!existsSync(join(dir, PROGRAM_FILE))) throw new CheckTargetError(`${join(dir, PROGRAM_FILE)} does not exist; rules.md's hand-in needs ${PROGRAM_FILE}`);
+  const { order, libs, sources } = readCandidate(dir);
   const scans = Object.fromEntries(order.map((f) => [f, scanFile(sources[f])]));
 
   installHooks();
@@ -92,6 +102,7 @@ async function checkNow(dir) {
   for (const rec of session.lambdas) reads.set(rec, analyzeLambda(rec, bindings));
   for (const [f, m] of libMods) checkLib(f, m, scans[f]);
   for (const p of session.parts) p.finalize();
+  staticBuildReads();
   crossCheck();
   if (!session.diagnostics.some((d) => d.code === "C001" || d.code === "C003")) goals(reads);
   return result();
@@ -105,10 +116,9 @@ function importsAllowed(files, scans) {
   let ok = true;
   for (const f of files) {
     for (const imp of scans[f].imports) {
-      const allowed = f === PROGRAM_FILE ? Object.hasOwn(STUBS, imp.from) || /^\.\/lib\/[\w.-]+\.js$/.test(imp.from) : /^\.\/[\w.-]+\.js$/.test(imp.from);
-      if (!allowed) {
+      if (!isAllowedImport(f, imp.from)) {
         ok = false;
-        session.add("C003", { file: f, line: imp.line }, `${f} imports "${imp.from}"; ${f === PROGRAM_FILE ? 'only "kit", "cave", "tiles", "glow" and ./lib/ files' : "a lib/ file may import only other lib/ files"} may be imported.`, "remove the import");
+        session.add("C003", { file: f, line: imp.line }, importMessage(f, imp.from), "remove the import");
       }
     }
   }

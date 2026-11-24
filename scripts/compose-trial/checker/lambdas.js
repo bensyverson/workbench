@@ -6,7 +6,8 @@
 import { parseLambda, checkSubset } from "../../../kit/parse/index.js";
 import { didYouMean } from "../../../kit/lower/codes.js";
 import { session } from "./session.js";
-import { CELL_MEMBERS } from "./stubs/cave.js";
+import { CELL_MEMBERS, CavePart } from "./stubs/cave.js";
+import { OutHandle } from "./handles.js";
 import { PIXEL_MEMBERS } from "./stubs/glow.js";
 import { ACTOR_MEMBERS, WORLD_MEMBERS, INPUT_MEMBERS, SPAWN_MEMBERS, CONVERSIONS } from "./stubs/tiles.js";
 import { isSignalReadable } from "./types.js";
@@ -33,7 +34,7 @@ const COMPARE = new Set(["==", "===", "!=", "!=="]);
  * @property {Array<{ part: Part, name: string }>} outs  other parts' outputs it reads
  * @property {Set<string>} helpers  lib/ helpers it calls
  * @property {Set<string>} params  parameters it reads as `$.name`
- * @property {boolean} convertsCell  it calls tile() on a value tagged @cell
+ * @property {boolean} convertsCell  it calls tile() on a position of a cave's grid
  */
 
 /** @param {string} tag */
@@ -183,6 +184,30 @@ function analyze(fn, site, scope, rec) {
     return null;
   };
 
+  /**
+   * Whether an expression is a position on a cave's grid: a cave output tagged @cell, a spawn point of a
+   * cave's `spawns`, or a local holding one. A conversion's result (`cell(px)`) is not.
+   * @param {any} n @param {number} [depth]
+   * @returns {boolean}
+   */
+  const fromCave = (n, depth = 0) => {
+    if (!n || depth > 8) return false;
+    if (n.type === "ConditionalExpression") return fromCave(n.consequent, depth + 1) && fromCave(n.alternate, depth + 1);
+    let root = n;
+    /** @type {string[]} */
+    const names = [];
+    while (root.type === "MemberExpression" && !root.computed && root.property.type === "Identifier") { names.unshift(root.property.name); root = root.object; }
+    if (root.type !== "Identifier") return false;
+    const name = root.name;
+    if (roles.has(name)) {
+      if (roles.get(name) !== "spawn" || names.length !== 1 || names[0] !== "at" || !rec?.actor) return false;
+      return !!tiles?.spawns.some((s) => s.actor === rec.actor && s.from instanceof OutHandle && s.from.part instanceof CavePart);
+    }
+    if (locals.has(name)) return names.length === 0 && fromCave(inits.get(name), depth + 1);
+    const b = scope.bindings.get(name);
+    return b?.kind === "part" && b.part instanceof CavePart && names[0] === "out" && names.length === 2 && b.part.outputs().get(names[1])?.tag === "cell";
+  };
+
   /** @param {string} name whether a free name is the tiles conversion of that name */
   const isConversion = (name) => !locals.has(name) && scope.bindings.get(name)?.kind === "import" && /** @type {any} */ (scope.bindings.get(name)).from === "tiles";
 
@@ -244,7 +269,7 @@ function analyze(fn, site, scope, rec) {
     }
     switch (b.kind) {
       case "import":
-        if (b.from.startsWith("./lib/") || b.from.startsWith("lib/")) { reads.helpers.add(name); return; }
+        if (b.from.startsWith("./lib/") || b.from.startsWith("lib/")) { if (isCall) reads.helpers.add(name); return; }
         if (b.from === "tiles" && Object.hasOwn(CONVERSIONS, b.exported)) {
           if (dialect !== "tiles") session.add("S332", at(n), `${b.exported}() belongs to tiles; ${owner} is a ${dialect} part.`, `convert in the tiles part and export the result: .export("<name>", "vec2@px", w => ${b.exported}(…))`);
           return;
@@ -340,7 +365,7 @@ function analyze(fn, site, scope, rec) {
       if (dialect === "tiles" && isConversion(callee) && a.arguments[0]) {
         const want = callee === "tile" ? "cell" : "px";
         frame(want, a.arguments[0], `${callee}()'s argument`);
-        if (callee === "tile" && tagOf(a.arguments[0]) === "cell") reads.convertsCell = true;
+        if (callee === "tile" && tagOf(a.arguments[0]) === "cell" && fromCave(a.arguments[0])) reads.convertsCell = true;
       }
     }
     if (a.type === "CallExpression" && a.callee.type === "MemberExpression" && a.callee.object.type === "Identifier" && roles.get(a.callee.object.name) === "world" && a.callee.property.name === "emit" && tiles) {

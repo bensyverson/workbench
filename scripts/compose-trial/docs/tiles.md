@@ -32,7 +32,7 @@ tiles(name: string)                         // a new tiles part
           read: (w: World) => value)        //   (runtime, CPU) computed after each step
 ```
 
-`.screen`, `.tiles`, `.map`, `.player` and `.update` may be called once each; `.spawn`, `.state`, `.event` and `.export` once per kind or name.
+`.screen`, `.tiles`, `.map`, `.player` and `.update` may be called once each; `.state` (one object holding every field) too; `.spawn` once per spawn kind, `.event` and `.export` once per name.
 
 ```ts
 actor(name: string)                         // an actor kind, used by .spawn and .player
@@ -41,7 +41,7 @@ actor(name: string)                         // an actor kind, used by .spawn and
   .update(fn: (self: Actor, w: World) => void)       // (runtime, CPU) each live actor's step
 ```
 
-**Types** for `.state`, `.event` and `.export`: `'f32'`, `'int'`, `'bool'`, `'vec2'`, `'vec2@px'`, `'vec2i@cell'`, or an enum written `'idle|chase'`. A vector's initial value is `[x, y]`.
+**Types** for `.state`, `.event` and `.export`: `'f32'`, `'int'`, `'bool'`, `'vec2'`, `'vec3'`, `'vec2i'`, a vector with a frame tag (`'vec2@px'`, `'vec2i@cell'`), or an enum written `'idle|chase'`. A vector's initial value is `[x, y]`.
 
 **Literal inputs**, for a game on its own (build time):
 

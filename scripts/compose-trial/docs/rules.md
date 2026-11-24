@@ -74,7 +74,8 @@ Each rule names the codes that enforce it. Run the checker as often as you like.
 |---|---|
 | C001 | `program.js` is missing, or does not `export default` a `program(…)` with a `.show()` |
 | C002 | a part that is not bound to a top-level `const` |
-| C003 | `program.js` or a `lib/` file cannot be loaded (a syntax error, an exception, an import from elsewhere) |
+| C003 | `program.js` or a `lib/` file cannot be loaded (a syntax error, an exception), or imports from elsewhere (a static `import`, an `export … from`, or a dynamic `import()`, indented or not) |
+| C005 | `program.js` or a `lib/` file ends the checker (`process.exit()`, a top-level `await` that never settles), never finishes (an endless loop, over 30 s), or raises an unhandled rejection |
 | C004 | a parameter that is not declared in `params({…})`, or a malformed parameter |
 
 ### A dialect's (`D…`)

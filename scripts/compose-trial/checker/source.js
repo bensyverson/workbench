@@ -23,9 +23,56 @@
  * @property {Import[]} imports
  */
 
+/**
+ * `text` with every comment and the inside of every string blanked to spaces (newlines and offsets kept), so
+ * a search does not match text that is not code.
+ * @param {string} text
+ */
+export function blank(text) {
+  let out = "";
+  for (let i = 0; i < text.length;) {
+    const c = text[i], n = text[i + 1];
+    if (c === "/" && n === "/") {
+      const e = text.indexOf("\n", i);
+      const end = e < 0 ? text.length : e;
+      out += " ".repeat(end - i);
+      i = end;
+    } else if (c === "/" && n === "*") {
+      const e = text.indexOf("*/", i + 2);
+      const end = e < 0 ? text.length : e + 2;
+      out += text.slice(i, end).replace(/[^\n]/g, " ");
+      i = end;
+    } else if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (j < text.length && text[j] !== c && !(c !== "`" && text[j] === "\n")) j += text[j] === "\\" ? 2 : 1;
+      out += c + text.slice(i + 1, j).replace(/[^\n]/g, " ") + (text[j] === c ? c : "");
+      i = j + 1;
+    } else { out += c; i++; }
+  }
+  return out;
+}
+
+/**
+ * The rest of the line where the right-hand side of a declaration begins, skipping line breaks and comments
+ * after the `=`.
+ * @param {string} text @param {string} code  `text` blanked @param {number} from  the offset just past the `=`
+ */
+function rhsFrom(text, code, from) {
+  let p = from;
+  while (p < code.length && /\s/.test(code[p])) p++;
+  const e = text.indexOf("\n", p);
+  return text.slice(p, e < 0 ? text.length : e);
+}
+
+/** The 1-based line holding offset `i`. @param {string} text @param {number} i */
+const lineAt = (text, i) => text.slice(0, i).split("\n").length;
+
 /** @param {string} text @returns {FileScan} */
 export function scanFile(text) {
   const lines = text.split("\n");
+  const code = blank(text);
+  let offset = 0;
+  const starts = lines.map((l) => { const o = offset; offset += l.length + 1; return o; });
   /** @type {Map<string, TopDecl>} */
   const decls = new Map();
   /** @type {number[]} */
@@ -35,8 +82,8 @@ export function scanFile(text) {
   lines.forEach((l, i) => {
     const line = i + 1;
     if (/^[A-Za-z_$]/.test(l)) statements.push(line);
-    const d = /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(l);
-    if (d) decls.set(d[1], { name: d[1], line, rhs: d[2] });
+    const d = /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=(?!=)/.exec(l);
+    if (d) decls.set(d[1], { name: d[1], line, rhs: rhsFrom(text, code, starts[i] + d[0].length) });
     const destructured = /^(?:export\s+)?(?:const|let|var)\s*[{[]([^}\]]*)[}\]]\s*=\s*(.*)$/.exec(l);
     if (destructured) {
       for (const part of destructured[1].split(",")) {
@@ -45,9 +92,21 @@ export function scanFile(text) {
       }
     }
   });
-  const IMPORT = /^import\s*(?:\{([^}]*)\}|\*\s+as\s+([\w$]+)|([\w$]+))?\s*(?:from\s*)?["']([^"']+)["']/gm;
+  // A match counts only where its keyword is code (not inside a comment or a string).
+  /** @param {RegExpMatchArray} m @param {string} kw */
+  const isCode = (m, kw) => code.startsWith(kw, (m.index ?? 0) + m[0].indexOf(kw));
+  const EXPORT_FROM = /^[ \t]*export\s*(?:\*(?:\s+as\s+[\w$]+)?|\{[^}]*\})\s*from\s*["']([^"']+)["']/gm;
+  for (const m of text.matchAll(EXPORT_FROM)) {
+    if (isCode(m, "export")) imports.push({ from: m[1], line: lineAt(text, m.index ?? 0), names: new Map() });
+  }
+  const DYNAMIC = /(?<![\w$.])import\s*\(\s*(["'])([^"']+)\1\s*[,)]/g;
+  for (const m of text.matchAll(DYNAMIC)) {
+    if (isCode(m, "import")) imports.push({ from: m[2], line: lineAt(text, m.index ?? 0), names: new Map() });
+  }
+  const IMPORT = /^[ \t]*import\s*(?:\{([^}]*)\}|\*\s+as\s+([\w$]+)|([\w$]+))?\s*(?:from\s*)?["']([^"']+)["']/gm;
   for (const m of text.matchAll(IMPORT)) {
-    const line = text.slice(0, m.index).split("\n").length;
+    if (!isCode(m, "import")) continue;
+    const line = lineAt(text, m.index ?? 0);
     /** @type {Map<string, string>} */
     const names = new Map();
     for (const spec of (m[1] ?? "").split(",")) {

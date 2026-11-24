@@ -28,12 +28,18 @@ Each violation prints as `<file>:<line>: <code> <message>` and a `  fix:` line; 
 
 ## How it works
 
-1. **Imports** are scanned first: `program.js` may import only `kit`, `cave`, `tiles`, `glow` and `./lib/` files (C003 otherwise, and nothing loads).
+1. **Imports** are scanned first: `program.js` may import only `kit`, `cave`, `tiles`, `glow` and `./lib/` files (C003 otherwise, and nothing loads). The scan reads static imports, `export … from` and `import("literal")`, indented or not, outside comments and strings; the module hook catches any other import (a computed specifier) as it resolves, so that one is reported after the file has run.
 2. **The build.** A Node module hook (`module.registerHooks`) resolves the four bare names to `checker/stubs/`, and `program.js` runs unchanged. Each builder call records itself and checks its arguments (D001–D004). A part's binding is read from the line that creates it (`const level = cave(…)`; C002 if none). `part.out.x` returns an output handle: passing it to a connecting slot (`.map`, `.spawn`, `.over`, `.sample`) records a connection; coercing it, iterating it, reading a field of it, or passing it to a plain slot is a build-time read (S301, or S302 for a slot with no lambda form). A part used before it exists (`.seed(game.out.depth)` above `const game`) throws a TDZ `ReferenceError`, which is also S301. Reading `$.x` at build records a build-time parameter read. Runtime lambdas are never called.
 3. **Lambdas** are read from `String(fn)` with `kit/parse`: `parseLambda` (P…), `checkSubset` (S1…), then a walk of the tree. Free names resolve against the program file's top-level declarations and imports (S331, S332); a member chain on a part binding must be `.out.<declared>` (S311, S312, S313); on a context parameter it must be a listed member (D005); a GPU lambda may read only scalar, vector and enum signals (S203) and has no `for…of` (D007). Frame tags (S251) come from a small inference: context members (`s.at`, `p.xy`, `self.pos`), declared fields, outputs and the `tile()` / `cell()` conversions carry a tag; arithmetic erases it. They are compared where a value lands unchanged: `distance()`, `==`/`===`, an assignment, an actor's `init` fields and an `.export()` value. Each diagnostic is placed at its line by finding the lambda's source in the file.
 4. **`lib/` helpers** are read the same way, and may see only their arguments, intrinsics and other helpers.
 5. **Cross-checks** run once the build is done: required calls (D003), map shape and values (S201, S202), seam types of connections (S203), spawn kinds (S204), player cardinality and unused actors (D006), output names (S311), sampling (S321).
 6. **The task's seams** (G001–G005) are checked last, and only when the program loaded.
+
+The command line runs the check in a child process (`checker/isolated.js`, `checker/worker.js`), so a `program.js` that calls `process.exit()`, waits forever at the top level, loops past `COMPOSE_TRIAL_TIMEOUT_MS` (default 30000) or raises an unhandled rejection is reported as C005 with exit 1, never as a pass. `checkDir` from the library runs in the caller's process and has no such guard.
+
+Build-time reads the output handle cannot trap (`===`, `!x`, `x ? a : b`, `x && y`, `if (x)`) are found by a text scan of `program.js` outside the runtime lambdas (`checker/buildreads.js`, S301). G001 counts only `tile()` of a position on a cave's grid (a spawn point of a cave's spawns, a cave output tagged `@cell`, or a local holding one), not `tile(cell(px))`.
+
+**Documented limits.** Aliases are not followed: `const g = game`, `const o = game.out` and `const cells = level.out.cells` hide a part or output from S312, S203, S311, D005 and the S301 scan. A helper counts toward G004 only when a lambda calls it.
 
 What it does not do: run the game, schedule anything, compile any kernel, check that a cycle settles, or read `// GAP:` comments and `REPORT.md`; those are read by hand.
 

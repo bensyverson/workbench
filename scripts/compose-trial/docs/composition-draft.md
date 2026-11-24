@@ -73,7 +73,7 @@ game.map(level.out.cells, { rock: "wall", open: "floor" })   // connects: Grid@c
 light.over(game.out.image)                                    // connects: Image@px
 ```
 
-The reference marks connecting slots with the seam type they take (`grid: Grid@cell`). Anything else you do with an output at build time (arithmetic, comparison, `if`, a loop, `.length`, a field like `.x`) is a read, and is S301.
+The reference marks connecting slots with the seam type they take (`grid: Grid@cell`). Anything else you do with an output at build time (arithmetic, comparison, `if`, a loop, `.length`, a field like `.x`) is a read, and is S301. The checker sees arithmetic, ordering comparisons, loops and member reads at the moment they happen, and finds `===`, `!==`, `==`, `!=`, `!x`, `x && …`, `x || …`, `x ?? …`, `x ? a : b` and `if (x)` / `while (x)` by reading the program text next to `<part>.out.<name>` outside every runtime lambda. It does not follow an alias (`const o = game.out`, `const g = game`), so a read through one is not caught.
 
 Forward references are normal: a cave whose seed reads `game.out.depth` is built before `game` exists. That only works inside a lambda, because the lambda is not called during the build.
 

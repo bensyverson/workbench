@@ -16,7 +16,7 @@ A glow part lights an image one pixel at a time on the GPU: its kernel runs for 
 glow(name: string)                          // a new glow part
 
   .over(image: Image@px)                    // the image to light; sets the size. Either this or .size is required
-  .size(width: int, height: int)            // no image: light a black canvas of this size in px, fixed at build
+  .size(width: int, height: int)            // no image: light a black canvas of this size in px (16–4096 each), fixed at build
   .light(fn: (p: Pixel) => vec3)            // (runtime, GPU) the color of one pixel, each channel 0–1. Required
   .tint(rgb: vec3 | () => vec3)             // multiplies the result; a lambda (runtime) when it changes. Default [1, 1, 1]
 ```

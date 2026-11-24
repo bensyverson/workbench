@@ -90,7 +90,7 @@ export class OutHandle {
  * slot has one.
  * @param {Site} site @param {string} what
  */
-function buildReadFix(site, what) {
+export function buildReadFix(site, what) {
   const text = session.lineText(site);
   for (const m of text.matchAll(/\.(\w+)\(/g)) {
     const args = callArgs(text, m[1]);

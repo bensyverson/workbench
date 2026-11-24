@@ -6,6 +6,7 @@ export const CODES = Object.freeze({
   C002: "a part that is not bound to a top-level const",
   C003: "program.js or a lib/ file cannot be loaded, or imports from elsewhere",
   C004: "an undeclared or malformed parameter",
+  C005: "program.js or a lib/ file ended the checker (process.exit, a top-level wait that never ends), never finished, or raised an unhandled rejection",
   D001: "a method the part, actor or program does not have",
   D002: "an argument of the wrong type, out of range, or missing",
   D003: "a required method not called",

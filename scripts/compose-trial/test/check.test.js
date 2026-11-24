@@ -53,7 +53,7 @@ function lineOf(/** @type {string} */ needle, file = P) {
 
 /**
  * One failing fixture per code (some twice, where the checker finds the code in two places).
- * @type {Array<{ code: string, edits: Edit[], line: number, file?: string, message?: RegExp, fix?: RegExp, also?: string[] }>}
+ * @type {Array<{ code: string, why?: string, edits: Edit[], line: number, file?: string, message?: RegExp, fix?: RegExp, also?: string[] }>}
  */
 const FAILING = [
   // The checker's own.
@@ -64,6 +64,13 @@ const FAILING = [
   { code: "C003", edits: [{ from: `from "glow";`, to: `from "shader";` }], line: lineOf(`from "glow";`), message: /shader/ },
   { code: "C004", edits: [{ from: "$.reach * 8 + 4", to: "$.reaches * 8 + 4" }], line: lineOf("$.reach * 8 + 4"), message: /reaches.*did you mean 'reach'/i },
   { code: "C004", edits: [{ from: "10 - $.reach", to: "10 - $.reech" }], line: lineOf("10 - $.reach"), message: /reech/, also: ["G005"] },
+  { code: "C003", why: "a dynamic import", edits: [{ from: "const COLS = 24;", to: 'const fs = await import("node:fs");\nconst COLS = 24;' }], line: lineOf("const COLS"), message: /node:fs/ },
+  { code: "C003", why: "a dynamic import with a computed specifier", edits: [{ from: "const COLS = 24;", to: 'const fs = await import("node" + ":fs");\nconst COLS = 24;' }], line: lineOf("const COLS"), message: /node:fs/ },
+  { code: "C003", why: "an indented import call", edits: [{ from: "const COLS = 24;", to: 'if (true) {\n  import("node:fs");\n}\nconst COLS = 24;' }], line: lineOf("const COLS") + 1, message: /node:fs/ },
+  { code: "C003", why: "an indented static import", edits: [{ from: "const COLS = 24;", to: ' import os from "node:os";\nconst COLS = 24;' }], line: lineOf("const COLS"), message: /node:os/ },
+  { code: "C003", why: "export from", edits: [{ from: "const COLS = 24;", to: 'export { readFileSync } from "node:fs";\nconst COLS = 24;' }], line: lineOf("const COLS"), message: /node:fs/ },
+  { code: "C003", why: "export star from", edits: [{ from: "const COLS = 24;", to: 'export * from "node:os";\nconst COLS = 24;' }], line: lineOf("const COLS"), message: /node:os/ },
+  { code: "C003", why: "a dynamic import in a lib/ file", file: LIB, edits: [{ file: LIB, from: "export const hash", to: 'const fs = await import("node:fs");\nexport const hash' }], line: lineOf("export const hash", LIB), message: /node:fs/ },
   // A dialect's.
   { code: "D001", edits: [{ from: ".smooth(3)", to: ".smoothe(3)" }], line: lineOf(".smooth(3)"), message: /smoothe.*did you mean 'smooth'/i },
   { code: "D001", edits: [{ from: ".smooth(3)", to: `.clock("tick")` }], line: lineOf(".smooth(3)"), message: /clock.*demand/ },
@@ -92,6 +99,15 @@ const FAILING = [
   { code: "S301", edits: [{ from: ".seed(() => $.seed * 31 + game.out.round)", to: ".seed($.seed * 31 + game.out.round)" }], line: lineOf(".seed("), message: /game\.out.*build/, fix: /\(\) =>/ },
   { code: "S301", edits: [{ from: `.sample(game.out.player, "lerp")`, to: `.sample(game.out.player, "lerp")\n  .tint([1, 1, 1 - game.out.picked * 0.01])` }], line: lineOf(".sample(") + 1, message: /game\.out\.picked/ },
   { code: "S301", edits: [{ from: `.sample(game.out.player, "lerp")`, to: `.sample(game.out.player, "lerp")\n  .tint(game.out.picked)` }], line: lineOf(".sample(") + 1, message: /tint/, fix: /\(\) =>/ },
+  ...[
+    ["a strict comparison", "const flag = game.out.round === 3;"],
+    ["a negation", "const flag = !game.out.round;"],
+    ["a ternary", "const flag = game.out.round ? 1 : 2;"],
+    ["&&", "const flag = game.out.round && 1;"],
+    ["||", "const flag = game.out.round || 1;"],
+    ["??", "const flag = game.out.round ?? 1;"],
+    ["an if", "if (game.out.round) { }"],
+  ].map(([how, stmt]) => ({ code: "S301", why: how, edits: [{ from: 'const torch = glow("torch")', to: `${stmt}\nconst torch = glow("torch")` }], line: lineOf('const torch = glow("torch")'), message: /game\.out\.round.*build/ })),
   { code: "S302", edits: [{ from: ".screen(COLS * 8, ROWS * 8)", to: ".screen(COLS * 8, level.out.exit)" }], line: lineOf(".screen("), message: /screen/ },
   { code: "S311", edits: [{ from: "distance(p.xy, game.out.player)", to: "distance(p.xy, game.out.players)" }], line: lineOf("const d = distance"), message: /players.*did you mean 'player'/i },
   { code: "S311", edits: [{ from: `.sample(game.out.player, "lerp")`, to: `.sample(game.out.playr, "lerp")` }], line: lineOf(".sample("), message: /playr/ },
@@ -118,6 +134,13 @@ const FAILING = [
   ], line: 1 },
   { code: "G003", edits: [{ from: ".seed(() => $.seed * 31 + game.out.round)", to: ".seed(7)" }], line: 1 },
   { code: "G004", edits: [{ from: "noise(p.t * 3, 0)", to: "sin(p.t * 3)" }], line: 1, message: /noise/ },
+  { code: "G004", why: "a helper named but not called", edits: [{ from: "noise(p.t * 3, 0)", to: "(noise ? 1 : 0)" }], line: 1, message: /noise/ },
+  { code: "G001", why: "tile(cell(px)) converts a pixel, not a cave cell", edits: [
+    { from: `{ kind: "start", init: s => ({ pos: tile(s.at) }) }`, to: `{ kind: "start", init: s => ({ pos: s.at * 8 }) }` },
+    { from: "init: s => ({ pos: tile(s.at), home: tile(s.at) })", to: "init: s => ({ pos: s.at * 8, home: s.at * 8 })" },
+    { from: "w => tile(level.out.exit)", to: "w => level.out.exit * 8" },
+    { from: `.export("round", "int", w => w.state.round)`, to: `.export("round", "int", w => w.state.round)\n  .export("here", "vec2@px", w => tile(cell(w.player.pos)))` },
+  ], line: 1, message: /cave/ },
   { code: "G005", edits: [{ from: "10 - $.reach", to: "6" }], line: 1 },
 ];
 
@@ -129,7 +152,7 @@ test("the passing fixture checks clean", async () => {
 });
 
 for (const f of FAILING) {
-  test(`${f.code}: ${f.edits[0].to.slice(0, 60)}`, async () => {
+  test(`${f.code}${f.why ? ` (${f.why})` : ""}: ${f.edits[0].to.slice(0, 60)}`, async () => {
     const r = await checkEdited(f.edits);
     const hit = r.diagnostics.find((d) => d.code === f.code);
     const stray = r.diagnostics.filter((d) => d.code !== f.code && !(f.also ?? []).includes(d.code));
@@ -144,8 +167,11 @@ for (const f of FAILING) {
   });
 }
 
+/** Codes only the CLI's isolated run can report (a candidate that ends, hangs or crashes the checker), tested below. */
+const CLI_ONLY = ["C005"];
+
 test("every code rules.md lists has a failing fixture", () => {
-  const tested = new Set(FAILING.map((f) => f.code));
+  const tested = new Set([...FAILING.map((f) => f.code), ...CLI_ONLY]);
   for (const code of Object.keys(CODES)) assert.ok(tested.has(code), `no failing fixture for ${code}`);
 });
 
@@ -156,6 +182,23 @@ test("every code in the codes table is in rules.md, and every seam code is in th
     assert.ok(rules.includes(code), `${code} is not in rules.md`);
     if (/^S[23]/.test(code)) assert.ok(draft.includes(`| ${code} |`), `${code} is not in the draft's table`);
   }
+});
+
+/** The passing fixture with each part's factory call moved after a line break or a comment. */
+for (const [how, to] of [["a line break", "=\n  "], ["a block comment", "= /* the level */ "], ["a line comment", "= // the level\n  "]]) {
+  test(`C002: a factory call after ${how} is still bound to its const`, async () => {
+    const r = await checkEdited([
+      { from: 'const level = cave("depths")', to: `const level ${to}cave("depths")` },
+      { from: 'const Picker = actor("Picker")', to: `const Picker ${to}actor("Picker")` },
+      { from: "const $ = params(", to: `const $ ${to}params(` },
+    ]);
+    assert.equal(show(r.diagnostics), "");
+  });
+}
+
+test("S301: a handle read inside a lambda, as a comparison or a ternary, is not a build-time read", async () => {
+  const r = await checkEdited([{ from: '.sample(game.out.player, "lerp")', to: '.sample(game.out.player, "lerp")\n  .tint(() => (game.out.round === 3 ? [1, 1, 1] : [1, 0.5, 1]))' }]);
+  assert.equal(show(r.diagnostics), "");
 });
 
 test("a second check of the same directory loads the files afresh", async () => {
@@ -205,3 +248,27 @@ test("CLI: a bad invocation exits 2; a missing directory or program.js exits 4",
   try { assert.equal(cli([dir]).status, 4); } finally { rmSync(dir, { recursive: true, force: true }); }
   assert.ok(existsSync(VALID));
 });
+
+/**
+ * Runs the CLI on the fixture with `edits`, in a temp directory.
+ * @param {Edit[]} edits @param {Record<string, string>} [env]
+ */
+function cliOn(edits, env = {}) {
+  const dir = fixture(edits);
+  try { return cli([dir], env); } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+for (const [how, stmt, say] of /** @type {Array<[string, string, RegExp]>} */ ([
+  ["ends the process", "process.exit(0);", /ended the check/],
+  ["loops forever", "while (true) {}", /did not finish/],
+  ["rejects a promise nobody handles", 'Promise.reject(new Error("x"));', /unhandled rejection.*Error: x/],
+  ["waits forever at the top level", "await new Promise(() => {});", /ended the check/],
+])) {
+  test(`C005: a program.js that ${how} is a diagnostic and a nonzero exit, not a pass`, () => {
+    const r = cliOn([{ from: "const COLS = 24;", to: `${stmt}\nconst COLS = 24;` }], { COMPOSE_TRIAL_TIMEOUT_MS: "3000" });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /C005/);
+    assert.match(r.stdout, say);
+    assert.doesNotMatch(r.stdout, /no violations/);
+  });
+}

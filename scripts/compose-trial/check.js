@@ -5,7 +5,8 @@
 import { appendFileSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { checkDir, CheckTargetError, PROGRAM_FILE, LIB_DIR } from "./checker/index.js";
+import { CheckTargetError, PROGRAM_FILE, LIB_DIR } from "./checker/index.js";
+import { checkDirIsolated } from "./checker/isolated.js";
 
 /** @import { CheckResult } from "./checker/index.js" */
 
@@ -49,7 +50,7 @@ async function main(argv) {
   const entry = { time: new Date().toISOString(), dir: resolve(dirArg) };
   let code;
   try {
-    const r = await checkDir(dirArg);
+    const r = await checkDirIsolated(dirArg);
     console.log(json ? JSON.stringify(r) : format(r, dirArg));
     Object.assign(entry, { ok: r.ok, loadError: null, diagnostics: r.diagnostics, files: r.files });
     code = r.ok ? EXIT.ok : EXIT.violations;

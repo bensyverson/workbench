@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkDir, CHECK_CODES, RETIRED_CODES } from "../checker/index.js";
 import { DEFINE_CODES, BUILD_CODES } from "../../../kit/define/index.js";
 
@@ -17,6 +17,7 @@ import { DEFINE_CODES, BUILD_CODES } from "../../../kit/define/index.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VALID = join(HERE, "..", "fixtures", "valid");
 const CLI = join(HERE, "..", "check.js");
+const KIT_DEFINE_URL = pathToFileURL(join(HERE, "..", "..", "..", "kit", "define", "index.js")).href;
 const DIALECT = "data.dialect.js", GRAMMAR = "data.grammar.js", EX1 = "examples/01.js", EX2 = "examples/02.js";
 
 /** @typedef {{ file: string, from: string, to: string }} Edit */
@@ -25,10 +26,12 @@ const DIALECT = "data.dialect.js", GRAMMAR = "data.grammar.js", EX1 = "examples/
  * A copy of the passing fixture with each edit applied (`from` must occur exactly once).
  * @param {Edit[]} edits
  * @param {Record<string, string>} [extra] files to add, by path
+ * @param {string[]} [remove] files or directories to delete first, by path
  */
-function fixture(edits, extra = {}) {
+function fixture(edits, extra = {}, remove = []) {
   const dir = mkdtempSync(join(tmpdir(), "define-trial-"));
   cpSync(VALID, dir, { recursive: true });
+  for (const r of remove) rmSync(join(dir, r), { recursive: true, force: true });
   for (const e of edits) {
     const path = join(dir, e.file), src = readFileSync(path, "utf8");
     assert.equal(src.split(e.from).length, 2, `fixture edit: '${e.from}' must occur once in ${e.file}`);
@@ -40,10 +43,10 @@ function fixture(edits, extra = {}) {
 
 /**
  * Checks a mutated copy of the fixture, then removes it.
- * @param {Edit[]} edits @param {Record<string, string>} [extra]
+ * @param {Edit[]} edits @param {Record<string, string>} [extra] @param {string[]} [remove]
  */
-async function checkEdited(edits, extra) {
-  const dir = fixture(edits, extra);
+async function checkEdited(edits, extra, remove) {
+  const dir = fixture(edits, extra, remove);
   try { return await checkDir(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
@@ -65,7 +68,7 @@ const STEP_RETURN = "          return state;\n";
 /**
  * One failing fixture per code (some codes twice, where the kit finds them in two places): the edits, and
  * where the diagnostic must point.
- * @type {Array<{ code: string, why?: string, edits: Edit[], extra?: Record<string, string>, file: string, line?: number, message?: RegExp }>}
+ * @type {Array<{ code: string, why?: string, edits: Edit[], extra?: Record<string, string>, remove?: string[], file: string, line?: number, message?: RegExp }>}
  */
 const FAILING = [
   // At defineDialect / defineGrammar: the kit's DefinitionError, located by the problem's path.
@@ -109,6 +112,11 @@ const FAILING = [
   // The checker's own codes.
   { code: "C001", edits: [{ file: EX1, from: "export default program", to: "const p = program" }], file: EX1, line: 1 },
   { code: "C005", edits: [{ file: GRAMMAR, from: STEP_RETURN, to: "          return state.missing.channels;\n" }], file: GRAMMAR, line: lineOf(GRAMMAR, STEP_RETURN.trim()), message: /examples\/01\.js.*TypeError/ },
+  { code: "C006", why: "an import in the Dialect", edits: [{ file: DIALECT, from: "import { defineDialect", to: `import os from "node:os";\nimport { defineDialect` }], file: DIALECT, line: lineOf(DIALECT, "import { defineDialect"), message: /node:os/ },
+  { code: "C006", why: "a Node built-in in an example", edits: [{ file: EX1, from: "import { program }", to: `import fs from "node:fs";\nimport { program }` }], file: EX1, line: 1, message: /node:fs/ },
+  { code: "C006", why: "kit/define by a path, not by its name", edits: [{ file: EX1, from: "import { program }", to: `import { defineDialect } from "${KIT_DEFINE_URL}";\nimport { program }` }], file: EX1, line: 1 },
+  { code: "C006", why: "a dynamic import", edits: [{ file: EX2, from: "export default", to: `await import("node:os");\nexport default` }], file: EX2, line: lineOf(EX2, "export default"), message: /node:os/ },
+  { code: "C007", remove: ["examples"], edits: [], file: "examples", line: 1 },
   { code: "LOAD", edits: [{ file: DIALECT, from: `name: "tint",`, to: `name: "tint",,` }], file: DIALECT, line: lineOf(DIALECT, `name: "tint",`) },
 ];
 
@@ -131,7 +139,7 @@ test("the codes v0 had and the kit now reports are retired, each naming the code
 
 for (const f of FAILING) {
   test(`${f.code}${f.why ? ` (${f.why})` : ""}: ${CHECK_CODES[/** @type {keyof typeof CHECK_CODES} */ (f.code)] ?? DEFINE_CODES[/** @type {keyof typeof DEFINE_CODES} */ (f.code)] ?? BUILD_CODES[/** @type {keyof typeof BUILD_CODES} */ (f.code)] ?? "a code from the kit"}`, async () => {
-    const r = await checkEdited(f.edits, f.extra);
+    const r = await checkEdited(f.edits, f.extra, f.remove);
     assert.equal(r.ok, false);
     const hit = r.diagnostics.filter((d) => d.code === f.code);
     assert.ok(hit.length > 0, `no ${f.code} in:\n${show(r.diagnostics)}`);
@@ -142,6 +150,21 @@ for (const f of FAILING) {
     assert.ok(r.diagnostics.every((d) => d.fix.length > 0), `every diagnostic carries a fix:\n${show(r.diagnostics)}`);
   });
 }
+
+test("two lambdas with the same text are each reported at their own line, and an own-file import stays allowed", async () => {
+  const r = await checkEdited([
+    { file: EX1, from: `.channel("late", (c, u) => c.pulse * 0.5)`, to: `.channel("late", (c, u) => c.nope)` },
+    { file: EX1, from: `.channel("pulse", (c, u) => c.glow + c.base)`, to: `.channel("pulse", (c, u) => c.nope)` },
+  ]);
+  const lines = r.diagnostics.filter((d) => d.code === "L002").map((d) => d.line);
+  assert.deepEqual(lines, [lineOf(EX1, `.channel("pulse"`), lineOf(EX1, `.channel("late"`)], show(r.diagnostics));
+  assert.ok(!r.diagnostics.some((d) => d.code === "C006"), show(r.diagnostics));
+});
+
+test("a file's imports may be kit/define and the candidate's own files, and nothing else", async () => {
+  const r = await checkEdited([], { "helper.js": `export const x = 1;\n`, "examples/04.js": `import { x } from "../helper.js";\nimport { program } from "../data.grammar.js";\nexport default program("h").pixel("(uv, u) => color(uv.x, 0, 0)");\n` });
+  assert.equal(show(r.diagnostics), "");
+});
 
 test("a refused Dialect still has its Grammar checked, with no knock-on refusals, and every violation is collected", async () => {
   const r = await checkEdited([

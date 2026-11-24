@@ -7,6 +7,8 @@
 export const CHECK_CODES = Object.freeze({
   C001: "An example that neither exports a builder chain nor starts with // REFUSED: <code>",
   C005: "A function in the definitions (environment, a slot convention, a check, state init or step) threw while an example was checked",
+  C006: "A definition file or example imports something other than \"kit/define\" or the candidate's own files (R1)",
+  C007: "The hand-in has no example files (R6)",
 });
 
 /** The codes check v0 had that the kit now reports, each with the kit's code that replaced it. */

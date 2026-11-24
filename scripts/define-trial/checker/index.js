@@ -61,6 +61,7 @@ async function checkNow(dir) {
   // Node names modules by their real path (macOS's /var is /private/var), and so do stack frames.
   const dirUrl = pathToFileURL(realpathSync(dir)).href.replace(/\/?$/, "/");
   session.reset(dirUrl, sources);
+  if (examples.length === 0) session.add({ file: EXAMPLES_DIR, line: 1, code: "C007", severity: "error", message: `there is no ${EXAMPLES_DIR}/*.js; the hand-in needs one file per Dream Code example.`, fix: `write ${EXAMPLES_DIR}/01.js … ${EXAMPLES_DIR}/10.js, each a Program or a // REFUSED: file (rules.md R6)` });
   /** @param {string} f */
   const load = (f) => import(`${dirUrl}${f.split("/").map(encodeURIComponent).join("/")}?run=${session.run}`);
 

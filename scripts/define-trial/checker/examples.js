@@ -100,7 +100,9 @@ export function reportBuild(ds, file) {
 function reportInLambda(d, file, lambdas) {
   const at = session.relative(d.file) ?? file;
   const src = lambdas.find((l) => l.ref.id === d.ref?.id)?.src ?? "";
-  const line = lineIn(session.sources[at] ?? "", src);
+  // Lambdas with the same text are found in order: this one is the Nth, counting the earlier ones in the file.
+  const nth = lambdas.slice(0, lambdas.findIndex((l) => l.ref.id === d.ref?.id)).filter((l) => l.src === src).length;
+  const line = lineIn(session.sources[at] ?? "", src, nth);
   add(d, at, line === null ? 1 : line + (d.loc?.start.line ?? 1) - 1, `the ${d.ref?.kind} lambda ${d.ref?.id}: ${d.message}`);
 }
 
@@ -122,16 +124,19 @@ function reportInUnit(d, file) {
 }
 
 /**
- * The 1-based line where `src` starts in `text`, as written or as a string literal's contents; null if absent.
- * @param {string} text @param {string} src
+ * The 1-based line where the `nth` (0-based) occurrence of `src` starts in `text`, as written or as a string
+ * literal's contents; null if absent.
+ * @param {string} text @param {string} src @param {number} nth
  */
-function lineIn(text, src) {
+function lineIn(text, src, nth) {
   if (!src) return null;
+  /** @type {Set<number>} */
+  const at = new Set();
   for (const form of [src, JSON.stringify(src).slice(1, -1), src.replace(/\n/g, "\\n")]) {
-    const i = text.indexOf(form);
-    if (i >= 0) return lineAt(text, i);
+    for (let i = text.indexOf(form); i >= 0; i = text.indexOf(form, i + 1)) at.add(i);
   }
-  return null;
+  const sorted = [...at].sort((a, b) => a - b);
+  return sorted.length ? lineAt(text, sorted[Math.min(nth, sorted.length - 1)]) : null;
 }
 
 /**
