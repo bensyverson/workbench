@@ -1,6 +1,7 @@
 // @ts-nocheck: a lambda names the Dialect's free names ($, intrinsics), which TypeScript cannot see; the builder checks them (B008).
 // Dream Code example 5: a query over two tables. A table is named by a string, not `t.customers`;
-// `.sort("-total")` is `.sortDesc("total")` (the first is T002 with that fix); `.limit($.topN)` is a lambda.
+// `.sort("-total")` is `.sortDesc("total")` (the first is T002 with that fix); `.limit($.topN)` is a lambda;
+// the grid is a named view of the table, and the row layout with its controls is left out (B009).
 import { program } from "../grammar.js";
 
 export default () => program("top-customers")
@@ -22,4 +23,5 @@ export default () => program("top-customers")
   .mark("bar")
   .x("total")
   .y("name", { sort: "-x" })
-  .color("segment");
+  .color("segment")
+  .view("topRows", "top");

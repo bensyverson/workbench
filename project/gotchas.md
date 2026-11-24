@@ -29,3 +29,7 @@ In dogfood trial 1 the harness refused two of three agents' Write of `REPORT.md`
 ## 2026-11-24: a subagent launched in the repo cannot be blind to our design
 
 The architecture consult's blind pass (leaf `Cy9u98`) was told not to read `project/` or `kit/`, but it still turned up many repo files: every agent started in the checkout auto-loads `AGENTS.md`, whose overview and doc list name the current design, and file searches walk the tree. A "do not read" list is not isolation, and neither is starting a subagent elsewhere: a subagent inherits the parent session's `AGENTS.md` wherever it runs. For a truly independent design, copy the allowed inputs into a scratch directory outside the repo and run a separate `claude -p --model opus --effort xhigh` from there (CLAUDE.md discovery walks up from the cwd, so it loads only the global file). `--bare` also skips CLAUDE.md discovery but authenticates only with `ANTHROPIC_API_KEY` or an `apiKeyHelper`, not OAuth.
+
+## 2026-11-24: probe files kept under `local/` run as tests
+
+`local/` is gitignored but not excluded from `node --test`'s glob, so a reviewer's `*.test.js` probe copied there (to keep it as a fix's red test) runs in `npm test` and the pre-commit hook, and a probe that is red by design fails the commit. Keep kept probes named `*.probe.js`.
