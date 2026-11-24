@@ -67,6 +67,14 @@ test("a helper nothing calls cannot have its parameters typed", () => {
   assert.deepEqual(errs(r.helpers[0].result), ["L014"]);
 });
 
+// Found by leaf gS9dBz: a construct with state lowers one lambda at a time with every helper, so a helper chain
+// that lambda does not reach was lowered against an untyped callee's signature, and lowering threw.
+test("an unreached helper calling another unreached helper is L014, not a crash", () => {
+  const r = lowerProgram(environment, [frame("(self) => { self.up = true; }")], [fn("inner", "(n) => n + 1"), fn("outer", "(n) => inner(1) * n")]);
+  assert.deepEqual(errs(r.results[0]), []);
+  assert.ok(errs(r.helpers[1].result).includes("L014"));
+});
+
 test("helpers calling helpers settle, whatever the order", () => {
   const r = lowerProgram(environment, [frame("(self, w) => { w.next = outer(self.ttl); }")], [fn("inner", "(n) => n + 1"), fn("outer", "(n) => inner(n) * 2")]);
   assert.deepEqual(errs(r.helpers[0].result), []);

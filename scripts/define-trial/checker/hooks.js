@@ -1,9 +1,12 @@
-// Supplies `kit/define` to a candidate's files through Node's in-thread module hooks, and gives every
+// Supplies `kit/define` to a candidate's files through Node's in-thread module hooks, appends to each example an
+// export of its top-level bindings (its module scope, which the Program's lambdas resolve against), and gives every
 // candidate file a per-check query string so a second check of the same directory loads it afresh.
 
 import { registerHooks } from "node:module";
 import { session } from "./session.js";
 import { lineAt } from "./locate.js";
+import { topLevelNames } from "../../../kit/parse/toplevel.js";
+import { EXAMPLES_DIR } from "./examples.js";
 
 export const DEFINE_SPECIFIER = "kit/define";
 const DEFINE_URL = new URL("./define.js", import.meta.url).href;
@@ -41,5 +44,28 @@ export function installHooks() {
       if (session.dirUrl && r.url.startsWith(session.dirUrl) && !r.url.includes("?")) return { ...r, url: `${r.url}?run=${session.run}` };
       return r;
     },
+    load(url, context, next) {
+      const r = next(url, context);
+      const file = session.relative(url);
+      if (file === null || !file.startsWith(`${EXAMPLES_DIR}/`) || r.format !== "module" || r.source == null) return r;
+      return { ...r, source: withScope(String(r.source)) };
+    },
   });
+}
+
+/** Words that cannot be read as a name. */
+const RESERVED = new Set(["default", "enum", "await", "yield", "let", "static", "implements", "interface", "package", "private", "protected", "public", "arguments", "eval"]);
+
+/** The export the checker appends to each example: a function returning the file's top-level bindings. */
+export const SCOPE_EXPORT = "__defineTrialScope";
+
+/**
+ * An example's text with an epilogue that hands its top-level bindings to the checker (the module scope a
+ * Program's lambdas resolve their free names against). The epilogue comes last, so every line keeps its number.
+ * @param {string} text
+ */
+export function withScope(text) {
+  // The scan errs toward listing a name; one the module does not bind (or has not bound) is left out, not thrown.
+  const reads = topLevelNames(text).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !RESERVED.has(n)).map((n) => `try { o.${n} = ${n}; } catch {}`).join(" ");
+  return `${text}\n;export function ${SCOPE_EXPORT}() { const o = {}; ${reads} return o; }\n`;
 }

@@ -39,7 +39,7 @@ const { lambdas, diagnostics, states } = program.lower(record); // states.top.co
 
 ## What became of the Dream Code
 
-Every example runs through the generated builder as its `examples/` file writes it; what the Dream Code wrote that the kit does not build is refused, each refusal with a fix (its tip; a B009 carries no `fix` field, see the last list).
+Every example runs through the generated builder as its `examples/` file writes it; what the Dream Code wrote that the kit does not build is refused, each refusal with a fix (its tip).
 
 | Example | Runs as | Refused, and with which code |
 |---|---|---|
@@ -57,11 +57,11 @@ Changed in the examples, as the kit builds them: a source declares its schema; `
 
 Left out, and why:
 - **Views are one table's rows.** A view of a chart, and any layout of several, is the page's; a chart is shown by itself.
-- **Chart encodings are checked only by `lower`.** A slot or construct check cannot see construct state, so the chart has a state (its table's columns) only to make its encodings state refs; `.check()` and `.build()` do not catch `.x("monht")`. An encoding given as a lambda (`.y(() => $.metric)`) picks a column at run time and is not checked against the table at all.
+- **Chart encodings are checked only by `lower`.** A table's columns exist only when it is lowered, so `.check()` and `.build()` do not catch `.x("monht")`. The chart has no state: its `names` ([kit/define](../../define/README.md)) give its `column` namespace from its table's final state, or a source's schema. (Until job NrXepo the chart had a state of its own, with `record: "calls"`, only to make its encodings state refs.) An encoding given as a lambda (`.y(() => $.metric)`) picks a column at run time and is not checked against the table at all.
 - **No build-time phase**, so nothing of example 6's E-PHASE: there is no build-time lambda for a param to leak into.
 - **Example 7's z-score**: a row lambda sees one row, not the table's mean and spread, and the Dialect has no square root.
 - **`int` result types**: counts are f64.
-- **B009 has no `fix`**: a construct's `rejected` takes `{ message, tip }` only, and a step's `ctx.error` takes a tip, not a fix, so T003, T004, T008, T009 and T010 carry their fix in `tip` too.
+- **Fixes live in tips.** A `rejected` entry takes a `fix` since job NrXepo, and a step's `ctx.error` since 6edf1f1, but this Grammar's B009s and T003, T004, T008, T009 and T010 keep theirs in `tip`: each is a sentence around a form, not a replacement for the call.
 
 ## Limits
 

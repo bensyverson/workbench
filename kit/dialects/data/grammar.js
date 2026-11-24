@@ -6,9 +6,8 @@
 // by name, with the builder form to write instead.
 // Started from dogfood trial 2's agent A (scripts/define-trial/runs/2026-11-24-trial-2/agent-a/data.grammar.js).
 
-import { defineGrammar, name, ref, data, lambda, opt, rest, oneOf, recordOf, listOf, enumOf } from "../../define/index.js";
+import { defineGrammar, name, ref, data, lambda, opt, rest, oneOf, recordOf, listOf, enumOf, didYouMean } from "../../define/index.js";
 import { data as dialect, COLUMN_TYPES } from "./dialect.js";
-import { didYouMean } from "../../define/codes.js";
 
 /** @import { CheckContext, StepContext, TypeDef } from "../../define/define.js" */
 /** @import { Columns } from "./dialect.js" */
@@ -147,15 +146,6 @@ const tableState = {
   names: { column: (/** @type {TableState} */ state) => Object.keys(state.columns) },
 };
 
-/** A chart's state: the columns of the table it shows, which its encodings name. Nothing a chart calls changes them. */
-const chartState = {
-  /** @param {Record<string, any>} opened @param {{ program: Record<string, any>, stateOf(name: string): any }} ctx */
-  init: (opened, ctx) => ({ columns: { ...columnsIn(ctx, opened.table) } }),
-  /** @param {{ columns: Columns }} state */
-  step: (state) => state,
-  names: { column: (/** @type {{ columns: Columns }} */ state) => Object.keys(state.columns) },
-};
-
 const col = () => ref("column");
 /** An encoding: a column of the chart's table, or a lambda over the params that picks one at run time. */
 const encoding = () => data(oneOf(col(), lambda("calc")));
@@ -242,10 +232,9 @@ export const program = defineGrammar(dialect, {
     chart: {
       parent: "program",
       opens: [name(), ref("table")],
-      // A chart has state only so that lowering checks its encodings against its table's columns at that
-      // table's last step (B003, with the did-you-mean): a slot or construct check cannot see construct state.
-      record: "calls",
-      state: chartState,
+      // Its encodings name columns of its table at that table's last step, or of a source's schema: checked when
+      // lowered (B003, with the did-you-mean), since a table's columns exist only then.
+      names: { column: (record, ctx) => Object.keys(columnsIn(ctx, record.table) ?? {}) },
       slots: {
         mark: { kind: "decl", args: [data(enumOf(["line", "bar", "histogram", "heatmap"]))], once: true, required: true },
         x: { kind: "decl", args: [encoding(), opt(data({ "type?": enumOf(["time", "ordinal"]), "bins?": "number", "format?": oneOf("string", lambda("calc")) }))], once: true },

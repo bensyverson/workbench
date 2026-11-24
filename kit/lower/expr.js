@@ -3,8 +3,8 @@
 // spills into statements ahead of it, in evaluation order.
 
 import { assignable, itemAt, join, namedScalar, showType, strictJoin, vectorOf } from "../ir/types.js";
-import { didYouMean } from "./codes.js";
-import { call } from "./call.js";
+import { didYouMean, HELPER_OWNER } from "./codes.js";
+import { call, reachable } from "./call.js";
 import { assign, update } from "./assign.js";
 import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
 import { nullCheck, nullCheckOf, nullFacts } from "./nullcheck.js";
@@ -151,8 +151,14 @@ export function identifier(L, node) {
     return bad(node);
   }
   if (h?.kind === "const") {
+    const self = L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;
+    // A helper reading a constant that calls it back: the recursion, not the knock-on failure, is the mistake.
+    if (!h.value && self && (h.calls ?? []).some((k) => reachable(L.sigs, k).includes(self))) {
+      L.error("L007", node, `${L.slot.key} calls itself through the constant ${node.name}, whose value calls ${(h.calls ?? []).map((k) => k.replace(`${HELPER_OWNER}.`, "")).join(", ")}, so how long it runs cannot be bounded.`, `Do not read ${node.name} inside ${L.slot.key} or what it calls; pass the value in as a parameter.`);
+      return bad(node);
+    }
     if (!h.value) { L.error("L014", node, `The constant '${node.name}' does not lower, so it cannot be baked in.`, `Fix ${node.name}'s diagnostics first: a constant is an expression of literals and other constants.`); return bad(node); }
-    const baked = inline(L, h.value, span);
+    const baked = inline(L, h.value, span, { node, name: node.name });
     return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
   }
   const g = L.environment.globals[node.name];
@@ -189,7 +195,7 @@ function bakedItem(L, node) {
     item = value.items[p.value];
   } else if (value.k === "struct" && p.type === "Identifier") item = value.fields[p.name];
   if (!item) return null;
-  const baked = inline(L, item, spanOf(node));
+  const baked = inline(L, item, spanOf(node), { node, name: o.name });
   return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
 }
 
@@ -214,19 +220,30 @@ function settleTree(L, e) {
 }
 
 /**
- * A copy of a baked constant's value at its use, spanned there so every span stays inside the lambda.
+ * A copy of a baked constant's value at its use, spanned there so every span stays inside the lambda. A helper
+ * call inside it is a call this lambda makes: it is recorded (`baked`, so it types no parameter: the constant's
+ * own lowering was that call site) for what the lambda reaches, and a helper reaching itself through it is L007.
  * @param {Lowerer} L
  * @param {Expr} e
  * @param {Span} span
+ * @param {{ node: AST.Node, name: string }} use  the constant's use, for a recursion through it
  * @returns {Expr}
  */
-function inline(L, e, span) {
+function inline(L, e, span, use) {
   /** @type {Record<string, any>} */
   const copy = { ...e, span };
-  for (const key of ["test", "then", "else", "recv", "of", "index"]) if (copy[key]) copy[key] = inline(L, copy[key], span);
-  for (const key of ["args", "items"]) if (copy[key]) copy[key] = copy[key].map((/** @type {Expr} */ a) => inline(L, a, span));
-  if (copy.fields) copy.fields = Object.fromEntries(Object.entries(copy.fields).map(([k, v]) => [k, inline(L, /** @type {Expr} */ (v), span)]));
-  if (copy.place) copy.place = { ...copy.place, recv: inline(L, copy.place.recv, span) };
+  for (const key of ["test", "then", "else", "recv", "of", "index"]) if (copy[key]) copy[key] = inline(L, copy[key], span, use);
+  for (const key of ["args", "items"]) if (copy[key]) copy[key] = copy[key].map((/** @type {Expr} */ a) => inline(L, a, span, use));
+  if (copy.fields) copy.fields = Object.fromEntries(Object.entries(copy.fields).map(([k, v]) => [k, inline(L, /** @type {Expr} */ (v), span, use)]));
+  if (copy.place) copy.place = { ...copy.place, recv: inline(L, copy.place.recv, span, use) };
+  if (copy.k === "helper") {
+    const key = `${HELPER_OWNER}.${copy.name}`;
+    L.calls.push({ key, args: copy.args.map((/** @type {Expr} */ a) => a.t), sites: [], baked: true });
+    const self = L.slot.kind === "method" || L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;
+    if (self && reachable(L.sigs, key).includes(self)) {
+      L.error("L007", use.node, `${self.replace(`${HELPER_OWNER}.`, "")} calls itself through the constant ${use.name}, which calls ${copy.name}, so how long it runs cannot be bounded.`, `Do not read ${use.name} inside ${copy.name} or what it calls; pass the value in as a parameter.`);
+    }
+  }
   // A call's own effects (a constant calling a pure helper does `call g`) were recorded by the constant's lowerer, not this one.
   return L.ex(/** @type {Expr} */ (copy), Array.isArray(copy.effects) ? copy.effects : []);
 }

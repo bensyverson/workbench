@@ -125,8 +125,8 @@ export interface Signatures {
 /** A top-level binding of the program: a function lowered like a method, or a constant baked in at each use. */
 export type HelperDecl =
   | { kind: "fn" }
-  /** `value` is the constant's lowered initializer; null when it did not lower. */
-  | { kind: "const"; value: import("../ir/ir.js").Expr | null };
+  /** `value` is the constant's lowered initializer; null when it did not lower. `calls`: the helpers its initializer calls, lowered or not. */
+  | { kind: "const"; value: import("../ir/ir.js").Expr | null; calls?: string[] };
 
 /** What `lowerProgram` takes for a top-level binding: its name, and its source (a function, or a constant's initializer). */
 export interface HelperSource {
@@ -151,6 +151,8 @@ export interface CallSite {
   args: Type[];
   /** One per argument. */
   sites: ArgSite[];
+  /** A call inside a baked constant's value, at the constant's use: it counts for what a lambda reaches, not for a parameter's type. */
+  baked?: boolean;
 }
 
 /** A call site whose argument does not join the other call sites' type for its parameter. */

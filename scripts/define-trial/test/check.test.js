@@ -64,6 +64,7 @@ function lineOf(file, needle) {
 }
 
 const STEP_RETURN = "          return state;\n";
+const IMPORT_LINE = `import { program } from "../data.grammar.js";`;
 
 /**
  * One failing fixture per code (some codes twice, where the kit finds them in two places): the edits, and
@@ -103,6 +104,10 @@ const FAILING = [
   { code: "B003", why: "a Program namespace", edits: [{ file: EX1, from: `.layer("halo", { speed: "speed" })`, to: `.layer("halo", { speed: "sped" })` }], file: EX1, line: lineOf(EX1, `.layer("halo"`), message: /sped.*did you mean 'speed'/i },
   { code: "B005", edits: [{ file: EX2, from: `.pixel("(uv, u) => color(uv.x, 0, 0)")`, to: `.tags("x")` }], file: EX2, line: lineOf(EX2, "export default"), message: /pixel/ },
   { code: "B008", edits: [{ file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`), message: /WIDTH/ },
+  // Module scope: the checker passes each example's top-level bindings and its build-time-only names (one line added after the import).
+  { code: "B012", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst WIDTH = new Map();` }, { file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`) + 1, message: /WIDTH.*Map/ },
+  { code: "B013", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nfunction setup() { const WIDTH = 0.01; return WIDTH; }` }, { file: EX1, from: "const w = 0.01;", to: "const w = WIDTH;" }], file: EX1, line: lineOf(EX1, `.fn("ring"`) + 1, message: /WIDTH.*build-time/ },
+  { code: "B002", why: "a top-level binding named like a Dialect name", edits: [{ file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst sin = 1;` }], file: EX1, line: lineOf(EX1, "export default") + 1, message: /top-level 'sin'/ },
   // When lowering: construct state, conventions and each lambda's body.
   { code: "B003", why: "a state namespace, at that step", edits: [{ file: EX1, from: `.mute("glow")`, to: `.mute("glw")` }], file: EX1, line: lineOf(EX1, ".mute("), message: /glw.*did you mean 'glow'/i },
   { code: "B010", edits: [{ file: EX1, from: `.layer("halo", { speed: "speed" })`, to: `.layer("halo", { speed: "speed", from: "echo" })` }], file: EX1, line: lineOf(EX1, `.layer("halo"`), message: /halo/ },
@@ -151,6 +156,24 @@ for (const f of FAILING) {
     assert.ok(r.diagnostics.every((d) => d.fix.length > 0), `every diagnostic carries a fix:\n${show(r.diagnostics)}`);
   });
 }
+
+test("an example's top-level helper and constant resolve into its Program and lower: it checks clean", async () => {
+  const r = await checkEdited([
+    { file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst WIDTH = 0.01;\nconst scale = (d) => d * WIDTH;` },
+    { file: EX1, from: "const w = 0.01;", to: "const w = scale(1);" },
+  ]);
+  assert.equal(show(r.diagnostics), "");
+});
+
+test("a lowering error inside a top-level helper is placed at the helper's line", async () => {
+  const r = await checkEdited([
+    { file: EX1, from: IMPORT_LINE, to: `${IMPORT_LINE}\nconst scale = (d) => d.nope;` },
+    { file: EX1, from: "const w = 0.01;", to: "const w = scale(1);" },
+  ]);
+  const hit = r.diagnostics.filter((d) => d.code === "L002");
+  assert.ok(hit.length > 0, show(r.diagnostics));
+  assert.deepEqual(hit.map((d) => [d.file, d.line]), [[EX1, 2]], show(hit));
+});
 
 test("two lambdas with the same text are each reported at their own line, and an own-file import stays allowed", async () => {
   const r = await checkEdited([

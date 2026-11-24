@@ -11,6 +11,7 @@ import { lambdaSource, constSource, found, where } from "./shapes.js";
 import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
 import { freeNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
+import { unitOf, PLAIN } from "./scope.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Found } from "./shapes.js" */
@@ -65,6 +66,18 @@ export function defineGrammar(dialect, def) {
     /** Lowers every Runtime Lambda of a record: see lower.js. @param {Record<string, any>} record */
     lower: (record) => lowerRecord(g, record),
   });
+}
+
+/**
+ * A host's mistake in `.check(options)` / `.build(options)` throws: it is not the Program's.
+ * @param {unknown} o
+ */
+function checkOptions(o) {
+  const x = /** @type {Record<string, unknown>} */ (o);
+  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError("build(options) and check(options) take { scope?, buildTime? }");
+  for (const k of Object.keys(x)) if (k !== "scope" && k !== "buildTime") throw new TypeError(`build(options): unknown key '${k}'; it takes { scope?, buildTime? }`);
+  if (x.scope !== undefined && (x.scope === null || typeof x.scope !== "object" || Array.isArray(x.scope))) throw new TypeError("build({ scope }): scope is an object of the file's top-level bindings, by name");
+  if (x.buildTime !== undefined && !(Array.isArray(x.buildTime) && x.buildTime.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTime }): buildTime is a list of names");
 }
 
 /** @typedef {{ dialect: T.Dialect, def: Record<string, any>, constructs: Record<string, Construct>, root: Construct }} Compiled */
@@ -216,18 +229,34 @@ class Program {
   record() { return recordOf(/** @type {Instance} */ (this.root)); }
 
   /**
-   * Every diagnostic: those collected at the calls, then the Program-wide ones (B003, B005, B008, construct checks).
-   * @returns {T.BuildDiagnostic[]}
+   * Every diagnostic: those collected at the calls, then the Program-wide ones (B003, B005, B008, construct checks,
+   * module scope), and the units the scope's bindings resolved to.
+   * @param {T.BuildOptions} [options]
+   * @returns {{ diagnostics: T.BuildDiagnostic[], units: Array<{ name: string, kind: "fn" | "const", src: string }> }}
    */
-  check() {
+  analyze(options = {}) {
+    checkOptions(options);
     const saved = this.diagnostics;
     this.diagnostics = [...saved];
     try {
       const record = this.record();
       for (const inst of this.instances()) this.checkInstance(inst, record);
-      this.checkFreeNames(record);
-      return this.diagnostics;
+      const units = this.checkFreeNames(record, options);
+      return { diagnostics: this.diagnostics, units };
     } finally { this.diagnostics = saved; }
+  }
+
+  /**
+   * The record, with the units the scope resolved under the root's `units`.
+   * @param {T.BuildOptions} [options]
+   */
+  build(options) {
+    const { diagnostics, units } = this.analyze(options);
+    if (diagnostics.some((x) => x.severity === "error")) throw new BuildError(diagnostics);
+    const record = this.record();
+    // first, so a Program constant may read a top-level one (a constant sees only those before it)
+    if (units.length) record.units = [...units, .../** @type {unknown[]} */ (record.units ?? [])];
+    return record;
   }
 
   /** Every instance, root first, depth first. */
@@ -247,7 +276,8 @@ class Program {
     for (const [sn, s] of Object.entries(/** @type {Record<string, any>} */ (c.def.slots ?? {}))) {
       if (s.required && !inst.calls.some((x) => x.slot === sn)) this.diagnostics.push(diag("B005", `${what} has no ${sn}`, `add .${sn}(…)`, at));
     }
-    const stateNames = Object.keys(c.def.state?.names ?? {});
+    // a state's namespaces, and a stateless construct's names, exist only when lowered
+    const stateNames = Object.keys(c.def.state?.names ?? c.def.names ?? {});
     for (const call of [/** @type {Call} */ (/** @type {any} */ (inst).openCall), ...inst.calls]) {
       for (const r of call.found.refs) {
         if (stateNames.includes(r.ns)) continue; // checked against the state when lowered
@@ -258,27 +288,68 @@ class Program {
     if (typeof c.def.check === "function") c.def.check(recordOf(inst), this.context(at, [], record));
   }
 
-  /** B008: each lambda's free names against the free-name rule. @param {Record<string, unknown>} record */
-  checkFreeNames(record) {
+  /**
+   * B008: each lambda's free names against the free-name rule; a name the scope holds resolves to a unit (its own
+   * free names in turn), a name the host lists as build-time only is B013, and a top-level binding named like a
+   * Dialect, Library or Program name is B002. Returns the resolved units.
+   * @param {Record<string, unknown>} record @param {T.BuildOptions} options
+   */
+  checkFreeNames(record, options) {
     const d = this.g.dialect.def;
     /** @type {Set<string>} */
     const allowed = new Set([...this.names.get(UNITS) ?? []]);
     try {
       for (const n of Object.keys(this.g.dialect.environment(record).globals)) allowed.add(n);
     } catch { /* a hook that cannot run on a refused record adds nothing */ }
+    const scope = options.scope;
+    const buildTime = new Set(options.buildTime ?? []);
+    const root = /** @type {Instance} */ (this.root);
+    const own = this.ownNames();
+    if (scope) for (const n of Object.keys(scope)) {
+      if (!allowed.has(n) && !own.has(n)) continue;
+      const whose = this.g.dialect.library.some((u) => u.name === n) ? "the Library's" : this.declaredUnit(n) ? "the Program's helper or constant" : `the ${d.name} Dialect's`;
+      this.diagnostics.push(diag("B002", `the top-level '${n}' has the name of ${whose} '${n}': a lambda's '${n}' could mean either`, `rename the top-level '${n}'`, { file: root.file, loc: root.loc }));
+    }
     const constSlot = Object.values(this.g.constructs).flatMap((c) => Object.entries(/** @type {Record<string, any>} */ (c.def.slots ?? {}))).find(([, s]) => s.kind === "unit" && s.unit === "const")?.[0];
-    for (const src of this.sources) {
+    /** Each name looked up in the scope: its unit, or null when it was refused. @type {Map<string, { name: string, kind: "fn" | "const", src: string } | null>} */
+    const resolved = new Map();
+    // Resolved helpers join the list as it is walked, so their own free names resolve too.
+    const sources = [...this.sources];
+    for (const src of sources) {
       for (const { name, member, loc } of freeNames(src.ast)) {
-        if (allowed.has(name)) continue;
-        if (member !== undefined && JS_GLOBALS.has(name)) {
+        if (allowed.has(name) || resolved.has(name)) continue;
+        const lambdaAt = { lambda: { src: src.src, loc } };
+        const inScope = scope !== undefined && Object.hasOwn(scope, name);
+        if (member !== undefined && JS_GLOBALS.has(name) && !inScope) {
           const bare = allowed.has(member) ? `use ${member}` : `${name} is not in the language`;
-          this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, `${bare}${bare === `use ${member}` ? `, not ${name}.${member}` : ""}`, src.at, { lambda: { src: src.src, loc } }));
+          this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, `${bare}${bare === `use ${member}` ? `, not ${name}.${member}` : ""}`, src.at, lambdaAt));
           continue;
         }
-        const ways = [constSlot ? `declare it on the Program, .${constSlot}("${name}", "…")` : null, d.globals && "$" in d.globals ? `make it a parameter and read $.${name}` : null].filter(Boolean);
-        this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, ways.length ? ways.join(", or ") : `use only its parameters, the ${d.name} Dialect's names and the Program's helpers`, src.at, { lambda: { src: src.src, loc } }));
+        if (inScope) {
+          const r = unitOf(name, /** @type {Record<string, unknown>} */ (scope)[name]);
+          if ("code" in r) {
+            resolved.set(name, null);
+            this.diagnostics.push(diag(r.code, `${src.what} reads the top-level '${name}', which a lambda cannot use: ${r.reason}. A lambda can read ${PLAIN}.`, r.tip, src.at, lambdaAt));
+            continue;
+          }
+          resolved.set(name, r.unit);
+          if (r.ast) sources.push({ ast: r.ast, src: r.unit.src, what: `the top-level helper '${name}'`, at: src.at });
+          continue;
+        }
+        if (buildTime.has(name)) {
+          this.diagnostics.push(diag("B013", `${src.what} reads "${name}", which this file declares only inside build-time code, not at its top level: a lambda sees only its own names, the ${d.name} Dialect's, the Program's and the file's top-level bindings.`, `move it to the top level (const ${name} = …), or write its value into the lambda's text: \`(…) => … \${${name}} …\``, src.at, lambdaAt));
+          continue;
+        }
+        const ways = [scope ? "define it at the top level of the file" : null, constSlot ? `declare it on the Program, .${constSlot}("${name}", "…")` : null, d.globals && "$" in d.globals ? `make it a parameter and read $.${name}` : null].filter(Boolean);
+        this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, ways.length ? ways.join(", or ") : `use only its parameters, the ${d.name} Dialect's names and the Program's helpers`, src.at, lambdaAt));
       }
     }
+    return /** @type {Array<{ name: string, kind: "fn" | "const", src: string }>} */ ([...resolved.values()].filter(Boolean));
+  }
+
+  /** Whether the Program declares a unit of this name (with .fn / .const). @param {string} n */
+  declaredUnit(n) {
+    return this.instances().some((i) => i.calls.some((c) => i.construct.def.slots?.[c.slot]?.kind === "unit" && c.args[0] === n));
   }
 
   /**
@@ -292,12 +363,8 @@ class Program {
       get(_, prop) {
         if (prop === Symbol.toPrimitive) return () => `[${inst.construct.name} builder '${instanceName(inst)}']`;
         if (typeof prop === "symbol" || PROBES.has(prop)) return undefined;
-        if (prop === "check") return () => program.check();
-        if (prop === "build") return () => {
-          const ds = program.check();
-          if (ds.some((x) => x.severity === "error")) throw new BuildError(ds);
-          return program.record();
-        };
+        if (prop === "check") return (/** @type {T.BuildOptions | undefined} */ o) => program.analyze(o).diagnostics;
+        if (prop === "build") return (/** @type {T.BuildOptions | undefined} */ o) => program.build(o);
         for (let i = /** @type {Instance | null} */ (inst); i; i = i.parent) {
           const c = i.construct;
           const owner = i;
@@ -306,7 +373,7 @@ class Program {
           if (child) return (/** @type {unknown[]} */ ...args) => program.open(child, owner, args, callSite());
         }
         const rejected = inst.construct.rejected[prop];
-        if (rejected) return () => { program.diagnostics.push(diag("B009", `${inst.construct.name} does not offer .${prop}(): ${rejected.message}`, rejected.tip ?? "", callSite())); return proxy; };
+        if (rejected) return () => { program.diagnostics.push(diag("B009", `${inst.construct.name} does not offer .${prop}(): ${rejected.message}`, rejected.tip ?? (rejected.fix ? `write ${rejected.fix}` : ""), callSite(), rejected.fix ? { fix: rejected.fix } : {})); return proxy; };
         const methods = [...KIT_METHODS];
         for (let i = /** @type {Instance | null} */ (inst); i; i = i.parent) methods.push(...Object.keys(i.construct.def.slots ?? {}), ...i.construct.children.map((x) => x.name));
         throw new BuildError([diag("B001", `${inst.construct.name} has no method "${prop}".${didYouMean(prop, methods)}`, `its methods are ${methods.join(", ")}`, callSite())]);

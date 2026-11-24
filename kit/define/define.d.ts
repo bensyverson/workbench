@@ -135,8 +135,19 @@ export interface BuildDiagnostic extends Diagnostic {
   slot?: string;
   /** The Runtime Lambda it is about, on a refusal found when lowering (B011). */
   ref?: DefineSlotRef;
-  /** The Runtime Lambda a B007 or B008 is about: its source, and the place inside it when known (the first line is 1). */
+  /** The Runtime Lambda a B007, B008, B012 or B013 is about: its source, and the place inside it when known (the first line is 1). */
   lambda?: { src: string; loc?: Loc };
+}
+
+/**
+ * What a host passes to `.check(options)` and `.build(options)`: the Program file's module scope.
+ * `scope` is its top-level bindings by name (a lambda's free name one of them holds resolves into the record's
+ * units: an arrow function as a helper, plain data as a constant); `buildTime` the names the file declares only
+ * inside build-time code (`buildTimeNames(text)`), which a lambda reading one is told it cannot see (B013).
+ */
+export interface BuildOptions {
+  scope?: Record<string, unknown>;
+  buildTime?: string[];
 }
 
 /** What a slot's or construct's `check` receives besides the call or record. */
@@ -187,7 +198,9 @@ export interface ConstructDef {
   slots?: Record<string, SlotDef>;
   record?: "calls";
   state?: StateDef;
-  rejected?: Record<string, { message: string; tip?: string }>;
+  /** A stateless construct's namespaces, each a function of its record and other instances' final states; its refs into them are checked when lowered (B003). */
+  names?: Record<string, (record: Record<string, any>, ctx: { program: Record<string, any>; stateOf(name: string): unknown }) => string[]>;
+  rejected?: Record<string, { message: string; tip?: string; fix?: string }>;
   check?: (record: Record<string, any>, ctx: CheckContext) => void;
 }
 

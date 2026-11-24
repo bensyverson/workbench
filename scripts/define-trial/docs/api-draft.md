@@ -25,7 +25,7 @@ Wherever a definition names a type, write its name as a string:
 
 Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null; a lambda must check it before use, in a `const`: `if (d != null)`, which keeps a 0 or a date at the epoch present and matches undefined too, or `if (d)`, JavaScript's truthiness, which does not; `d !== null` does not narrow, since the kit itself gives undefined for some empty values, such as `find` with no match), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings; nominal: two enums with the same values are different types; a type enum holds strings only, though a data shape's `enumOf` may hold numbers), and `object(label, members)`, an object type made on the spot (see "Construct state").
 
-**Everything `kit/define` exports:** `defineDialect`, `defineGrammar`, the helpers `vector`, `scalar`, `exact`, `tolerance`, `list`, `opt`, `struct`, `union`, `enumOf`, `object`, `name`, `ref`, `data`, `lambda`, `rest`, `oneOf`, `recordOf`, `listOf`, and `DefinitionError`, `BuildError`, `DEFINE_CODES`, `BUILD_CODES`. Importing anything else is refused (D011).
+**Everything `kit/define` exports:** `defineDialect`, `defineGrammar`, the helpers `vector`, `scalar`, `exact`, `tolerance`, `list`, `opt`, `struct`, `union`, `enumOf`, `object`, `name`, `ref`, `data`, `lambda`, `rest`, `oneOf`, `recordOf`, `listOf`, `didYouMean` (a " Did you mean 'x'?" suffix for your own messages: `didYouMean(value, candidates)`), and `DefinitionError`, `BuildError`, `DEFINE_CODES`, `BUILD_CODES`. Importing anything else is refused (D011).
 
 **There is no integer type.** A whole number is a number. If your language needs integers, say so in your report rather than inventing one.
 
@@ -321,7 +321,9 @@ row: (ref, program, state) => ({ params: [object(`a row of ${ref.on}`, state.col
 
 `object(label, members)` makes an object type on the spot, with members as in `objects`. A `stateOf` that would loop (a table built from itself), in `init` or in `step`, is refused (B010). `environment(program)` runs before all of this and does not see state.
 
-All of this happens when the Program is **lowered**, not while it is built: `.check()` and `.build()` do not check a state namespace's `ref`s (lowering does, B003 "at this step"), and a slot `check` sees no state (see "Your own checks"). An instance's name is the value of its construct's `name()` opening, under whatever record key that opening has (`name("table")` too), else its construct's name. `stateOf(name)` finds an instance by its name alone, so every instance of every construct with state shares one namespace of names, and a second one with a name already taken is refused (B002).
+All of this happens when the Program is **lowered**, not while it is built: `.check()` and `.build()` do not check a state namespace's `ref`s (lowering does, B003 "at this step"), and a slot `check` sees no state (see "Your own checks").
+
+**A construct without state may still name what its refs mean** from other instances' state: `names: { column: (record, { program, stateOf }) => Object.keys(stateOf(record.table).columns) }` on a chart checks `.x(ref("column"))` against its table's columns at that table's last step, when lowered (B003 with a did-you-mean), with no state or `record: "calls"` of its own. `names` beside `state` is D015 (put it in `state.names`). An instance's name is the value of its construct's `name()` opening, under whatever record key that opening has (`name("table")` too), else its construct's name. `stateOf(name)` finds an instance by its name alone, so every instance of every construct with state shares one namespace of names, and a second one with a name already taken is refused (B002).
 
 ### Lambdas: the form, and the free-name rule
 
@@ -339,9 +341,12 @@ Because only the text is read, **a lambda cannot see the variables around it**. 
 1. the lambda's own parameters and locals;
 2. a Dialect global or intrinsic, or a Library operation;
 3. a helper or constant the Program declared with a unit slot (`.fn`, `.const`);
-4. `$`, if the Dialect declares it: the Program's parameters.
+4. `$`, if the Dialect declares it: the Program's parameters;
+5. a binding at the **top level of the file** (when the host passes the file's module scope, as the checker does): a top-level arrow function `const f = (…) => …` becomes a helper of the Program, and a top-level `const` holding plain data (a number, string or boolean, or an array or object of them) a baked constant with that value. A helper's own free names follow the same rule.
 
-Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused at the call (B008), with a fix: declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level `const K = 3` in your file is **not** visible; declare it with `.const("K", "3")`. In the same way, `$.topN` written outside a lambda (`.limit($.topN)`) means nothing: write `.limit(() => $.topN)` where the slot accepts a lambda.
+Nothing else is free, not even `Math`, `NaN` or `Infinity`, unless the Dialect declares it. Anything else is refused (B008), with a fix: move it to the top level, declare it with `.const(…)`, or make it a parameter and read it from `$`. A top-level binding that is neither an arrow function nor plain data (a `Map`, `null`, a class instance) is B012; a `function` declaration is B007 (write `const f = (…) => …`). A name your file declares only inside build-time code (a loop variable, a local of a function that builds the Program) is B013: the lambda cannot see it, so move it to the top level or write its value into the lambda's text, `` `(row) => row.units > ${cut}` ``. A top-level binding may not take the name of a Dialect or Library name, or of a `.fn` / `.const` (B002: rename it), so a name in a lambda has one meaning.
+
+**The host's side.** `.check(options)` and `.build(options)` take `{ scope, buildTime }`: `scope` the file's top-level bindings by name, `buildTime` the names declared only below the top level. The resolved helpers and constants are added to the root record's `units`. You do not pass these yourself in the trial: the checker does. In the same way, `$.topN` written outside a lambda (`.limit($.topN)`) means nothing: write `.limit(() => $.topN)` where the slot accepts a lambda.
 
 The body must be in the **Runtime Subset**: `const`/`let`, arithmetic, comparisons, `if`, ternaries, `for` loops with a bound the kit can check, calls to the names above. No `new`, no `this`, no closures that escape, no `async`, no template literals or other string building beyond what the Dialect declares.
 
@@ -363,7 +368,7 @@ A builder used as a string (in a template literal or `String()`) is its descript
 The generated builder reports with the kit's diagnostic: `{ code, severity, message, tip, loc, range, file }`. `loc` is the builder call's place in the author's file. There is no mechanical `edits` fix: the replacement, when there is one, is in `tip` (and in `fix`, from your own check).
 
 - A misuse that leaves nothing to continue with throws at once: an unknown method (B001).
-- Everything else is collected. B002, B004, B006, B007, B009 and your slot checks are found at the call; B003 (for a Program namespace), B005, B008 and construct checks at `.check()` / `.build()`, when every name is known. `.check()` returns the list; `.build()` throws a `BuildError` carrying all of them if any is an error, and otherwise returns the record.
+- Everything else is collected. B002, B004, B006, B007, B009 and your slot checks are found at the call; B003 (for a Program namespace), B005, B008, B012, B013, a top-level binding's B002 and construct checks at `.check()` / `.build()`, when every name is known. `.check()` returns the list; `.build()` throws a `BuildError` carrying all of them if any is an error, and otherwise returns the record.
 - `grammar.lower(record)` lowers every Runtime Lambda of a record and returns `{ environment, lambdas, helpers, diagnostics, states }`. Its diagnostics are the state ones (B003 at that step, B010, B011), each at its call, and each lambda's type errors (an unknown column, comparing a string with a number), with lowering's own `L…` codes (and `S…` for what is outside the Runtime Subset), a "did you mean" in the tip where one applies, and the span inside the lambda.
 
 | Code | Reported when |
@@ -379,6 +384,8 @@ The generated builder reports with the kit's diagnostic: `{ code, severity, mess
 | B009 | a call to a `rejected` name: its message and tip |
 | B010 | a construct state that depends on itself through `stateOf` |
 | B011 | a slot convention function that refused the lambda (it returned a reason string) |
+| B012 | a top-level binding a lambda reads that is neither an arrow function nor plain data |
+| B013 | a free name the file declares only inside build-time code, not at its top level |
 
 ### Refusing what the language does not do
 
@@ -387,8 +394,11 @@ A construct may list names it deliberately does not offer, so that a person who 
 ```js
 rejected: {
   sql: { message: "SQL text is not an input language", tip: "build the query with table methods: .join, .groupBy, .agg" },
+  shader: { message: "raw shader text is not an input language", fix: ".pixel((uv, u) => …)" },
 }
 ```
+
+An entry is `{ message, tip?, fix? }`: `fix` is the replacement text, which the B009 carries (its tip is then `write <fix>` unless you give one).
 
 ### Your own checks
 

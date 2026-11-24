@@ -68,8 +68,19 @@ const TEXT_CELL = 24;
  */
 
 /**
+ * A column type in a few characters: a name as written, an inferred enum as its members.
+ * @param {unknown} t
+ */
+function typeName(t) {
+  if (typeof t === "string") return t;
+  const values = /** @type {any} */ (t)?.values ?? /** @type {any} */ (t)?.enum;
+  return Array.isArray(values) ? `enum(${values.join(", ")})` : "a computed type";
+}
+
+/**
  * The text view: a table's row count, its columns with their types, then its first rows, one per line with
- * cells split by " | " (a date as its UTC day, a long cell cut with "…").
+ * cells split by " | " (a date as its UTC day, else as its number when Date cannot hold it; a long cell cut
+ * with "…"). A table with no columns is its first line alone.
  * @param {Table} table
  * @returns {string}
  */
@@ -77,11 +88,12 @@ function tableText(table) {
   const names = Object.keys(table.columns);
   /** @param {string} c @param {unknown} v */
   const cell = (c, v) => {
-    const s = v === null || v === undefined ? "null" : table.columns[c] === "date" && typeof v === "number" && Number.isFinite(v) ? new Date(v).toISOString().slice(0, 10) : String(v);
+    const s = v === null || v === undefined ? "null" : table.columns[c] === "date" && typeof v === "number" && Number.isFinite(new Date(v).getTime()) ? new Date(v).toISOString().slice(0, 10) : String(v);
     return s.length > TEXT_CELL ? `${s.slice(0, TEXT_CELL - 1)}…` : s;
   };
   const n = table.rows.length;
-  const lines = [`${table.name}: ${n} row${n === 1 ? "" : "s"}`, names.map((c) => `${c}: ${String(table.columns[c])}`).join(" | ")];
+  const lines = [`${table.name}: ${n} row${n === 1 ? "" : "s"}`];
+  if (names.length) lines.push(names.map((c) => `${c}: ${typeName(table.columns[c])}`).join(" | "));
   for (const row of table.rows.slice(0, TEXT_ROWS)) lines.push(names.map((c) => cell(c, row[c])).join(" | "));
   if (n > TEXT_ROWS) lines.push(`… ${n - TEXT_ROWS} more row${n - TEXT_ROWS === 1 ? "" : "s"}`);
   return lines.join("\n");

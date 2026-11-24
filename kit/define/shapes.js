@@ -74,6 +74,19 @@ function describeShape(shape) {
 }
 
 /**
+ * Whether a oneOf's record form (`hit.value`, its lambdas as text) would be read as a branch with its lambdas in
+ * other places than the branch the call took: a function only a lambda form takes can steer the call to a
+ * later branch that the text then ties with an earlier one. Lowering re-reads the record, so they must agree.
+ * @param {unknown[]} alts @param {{ o: Found, value: unknown }} hit @param {Array<string | number>} path @param {string} [key]
+ */
+function recordPicksOther(alts, hit, path, key) {
+  const fits = alts.map((alt) => { const o = found(); matchShape(alt, hit.value, path, o, key); return o; }).filter((o) => refusals(o).length === 0);
+  const best = fits.reduce((/** @type {Found | undefined} */ b, o) => (!b || o.lambdas.length > b.lambdas.length ? o : b), undefined);
+  const places = (/** @type {Found} */ o) => JSON.stringify(o.lambdas.map((l) => l.path));
+  return best !== undefined && places(best) !== places(hit.o);
+}
+
+/**
  * Matches `v` against a shape, collecting into `out`; returns the value with lambdas as source text.
  * @param {unknown} shape @param {unknown} v @param {Array<string | number>} path @param {Found} out @param {string} [key]
  * @returns {unknown}
@@ -106,6 +119,9 @@ export function matchShape(shape, v, path, out, key) {
       // first on a tie). At any depth, text that parses as an arrow function is then the lambda.
       const fits = tries.filter((t) => refusals(t.o).length === 0);
       const hit = fits.reduce((/** @type {(typeof fits)[number] | undefined} */ best, t) => (!best || t.o.lambdas.length > best.o.lambdas.length ? t : best), undefined);
+      if (hit && hit.o.lambdas.length && recordPicksOther(s.of, hit, path, key)) {
+        return fail(`once its lambdas are text, as the record keeps them, it fits another of its forms with lambdas in other places, which the record would be read as; pass every lambda of it as a function, or as text, so the call and its record agree`);
+      }
       if (hit) {
         out.refs.push(...hit.o.refs);
         out.lambdas.push(...hit.o.lambdas);
@@ -113,7 +129,7 @@ export function matchShape(shape, v, path, out, key) {
         // Text that looks like an arrow function but does not parse stays text; say so, since the author
         // most likely meant the lambda.
         const broken = hit.o.lambdas.length === 0 && typeof v === "string" && /=>/.test(v) ? tries.flatMap((t) => refusals(t.o)).find((e) => e.code === "B007" && e.lambda) : undefined;
-        if (broken) out.errors.push({ ...broken, severity: "warning", message: `${broken.message}; it is taken as text, not as a lambda`, tip: "fix the arrow function so it parses, if a lambda was meant" });
+        if (broken) out.errors.push({ ...broken, severity: "warning", message: `${broken.message.replace(/\.$/, "")}; it is taken as text, not as a lambda`, tip: "fix the arrow function so it parses, if a lambda was meant" });
         return hit.value;
       }
       // A function can only have meant a lambda branch: keep that branch's B007 and its detail.

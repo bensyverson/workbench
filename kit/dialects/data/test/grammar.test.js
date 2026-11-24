@@ -70,15 +70,18 @@ test("a chart's encodings are checked against its table's columns: an unknown on
   assert.deepEqual(codes(group().chart("bad", "monthly").mark("bar").x("month").color("regoin").tooltip("month", "ordrs")), ["B003", "B003"]);
   // a column an agg made, and one a derive made before it, are encodable
   assert.deepEqual(codes(group().chart("ok", "monthly").mark("bar").x("month").y("orders").tooltip("revenue")), []);
-  // a chart over a source reads the source's schema
-  const { states } = lowered(profile().build());
-  assert.deepEqual(/** @type {any} */ (states).ageHist.columns, { team: "str", quarter: "str", age: "f64", score: "f64" });
+  // a chart over a source reads the source's schema (the chart has no state of its own: its column names
+  // come from the table's final state or the source's schema, job NrXepo)
+  lowered(profile().build());
+  const bad = program.lower(profile().chart("h", "survey").mark("histogram").x("agee").build()).diagnostics;
+  assert.deepEqual(bad.map((d) => d.code), ["B003"]);
+  assert.match(bad[0].message, /agee.*age/);
 });
 
 test("example 6: written out, the histograms, the profile and the long-form pivot lower; their schemas follow", () => {
   const { lambdas, states } = lowered(profile().build());
   assert.equal(lambdas.length, 5);
-  assert.deepEqual(Object.keys(states).sort(), ["ageHist", "byQuarter", "profile", "scoreHist"]);
+  assert.deepEqual(Object.keys(states).sort(), ["byQuarter", "profile"]);
   assert.deepEqual(/** @type {any} */ (states).profile.columns, { n: "f64", scoreMin: "f64", scoreMax: "f64", scoreMean: "f64" });
   assert.deepEqual(/** @type {any} */ (states).byQuarter.columns, { team: "str", quarter: "str", score: "f64" });
 });
@@ -98,7 +101,7 @@ test("example 6: a build-time fan-out, describe and pivot are B009, each with th
 test("example 7: the winsorize written as a derive clamps between two params", () => {
   const { lambdas, states } = lowered(outliers().build());
   assert.deepEqual(/** @type {any} */ (states).clean.columns, { price: "f64", weight: "f64" });
-  assert.deepEqual(/** @type {any} */ (states).dist.columns, { price: "f64", weight: "f64" });
+  assert.equal(/** @type {any} */ (states).dist, undefined, "a chart has no state of its own (job NrXepo)");
   const k = /** @type {Kernel} */ (lambdas[0].result.kernel);
   assert.equal(run(k, [{ price: 900, weight: 1 }], { intrinsics: INTRINSICS, globals: { $: { lo: 1, hi: 500 } } }), 500);
   assert.equal(run(k, [{ price: 20, weight: 1 }], { intrinsics: INTRINSICS, globals: { $: { lo: 1, hi: 500 } } }), 20);

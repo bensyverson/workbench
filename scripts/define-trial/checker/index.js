@@ -11,7 +11,7 @@ import * as kit from "../../../kit/define/index.js";
 import { didYouMean } from "../../../kit/lower/codes.js";
 import { session, candidateFrame } from "./session.js";
 import { installHooks, DEFINE_SPECIFIER } from "./hooks.js";
-import { checkExport, runProgram, reportBuild, reportThrown, EXAMPLES_DIR } from "./examples.js";
+import { checkExport, runProgram, reportBuild, reportThrown, moduleScope, EXAMPLES_DIR } from "./examples.js";
 import { LOAD } from "./codes.js";
 
 export { CHECK_CODES, RETIRED_CODES, LOAD } from "./codes.js";
@@ -93,7 +93,7 @@ async function checkNow(dir) {
       }
       if (!mod) continue;
       const builder = checkExport(f, mod.default);
-      if (builder) runProgram(f, builder, session.grammar);
+      if (builder) runProgram(f, builder, session.grammar, moduleScope(f, mod));
     }
   }
 

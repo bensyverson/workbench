@@ -200,7 +200,8 @@ export function lowerRecord(g, record) {
   const report = (call, d) => {
     const seen = reported.get(call) ?? new Set();
     reported.set(call, seen);
-    const key = JSON.stringify([d.code, d.message, d.tip]);
+    // the ref and arg tell apart two diagnostics of one call that share their text (two refused lambdas, two arguments)
+    const key = JSON.stringify([d.code, d.message, d.tip, /** @type {any} */ (d).ref?.id ?? null, /** @type {any} */ (d).arg ?? null]);
     if (seen.has(key)) return;
     seen.add(key);
     diagnostics.push(d);
@@ -272,6 +273,28 @@ export function lowerRecord(g, record) {
       // an instance on the loop depends on itself; one that only reads a looping state depends on something that does
       if (e.chain.includes(inst)) diagnostics.push({ code: "B010", severity: "error", message: `${inst.construct.name} '${inst.name}' depends on its own state through stateOf: ${route}`, tip: `build '${inst.name}' from something that is not built from it`, ...inst.at, range: [0, 0] });
       else diagnostics.push({ code: "B010", severity: "error", message: `${inst.construct.name} '${inst.name}' reads, through stateOf, a state that depends on itself: ${route}`, tip: `build '${e.chain[0].name}' from something that is not built from it`, ...inst.at, range: [0, 0] });
+    }
+  }
+
+  // A stateless construct's `names`: its refs against names drawn from the record and other instances' final states.
+  for (const inst of instances.filter((i) => i.construct.def.names && !i.construct.def.state)) {
+    const ns = /** @type {Record<string, (record: Record<string, any>, ctx: { program: Record<string, any>, stateOf: (name: string) => unknown }) => string[]>} */ (inst.construct.def.names);
+    const stateOf = (/** @type {string} */ n) => {
+      const i = stateful.find((x) => x.name === n);
+      if (!i || failed.has(i)) return undefined;
+      try { return finalState(i); } catch (e) { if (e instanceof Cycle) return undefined; throw e; }
+    };
+    /** @type {Map<string, string[]>} */
+    const known = new Map();
+    for (const call of inst.calls) {
+      const s = inst.construct.def.slots?.[call.slot];
+      if (!s || s.kind !== "decl") continue;
+      for (const r of rematch(s.args, call.args).refs) {
+        if (!ns[r.ns]) continue;
+        if (!known.has(r.ns)) known.set(r.ns, ns[r.ns](inst.rec, { program: record, stateOf }));
+        const names = /** @type {string[]} */ (known.get(r.ns));
+        if (!names.includes(r.value)) report(call, { code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}', .${call.slot}: there is no ${r.ns} '${r.value}'.${didYouMean(r.value, names)}`, tip: names.length ? `name one of: ${names.join(", ")}` : `this ${inst.construct.name} has no ${r.ns}`, ...call.at, range: [0, 0] });
+      }
     }
   }
 

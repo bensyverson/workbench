@@ -105,5 +105,5 @@ test("a convention that returns a reason refuses the lambda (B011); every builde
   assert.deepEqual(r.diagnostics.map((x) => x.code), ["B011"]);
   assert.match(r.diagnostics[0].message, /not first/);
   assert.deepEqual(r.lambdas.map((l) => l.ref.id), ["x.k#1"]);
-  assert.deepEqual(Object.keys(BUILD_CODES), ["B001", "B002", "B003", "B004", "B005", "B006", "B007", "B008", "B009", "B010", "B011"]);
+  assert.deepEqual(Object.keys(BUILD_CODES), ["B001", "B002", "B003", "B004", "B005", "B006", "B007", "B008", "B009", "B010", "B011", "B012", "B013"]);
 });

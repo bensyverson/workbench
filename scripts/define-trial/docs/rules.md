@@ -84,6 +84,8 @@ The checker prints the kit's own codes (`D…` from `defineDialect` and `defineG
 | B009 | a call to a `rejected` name |
 | B010 | a construct state that depends on itself through `stateOf` |
 | B011 | a slot convention function that refused the lambda (returned a reason) |
+| B012 | a top-level binding a lambda reads that is neither an arrow function nor plain data |
+| B013 | a free name your file declares only inside build-time code (a loop variable, a function's local), not at its top level |
 
 A lambda's body is type-checked by lowering, whose codes start with `L` (an unknown member, a type mismatch …), `P` (does not parse) or `S` (outside the Runtime Subset); each is printed at its line inside the lambda, with the lambda's id.
 

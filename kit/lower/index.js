@@ -185,6 +185,9 @@ const helperSlot = (h) => ({ id: h.name, kind: h.kind === "fn" ? "helper" : "con
 function lowerConstants(environment, sources, decls, sigs) {
   /** @type {Map<string, LowerResult>} */
   const out = new Map();
+  // A constant sees only the constants before it, in every pass: a later one's value from the last pass would
+  // let a forward reference through whenever a helper forces another pass.
+  for (const h of sources) if (h.kind === "const") decls[h.name] = { kind: "const", value: null };
   for (const h of sources) {
     if (h.kind !== "const") continue;
     const r = lowerLambda(environment, `() => (${h.src})`, helperSlot(h), { ...sigs, helpers: decls });
@@ -195,7 +198,7 @@ function lowerConstants(environment, sources, decls, sigs) {
       r.ok = false;
       r.kernel = null;
     }
-    decls[h.name] = { kind: "const", value: r.ok ? only : null };
+    decls[h.name] = { kind: "const", value: r.ok ? only : null, calls: r.calls.map((c) => c.key) };
     out.set(h.name, r);
   }
   return out;
@@ -256,7 +259,8 @@ function infer(lambdas, results, decls) {
   }
   // A call site counts only when the code it is in is reached from a runtime lambda, so an unreached helper decides nothing.
   const live = liveCalls(lambdas, results);
-  for (const r of results) for (const c of r.calls) if (live.has(c)) (callArgs[c.key] ??= []).push(c);
+  // A call inside a baked constant (`baked`) was typed where the constant was lowered: it joins no parameter.
+  for (const r of results) for (const c of r.calls) if (live.has(c) && !c.baked) (callArgs[c.key] ??= []).push(c);
   /** @type {Record<string, boolean>} */
   const failed = {};
   lambdas.forEach((l, i) => {

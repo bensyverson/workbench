@@ -49,3 +49,5 @@ if (r.ok) {
 **What the parser rejects that JavaScript also rejects** (as P001 unless noted): `??` mixed with `||` / `&&`, reserved words as names, parenthesized patterns, `{ k = 4 }` outside a pattern, a line break before `=>`, an arrow as an operand or callee, malformed numbers, legacy octal numbers and escapes (`010`, `"\1"`; `"\0"` is fine), assignment through `?.`, `const` without a value, a lexical declaration as a statement body, duplicate parameters and redeclarations, HTML-like comments, and nesting too deep to parse. `for…in` is P004.
 
 `node scripts/parse-corpus.js` runs the parser and check over every DMG runtime lambda.
+
+**[`toplevel.js`](toplevel.js)** is a lexical scan of a whole program file, not a parser: `topLevelNames`, `topLevelBindings`, `topLevelRefs` (moved here from `scripts/dmg-oracle`, which re-exports them) and `buildTimeNames`, the names declared only below the top level. A Definition API host gathers a Program file's module scope with it ([kit/define](../define/README.md), "Module scope"). It errs toward listing a name rather than missing one.

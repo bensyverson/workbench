@@ -6,6 +6,7 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
+import { buildTimeNames } from "../../../kit/parse/toplevel.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */
 
@@ -49,16 +50,28 @@ export function checkExport(file, exported) {
 }
 
 /**
+ * An example's module scope, as the builder takes it: its top-level bindings (from the export the load hook
+ * appends) and the names its text declares only inside build-time code.
+ * @param {string} file @param {Record<string, unknown>} mod
+ * @returns {import("../../../kit/define/define.js").BuildOptions}
+ */
+export function moduleScope(file, mod) {
+  const get = mod.__defineTrialScope;
+  return { scope: typeof get === "function" ? get() : {}, buildTime: buildTimeNames(session.sources[file] ?? "") };
+}
+
+/**
  * The example's Program through .check(), then, if it has no error, through the Grammar's lower().
  * @param {string} file
  * @param {any} builder  the example's exported chain
  * @param {any} grammar  the root builder defineGrammar returned, which has lower()
+ * @param {import("../../../kit/define/define.js").BuildOptions} [options]  its module scope
  */
-export function runProgram(file, builder, grammar) {
+export function runProgram(file, builder, grammar, options = {}) {
   /** @type {KitDiagnostic[]} */
   let found;
   try {
-    found = builder.check();
+    found = builder.check(options);
   } catch (e) {
     reportThrown(e, file, "when its Program was checked");
     return;
@@ -68,7 +81,7 @@ export function runProgram(file, builder, grammar) {
   /** @type {{ diagnostics: KitDiagnostic[], lambdas: Array<{ ref: { id: string }, src: string }> }} */
   let lowered;
   try {
-    lowered = grammar.lower(builder.build());
+    lowered = grammar.lower(builder.build(options));
   } catch (e) {
     // A convention function's result is checked as a static convention is, and refused the same way.
     if (e instanceof kit.DefinitionError && session.dialectSite) { session.report(session.dialectSite, e.diagnostics, ` (when ${file} was lowered)`); return; }
@@ -120,7 +133,10 @@ function reportInUnit(d, file) {
     add(d, s.file, locate(session.sources[s.file] ?? "", s.line, ["library", name]), `the Library's '${name}': ${d.message}`);
     return;
   }
-  add(d, file, call ? lineAt(text, call.index) + (d.loc?.start.line ?? 1) - 1 : 1, `the helper '${name}': ${d.message}`);
+  // a top-level binding the builder resolved into a unit
+  const top = call ? null : new RegExp(`^(?:export\\s+)?(?:const|let|var)\\s+${name.replace(/[$]/g, "\\$")}\\s*=`, "m").exec(text);
+  const at = call ?? top;
+  add(d, file, at ? lineAt(text, at.index) + (d.loc?.start.line ?? 1) - 1 : 1, `the helper '${name}': ${d.message}`);
 }
 
 /**

@@ -9,6 +9,8 @@
 
 /** Dark to light. */
 const RAMP = " .:-=+*#%@";
+/** A character covering a pixel that is not a number (NaN), which has no brightness. */
+const NOT_A_NUMBER = "?";
 /** The most characters across and down: enough to see a pattern, small enough for a model's context. */
 export const TEXT_COLUMNS = 64;
 export const TEXT_ROWS = 32;
@@ -18,7 +20,8 @@ const luma = (c) => Math.min(1, Math.max(0, 0.2126 * c[0] + 0.7152 * c[1] + 0.07
 
 /**
  * The frame drawn in characters, top row first, one character per pixel or, for a frame larger than
- * TEXT_COLUMNS by TEXT_ROWS, the mean brightness of the block of pixels it covers; a first line says the sizes.
+ * TEXT_COLUMNS by TEXT_ROWS, the mean brightness of the block of pixels it covers (`?` where a pixel is NaN);
+ * a first line says the sizes.
  * @param {Frame} frame
  * @returns {string}
  */
@@ -26,6 +29,8 @@ export function frameText(frame) {
   const { width, height, pixels } = frame;
   const cols = Math.min(width, TEXT_COLUMNS), rows = Math.min(height, TEXT_ROWS);
   const head = `fields frame: ${width} × ${height}${cols < width || rows < height ? `, drawn as ${cols} × ${rows} (each character the mean brightness of its pixels)` : ""}`;
+  // a frame with no pixels across or down has no rows to draw
+  if (cols === 0 || rows === 0) return head;
   const lines = [head];
   for (let r = rows - 1; r >= 0; r--) {
     let line = "";
@@ -34,7 +39,8 @@ export function frameText(frame) {
       const i0 = Math.floor((c * width) / cols), i1 = Math.max(i0 + 1, Math.floor(((c + 1) * width) / cols));
       let sum = 0;
       for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) sum += luma(pixels[j * width + i]);
-      line += RAMP[Math.round((sum / ((j1 - j0) * (i1 - i0))) * (RAMP.length - 1))];
+      const mean = sum / ((j1 - j0) * (i1 - i0));
+      line += Number.isNaN(mean) ? NOT_A_NUMBER : RAMP[Math.round(mean * (RAMP.length - 1))];
     }
     lines.push(line);
   }

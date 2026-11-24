@@ -3,7 +3,7 @@
 // belongs to the Dialect: fields takes a rendered frame, the data Dialect a table.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defineDialect, exact, DefinitionError, DEFINE_CODES } from "../index.js";
+import { defineDialect, exact, enumOf, DefinitionError, DEFINE_CODES } from "../index.js";
 import { fields } from "../../dialects/fields/index.js";
 import { data } from "../../dialects/data/index.js";
 
@@ -67,4 +67,17 @@ test("the data Dialect's text view shows the first 20 rows and cuts long cells",
   assert.equal(lines[2], `${"x".repeat(23)}…`);
   assert.equal(lines.length, 2 + 20 + 1);
   assert.equal(lines.at(-1), "… 5 more rows");
+});
+
+// Review of 6edf1f1 (job BZFevT), nits 5 and 6, from local/rev-round2-probes/text.probe.js.
+test("fields' text view shows a NaN pixel as ? and keeps the columns aligned; an empty frame draws no rows", () => {
+  const lines = fields.text({ width: 2, height: 1, pixels: [[NaN, 0, 0], [1, 1, 1]] }).split("\n");
+  assert.deepEqual(lines.slice(1), ["?@"]);
+  assert.equal(fields.text({ width: 0, height: 5, pixels: [] }), "fields frame: 0 × 5");
+});
+
+test("the data Dialect's text view: a date outside Date's range, an enum column type, an empty table", () => {
+  const s = data.text({ name: "t", columns: { d: "date", e: enumOf(["a", "b"]) }, rows: [{ d: 1e300, e: "a" }] });
+  assert.equal(s, ["t: 1 row", "d: date | e: enum(a, b)", "1e+300 | a"].join("\n"));
+  assert.equal(data.text({ name: "t", columns: {}, rows: [] }), "t: 0 rows");
 });

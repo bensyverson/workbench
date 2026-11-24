@@ -15,7 +15,7 @@ import { matchArg, matchShape, found } from "./shapes.js";
  * @property {Record<string, any>} def
  * @property {Construct | null} parent
  * @property {Construct[]} children
- * @property {Record<string, { message: string, tip?: string }>} rejected  its own and its ancestors'
+ * @property {Record<string, { message: string, tip?: string, fix?: string }>} rejected  its own and its ancestors'
  */
 
 /**

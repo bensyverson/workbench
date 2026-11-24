@@ -195,7 +195,8 @@ function argument(L, a, i, sig, what) {
     L.error("L014", a, conflict.message, conflict.tip);
     return e;
   }
-  return sig ? check(L, a, sig.params[i], what) : settle(L, expr(L, a));
+  // A callee nothing live calls has no typed parameters (callsites.js): its argument is settled, not checked.
+  return sig?.params[i] !== undefined ? check(L, a, sig.params[i], what) : settle(L, expr(L, a));
 }
 
 /**

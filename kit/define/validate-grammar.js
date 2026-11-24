@@ -9,7 +9,7 @@ import { openKey } from "./record.js";
 /** @import * as T from "./define.js" */
 
 const GRAMMAR_KEYS = Object.freeze(["root", "constructs"]);
-const CONSTRUCT_KEYS = Object.freeze(["opens", "parent", "slots", "record", "state", "rejected", "check"]);
+const CONSTRUCT_KEYS = Object.freeze(["opens", "parent", "slots", "record", "state", "names", "rejected", "check"]);
 const SLOT_KEYS = Object.freeze(["kind", "args", "unit", "once", "required", "as", "check"]);
 const SLOT_KINDS = Object.freeze(["decl", "unit"]);
 export const SHAPE_NAMES = Object.freeze(["number", "string", "boolean", "string[]", "number[]"]);
@@ -108,11 +108,17 @@ export function validateGrammar(dialect, def) {
         for (const ns of Object.keys(isPlainObject(st.names) ? st.names : {})) if (programNs.has(ns)) out.push({ code: "D015", path: [...path, "state", "names", ns], message: `construct '${cn}''s state namespace '${ns}' is also a Program namespace (a name("${ns}") declares into it).`, tip: `rename the state namespace or the name() namespace` });
       }
     }
+    if (c.names !== undefined) {
+      if (c.state !== undefined) out.push({ code: "D015", path: [...path, "names"], message: `construct '${cn}' has both state and names; a construct with state declares its namespaces in state.names.`, tip: `move them to state.names, as (state) => […]` });
+      else if (!(isPlainObject(c.names) && Object.values(c.names).every((f) => typeof f === "function"))) out.push({ code: "D015", path: [...path, "names"], message: `construct '${cn}': names must map each namespace to a function (record, { program, stateOf }) => names.`, tip: "names: { column: (record, { stateOf }) => Object.keys(stateOf(record.table).columns) }" });
+      for (const ns of Object.keys(isPlainObject(c.names) ? c.names : {})) if (programNs.has(ns)) out.push({ code: "D015", path: [...path, "names", ns], message: `construct '${cn}''s namespace '${ns}' is also a Program namespace (a name("${ns}") declares into it).`, tip: `rename one of the two namespaces` });
+    }
     if (c.rejected !== undefined) {
-      if (!isPlainObject(c.rejected)) out.push({ code: "D011", path: [...path, "rejected"], message: `construct '${cn}': rejected must be an object of { message, tip }.`, tip: `rejected: { sql: { message: "…", tip: "…" } }` });
+      if (!isPlainObject(c.rejected)) out.push({ code: "D011", path: [...path, "rejected"], message: `construct '${cn}': rejected must be an object of { message, tip, fix }.`, tip: `rejected: { sql: { message: "…", tip: "…" } }` });
       else for (const [rn, r] of Object.entries(c.rejected)) {
-        if (!isPlainObject(r) || typeof r.message !== "string") { out.push({ code: "D011", path: [...path, "rejected", rn], message: `rejected '${rn}' must be { message, tip }.`, tip: `${rn}: { message: "…", tip: "…" }` }); continue; }
-        checkKeys(r, ["message", "tip"], ["message"], [...path, "rejected", rn], `rejected '${rn}'`, out);
+        if (!isPlainObject(r) || typeof r.message !== "string") { out.push({ code: "D011", path: [...path, "rejected", rn], message: `rejected '${rn}' must be { message, tip, fix }.`, tip: `${rn}: { message: "…", tip: "…" }` }); continue; }
+        checkKeys(r, ["message", "tip", "fix"], ["message"], [...path, "rejected", rn], `rejected '${rn}'`, out);
+        for (const k of ["tip", "fix"]) if (r[k] !== undefined && typeof r[k] !== "string") out.push({ code: "D011", path: [...path, "rejected", rn, k], message: `rejected '${rn}': ${k} must be text, not ${describe(r[k])}.`, tip: `${k}: "…"` });
       }
     }
     if (c.slots === undefined) continue;
@@ -124,7 +130,7 @@ export function validateGrammar(dialect, def) {
     }
   }
 
-  for (const cn of names) collideKeys(cs, cn, out);
+  for (const cn of names) collideKeys(cs, cn, cn === def.root, out);
 
   for (const cn of names) {
     const slots = isPlainObject(cs[cn].slots) ? Object.keys(cs[cn].slots) : [];
@@ -161,16 +167,18 @@ function holdsLambda(spec) {
 /**
  * D017: two things of one construct that the record would put under one key. The keys are the opening
  * arguments' (as, else namespace or name), the child constructs', a by-slot slot's (as, else its name),
- * `units` when it has a unit slot, and `calls` for a record: "calls" construct.
- * @param {Record<string, any>} cs @param {string} cn @param {Problem[]} out
+ * `units` when it has a unit slot or is the root (which takes the top-level bindings `.build({ scope })` resolves),
+ * and `calls` for a record: "calls" construct.
+ * @param {Record<string, any>} cs @param {string} cn @param {boolean} isRoot @param {Problem[]} out
  */
-function collideKeys(cs, cn, out) {
+function collideKeys(cs, cn, isRoot, out) {
   const c = cs[cn];
   /** @type {Map<string, Array<{ who: string, explicit: boolean, kind: "opening" | "child" | "slot" | "units" | "calls" }>>} */
   const keys = new Map();
   const put = (/** @type {string} */ key, /** @type {string} */ who, /** @type {boolean} */ explicit, /** @type {"opening" | "child" | "slot" | "units" | "calls"} */ kind) => keys.set(key, [...(keys.get(key) ?? []), { who, explicit, kind }]);
   if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => { if (kindOf(spec)) put(String(openKey(/** @type {T.Tagged} */ (spec), i)), `opening argument ${i + 1}`, Boolean(/** @type {any} */ (spec).as), "opening"); });
   for (const n of Object.keys(cs).filter((x) => cs[x].parent === cn)) put(n, `child construct '${n}'`, false, "child");
+  if (isRoot) put("units", "the Program's units (its helpers and constants, the top-level bindings its lambdas read among them)", false, "units");
   if (c.record === "calls") put("calls", "the calls", false, "calls");
   else for (const [sn, s] of Object.entries(isPlainObject(c.slots) ? c.slots : {})) {
     if (!isPlainObject(s)) continue;
