@@ -22,10 +22,12 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [kit/lir/README.md](kit/lir/README.md) — the first LIR stage: a Kernel with no f64, explicit conversions and bound intrinsics, its verifier and diagnostic codes
 - [kit/emit/glsl/README.md](kit/emit/glsl/README.md) — the GLSL ES 3.00 backend: fragment shaders from pixel Kernels, uniforms, the `uv` convention, the line map, capability refusals
 - [kit/debugger/README.md](kit/debugger/README.md) — the pixel debugger: one pixel stepped through its Kernel node by node, and the preview page that shows it beside the GPU's value
+- [kit/harness/README.md](kit/harness/README.md) — the comparison harness: a fields Program through the interpreter, the emitted JS and the emitted GLSL, with the GLSL tolerance and planted faults
 - [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
 - [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
 - [scripts/dmg-diff/README.md](scripts/dmg-diff/README.md) — the lowering survey over all presets, the differential run over 04–07, and planted-fault sensitivity
 - [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
+- [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
 
 <!-- agents:begin core@c84939 -->
 ## Working rules
