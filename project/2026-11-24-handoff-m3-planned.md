@@ -26,7 +26,7 @@
 
 ## Notes for the next session
 
-- This checkout's job database has no default identity; pass `--as claude` on writes (`job init --as` would set one). zsh doesn't split `$VAR` into words, so use a shell function for `job --as claude`.
+- The job database's default identity is now `claude` (Ben set it on 2026-11-24 with `job identity set`), so writes need no `--as`. zsh doesn't split `$VAR` into words, so never keep a command in a variable.
 - `git`, `npm` and `sleepy` need the sandbox off. `npm install` was run this session, so `node_modules` exists.
 - A duplicate copy of the design note sits on `V93QGn` (harmless).
 - The Dream Code file's "Builder gaps" section sits after its Assumptions paragraph; the order is fine.
