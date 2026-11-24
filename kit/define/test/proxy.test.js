@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import util from "node:util";
-import { field } from "../examples/fields.js";
+import { field } from "../../dialects/fields/index.js";
 import { BuildError } from "../index.js";
 
 const b = () => field("p").param("k", { value: 1 });

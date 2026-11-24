@@ -5,27 +5,23 @@
 // adds two f32s), spelled as the operator it names on both targets, and rounded to f32 as the operator is,
 // so the two styles agree bit for bit.
 
-/** @import { Type } from "../../ir/ir.js" */
-/** @import { Intrinsic } from "./decls.js" */
-
-const T = /** @type {Type} */ ({ tvar: "T" });
-const F = /** @type {Type} */ ("f32");
+/** @import { IntrinsicDef } from "../../define/define.js" */
 
 /**
  * A componentwise intrinsic over `T`, whose last argument is an f32 when `scaled`.
  * @param {number} lead  How many arguments are `T`.
  * @param {number} rest  How many trailing f32 arguments.
- * @param {Intrinsic["ref"]} ref
+ * @param {IntrinsicDef["ref"]} ref
  * @param {string} template  Both targets' spelling; it is the operator, so it is the same text.
- * @returns {Intrinsic}
+ * @returns {IntrinsicDef}
  */
 const op = (lead, rest, ref, template) => ({
-  sig: { params: [...Array(lead).fill(T), ...Array(rest).fill(F)], returns: T, effects: [], numeric: "number" },
-  ref, componentwise: true, js: { call: template }, glsl: { call: template },
+  params: [...Array(lead).fill("T"), ...Array(rest).fill("f32")], returns: "T", numeric: "number", componentwise: true,
+  ref, spell: { js: template, glsl: template },
 });
 
 /** The vector-call intrinsics, by the name a lambda calls. */
-export const CALLS = /** @type {Record<string, Intrinsic>} */ ({
+export const calls = /** @type {Record<string, IntrinsicDef>} */ ({
   vadd: op(2, 0, (a, b) => a + b, "($0 + $1)"),
   vsub: op(2, 0, (a, b) => a - b, "($0 - $1)"),
   vmul: op(2, 0, (a, b) => a * b, "($0 * $1)"),

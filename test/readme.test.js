@@ -65,7 +65,7 @@ for (const { b, out } of commands) {
     assert.equal(r.status, 0, r.stderr);
     const harness = b.text.includes("runCase");
     if (harness && !findSleepy()) {
-      assert.match(r.stdout, /^interpreter vs JS: identical/m);
+      assert.match(r.stdout, /^interpreter vs JS:\s+worst 0\.00e\+0 \(identical bits required\)$/m);
       assert.match(r.stdout, /GLSL skipped/);
       return;
     }

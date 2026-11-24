@@ -1,10 +1,9 @@
-// defineDialect: the fields worked example yields the hand-written fields Environment, intrinsic table
-// and Library; a bad definition is refused with a D… code naming the declaration and the fix.
+// defineDialect: the fields Dialect (kit/dialects/fields, declared through it) yields the Environment lowering
+// reads; a bad definition is refused with a D… code naming the declaration and the fix.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fields } from "../examples/fields.js";
 import { defineDialect, vector, exact, tolerance, scalar, object, opt, list, DefinitionError, DEFINE_CODES } from "../index.js";
-import { fieldsEnvironment, INTRINSICS, LIBRARY, libraryFor } from "../../dialects/fields/index.js";
+import { fields } from "../../dialects/fields/index.js";
 import { swirl, bulge } from "../../dialects/fields/programs/uv-remaps.js";
 import { swirlCalls, bulgeCalls } from "../../dialects/fields/programs/uv-remaps-calls.js";
 import { domainWarp } from "../../dialects/fields/programs/domain-warp.js";
@@ -19,36 +18,33 @@ const PROGRAMS = /** @type {FieldProgram[]} */ ([
   { name: "mixed", params: { n: { value: 4, min: 0, max: 100 }, big: { value: 1, min: 0, max: 16777215.5 }, on: { value: true }, pick: { value: "a", options: ["a", "b"] } }, units: [], pixel: "" },
 ]);
 
-/** What the generated `const` convention forbids, and fields' does not (the design doc, decision record). */
+/** What the generated `const` convention forbids. */
 const ALL_VERBS = ["read", "input", "hud", "call", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"];
 
-test("the fields Environment equals fieldsEnvironment(params) for every sketch", () => {
+test("the fields Environment: uniforms from params, the pixel and helper conventions, and the generated const convention", () => {
+  const vec2 = { vec: 2, of: "f32", name: "vec2" }, color = { vec: 3, of: "f32", name: "color" };
   for (const p of PROGRAMS) {
-    const want = fieldsEnvironment(p.params);
     const got = fields.environment(p);
-    for (const k of /** @type {const} */ (["name", "objects", "globals", "vectors", "componentAliases", "numberType", "conversions", "list", "queries"])) {
-      assert.deepEqual(got[k], want[k], `${p.name}: ${k}`);
-    }
-    for (const ref of [{ id: `${p.name}.pixel`, kind: "pixel", on: p.name }, { id: "ring", kind: "helper", on: "$", key: "ring" }]) {
-      assert.deepEqual(got.slot(ref), want.slot(ref), `${p.name}: slot ${ref.kind}`);
-    }
-    // The one known difference: the generated const convention forbids every effect; fields' forbids none.
-    const cref = { id: "K", kind: "const", on: "$", key: "K" };
-    const { forbid, forbidWhy, ...rest } = /** @type {import("../../lower/environment.js").SlotDecl} */ (got.slot(cref));
-    const { forbid: fieldsForbid, ...fieldsRest } = /** @type {import("../../lower/environment.js").SlotDecl} */ (want.slot(cref));
-    assert.deepEqual(rest, fieldsRest);
-    assert.deepEqual(fieldsForbid, []);
+    assert.equal(got.numberType, "f32");
+    assert.deepEqual(got.componentAliases, { color: { r: "x", g: "y", b: "z" } });
+    assert.deepEqual(got.globals.mix, { obj: "mix" }, "an intrinsic is a callable global");
+    assert.deepEqual(got.slot({ id: `${p.name}.pixel`, kind: "pixel", on: p.name }), { params: [vec2, { obj: "Uniforms" }], returns: color, space: "pixel", forbid: [] });
+    assert.deepEqual(got.slot({ id: "ring", kind: "helper", on: "$", key: "ring" }), { params: [], inferParams: true, returns: "infer", space: "helper ring", forbid: [] });
+    // The hand-written fields const convention forbade nothing; the generated one forbids every effect (the design doc, decision record).
+    const { forbid, forbidWhy } = /** @type {import("../../lower/environment.js").SlotDecl} */ (got.slot({ id: "K", kind: "const", on: "$", key: "K" }));
     assert.deepEqual([...forbid].sort(), [...ALL_VERBS].sort());
     assert.match(String(forbidWhy), /computed once/);
     assert.equal(typeof got.slot({ id: "x", kind: "row", on: "x" }), "string", "an undeclared convention is a reason, not a convention");
   }
+  const mixed = fields.environment(PROGRAMS[PROGRAMS.length - 1]).objects.Uniforms.members;
+  assert.deepEqual(mixed, {
+    t: { kind: "value", t: "f32" }, aspect: { kind: "value", t: "f32" },
+    n: { kind: "value", t: "f32", size: true }, big: { kind: "value", t: "f32" }, on: { kind: "value", t: "bool" },
+    pick: { kind: "value", t: { enum: ["a", "b"], declared: true } },
+  }, "a capped number is a size up to 2^24 - 1; a choice is a declared enum; a toggle a bool");
 });
 
-test("the intrinsic table and the Library are fields' own", () => {
-  assert.deepEqual(fields.intrinsics, INTRINSICS);
-  assert.deepEqual(fields.library, LIBRARY);
-  const src = "(uv, u) => color(fbm(uv, 1), pmod(1, 2), 0)";
-  assert.deepEqual(fields.libraryFor([src]), libraryFor([src]));
+test("the fields targets resolve to their compare modes", () => {
   assert.deepEqual(fields.targets, { js: { accepts: "*", compare: { kind: "exact" } }, glsl: { accepts: ["pixel"], compare: { kind: "tolerance", figure: 1e-3 } } });
 });
 

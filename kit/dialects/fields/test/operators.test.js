@@ -2,8 +2,8 @@
 // mistake says. Every error names both types and writes the fix.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lowerField, field } from "../index.js";
-import { VEC2, VEC3, COLOR } from "../types.js";
+import { lowerField, field, VEC2, VEC3, COLOR } from "../index.js";
+import { BuildError } from "../../../define/index.js";
 import { printKernel } from "../../../ir/print.js";
 import { verify } from "../../../ir/verify.js";
 
@@ -96,8 +96,9 @@ test("a component of a let vector is assigned by rebuilding the vector", () => {
 });
 
 test("Math is not here: the intrinsics are typed and named bare", () => {
-  const d = fails("const a = Math.floor(uv.x);", "L001");
-  assert.match(d.tip, /floor/);
+  // The generated builder refuses a name the lambda cannot see when the Program is built (B008), before
+  // lowering's L001, whose tip named the bare intrinsic; B008's tip does not (reported on leaf iJtvVE).
+  assert.throws(() => lowerBody("const a = Math.floor(uv.x);"), (/** @type {any} */ e) => e instanceof BuildError && e.code === "B008" && /"Math"/.test(e.message));
 });
 
 test("a number past f32's range is L016, not an Infinity", () => {

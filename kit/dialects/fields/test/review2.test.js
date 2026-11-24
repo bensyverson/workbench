@@ -2,18 +2,19 @@
 // Library's, and an f32 loop over a uniform lowers.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lowerField, field } from "../index.js";
-import { LIBRARY } from "../library.js";
+import { lowerField, field, LIBRARY, fieldsEnvironment } from "../index.js";
 import { lowerProgram } from "../../../lower/index.js";
-import { fieldsEnvironment } from "../environment.js";
+
+/** The builder collects a refusal at the call and throws it from .build(). */
+const black = "(uv, u) => color(0, 0, 0)";
 
 test("a helper named like a Library function is refused, naming both", () => {
-  assert.throws(() => field("c").fn("vnoise", "(p, s) => 0.25"), /'vnoise'.*Library|Library.*'vnoise'/);
-  assert.throws(() => field("c").fn("pmod", "(x, n) => x"), /Library/);
+  assert.throws(() => field("c").fn("vnoise", "(p, s) => 0.25").pixel(black).build(), /'vnoise'.*Library|Library.*'vnoise'/);
+  assert.throws(() => field("c").fn("pmod", "(x, n) => x").pixel(black).build(), /Library/);
 });
 
 test("a constant named like a Library constant is refused, naming both", () => {
-  assert.throws(() => field("c").const("OCTAVE_COS", "2"), /'OCTAVE_COS'.*Library|Library.*'OCTAVE_COS'/);
+  assert.throws(() => field("c").const("OCTAVE_COS", "2").pixel(black).build(), /'OCTAVE_COS'.*Library|Library.*'OCTAVE_COS'/);
 });
 
 test("a hand-built Program whose helper collides with the Library is refused when lowered", () => {

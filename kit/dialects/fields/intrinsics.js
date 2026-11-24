@@ -1,52 +1,43 @@
-// The fields Dialect's intrinsics: each one's signature, how each target spells it, and a
-// reference implementation on numbers for the interpreter. A signature with a type variable
-// (`T`) is one operation over f32s and vectors alike: `numeric` limits what `T` may be, and
-// `componentwise` says the reference applies per component. Library functions written in the
-// Runtime Subset (library.js) are not here: they lower like helpers and reach every target.
+// The fields Dialect's intrinsics, as the Definition API declares them: each one's signature, how each target
+// spells it, and a reference implementation on numbers for the interpreter. A signature with a type variable
+// (`T`) is one operation over f32s and vectors alike: `numeric` limits what `T` may be, and `componentwise`
+// says the reference applies per component. Library functions written in the Runtime Subset (library.js)
+// are not here: they lower like helpers and reach every target.
 
-/** @import { Type } from "../../ir/ir.js" */
-/** @import { Intrinsic } from "./decls.js" */
+/** @import { IntrinsicDef } from "../../define/define.js" */
 
-import { CALLS } from "./calls.js";
-
-const T = /** @type {Type} */ ({ tvar: "T" });
-const F = /** @type {Type} */ ("f32");
+import { calls } from "./calls.js";
 
 /**
- * Spells one JS call template.
- * @param {string} js
- * @param {string} glsl
- * @param {{ js?: string, glsl?: string }} [prelude]
+ * One target's spelling: the call template alone, or with the text it needs defined first.
+ * @param {string} call @param {string} [prelude]
  */
-const spell = (js, glsl, prelude = {}) => ({
-  js: { call: js, ...(prelude.js ? { prelude: prelude.js } : {}) },
-  glsl: { call: glsl, ...(prelude.glsl ? { prelude: prelude.glsl } : {}) },
-});
+const spelled = (call, prelude) => (prelude ? { call, prelude } : call);
 
 /**
  * A scalar intrinsic over f32s.
  * @param {number} n
- * @param {Intrinsic["ref"]} ref
+ * @param {IntrinsicDef["ref"]} ref
  * @param {string} js
  * @param {string} glsl
  * @param {{ js?: string }} [prelude]
- * @returns {Intrinsic}
+ * @returns {IntrinsicDef}
  */
-const scalar = (n, ref, js, glsl, prelude) => ({ sig: { params: Array(n).fill(F), returns: F, effects: [] }, ref, ...spell(js, glsl, prelude) });
+const scalar = (n, ref, js, glsl, prelude = {}) => ({ params: Array(n).fill("f32"), returns: "f32", ref, spell: { js: spelled(js, prelude.js), glsl } });
 
 /**
  * An intrinsic over any number or vector `T`, applied per component, whose arguments after `lead` are f32.
  * @param {number} lead  How many leading arguments are `T`.
  * @param {number} rest  How many trailing f32 arguments.
- * @param {Intrinsic["ref"]} ref
+ * @param {IntrinsicDef["ref"]} ref
  * @param {string} js
  * @param {string} glsl
  * @param {{ js?: string }} [prelude]
- * @returns {Intrinsic}
+ * @returns {IntrinsicDef}
  */
-const generic = (lead, rest, ref, js, glsl, prelude) => ({
-  sig: { params: [...Array(lead).fill(T), ...Array(rest).fill(F)], returns: T, effects: [], numeric: "number" },
-  ref, componentwise: true, ...spell(js, glsl, prelude),
+const generic = (lead, rest, ref, js, glsl, prelude = {}) => ({
+  params: [...Array(lead).fill("T"), ...Array(rest).fill("f32")], returns: "T", numeric: "number", componentwise: true,
+  ref, spell: { js: spelled(js, prelude.js), glsl },
 });
 
 const clamp01 = (/** @type {number} */ x) => Math.max(0, Math.min(1, x));
@@ -68,7 +59,7 @@ const IHASH_GLSL = `float ihash(float x, float y, float s) {
 `;
 
 /** The Dialect's intrinsics, by the name a lambda calls. */
-export const INTRINSICS = /** @type {Record<string, Intrinsic>} */ ({
+export const intrinsics = /** @type {Record<string, IntrinsicDef>} */ ({
   floor: generic(1, 0, Math.floor, "Math.floor($0)", "floor($0)"),
   fract: generic(1, 0, (x) => x - Math.floor(x), "fract($0)", "fract($0)", { js: "const fract = (x) => x - Math.floor(x);" }),
   abs: generic(1, 0, Math.abs, "Math.abs($0)", "abs($0)"),
@@ -84,13 +75,13 @@ export const INTRINSICS = /** @type {Record<string, Intrinsic>} */ ({
   smoothstep: scalar(3, (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); }, "smoothstep($0, $1, $2)", "smoothstep($0, $1, $2)",
     { js: "const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };" }),
   // The one reduction: the length of a vector. The reference takes the components, however many.
-  length: { sig: { params: [T], returns: F, effects: [], numeric: "vector" }, ref: Math.hypot, ...spell("length($0)", "length($0)", { js: "const length = (v) => Math.hypot(...v);" }) },
+  length: { params: ["T"], returns: "f32", numeric: "vector", ref: Math.hypot, spell: { js: spelled("length($0)", "const length = (v) => Math.hypot(...v);"), glsl: "length($0)" } },
   // The operators as calls (vadd, vsub, vmul, vdiv, vscale, vneg), for H3's call style.
-  ...CALLS,
+  ...calls,
   // Integer hashing without an integer type (the 2026-11-23 ruling): the arguments are whole f32s.
-  ihash: { sig: { params: [F, F, F], returns: F, effects: [] }, ref: (x, y, s) => {
+  ihash: { params: ["f32", "f32", "f32"], returns: "f32", ref: (x, y, s) => {
     let h = (Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(s | 0, 0x9e3779b1)) >>> 0;
     h ^= h >>> 16; h = Math.imul(h, 0x7feb352d); h ^= h >>> 15; h = Math.imul(h, 0x846ca68b); h ^= h >>> 16;
     return (h >>> 0) / 4294967296;
-  }, ...spell("ihash($0, $1, $2)", "ihash($0, $1, $2)", { js: IHASH_JS, glsl: IHASH_GLSL }) },
+  }, spell: { js: spelled("ihash($0, $1, $2)", IHASH_JS), glsl: spelled("ihash($0, $1, $2)", IHASH_GLSL) } },
 });

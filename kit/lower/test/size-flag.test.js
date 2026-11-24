@@ -48,9 +48,11 @@ test("fields: a max between 2^24 - 1 and 2^24 is not a size, since an f32 counte
 });
 
 test("fields: a param's default must lie within its own min and max", () => {
-  assert.throws(() => field("c").param("n", { value: 1e9, min: 0, max: 100 }), /'n'.*(default|value).*(max|100)/);
-  assert.throws(() => field("c").param("n", { value: -1, min: 0, max: 100 }), /'n'/);
-  field("c").param("n", { value: 100, min: 0, max: 100 });
+  // The generated builder collects a refusal at the call and throws it from .build().
+  const black = "(uv, u) => color(0, 0, 0)";
+  assert.throws(() => field("c").param("n", { value: 1e9, min: 0, max: 100 }).pixel(black).build(), /'n'.*(default|value).*(max|100)/);
+  assert.throws(() => field("c").param("n", { value: -1, min: 0, max: 100 }).pixel(black).build(), /'n'/);
+  field("c").param("n", { value: 100, min: 0, max: 100 }).pixel(black).build();
 });
 
 test("the verifier does not take a place with a store rule as a size, even if flagged", () => {

@@ -1,16 +1,19 @@
-// The generated field() against the hand-written one (kit/dialects/fields/grammar.js): deep-equal
-// FieldPrograms for every field(...) chain in the repo's sketches and tests, and the same refusals, now
-// with codes. The deliberate differences are the design doc's "What changes for fields", and B004/B008.
+// The generated field() against the hand-written one it replaced: deep-equal FieldPrograms for every field(...)
+// chain in the repo's sketches and tests, and the same refusals, now with codes. What the hand-written builder
+// built is kept in golden/hand-built.json, recorded from it just before it was deleted (leaf iJtvVE); each chain
+// in the refusals test below threw there. The deliberate differences are the design doc's "What changes for
+// fields", and B004/B008.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { field } from "../examples/fields.js";
-import { BuildError } from "../index.js";
-import { field as handField } from "../../dialects/fields/grammar.js";
+import { field } from "../index.js";
+import { BuildError } from "../../../define/index.js";
 
 /** @typedef {(f: any) => unknown} Chain */
 
-const root = new URL("../../../", import.meta.url);
+const root = new URL("../../../../", import.meta.url);
+/** What the hand-written field() built from each sketch file and each inline chain. */
+const HAND = JSON.parse(readFileSync(new URL("golden/hand-built.json", import.meta.url), "utf8"));
 /** Every sketch file: each exports Programs built with field(…). */
 const SKETCHES = [
   "kit/dialects/fields/programs/uv-remaps.js", "kit/dialects/fields/programs/uv-remaps-calls.js",
@@ -33,7 +36,7 @@ async function load(path, builder, tag) {
 test("every sketch builds the same FieldPrograms with the generated field()", async () => {
   let n = 0;
   for (const path of SKETCHES) {
-    const want = await load(path, handField, "hand");
+    const want = HAND.sketches[path];
     const got = await load(path, field, "generated");
     assert.deepEqual(got, want, path);
     n += Object.keys(want).length;
@@ -57,7 +60,8 @@ const CHAINS = /** @type {Array<[string, Chain]>} */ ([
 ]);
 
 test("every inline chain builds the same FieldProgram", () => {
-  for (const [what, chain] of CHAINS) assert.deepEqual(chain(field), chain(handField), what);
+  assert.deepEqual(CHAINS.map(([what]) => what), Object.keys(HAND.chains));
+  for (const [what, chain] of CHAINS) assert.deepEqual(chain(field), HAND.chains[what], what);
 });
 
 /**
@@ -73,7 +77,7 @@ function codes(chain) {
   return [];
 }
 
-test("what the hand-written field() refuses, the generated one refuses, with a code", () => {
+test("what the hand-written field() refused (each of these threw there), the generated one refuses, with a code", () => {
   /** @type {Array<[string, Chain, string[]]>} */
   const cases = [
     ["unknown method", (f) => f("bad").pixle("(uv, u) => color(0, 0, 0)"), ["B001"]],
@@ -92,7 +96,6 @@ test("what the hand-written field() refuses, the generated one refuses, with a c
     ["a number for a source", (f) => f("c").fn("g", 42).pixel("(uv, u) => color(0, 0, 0)").build(), ["B007"]],
   ];
   for (const [what, chain, want] of cases) {
-    assert.throws(() => chain(handField), Error, `the hand-written field() refuses: ${what}`);
     assert.deepEqual(codes(chain), want, what);
   }
 });
@@ -100,11 +103,8 @@ test("what the hand-written field() refuses, the generated one refuses, with a c
 test("the deliberate differences: functions accepted, earlier refusals, shapes and free names checked", () => {
   const fn = (/** @type {any} */ uv, /** @type {any} */ u) => uv + u;
   const built = /** @type {any} */ (field("f").pixel(fn).build());
-  assert.equal(built.pixel, String(fn), "a function is read as its text");
-  assert.throws(() => handField("f").pixel(/** @type {any} */ (fn)));
-  // fields refuses u.t as a param only when it builds the Environment; the generated builder at the call.
-  const clash = /** @type {any} */ (handField("c").param("t", { value: 1 }).pixel("(uv, u) => color(0, 0, 0)").build());
-  assert.equal(clash.params.t.value, 1);
+  assert.equal(built.pixel, String(fn), "a function is read as its text (the hand-written builder threw)");
+  // The hand-written builder took u.t as a param and refused it only when the Environment was built; the generated one at the call.
   assert.deepEqual(codes((f) => f("c").param("t", { value: 1 }).pixel("(uv, u) => color(0, 0, 0)").build()), ["F002"]);
   assert.deepEqual(codes((f) => f("c").param("n", { value: "x" }).pixel("(uv, u) => color(0, 0, 0)").build()), ["B004"]);
   assert.deepEqual(codes((f) => f("c").pixel("(uv, u) => color(uv.x * K, 0, 0)").build()), ["B008"]);
@@ -116,11 +116,11 @@ test("a refusal names the call site, the fix and a did-you-mean", () => {
   /** @type {any} */
   let thrown;
   try { field("bad").param("angle", { value: 2.4 }).pixle("(uv, u) => color(0, 0, 0)"); } catch (e) { thrown = e; }
-  const line = Number(new Error().stack?.match(/fields-grammar\.test\.js:(\d+)/)?.[1]) - 1;
+  const line = Number(new Error().stack?.match(/grammar\.test\.js:(\d+)/)?.[1]) - 1;
   assert.equal(thrown.code, "B001");
   assert.match(thrown.message, /field has no method "pixle".*Did you mean 'pixel'/);
   assert.equal(thrown.diagnostic.loc.start.line, line);
-  assert.match(thrown.diagnostic.file, /fields-grammar\.test\.js$/);
+  assert.match(thrown.diagnostic.file, /fields\/test\/grammar\.test\.js$/);
 
   const b = field("bad").pixel("(uv, u) => color(uv.x * K, 0, 0)");
   const callLine = line + 7;

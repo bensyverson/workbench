@@ -1,0 +1,408 @@
+{
+ "sketches": {
+  "kit/dialects/fields/programs/uv-remaps.js": {
+   "bulge": {
+    "name": "bulge",
+    "params": {
+     "strength": {
+      "value": 0.85,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+     },
+     "cx": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     },
+     "cy": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     }
+    },
+    "pixel": "(uv, u) => {\n  const R = 63;\n  const c = vec2(u.cx, u.cy);\n  let d = uv * 150 - c;\n  const dist = length(d);\n  if (dist < R && dist > 0) {\n    const k = mix(1, smoothstep(0, R / dist, dist / R), u.strength * 0.75);\n    d = d * k;\n  }\n  return grid(d + c);\n}",
+    "units": [
+     {
+      "name": "grid",
+      "kind": "fn",
+      "src": "(q) => {\n  const gx = pmod(q.x, 10);\n  const gy = pmod(q.y, 10);\n  const major = (pmod(floor(q.x / 10), 5) === 0 && gx < 1.2) || (pmod(floor(q.y / 10), 5) === 0 && gy < 1.2);\n  if (major) return color(0.886, 0, 0.102);\n  if (gx < 1 || gy < 1) return color(0.45, 0.45, 0.45);\n  if (length(q - vec2(75, 75)) < 20) return color(0.84, 0.84, 0.84);\n  return color(1, 1, 1);\n}"
+     }
+    ]
+   },
+   "swirl": {
+    "name": "swirl",
+    "params": {
+     "angle": {
+      "value": 2.4,
+      "min": -8,
+      "max": 8,
+      "step": 0.1
+     },
+     "cx": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     },
+     "cy": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     }
+    },
+    "pixel": "(uv, u) => {\n  const R = 63;\n  const c = vec2(u.cx, u.cy);\n  let d = uv * 150 - c;\n  const dist = length(d);\n  if (dist < R) {\n    const pc = (R - dist) / R;\n    const th = pc * pc * u.angle;\n    const s = sin(th);\n    const co = cos(th);\n    d = vec2(d.x * co - d.y * s, d.x * s + d.y * co);\n  }\n  return grid(d + c);\n}",
+    "units": [
+     {
+      "name": "grid",
+      "kind": "fn",
+      "src": "(q) => {\n  const gx = pmod(q.x, 10);\n  const gy = pmod(q.y, 10);\n  const major = (pmod(floor(q.x / 10), 5) === 0 && gx < 1.2) || (pmod(floor(q.y / 10), 5) === 0 && gy < 1.2);\n  if (major) return color(0.886, 0, 0.102);\n  if (gx < 1 || gy < 1) return color(0.45, 0.45, 0.45);\n  if (length(q - vec2(75, 75)) < 20) return color(0.84, 0.84, 0.84);\n  return color(1, 1, 1);\n}"
+     }
+    ]
+   }
+  },
+  "kit/dialects/fields/programs/uv-remaps-calls.js": {
+   "bulgeCalls": {
+    "name": "bulge",
+    "params": {
+     "strength": {
+      "value": 0.85,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+     },
+     "cx": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     },
+     "cy": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     }
+    },
+    "pixel": "(uv, u) => {\n  const R = 63;\n  const c = vec2(u.cx, u.cy);\n  let d = vsub(vscale(uv, 150), c);\n  const dist = length(d);\n  if (dist < R && dist > 0) {\n    const k = mix(1, smoothstep(0, R / dist, dist / R), u.strength * 0.75);\n    d = vscale(d, k);\n  }\n  return grid(vadd(d, c));\n}",
+    "units": [
+     {
+      "name": "grid",
+      "kind": "fn",
+      "src": "(q) => {\n  const gx = pmod(q.x, 10);\n  const gy = pmod(q.y, 10);\n  const major = (pmod(floor(q.x / 10), 5) === 0 && gx < 1.2) || (pmod(floor(q.y / 10), 5) === 0 && gy < 1.2);\n  if (major) return color(0.886, 0, 0.102);\n  if (gx < 1 || gy < 1) return color(0.45, 0.45, 0.45);\n  if (length(vsub(q, vec2(75, 75))) < 20) return color(0.84, 0.84, 0.84);\n  return color(1, 1, 1);\n}"
+     }
+    ]
+   },
+   "swirlCalls": {
+    "name": "swirl",
+    "params": {
+     "angle": {
+      "value": 2.4,
+      "min": -8,
+      "max": 8,
+      "step": 0.1
+     },
+     "cx": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     },
+     "cy": {
+      "value": 75,
+      "min": 0,
+      "max": 150,
+      "step": 1
+     }
+    },
+    "pixel": "(uv, u) => {\n  const R = 63;\n  const c = vec2(u.cx, u.cy);\n  let d = vsub(vscale(uv, 150), c);\n  const dist = length(d);\n  if (dist < R) {\n    const pc = (R - dist) / R;\n    const th = pc * pc * u.angle;\n    const s = sin(th);\n    const co = cos(th);\n    d = vec2(d.x * co - d.y * s, d.x * s + d.y * co);\n  }\n  return grid(vadd(d, c));\n}",
+    "units": [
+     {
+      "name": "grid",
+      "kind": "fn",
+      "src": "(q) => {\n  const gx = pmod(q.x, 10);\n  const gy = pmod(q.y, 10);\n  const major = (pmod(floor(q.x / 10), 5) === 0 && gx < 1.2) || (pmod(floor(q.y / 10), 5) === 0 && gy < 1.2);\n  if (major) return color(0.886, 0, 0.102);\n  if (gx < 1 || gy < 1) return color(0.45, 0.45, 0.45);\n  if (length(vsub(q, vec2(75, 75))) < 20) return color(0.84, 0.84, 0.84);\n  return color(1, 1, 1);\n}"
+     }
+    ]
+   }
+  },
+  "kit/dialects/fields/programs/domain-warp.js": {
+   "domainWarp": {
+    "name": "domain-warp",
+    "params": {
+     "k": {
+      "value": 4,
+      "min": 0,
+      "max": 8,
+      "step": 0.25
+     },
+     "levels": {
+      "value": 2,
+      "min": 0,
+      "max": 2,
+      "step": 1
+     },
+     "scale": {
+      "value": 3,
+      "min": 1,
+      "max": 8,
+      "step": 0.5
+     },
+     "palette": {
+      "value": "fog",
+      "options": [
+       "fog",
+       "grey",
+       "marble"
+      ]
+     },
+     "seed": {
+      "value": 1,
+      "min": 1,
+      "max": 99,
+      "step": 1
+     }
+    },
+    "pixel": "(uv, u) => {\n  const s = u.seed * 3;\n  const k = u.k;\n  const p = vec2(uv.x * u.scale, uv.y * u.scale / u.aspect);\n  let q = vec2(0, 0);\n  let r = vec2(0, 0);\n  let f = 0;\n  if (u.levels === 0) f = fbm(p, s);\n  else {\n    q = vec2(fbm(p + vec2(0.03 * u.t, 0), s), fbm(p + vec2(5.2, 1.3), s));\n    if (u.levels === 1) f = fbm(p + k * q, s);\n    else {\n      r = vec2(fbm(p + k * q + vec2(1.7 + 0.15 * u.t, 9.2), s), fbm(p + k * q + vec2(8.3, 2.8 + 0.126 * u.t), s));\n      f = fbm(p + k * r, s);\n    }\n  }\n  if (u.palette === \"grey\") {\n    const g = clamp((f - 0.2) / 0.6, 0, 1);\n    return color(g, g, g);\n  }\n  let B = color(0.051, 0.039, 0.102);\n  let L = color(0.169, 0.102, 0.431);\n  let M = color(0.851, 0.271, 0.42);\n  let H = color(1, 0.722, 0.42);\n  if (u.palette === \"marble\") {\n    B = color(0.03, 0.08, 0.06);\n    L = color(0.1, 0.27, 0.22);\n    M = color(0.31, 0.56, 0.47);\n    H = color(0.94, 0.91, 0.83);\n    const stripe = 0.5 + 0.5 * sin(2.2 * (p.x + p.y) + 9 * f);\n    const vein = pow(1 - stripe, 6);\n    const n = clamp((f - 0.25) / 0.5, 0, 1);\n    const c = n < 0.5 ? mix(B, L, n * 2) : mix(L, M, n * 2 - 1);\n    return mix(c, H, 0.9 * vein);\n  }\n  let c = mix(B, L, clamp(f * f * 4, 0, 1));\n  c = mix(c, M, clamp(length(q), 0, 1));\n  c = mix(c, H, clamp(abs(r.x), 0, 1));\n  return mix(B, c, f * f * f + 0.6 * f * f + 0.5 * f);\n}",
+    "units": []
+   }
+  },
+  "kit/dialects/fields/programs/domain-warp-calls.js": {
+   "domainWarpCalls": {
+    "name": "domain-warp",
+    "params": {
+     "k": {
+      "value": 4,
+      "min": 0,
+      "max": 8,
+      "step": 0.25
+     },
+     "levels": {
+      "value": 2,
+      "min": 0,
+      "max": 2,
+      "step": 1
+     },
+     "scale": {
+      "value": 3,
+      "min": 1,
+      "max": 8,
+      "step": 0.5
+     },
+     "palette": {
+      "value": "fog",
+      "options": [
+       "fog",
+       "grey",
+       "marble"
+      ]
+     },
+     "seed": {
+      "value": 1,
+      "min": 1,
+      "max": 99,
+      "step": 1
+     }
+    },
+    "pixel": "(uv, u) => {\n  const s = u.seed * 3;\n  const k = u.k;\n  const p = vec2(uv.x * u.scale, uv.y * u.scale / u.aspect);\n  let q = vec2(0, 0);\n  let r = vec2(0, 0);\n  let f = 0;\n  if (u.levels === 0) f = fbm(p, s);\n  else {\n    q = vec2(fbm(vadd(p, vec2(0.03 * u.t, 0)), s), fbm(vadd(p, vec2(5.2, 1.3)), s));\n    if (u.levels === 1) f = fbm(vadd(p, vscale(q, k)), s);\n    else {\n      r = vec2(fbm(vadd(vadd(p, vscale(q, k)), vec2(1.7 + 0.15 * u.t, 9.2)), s), fbm(vadd(vadd(p, vscale(q, k)), vec2(8.3, 2.8 + 0.126 * u.t)), s));\n      f = fbm(vadd(p, vscale(r, k)), s);\n    }\n  }\n  if (u.palette === \"grey\") {\n    const g = clamp((f - 0.2) / 0.6, 0, 1);\n    return color(g, g, g);\n  }\n  let B = color(0.051, 0.039, 0.102);\n  let L = color(0.169, 0.102, 0.431);\n  let M = color(0.851, 0.271, 0.42);\n  let H = color(1, 0.722, 0.42);\n  if (u.palette === \"marble\") {\n    B = color(0.03, 0.08, 0.06);\n    L = color(0.1, 0.27, 0.22);\n    M = color(0.31, 0.56, 0.47);\n    H = color(0.94, 0.91, 0.83);\n    const stripe = 0.5 + 0.5 * sin(2.2 * (p.x + p.y) + 9 * f);\n    const vein = pow(1 - stripe, 6);\n    const n = clamp((f - 0.25) / 0.5, 0, 1);\n    const c = n < 0.5 ? mix(B, L, n * 2) : mix(L, M, n * 2 - 1);\n    return mix(c, H, 0.9 * vein);\n  }\n  let c = mix(B, L, clamp(f * f * 4, 0, 1));\n  c = mix(c, M, clamp(length(q), 0, 1));\n  c = mix(c, H, clamp(abs(r.x), 0, 1));\n  return mix(B, c, f * f * f + 0.6 * f * f + 0.5 * f);\n}",
+    "units": []
+   }
+  },
+  "scripts/h3-trial/docs/typed-example.js": {
+   "default": {
+    "name": "stripes",
+    "params": {
+     "count": {
+      "value": 8,
+      "min": 1,
+      "max": 30,
+      "step": 1
+     },
+     "angle": {
+      "value": 0.6,
+      "min": 0,
+      "max": 3.14,
+      "step": 0.05
+     },
+     "softness": {
+      "value": 0.1,
+      "min": 0.01,
+      "max": 0.5,
+      "step": 0.01
+     }
+    },
+    "pixel": "(uv, u) => {\n  const p = rotate(uv - vec2(0.5, 0.5), u.angle);\n  const band = smoothstep(0.5 - u.softness, 0.5 + u.softness, fract(p.x * u.count));\n  return mix(color(0.1, 0.1, 0.3), color(0.9, 0.8, 0.4), band);\n}",
+    "units": [
+     {
+      "name": "rotate",
+      "kind": "fn",
+      "src": "(p, a) => vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))"
+     }
+    ]
+   }
+  },
+  "scripts/h3-trial/docs/call-example.js": {
+   "default": {
+    "name": "stripes",
+    "params": {
+     "count": {
+      "value": 8,
+      "min": 1,
+      "max": 30,
+      "step": 1
+     },
+     "angle": {
+      "value": 0.6,
+      "min": 0,
+      "max": 3.14,
+      "step": 0.05
+     },
+     "softness": {
+      "value": 0.1,
+      "min": 0.01,
+      "max": 0.5,
+      "step": 0.01
+     }
+    },
+    "pixel": "(uv, u) => {\n  const p = rotate(vsub(uv, vec2(0.5, 0.5)), u.angle);\n  const band = smoothstep(0.5 - u.softness, 0.5 + u.softness, fract(p.x * u.count));\n  return mix(color(0.1, 0.1, 0.3), color(0.9, 0.8, 0.4), band);\n}",
+    "units": [
+     {
+      "name": "rotate",
+      "kind": "fn",
+      "src": "(p, a) => vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))"
+     }
+    ]
+   }
+  }
+ },
+ "chains": {
+  "operators probe": {
+   "name": "probe",
+   "params": {
+    "k": {
+     "value": 1
+    },
+    "palette": {
+     "value": "a",
+     "options": [
+      "a",
+      "b"
+     ]
+    }
+   },
+   "pixel": "(uv, u) => { const a = uv * u.k;\n return color(0, 0, 0); }",
+   "units": []
+  },
+  "operators uv": {
+   "name": "probe",
+   "params": {},
+   "pixel": "(uv, u) => uv",
+   "units": []
+  },
+  "component-spans": {
+   "name": "c",
+   "params": {},
+   "pixel": "(uv, u) => color(uv.x, uv.y, 0)",
+   "units": []
+  },
+  "review2 fbm": {
+   "name": "c",
+   "params": {},
+   "pixel": "(uv, u) => { const f = fbm(uv, 1); return color(f, f, f); }",
+   "units": []
+  },
+  "review2 loop": {
+   "name": "c",
+   "params": {
+    "n": {
+     "value": 4,
+     "min": 0,
+     "max": 100
+    }
+   },
+   "pixel": "(uv, u) => { let s = 0; for (let i = 0; i < u.n; i++) { s += 1; } return color(s, s, s); }",
+   "units": []
+  },
+  "size-flag loopOver": {
+   "name": "c",
+   "params": {
+    "n": {
+     "value": 4,
+     "min": 0,
+     "max": 20000000
+    }
+   },
+   "pixel": "(uv, u) => color(0, 0, 0)",
+   "units": []
+  },
+  "size-flag edge": {
+   "name": "c",
+   "params": {
+    "n": {
+     "value": 1,
+     "min": 0,
+     "max": 16777215.5
+    }
+   },
+   "pixel": "(uv, u) => color(0, 0, 0)",
+   "units": []
+  },
+  "size-flag max": {
+   "name": "c",
+   "params": {
+    "n": {
+     "value": 100,
+     "min": 0,
+     "max": 100
+    }
+   },
+   "pixel": "(uv, u) => color(0, 0, 0)",
+   "units": []
+  },
+  "wide": {
+   "name": "t",
+   "params": {
+    "k": {
+     "value": 2,
+     "min": 0,
+     "max": 8
+    }
+   },
+   "pixel": "(uv, u) => color(u.k, 0, 0)",
+   "units": []
+  },
+  "h3 mutable builder": {
+   "name": "probe",
+   "params": {
+    "k": {
+     "value": 1
+    }
+   },
+   "pixel": "(uv, u) => color(g(u.k), 0, 0)",
+   "units": [
+    {
+     "name": "K",
+     "kind": "const",
+     "src": "0.5"
+    },
+    {
+     "name": "g",
+     "kind": "fn",
+     "src": "(x) => x * K"
+    }
+   ]
+  },
+  "toggle": {
+   "name": "t",
+   "params": {
+    "on": {
+     "value": true
+    }
+   },
+   "pixel": "(uv, u) => color(u.on ? 1 : 0, 0, 0)",
+   "units": []
+  }
+ }
+}

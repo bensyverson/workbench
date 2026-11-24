@@ -1,80 +1,48 @@
-// The fields Grammar: one construct, a field, with `param` declarations, helpers and a `pixel`
-// Runtime Lambda (the proposal's §8.2, written by hand: the generic `.construct()` machinery
-// is M3's). `field("swirl").param("angle", { value: 2.4 }).pixel("(uv, u) => …").build()`.
+// The fields Grammar, through the Definition API: one construct, a field, with `param` declarations, helpers
+// and constants, and a `pixel` Runtime Lambda. The builder is the one defineGrammar generates:
+// `field("swirl").param("angle", { value: 2.4 }).pixel((uv, u) => …).build()` returns a FieldProgram, a lambda
+// being its source text whether it was passed as a function or a string. An unknown method throws at once;
+// every other refusal is collected with its call site and thrown by `.build()` (`.check()` lists them).
 
-import { LIBRARY } from "./library.js";
+import { defineGrammar, name, data, lambda, oneOf } from "../../define/index.js";
+import { fields } from "./dialect.js";
+import { library } from "./library.js";
 
-/** @import { FieldProgram, ParamDecl, UnitDecl } from "./decls.js" */
+/** A param, in the one declaration form every Program uses: a number, a choice or a toggle (decls.d.ts, ParamDecl). */
+const ParamShape = oneOf(
+  { value: "number", "min?": "number", "max?": "number", "step?": "number" },
+  { value: "string", options: "string[]" },
+  { value: "boolean" },
+);
 
-/** @param {unknown} v @param {string} what */
-function source(v, what) {
-  if (typeof v === "string" && v.trim() !== "") return v;
-  throw new Error(`${what} takes its source as a string: "(uv, u) => …"; it is lowered, not run, so a function value would only be its text`);
-}
-
-/**
- * Starts a field Program.
- * @param {string} name
- */
-export function field(name) {
-  /** @type {Record<string, ParamDecl>} */
-  const params = {};
-  /** @type {UnitDecl[]} */
-  const units = [];
-  /** @type {string | null} */
-  let pixel = null;
-  const taken = (/** @type {string} */ n) => {
-    if (LIBRARY.some((u) => u.name === n)) throw new Error(`field '${name}' cannot declare '${n}': the Library already defines a ${LIBRARY.find((u) => u.name === n)?.kind === "const" ? "constant" : "function"} of that name, and a second one would replace it inside the Library too`);
-    return n in params || units.some((u) => u.name === n);
-  };
-  const builder = {
-    /**
-     * Declares a param: a uniform, read in the pixel lambda as `u.name`.
-     * @param {string} n
-     * @param {ParamDecl} decl
-     */
-    param(n, decl) {
-      if (taken(n)) throw new Error(`field '${name}' already declares '${n}'`);
-      if ("value" in decl && typeof decl.value === "number" && (("min" in decl && typeof decl.min === "number" && decl.value < decl.min) || ("max" in decl && typeof decl.max === "number" && decl.value > decl.max))) {
-        throw new Error(`param '${n}': its value ${decl.value} lies outside its range ${"min" in decl ? decl.min : "-∞"}..${"max" in decl ? decl.max : "∞"}`);
-      }
-      params[n] = decl;
-      return builder;
+export const field = defineGrammar(fields, {
+  root: "field",
+  constructs: {
+    field: {
+      opens: [name()],
+      slots: {
+        param: {
+          kind: "decl", args: [name("uniform"), data(ParamShape)], as: "params",
+          check({ args: [n, p] }, ctx) {
+            const decl = /** @type {{ value: unknown, min?: number, max?: number }} */ (p);
+            if (n === "t" || n === "aspect") ctx.error("F002", `param '${n}' clashes with the built-in uniform u.${n}`, { arg: 0, tip: "rename the param" });
+            if (typeof decl.value === "number" && (decl.value < (decl.min ?? -Infinity) || decl.value > (decl.max ?? Infinity))) {
+              ctx.error("F001", `param '${n}': its value ${decl.value} lies outside its range ${decl.min ?? "-∞"}..${decl.max ?? "∞"}`, { arg: 1, tip: "move the value inside min..max" });
+            }
+          },
+        },
+        fn: { kind: "unit", unit: "fn" },
+        const: { kind: "unit", unit: "const" },
+        pixel: { kind: "decl", args: [lambda("pixel")], once: true, required: true },
+      },
+      // Params, helpers and the Library share one namespace: a param may not share a name with a helper or a
+      // Library entry. (A helper named like a Library entry is the builder's own B002.)
+      check(record, ctx) {
+        const units = /** @type {Array<{ name: string }>} */ (record.units).map((u) => u.name);
+        for (const n of Object.keys(/** @type {object} */ (record.params))) {
+          if (units.includes(n) || Object.hasOwn(library, n)) ctx.error("F003", `field '${record.name}' cannot declare param '${n}': ${Object.hasOwn(library, n) ? "the Library" : "a helper or constant"} already has that name`, { tip: "rename the param" });
+        }
+      },
     },
-    /**
-     * A helper function of this field, called by name from the pixel lambda or another helper.
-     * @param {string} n
-     * @param {string} src
-     */
-    fn(n, src) {
-      if (taken(n)) throw new Error(`field '${name}' already declares '${n}'`);
-      units.push({ name: n, kind: "fn", src: source(src, `fn('${n}')`) });
-      return builder;
-    },
-    /**
-     * A constant of this field, baked in at each use.
-     * @param {string} n
-     * @param {string} src  The initializer, as an expression.
-     */
-    const(n, src) {
-      if (taken(n)) throw new Error(`field '${name}' already declares '${n}'`);
-      units.push({ name: n, kind: "const", src: source(src, `const('${n}')`) });
-      return builder;
-    },
-    /**
-     * The pixel lambda: `(uv, u) => color`, over each pixel's position `uv`.
-     * @param {string} src
-     */
-    pixel(src) {
-      if (pixel !== null) throw new Error(`field '${name}' already has a pixel lambda`);
-      pixel = source(src, "pixel");
-      return builder;
-    },
-    /** @returns {FieldProgram} */
-    build() {
-      if (pixel === null) throw new Error(`field '${name}' has no pixel lambda: add .pixel("(uv, u) => …")`);
-      return { name, params: { ...params }, pixel, units: [...units] };
-    },
-  };
-  return builder;
-}
+  },
+});

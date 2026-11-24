@@ -1,9 +1,9 @@
-// Lowering a fields Program: its environment from its params, the Library functions it uses,
-// its own helpers, and its pixel lambda, through the kit's program lowering.
+// Lowering a fields Program: the generated grammar's `lower` (kit/define), which builds the Environment from the
+// Program's params and lowers its pixel lambda with the Library functions it uses and its own helpers, read
+// back in the shape the backends, the harness and the debugger take.
 
-import { lowerProgram } from "../../lower/index.js";
-import { fieldsEnvironment } from "./environment.js";
-import { LIBRARY, libraryFor } from "./library.js";
+import { field } from "./grammar.js";
+import { LIBRARY } from "./dialect.js";
 
 /** @import { FieldProgram } from "./decls.js" */
 /** @import { LowerResult, HelperResult } from "../../lower/index.js" */
@@ -24,12 +24,10 @@ import { LIBRARY, libraryFor } from "./library.js";
  * @returns {FieldLowering}
  */
 export function lowerField(program) {
-  const environment = fieldsEnvironment(program.params);
+  // The builder refuses this (B002); a hand-built Program reaches here, and a second definition would replace the Library's own.
   const clash = program.units.find((u) => LIBRARY.some((l) => l.name === u.name));
   if (clash) throw new Error(`field '${program.name}' declares '${clash.name}', which the Library already defines; a second one would replace it inside the Library too`);
-  const units = [...libraryFor([program.pixel, ...program.units.map((u) => u.src)]), ...program.units];
-  const slot = { id: `${program.name}.pixel`, kind: "pixel", on: "field" };
-  const { results, helpers } = lowerProgram(environment, [{ src: program.pixel, slot }], units);
-  const [pixel] = results;
+  const { environment, lambdas, helpers } = field.lower(program);
+  const [{ result: pixel }] = lambdas;
   return { environment, kernel: pixel.kernel, diagnostics: pixel.diagnostics, helpers, pixel };
 }

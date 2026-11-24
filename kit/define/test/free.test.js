@@ -1,7 +1,7 @@
 // The free-name rule (B008): holes found in review through the generated field() builder.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { field } from "../examples/fields.js";
+import { field } from "../../dialects/fields/index.js";
 import { parseLambda } from "../../parse/index.js";
 import { freeNames } from "../free.js";
 

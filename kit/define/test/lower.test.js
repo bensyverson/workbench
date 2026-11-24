@@ -2,10 +2,9 @@
 // test-only table Dialect, construct state threaded through each table's calls in order.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { field } from "../examples/fields.js";
+import { field, lowerField } from "../../dialects/fields/index.js";
 import { program } from "../fixtures/table-dialect.js";
 import { defineDialect, defineGrammar, exact, name, lambda, BUILD_CODES } from "../index.js";
-import { lowerField } from "../../dialects/fields/index.js";
 import { swirl, bulge } from "../../dialects/fields/programs/uv-remaps.js";
 import { swirlCalls, bulgeCalls } from "../../dialects/fields/programs/uv-remaps-calls.js";
 import { domainWarp } from "../../dialects/fields/programs/domain-warp.js";

@@ -7,7 +7,7 @@ import { swirl, bulge } from "../programs/uv-remaps.js";
 import { domainWarp } from "../programs/domain-warp.js";
 import { verify } from "../../../ir/verify.js";
 import { printKernel } from "../../../ir/print.js";
-import { COLOR, VEC2 } from "../types.js";
+import { COLOR, VEC2 } from "../index.js";
 
 /** @import { FieldProgram } from "../decls.js" */
 

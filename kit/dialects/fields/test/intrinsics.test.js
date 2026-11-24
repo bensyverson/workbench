@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { INTRINSICS } from "../intrinsics.js";
+import { INTRINSICS } from "../index.js";
 import { loadBook } from "../../../../scripts/um-survey/book.js";
 
 const BOOK = "/Users/ben/git/workbench/local/uncommon-math-0.1.0.html";
