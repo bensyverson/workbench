@@ -2,7 +2,7 @@
 // cannot stay inside one (a store, a query's loop, a lazy branch holding either)
 // spills into statements ahead of it, in evaluation order.
 
-import { assignable, join, optional, showType, strictJoin } from "../ir/types.js";
+import { assignable, itemAt, join, showType, strictJoin } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
@@ -194,7 +194,7 @@ function index(L, node) {
   }
   if (typeof t === "object" && "list" in t) {
     if (!assignable(at.t, "f64")) mismatch(L, node.property, at.t, "f64", "a list index");
-    return L.ex({ k: "index", of: recv, index: at, t: optional(t.list), span: spanOf(node) });
+    return L.ex({ k: "index", of: recv, index: at, t: itemAt(t, at.k === "num" ? at.v : null), span: spanOf(node) });
   }
   computed(L, recv, node);
   return bad(node);
@@ -481,7 +481,7 @@ function array(L, node) {
     }
     item = joined;
   });
-  return L.ex({ k: "array", items, t: item === "unknown" ? "unknown" : { list: item, max: items.length }, span: spanOf(node) });
+  return L.ex({ k: "array", items, t: item === "unknown" ? "unknown" : { list: item, max: items.length, len: items.length }, span: spanOf(node) });
 }
 
 /**

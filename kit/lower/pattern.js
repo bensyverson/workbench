@@ -1,7 +1,7 @@
 // Lowering destructuring: a struct's fields (`const { x, y } = p`) and a list's
 // items by position (`const [a, b] = list`), each bound with a plain `let`.
 
-import { optional, showType } from "../ir/types.js";
+import { itemAt, optional, showType } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { spanOf, describe } from "./expr.js";
 
@@ -113,7 +113,7 @@ function arrayPattern(L, pattern, value, kind) {
   pattern.elements.forEach((el, i) => {
     if (!el) return;
     const at = L.ex({ k: "num", v: i, t: "f64", span: spanOf(el) });
-    // Like any list index, an item may be missing, so it must be checked before use.
-    bindPattern(L, el, L.ex({ k: "index", of: base, index: at, t: optional(t.list), span: spanOf(el) }), kind);
+    // Like any list index, an item may be missing unless the list is a literal and `i` is within its length.
+    bindPattern(L, el, L.ex({ k: "index", of: base, index: at, t: itemAt(t, i), span: spanOf(el) }), kind);
   });
 }

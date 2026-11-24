@@ -48,6 +48,8 @@ test("anything else does not join, where the general join would build a union", 
     [{ struct: { x: "f64" } }, mole],
     [{ list: "f64", max: 2 }, { list: "f64", max: 3 }],
     [{ list: "f64", max: 2 }, { list: "str", max: 2 }],
+    [{ list: "f64", max: 2, len: 2 }, { list: "f64", max: 3, len: 3 }],
+    [{ list: "f64", max: 2, len: 2 }, { list: "f64", max: 2 }],
     [{ opt: mole }, spark],
   ])) {
     assert.equal(strictJoin(a, b), null, `${JSON.stringify(a)} / ${JSON.stringify(b)}`);

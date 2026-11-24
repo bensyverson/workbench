@@ -19,8 +19,8 @@ export type Type =
   | { ref: string }
   /** A value that may be empty (null or undefined at run time). */
   | { opt: Type }
-  /** A list of at most `max` items, so a loop over it is bounded. `with` adds that object's members (a game board's `at`). */
-  | { list: Type; max: number; with?: string }
+  /** A list of at most `max` items, so a loop over it is bounded. `len` is its exact length, recorded only for an array literal: a constant index below it is never empty. `with` adds that object's members (a game board's `at`). */
+  | { list: Type; max: number; len?: number; with?: string }
   /** A record. `optional` names fields that may be left out. */
   | { struct: Record<string, Type>; optional?: string[] }
   /** Any one of these: a draw result, a printf argument. */
@@ -85,7 +85,7 @@ export type Expr =
   | (ExprBase & { k: "field"; of: Expr; name: string })
   /** `of[index]`: the item, or JavaScript's `undefined` when out of range, so its type is `{ opt }`. */
   | (ExprBase & { k: "index"; of: Expr; index: Expr })
-  /** An array literal: its type is `{ list, max }` with `max` the number of items; items are evaluated in order. */
+  /** An array literal: its type is `{ list, max, len }`, both the number of items; items are evaluated in order. */
   | (ExprBase & { k: "array"; items: Expr[] })
   /** A new empty list, filled by `push`. */
   | (ExprBase & { k: "list" });

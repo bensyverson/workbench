@@ -51,7 +51,7 @@ export function assignable(from, to) {
   if (typeof from === "string") return false;
   if ("enum" in to) return "enum" in from && from.enum.every((v) => to.enum.includes(v));
   if ("ref" in to) return "ref" in from && from.ref === to.ref;
-  if ("list" in to) return "list" in from && assignable(from.list, to.list) && from.max <= to.max;
+  if ("list" in to) return "list" in from && assignable(from.list, to.list) && from.max <= to.max && (to.len === undefined || from.len === to.len);
   if ("obj" in to) return "obj" in from && from.obj === to.obj;
   if ("struct" in to) {
     if (!("struct" in from)) return false;
@@ -109,6 +109,18 @@ export function strictJoin(a, b) {
   if (a === "str" && typeof b === "object" && "enum" in b) return "str";
   if (b === "str" && typeof a === "object" && "enum" in a) return "str";
   return null;
+}
+
+/**
+ * The type of `list[i]`: the item type when `i` is a constant position below the list's exact
+ * length (`len`, recorded only for array literals), otherwise the item type made possibly empty.
+ * @param {{ list: Type, len?: number }} list
+ * @param {number | null} i the index when it is a constant, else null
+ * @returns {Type}
+ */
+export function itemAt(list, i) {
+  const known = i !== null && Number.isInteger(i) && i >= 0 && list.len !== undefined && i < list.len;
+  return known ? list.list : optional(list.list);
 }
 
 /**

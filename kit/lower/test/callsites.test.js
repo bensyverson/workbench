@@ -141,3 +141,9 @@ test("the joined type is what the helper's body sees", () => {
   assert.deepEqual(r.helpers[0].result.diagnostics, []);
   assert.deepEqual(r.helpers[0].result.kernel?.params[0].t, { enum: ["a", "b"] });
 });
+
+test("literals of different lengths do not join, and equal lengths do, keeping their length", () => {
+  assert.deepEqual(sites("[1, 2]", "[1, 2, 3]").errors.map((e) => e.code), ["L014"]);
+  assert.deepEqual(sites("[1, 2]", "w.board").errors.map((e) => e.code), ["L014"]);
+  joins("[1, 2]", "[3, 4]", { list: "f64", max: 2, len: 2 });
+});
