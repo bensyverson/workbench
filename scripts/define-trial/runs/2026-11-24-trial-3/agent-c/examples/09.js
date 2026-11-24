@@ -1,0 +1,1 @@
+// REFUSED: B001 - there is no wb.env, session, s.set, s.addStep, s.undo, s.log, s.toProgram or env.commit: an Environment that mutates a built Program through an append-only log is not built (see api-draft "Not built": effects and store rules). Nothing here can be checked by the Definition API.

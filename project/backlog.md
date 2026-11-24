@@ -73,3 +73,11 @@ Embed [unkernel](https://github.com/pithings/unkernel) so a workbench can run fo
 ## 2026-11-24: a construct's own code for a bad opening argument, before B004
 
 A construct cannot refuse a bad opening argument with its own code: the opening is matched against its specs when the construct opens, so a value of the wrong shape is the builder's generic `B004` before any check runs, and a construct `check` sees only what matched. The data Grammar works around it by making the view's table an `opt(ref)`, so that a lambda in the name's place reaches its construct check (T007) instead of B004. Building it means an `opens` hook (or a per-spec `check`) that runs before shape matching and may replace B004 with the Dialect's code; it is not trivial because the record keys, B002 and the instance name all come from the matched opening. Parked by job NrXepo (gap 5): one workaround in one Grammar, and it works. **Un-park when** a second Grammar needs a construct-specific refusal for an opening's shape, or a dogfood trial shows B004 misleading an author at an opening.
+
+## 2026-11-24: a child construct's own helper slots
+
+A child construct has every method of its parent, so a `fn` or `const` slot on both `program` and `table` is D010 (trial 3's agent B wanted table-local helpers). Parked because module-scope helpers and the root's `.fn` already give one place for a helper, and per-construct scoping would add a second name lookup to the free-name rule. Un-park if a Dialect needs helpers whose names differ per construct instance, or a fresh-agent trial asks for it again ([trial 3](2026-11-24-definition-api-trial-3.md), finding 2).
+
+## 2026-11-24: a convention whose return names a member of the construct's state
+
+A lambda that returns a string meant to name a column (`.y(() => $.metric)`) type-checks as `str`, so a nonsense column is accepted (trial 3's agents A and B). A convention could return `ref(<state namespace>)`, an enum built from the state's names, and lowering would check each returned literal (and a param's options) against it. Parked because no shipped Dialect needs a run-time-chosen column, and it needs string enums in the core types. Un-park when a Grammar ships a run-time column choice or a chart slot ([trial 3](2026-11-24-definition-api-trial-3.md), finding 3).

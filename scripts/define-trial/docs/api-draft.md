@@ -29,7 +29,7 @@ Build compound types with helpers from `kit/define`: `list(t, max)` (a list of a
 
 **There is no integer type.** A whole number is a number. If your language needs integers, say so in your report rather than inventing one.
 
-**Dates and other named scalars.** A Dialect may declare a **nominal scalar** in `types`: a named type stored as a number, which lambdas can compare (`<`, `===`) with its own kind only, and which no arithmetic operator accepts. `date: scalar("f64", { note: "milliseconds since 1970-01-01, UTC" })`. Its name may be used wherever a type is named (slot params and returns, members, globals, intrinsic signatures, conventions). It is **not a constructor**: a value of it enters a lambda through a parameter, a member or an intrinsic, and a lambda that calls `date(…)` is refused (B008). Operations on it (`year(d)`, `truncMonth(d)`) are intrinsics. The only backing is `"f64"` (another is D002), the only option is `note` (others are D011), and `scalar(…)` written inline where a type is named, instead of declared in `types`, is D002. A lambda that returns one hands the scalar's name (`"date"`) to a construct's `step`.
+**Dates and other named scalars.** A Dialect may declare a **nominal scalar** in `types`: a named type stored as a number, which lambdas can compare (`<`, `===`) with its own kind only, and which no arithmetic operator accepts. `date: scalar("f64", { note: "milliseconds since 1970-01-01, UTC" })`. Its name may be used wherever a type is named (slot params and returns, members, globals, intrinsic signatures, conventions). It is **not a constructor**: a value of it enters a lambda through a parameter, a member or an intrinsic, and a lambda that calls `date(…)` is refused (B008). To let a lambda make one, declare an intrinsic that returns it, such as `dateOf(y, m, d)` with `returns: "date"`. Operations on it (`year(d)`, `truncMonth(d)`) are intrinsics. The only backing is `"f64"` (another is D002), the only option is `note` (others are D011), and `scalar(…)` written inline where a type is named, instead of declared in `types`, is D002. A lambda that returns one hands the scalar's name (`"date"`) to a construct's `step`.
 
 ## `defineDialect`
 
@@ -50,6 +50,7 @@ export const myDialect = defineDialect({
   targets: { … },                // what each target accepts and how it is compared
   slots: { … },                  // the calling convention of each kind of Runtime Lambda
   constants: { calls: "pure" },  // optional: a constant may call a pure helper (default "none")
+  params: { object, name, runtime }, // optional: how lambdas read the Program's params (see "Params")
   environment(program) { … },    // optional: what one Program adds (see below)
   text(state) { … },             // the text view: your screen and state as characters (see below)
 });
@@ -285,6 +286,8 @@ Some constructs change as they are built: a table's columns change at every step
 state: {
   // The state before the first call. `stateOf(name)` is another construct instance's final state.
   init(opened, { program, stateOf }) {
+    // `program.source` is the record key of a root slot declared `source: { kind: "decl", args: [name("source"),
+    // data(…)] }`: a decl slot's record key is its name (or its `as`), holding each call's data by name.
     const source = program.source?.[opened.from];
     return { columns: source ? { ...source.columns } : { ...stateOf(opened.from).columns } };
   },
@@ -366,7 +369,7 @@ export default ($) => program("top-customers")
   .limit($.topN);                                 // at build time: the plain number 10
 ```
 
-The host calls it with `run(programFn, { values, scope, sources, buildTime })`, which passes a `$` that answers each declared param with the host's value (else its declared `value`) and records the read. A host's value must fit its declaration (its `value`'s type, finite, inside `min..max`, one of `options`), or `run` throws, and the record's declaration carries it. So a param read by **build-time code** (outside any lambda) is an ordinary value, folded into the record (`.limit($.topN)` records `limit` with `10`); build-time code may branch, loop and do arithmetic on it. Changing it means building again: `needsRebuild(record, ["topN"])` is true. The same param read **inside a lambda** is a Kernel read, a uniform, which changes without a rebuild. A param may be read in both places. `run` returns `{ record, diagnostics }` (no record when there is an error); the record keeps the reads under `reads` (`{ param, value, by, file, loc }`, `by` the builder call made next after the read, such as `top.limit#5`, which orders the read but does not say which call used the value), and `lower(record)` adds `params`, each param's binding time (`{ build, kernels, live }`), which `bindingText(lowered)` prints:
+The host calls it with `run(programFn, { values, scope, sources, buildTime })`, which passes a `$` that answers each declared param with the host's value (else its declared `value`) and records the read. A host's value must fit its declaration (its `value`'s type, finite, inside `min..max`, one of `options`), or `run` throws, and the record's declaration carries it. So a param read by **build-time code** (outside any lambda) is an ordinary value, folded into the record (`.limit($.topN)` records `limit` with `10`); build-time code may branch, loop and do arithmetic on it. Changing it means building again: `needsRebuild(record, ["topN"])` is true, and the host reruns the function with the new value, so a folded param still follows its control; it costs a build, not correctness. The same param read **inside a lambda** is a Kernel read, a uniform, which changes without a rebuild. A param may be read in both places. `run` returns `{ record, diagnostics }` (no record when there is an error); the record keeps the reads under `reads` (`{ param, value, by, file, loc }`, `by` the builder call made next after the read, such as `top.limit#5`, which orders the read but does not say which call used the value), and `lower(record)` adds `params`, each param's binding time (`{ build, kernels, live }`), which `bindingText(lowered)` prints:
 
 ```
 topN   folded at build, read at 05.js:22 (before top.limit#5)
@@ -429,7 +432,7 @@ An entry is `{ message, tip?, fix? }`: `fix` is the replacement text, which the 
 
 ### Your own checks
 
-A slot's `check(call, ctx)` runs when the slot is called (only if the call itself had no error); a construct's `check(record, ctx)` runs at `.check()` and `.build()`. `call` is `{ slot, args }`. `ctx.program` is the record so far, with the construct being built last in its list. `ctx.state` is always `undefined`: a construct's state needs each lambda's inferred type, so it exists only when the Program is lowered, and anything that needs it (a column that exists at this step) belongs in a state namespace or a convention function, not a check. Report with `ctx.error(code, message, { tip, arg, suggest, fix })`: `arg` is the argument's position, or a path into it (`[1, "on", "customer_id"]`); `suggest` a list of candidates for a "did you mean"; `fix` the replacement text. Your codes are the Dialect's own letter and three digits (pick one letter; not `B`, `C`, `D`, `L`, `P`, `S` or `V`); `ctx.error` with a reserved letter throws.
+A slot's `check(call, ctx)` runs when the slot is called (only if the call itself had no error); a construct's `check(record, ctx)` runs at `.check()` and `.build()`. `call` is `{ slot, args }`. `ctx.program` is the record so far, with the construct being built last in its list. `ctx.state` is always `undefined`: a construct's state needs each lambda's inferred type, so it exists only when the Program is lowered, and anything that needs it (a column that exists at this step) belongs in a state namespace or a convention function, not a check. Report with `ctx.error(code, message, { tip, arg, suggest, fix })`: `arg` is the argument's position, or a path into it (`[1, "on", "customer_id"]`); `suggest` a list of candidates, from which the kit appends its own " Did you mean 'x'?" to your message (so do not write one yourself); `fix` the replacement text. Your codes are the Dialect's own letter and three digits (pick one letter; not `B`, `C`, `D`, `L`, `P`, `S` or `V`); `ctx.error` with a reserved letter throws.
 
 ## Worked example: the fields Dialect
 

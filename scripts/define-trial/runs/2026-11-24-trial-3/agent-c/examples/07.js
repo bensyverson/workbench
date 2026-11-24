@@ -1,0 +1,1 @@
+// REFUSED: B001 - there is no wb.fragment and no way to add a method, attribute or mixin to a construct (R8: fragments and mixins are not built). The winsorize and zscore methods also call build-time quantiles and stats, which are refused in the same way.

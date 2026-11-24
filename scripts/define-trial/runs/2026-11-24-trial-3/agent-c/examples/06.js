@@ -1,0 +1,1 @@
+// REFUSED: B001 - the program has no `charts` method, and build-time lambdas (wb.build(...)) are not in the API (R8): nothing runs over the schema, the data or a sample while the Program is built, so the histogram fan-out, the profile table and the pivot's columns cannot be written.

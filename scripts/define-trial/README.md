@@ -14,7 +14,8 @@ The dogfood trials of the Definition API (M3): fresh agents get only the API doc
 | `fixtures/valid/` | the passing fixture: a tiny per-pixel language (borrowed from the fields example, with a stateful `layer` construct) shaped as rules.md's hand-in; the tests derive one failing fixture per code from it by a one-line edit |
 | `test/` | the checker's tests (in `npm test`) |
 | `runs/2026-11-24/` | trial 1: each agent's hand-in, `REPORT.md` and checker log (`log.jsonl`); the findings are [project/2026-11-24-definition-api-trial-1.md](../../project/2026-11-24-definition-api-trial-1.md) |
-| `runs/2026-11-24-trial-2/` | trial 2's record, one directory per agent (empty until the runs; see `trial-2-briefs.md`) |
+| `runs/2026-11-24-trial-2/` | trial 2's record, one directory per agent; the findings are [project/2026-11-24-definition-api-trial-2.md](../../project/2026-11-24-definition-api-trial-2.md) |
+| `trial-3-briefs.md`, `runs/2026-11-24-trial-3/` | trial 3 (binding time, module scope, the text view; one Opus, one Sonnet, one Haiku agent): its setup and its record |
 
 ## Usage
 
