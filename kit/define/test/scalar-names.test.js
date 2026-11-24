@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { defineDialect, scalar, vector, exact, DefinitionError } from "../index.js";
 
 const def = (/** @type {any} */ types) => /** @type {any} */ ({
-  name: "rows", numberType: /** @type {const} */ ("f64"),
+  name: "rows", numberType: /** @type {const} */ ("f64"), text: () => "",
   types,
   spaces: { row: { pure: true } },
   objects: { Row: { label: "a row", members: { price: "f64" } } },

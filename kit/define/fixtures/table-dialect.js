@@ -8,7 +8,7 @@ import { defineDialect, defineGrammar, exact, object, name, ref, data, lambda, r
 
 export const table = defineDialect({
   name: "table",
-  numberType: "f64",
+  numberType: "f64", text: () => "",
   spaces: { row: { pure: true }, group: { pure: true } },
   objects: { Params: { label: "the params ($)", members: {} } },
   globals: { $: "Params" },

@@ -50,7 +50,7 @@ test("the fields targets resolve to their compare modes", () => {
 
 /** A small valid definition each refusal test breaks in one place. */
 const base = () => /** @type {Record<string, any>} */ ({
-  name: "tiny", numberType: "f32",
+  name: "tiny", numberType: "f32", text: () => "",
   types: { vec2: vector(2, "f32") },
   spaces: { pixel: { pure: true } },
   objects: { U: { label: "the uniforms", members: { t: "f32" } } },
@@ -110,7 +110,7 @@ test("every problem is collected, not only the first", () => {
 });
 
 test("every define code is exercised by these tests or the grammar's", () => {
-  assert.deepEqual(Object.keys(DEFINE_CODES).filter((c) => c.startsWith("D")), ["D001", "D002", "D003", "D004", "D005", "D006", "D007", "D008", "D009", "D010", "D011", "D012", "D013", "D014", "D015", "D017", "D018", "D019"]);
+  assert.deepEqual(Object.keys(DEFINE_CODES).filter((c) => c.startsWith("D")), ["D001", "D002", "D003", "D004", "D005", "D006", "D007", "D008", "D009", "D010", "D011", "D012", "D013", "D014", "D015", "D017", "D018", "D019", "D020"]);
 });
 
 test("a convention may be a function of (ref, program, state); a string refuses the slot", () => {

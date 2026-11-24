@@ -60,12 +60,13 @@ export function check(L, node, expected, what) {
  * @param {Type} got
  * @param {Type} expected
  * @param {string} what
+ * @param {string | null} [override]  A tip that knows more than the types, such as emptyTip's.
  */
-export function mismatch(L, node, got, expected, what) {
+export function mismatch(L, node, got, expected, what, override = null) {
   const members = typeof expected === "object" && "union" in expected ? expected.union : [expected];
   const enums = members.flatMap((m) => (typeof m === "object" && "enum" in m ? m.enum : []));
   const here = { t: got, text: L.src.slice(node.range[0], node.range[1]) };
-  const tip = enums.length ? `Use one of: ${enums.join(", ")}.` : mixTip(L, here, { t: expected, text: null }) ?? vectorTip(L, expected) ?? `Give it a ${showType(expected)} value.`;
+  const tip = override ?? (enums.length ? `Use one of: ${enums.join(", ")}.` : mixTip(L, here, { t: expected, text: null }) ?? vectorTip(L, expected) ?? `Give it a ${showType(expected)} value.`);
   L.error("L003", node, `This is ${describe(got)}, but ${what} needs ${showType(expected)}.`, tip);
 }
 
@@ -390,6 +391,24 @@ export function seq(L, thunks) {
 }
 
 /**
+ * The tip for an operand that may be empty, where the operation needs a value: check it with the loose
+ * `!= null`, the one null check that narrows, since the core gives undefined for some empty values (`find`
+ * with no match, an index past the end) and `!== null` is true for undefined. Null when neither side may be empty.
+ * @param {Lowerer} L
+ * @param {Expr} a
+ * @param {Expr} b
+ * @param {AST.Node} node
+ * @returns {string | null}
+ */
+function emptyTip(L, a, b, node) {
+  const sides = "left" in node && "right" in node ? /** @type {Array<[Expr, AST.Node]>} */ ([[a, node.left], [b, node.right]]) : [];
+  const side = sides.find(([e]) => typeof e.t === "object" && "opt" in e.t);
+  if (!side) return null;
+  const text = L.src.slice(side[1].range[0], side[1].range[1]);
+  return `${text} may be empty: check it in a const first, if (${text} != null), which matches null and undefined both.`;
+}
+
+/**
  * Builds a binary operation on lowered operands, checking their types.
  * @param {Lowerer} L
  * @param {string} operator
@@ -400,6 +419,7 @@ export function seq(L, thunks) {
  */
 export function binary(L, operator, a, b, node) {
   const span = spanOf(node);
+  const empty = emptyTip(L, a, b, node);
   if (namedScalar(a.t) || namedScalar(b.t)) {
     const named = scalarBinary(L, operator, a, b, node);
     if (named) return named;
@@ -413,15 +433,15 @@ export function binary(L, operator, a, b, node) {
   if (operator === "+") {
     if (isNum(a) && isNum(b)) return L.ex({ k: "op", op: "add", args: [a, b], t: "f64", span });
     if ((isStr(a) || isStr(b)) && (isNum(a) || isStr(a)) && (isNum(b) || isStr(b))) return L.ex({ k: "op", op: "concat", args: [a, b], t: "str", span });
-    L.error("L003", node, `'+' needs two numbers or a string, not ${describe(a.t)} and ${describe(b.t)}.`, "Make both sides f64, or one a string to concatenate.");
+    L.error("L003", node, `'+' needs two numbers or a string, not ${describe(a.t)} and ${describe(b.t)}.`, empty ?? "Make both sides f64, or one a string to concatenate.");
     return bad(node);
   }
   if (operator in ARITH) {
-    for (const [e, n] of /** @type {const} */ ([[a, "left"], [b, "right"]])) if (!isNum(e)) mismatch(L, node, e.t, "f64", `the ${n} side of '${operator}'`);
+    for (const [e, n] of /** @type {const} */ ([[a, "left"], [b, "right"]])) if (!isNum(e)) mismatch(L, node, e.t, "f64", `the ${n} side of '${operator}'`, empty);
     return L.ex({ k: "op", op: ARITH[operator], args: [a, b], t: "f64", span });
   }
   if (operator in COMPARE) {
-    if (!((isNum(a) && isNum(b)) || (isStr(a) && isStr(b)))) L.error("L003", node, `'${operator}' compares two numbers or two strings, not ${describe(a.t)} and ${describe(b.t)}.`, "Compare values of the same type.");
+    if (!((isNum(a) && isNum(b)) || (isStr(a) && isStr(b)))) L.error("L003", node, `'${operator}' compares two numbers or two strings, not ${describe(a.t)} and ${describe(b.t)}.`, empty ?? "Compare values of the same type.");
     return L.ex({ k: "op", op: COMPARE[operator], args: [a, b], t: "bool", span });
   }
   if (operator in EQUALITY) {

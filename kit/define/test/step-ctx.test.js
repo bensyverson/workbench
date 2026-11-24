@@ -7,7 +7,7 @@ import { defineDialect, defineGrammar, exact, object, name, ref, data, lambda, r
 /** @typedef {{ columns: Record<string, unknown> }} S */
 
 const dialect = defineDialect({
-  name: "tbl", numberType: "f64", spaces: { row: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+  name: "tbl", numberType: "f64", text: () => "", spaces: { row: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
   slots: { row: (ref, _p, state) => ({ params: [object(`a row of ${ref.on}`, /** @type {S} */ (state).columns)], returns: "infer", space: "row" }) },
 });
 

@@ -23,6 +23,9 @@ import { boundNames } from "./parser.js";
 /** @param {string} src @param {{ range: [number, number] }} n */
 const text = (src, n) => src.slice(n.range[0], n.range[1]);
 
+/** @param {A.Node} n */
+const isNullLiteral = (n) => n.type === "Literal" && n.value === null;
+
 /**
  * Whether an expression in this position needs no parentheses around a `+` chain:
  * the position's operator binds looser than `+`, or there is none.
@@ -142,8 +145,9 @@ export const SUBSET_RULES = [
     ? { code: "S113", message: "Computed object keys are not in the runtime subset.", tip: "Use a fixed key: { name: value }." } : null },
   { code: "S114", rule: (n) => n.type === "AssignmentPattern"
     ? { code: "S114", message: "Default values are not in the runtime subset.", tip: "Declare the default where the value is defined (a param or attr), or assign it with if." } : null },
-  // No fixit: `x == null` also matches undefined, so `===` is a different test, not a safe rewrite.
-  { code: "S116", rule: (n) => n.type === "BinaryExpression" && (n.operator === "==" || n.operator === "!=")
+  // No fixit: `x == null` also matches undefined, so `===` is a different test, not a safe rewrite. A loose
+  // comparison with a null literal is exempt: `x != null` is the kit's null check (kit/lower/README.md).
+  { code: "S116", rule: (n) => n.type === "BinaryExpression" && (n.operator === "==" || n.operator === "!=") && !isNullLiteral(n.left) && !isNullLiteral(n.right)
     ? { code: "S116", severity: "warning", message: `Loose equality (${n.operator}) converts types before comparing.`, tip: `Use ${n.operator}= so both sides must have the same type, after checking that is what the code means.` } : null },
 ];
 

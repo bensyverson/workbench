@@ -6,6 +6,7 @@
 import { defineDialect, vector, exact, tolerance, enumOf } from "../../define/index.js";
 import { intrinsics } from "./intrinsics.js";
 import { library } from "./library.js";
+import { frameText } from "./text.js";
 
 /** @import { Environment } from "../../lower/environment.js" */
 /** @import { VecType } from "../../ir/ir.js" */
@@ -63,6 +64,8 @@ export const fields = defineDialect({
     }
     return { objects: { [UNIFORMS]: { members } } };
   },
+  // The text view's state is a rendered frame ({ width, height, pixels }, row 0 the bottom): see text.js.
+  text: frameText,
 });
 
 /** The intrinsics as the backends read them: each with its signature, reference and `js` and `glsl` spellings. */

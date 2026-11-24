@@ -4,7 +4,7 @@
 
 import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST } from "./validate-grammar.js";
 import { refuse, isDialect } from "./dialect.js";
-import { didYouMean, RESERVED_LETTERS } from "./codes.js";
+import { didYouMean, dialectError } from "./codes.js";
 import { TAG, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
 import { lambdaSource, constSource, found, where } from "./shapes.js";
@@ -115,7 +115,7 @@ class Program {
 
   /** @param {Found["errors"]} errors @param {string} what @param {{ file: string, loc: Loc }} at */
   report(errors, what, at) {
-    for (const e of errors) this.diagnostics.push(diag(e.code, `${what}: ${e.message}`, e.code === "B007" ? "pass an arrow function, (x) => …, or its source text" : "pass a value of the shape the slot declares", at, { arg: e.path.length === 1 ? /** @type {number} */ (e.path[0]) : e.path, ...(e.lambda ? { lambda: e.lambda } : {}) }));
+    for (const e of errors) this.diagnostics.push(diag(e.code, `${what}: ${e.message}`, e.tip ?? (e.code === "B007" ? "pass an arrow function, (x) => …, or its source text" : "pass a value of the shape the slot declares"), at, { arg: e.path.length === 1 ? /** @type {number} */ (e.path[0]) : e.path, ...(e.lambda ? { lambda: e.lambda } : {}), ...(e.severity ? { severity: e.severity } : {}) }));
   }
 
   /**
@@ -191,7 +191,7 @@ class Program {
       this.track(call, at);
     }
     inst.calls.push(call);
-    if (this.diagnostics.length === before && typeof s.check === "function") {
+    if (!this.diagnostics.slice(before).some((d) => d.severity === "error") && typeof s.check === "function") {
       s.check({ slot, args: call.args }, this.context(at, call.args, this.record()));
     }
   }
@@ -204,15 +204,10 @@ class Program {
     return {
       program,
       state: undefined,
-      /** @param {string} code @param {string} message @param {{ tip?: string, arg?: number | Array<string | number>, suggest?: string[], fix?: string }} [o] */
+      /** @param {string} code @param {string} message @param {T.ErrorOptions | string} [o]  options, or a tip */
       error: (code, message, o = {}) => {
-        if (!/^[A-Z]\d{3}$/.test(code) || RESERVED_LETTERS.includes(code[0])) throw new Error(`a check's code '${code}' must be the Dialect's own letter and three digits, not one of ${RESERVED_LETTERS.join(", ")}`);
-        const path = o.arg === undefined ? [] : Array.isArray(o.arg) ? o.arg : [o.arg];
-        /** @type {any} */
-        let v = args;
-        for (const p of path) v = v?.[p];
-        const mean = o.suggest && typeof v === "string" ? didYouMean(v, o.suggest) : "";
-        this.diagnostics.push(diag(code, `${message}${mean}`, o.tip ?? (o.fix ? `write ${o.fix}` : ""), at, { ...(o.arg !== undefined ? { arg: o.arg } : {}), ...(o.fix ? { fix: o.fix } : {}) }));
+        const d = dialectError("check", code, message, typeof o === "string" ? { tip: o } : o, args);
+        this.diagnostics.push({ ...d, loc: at.loc, range: [0, 0], file: at.file });
       },
     };
   }
@@ -276,7 +271,7 @@ class Program {
       for (const { name, member, loc } of freeNames(src.ast)) {
         if (allowed.has(name)) continue;
         if (member !== undefined && JS_GLOBALS.has(name)) {
-          const bare = Object.hasOwn(d.intrinsics ?? {}, member) ? `use ${member}` : `${name} is not in the language`;
+          const bare = allowed.has(member) ? `use ${member}` : `${name} is not in the language`;
           this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, `${bare}${bare === `use ${member}` ? `, not ${name}.${member}` : ""}`, src.at, { lambda: { src: src.src, loc } }));
           continue;
         }

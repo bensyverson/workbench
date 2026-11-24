@@ -106,6 +106,7 @@ export function defineDialect(def) {
     library,
     targets: /** @type {T.Dialect["targets"]} */ (targets),
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
+    text: def.text,
     environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, program, states),
   });
   MADE.add(dialect);
@@ -193,8 +194,9 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
 
 /**
  * The kit's `const` convention. A constant is computed once, so it reads and changes nothing; with
- * `calls: "pure"` it may call a helper, whose own effects are listed beside the call and judged by the
- * same rule, so a helper that stores or emits is still refused.
+ * `calls: "pure"` it may call a helper. Lowering lists a callee's effects beside the call, so a helper that
+ * stored or emitted would be refused by this forbid list; but a generated Dialect can express no effect other
+ * than `call` (every space is pure, no member carries an effect), so today that rule is never exercised.
  * @param {string | undefined} key @param {T.ConstantCalls} calls
  * @returns {SlotDecl}
  */

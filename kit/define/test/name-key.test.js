@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, exact, name, data, lambda } from "../index.js";
 
 const tiny = () => defineDialect({
-  name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+  name: "tiny", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
   slots: { k: { params: [], returns: "infer", space: "s" } },
 });
 

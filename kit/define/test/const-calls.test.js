@@ -14,7 +14,7 @@ const ALL_VERBS = ["read", "input", "hud", "call", "write", "rng", "emit", "sfx"
 
 /** A small Dialect, with `constants` as given. @param {unknown} [constants] */
 const tiny = (constants) => /** @type {Record<string, any>} */ ({
-  name: "tiny", numberType: "f32",
+  name: "tiny", numberType: "f32", text: () => "",
   spaces: { row: { pure: true } },
   targets: { js: { accepts: "*", compare: exact() } },
   slots: { keep: { params: ["f32"], returns: "f32", space: "row" } },
@@ -33,10 +33,14 @@ const diagnostics = (g, record) => g.lower(record).diagnostics.map((/** @type {a
 /** The const convention a Dialect's Environment gives. @param {any} d @returns {SlotDecl} */
 const constSlot = (d) => /** @type {SlotDecl} */ (d.environment({}).slot({ id: "K", kind: "const", on: "$", key: "K" }));
 
-test("a fields constant may call a pure helper again", () => {
-  const r = lowerField(field("c").fn("g", "() => 2").const("K", "g()").pixel("(uv, u) => color(K, 0, 0)").build());
+// Changed in hxjaI2: with `() => 2` this passed while the constant was typed unknown, which any use accepts. A
+// vec2 helper shows the constant typed by its helper: its components lower, and the vector as a channel does not.
+test("a fields constant may call a pure helper again, and has the helper's type", () => {
+  const r = lowerField(field("c").fn("g", "() => vec2(0.25, 0.5)").const("K", "g()").pixel("(uv, u) => color(K.x, K.y, 0)").build());
   assert.deepEqual(r.diagnostics.map((d) => `${d.code} ${d.message}`), []);
   assert.ok(r.kernel);
+  const wrong = lowerField(field("c").fn("g", "() => vec2(0.25, 0.5)").const("K", "g()").pixel("(uv, u) => color(K, 0, 0)").build());
+  assert.ok(wrong.diagnostics.some((d) => d.code === "L003"));
 });
 
 test("the const convention forbids every effect but a call when a Dialect declares pure calls", () => {
@@ -70,4 +74,11 @@ test("a bad constants declaration is refused with D011, an unknown key with D001
   assert.deepEqual(codes({ calls: "maybe" }), ["D011"]);
   assert.deepEqual(codes(true), ["D011"]);
   assert.deepEqual(codes({ calls: "pure", reads: "all" }), ["D001"]);
+});
+
+test("L004's tip is the Dialect's reason, with no DMG handler named", () => {
+  const plain = grammarOver(defineDialect(/** @type {any} */ (tiny())));
+  const d = /** @type {any} */ (plain.lower(plain("c").fn("g", "() => 2").const("K", "g()").keep("(x) => x + K").build()).diagnostics.find((/** @type {any} */ x) => x.code === "L004"));
+  assert.match(d.tip, /computed once/);
+  assert.doesNotMatch(d.tip, /onFrame|event handler/);
 });

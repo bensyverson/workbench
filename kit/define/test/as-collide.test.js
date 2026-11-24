@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, exact, name, ref, data, lambda, DefinitionError } from "../index.js";
 
-const d = defineDialect({ name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } }, slots: { k: { params: [], returns: "f64", space: "s" } } });
+const d = defineDialect({ name: "tiny", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } }, slots: { k: { params: [], returns: "f64", space: "s" } } });
 const k = (/** @type {Record<string, unknown>} */ extra = {}) => /** @type {any} */ ({ kind: "decl", args: [lambda("k")], ...extra });
 
 /** The codes defineGrammar refuses a definition with, or [] when it accepts it. @param {any} def */

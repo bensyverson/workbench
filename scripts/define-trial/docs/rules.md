@@ -67,6 +67,7 @@ The checker prints the kit's own codes (`D…` from `defineDialect` and `defineG
 | D017 | two things of one construct that the record would put under one key (two opening arguments, an opening argument and a child construct, two slots' names or `as`, `units` beside a unit slot, `calls` in a `record: "calls"` construct) |
 | D018 | a slot or construct named like a property runtimes probe on every object (`then`, `toJSON`, `inspect`, `constructor`, `valueOf`, `toString`, `prototype`, `nodeType`, `asymmetricMatch`, `$$typeof`) |
 | D019 | a `lambda()` in a construct's `opens` (not built) |
+| D020 | a Dialect without `text(state)`, its text view, or with one that is not a function |
 
 ### Programs (`B…`): the example files, from the generated builder and from lowering
 

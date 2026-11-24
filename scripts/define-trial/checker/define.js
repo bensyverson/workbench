@@ -26,7 +26,7 @@ function standIn(def) {
   const names = slots !== null && typeof slots === "object" ? Object.keys(slots).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !KIT_CONVENTIONS.includes(n)) : [];
   try {
     const d = kit.defineDialect({
-      name: "refused", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: kit.exact() } },
+      name: "refused", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: kit.exact() } },
       slots: Object.fromEntries(names.map((n) => [n, { params: [], returns: "infer", space: "s" }])),
     });
     STAND_INS.add(d);

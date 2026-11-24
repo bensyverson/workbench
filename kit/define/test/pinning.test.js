@@ -8,7 +8,7 @@ const lineHere = () => Number([...(new Error().stack ?? "").matchAll(/pinning\.t
 
 test("B011 in a by-slot construct points at the refused call, not the construct's opening, and names its lambda", () => {
   const d = defineDialect({
-    name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+    name: "tiny", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
     slots: { k: (ref) => (ref.index === 1 ? "not second" : { params: [], returns: "f64", space: "s" }) },
   });
   const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()], slots: { k: { kind: "decl", args: [lambda("k")] } } } } });
@@ -26,7 +26,7 @@ test("B011 in a by-slot construct points at the refused call, not the construct'
 
 test("each call of a by-slot construct keeps its own place, also in a name slot", () => {
   const d = defineDialect({
-    name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+    name: "tiny", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
     slots: { k: (ref) => (ref.index === 1 ? "no" : { params: [], returns: "f64", space: "s" }) },
   });
   const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()], slots: { k: { kind: "decl", args: [name("n"), lambda("k")] } } } } });

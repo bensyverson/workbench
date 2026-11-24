@@ -258,6 +258,7 @@ function slotOf(ref, d, drawResult) {
   /** @type {Type} */
   const self = isWorld ? W : { ref: ref.on };
   const renderWhy = "draw and hud run at render time, so a change there would depend on how often the screen is drawn";
+  const MOVE = "Move it to an onFrame or an event handler";
   /** @param {Omit<SlotDecl, "forbid"> & { forbid?: EffectVerb[] }} s */
   const slot = (s) => ({ forbid: [], ...s });
   switch (ref.kind) {
@@ -269,13 +270,13 @@ function slotOf(ref, d, drawResult) {
     case "done": return slot({ params: [W, W], returns: BOOL, space: "tick" });
     case "bot": return slot({ params: [W, W], returns: { union: [dialectEnum(BUTTONS), "null"] }, space: "tick" });
     case "every": case "after":
-      return slot({ params: [W], returns: F64, space: "timer interval", forbid: [...STATE_CHANGES, "hud"], forbidWhy: "a timer's interval is read whenever it re-arms" });
+      return slot({ params: [W], returns: F64, space: "timer interval", forbid: [...STATE_CHANGES, "hud"], forbidWhy: "a timer's interval is read whenever it re-arms", forbidMove: MOVE });
     case "hud":
       if (!isWorld) return "a hud belongs to the world";
-      return slot({ params: [W, { obj: "At" }], returns: VOID, space: "render", forbid: STATE_CHANGES, forbidWhy: renderWhy });
+      return slot({ params: [W, { obj: "At" }], returns: VOID, space: "render", forbid: STATE_CHANGES, forbidWhy: renderWhy, forbidMove: MOVE });
     case "draw":
       if (isWorld) return "draw belongs to a component";
-      return slot({ params: [self, W], returns: drawResult(ref.on), space: `render ${ref.on}`, forbid: [...STATE_CHANGES, "hud"], forbidWhy: renderWhy });
+      return slot({ params: [self, W], returns: drawResult(ref.on), space: `render ${ref.on}`, forbid: [...STATE_CHANGES, "hud"], forbidWhy: renderWhy, forbidMove: MOVE });
   }
   return `the DMG has no '${ref.kind}' slot`;
 }

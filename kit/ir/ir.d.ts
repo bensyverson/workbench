@@ -122,10 +122,10 @@ export type Expr =
  * also take a scalar of the vector's scalar type. `f32` rounds an f64 to the nearest
  * f32 (JavaScript's `Math.fround`); `f64` widens an f32 exactly. Each operator's operand
  * and result types are `OPS` in verify-rules.js. `and`/`or` take bools and
- * short-circuit. `present` takes a possibly-empty entity reference (`{ opt: { ref } }`)
- * and is false only for null or undefined. `truthy` is JavaScript truthiness, for every
- * other value tested as a condition, optionals of numbers, bools and strings included:
- * 0, NaN, "" and false are false there.
+ * short-circuit. `present` takes any possibly-empty value (`{ opt: … }`) and is false only
+ * for null or undefined: what `x != null` means, so 0, "" and a date at the epoch are
+ * present. `truthy` is JavaScript truthiness, for a value tested as a condition (an
+ * optional number, bool or string included): 0, NaN, "" and false are false there.
  */
 export type Op =
   | "add" | "sub" | "mul" | "div" | "rem" | "pow" | "neg" | "pos"

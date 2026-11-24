@@ -76,6 +76,8 @@ export interface SlotDecl {
   forbid: EffectVerb[];
   /** Why `forbid` holds, for the diagnostic's tip. */
   forbidWhy?: string;
+  /** Where a forbidden effect belongs instead, when the Dialect has such a place ("Move it to an onFrame or an event handler"); it leads the tip. */
+  forbidMove?: string;
 }
 
 export interface Environment {

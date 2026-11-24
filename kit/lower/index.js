@@ -173,18 +173,21 @@ const helperSlot = (h) => ({ id: h.name, kind: h.kind === "fn" ? "helper" : "con
 /**
  * Lowers each constant, in order, to the expression every use of it is replaced by. A
  * constant is lowered as `() => (init)`, so it is held to the subset and may use only
- * literals, `Math` and the constants before it.
+ * literals, `Math`, the constants before it and (where its convention allows a call) the
+ * helpers, typed by `sigs`: it is lowered again in each inference pass, so a helper's result
+ * type reaches it, and its calls count as call sites.
  * @param {Environment} environment
  * @param {HelperSource[]} sources
  * @param {Record<string, HelperDecl>} decls  Every helper's name; updated with each constant's value.
+ * @param {Signatures} sigs  The helper signatures inferred so far.
  * @returns {Map<string, LowerResult>}
  */
-function lowerConstants(environment, sources, decls) {
+function lowerConstants(environment, sources, decls, sigs) {
   /** @type {Map<string, LowerResult>} */
   const out = new Map();
   for (const h of sources) {
     if (h.kind !== "const") continue;
-    const r = lowerLambda(environment, `() => (${h.src})`, helperSlot(h), noSignatures(decls));
+    const r = lowerLambda(environment, `() => (${h.src})`, helperSlot(h), { ...sigs, helpers: decls });
     const k = r.kernel;
     const only = k && k.body.length === 1 && k.body[0].k === "return" && k.locals.length === 0 ? k.body[0].value : null;
     if (r.ok && !only) {
@@ -216,16 +219,20 @@ export function lowerProgram(environment, lambdas, helperSources = []) {
   }
   /** @type {Record<string, HelperDecl>} */
   const decls = Object.fromEntries(helperSources.map((h) => [h.name, h.kind === "fn" ? { kind: "fn" } : { kind: "const", value: null }]));
-  const consts = lowerConstants(environment, helperSources, decls);
   const fns = helperSources.filter((h) => h.kind === "fn");
+  const constSources = helperSources.filter((h) => h.kind === "const");
   const all = [...lambdas, ...fns.map((h) => ({ src: h.src, slot: helperSlot(h) }))];
   let sigs = noSignatures(decls);
   /** @type {LowerResult[]} */
   let results = [];
-  // Each pass can only add what the last one learned; a chain of n methods settles in n passes.
-  for (let pass = 0; pass <= all.length + 1; pass++) {
+  /** @type {Map<string, LowerResult>} */
+  let consts = new Map();
+  // Each pass can only add what the last one learned; a chain of n methods settles in n passes. Constants are
+  // lowered first in each pass, with the signatures so far, and their calls are call sites like any lambda's.
+  for (let pass = 0; pass <= all.length + constSources.length + 1; pass++) {
+    consts = lowerConstants(environment, helperSources, decls, sigs);
     results = all.map((l) => lowerLambda(environment, l.src, l.slot, sigs));
-    const next = infer(all, results, decls);
+    const next = infer([...all, ...constSources.map((h) => ({ slot: helperSlot(h) }))], [...results, ...constSources.map((h) => /** @type {LowerResult} */ (consts.get(h.name)))], decls);
     if (JSON.stringify(next) === JSON.stringify(sigs)) break;
     sigs = next;
   }

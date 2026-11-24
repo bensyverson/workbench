@@ -169,8 +169,10 @@ test("F19 the S110 fixit (var -> let) is withheld when var's function scope is u
   assert.equal(after, run(src, true), `${src} -> ${out}`);
 });
 
-test("F20 S116 keeps its warning and tip but offers no fixit: == null is not === null", () => {
-  for (const src of ["(x) => x == null", "(x) => x != 1", "(a, b) => a /* a==b */ == b"]) {
+// `x == null` was a case here; since 62bec66 `x != null` / `x == null` is the kit's null check, so S116 no longer
+// warns on a comparison with a null literal (subset.test.js). `== undefined` is the same test and still warns.
+test("F20 S116 keeps its warning and tip but offers no fixit: == undefined is not === undefined", () => {
+  for (const src of ["(x) => x == undefined", "(x) => x != 1", "(a, b) => a /* a==b */ == b"]) {
     const r = parseLambda(src);
     assert.ok(r.ok);
     const d = checkSubset(r.ast, src).find((x) => x.code === "S116");

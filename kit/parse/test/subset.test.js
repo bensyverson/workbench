@@ -129,3 +129,10 @@ test("applyEdits applies non-overlapping edits in any order and rejects overlaps
   assert.equal(applyEdits("abcdef", [{ range: [4, 5], text: "E" }, { range: [0, 1], text: "A" }]), "AbcdEf");
   assert.throws(() => applyEdits("abcdef", [{ range: [0, 3], text: "" }, { range: [2, 4], text: "" }]), /overlap/);
 });
+
+// `x != null` is the kit's null check, matching null and undefined both (kit/lower/README.md), so a loose
+// comparison with a null literal is not S116; any other loose comparison still is.
+test("S116 exempts a loose comparison with null", () => {
+  assert.deepEqual(check("(a) => a == null || null != a.x").filter((d) => d.code === "S116"), []);
+  assert.deepEqual(check("(a) => a == undefined || a.x != 0").map((d) => d.code).filter((c) => c === "S116"), ["S116", "S116"]);
+});

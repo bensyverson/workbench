@@ -1,7 +1,9 @@
 // The Definition API's codes: D… for a definition (refused when defineDialect or defineGrammar is
 // called), B… for a Program the generated builder refuses. Lowering keeps its own L… codes.
 
-export { didYouMean } from "../lower/codes.js";
+import { didYouMean } from "../lower/codes.js";
+
+export { didYouMean };
 
 /** Each code and what it means; the tests check that every one is exercised. */
 export const DEFINE_CODES = Object.freeze({
@@ -23,6 +25,7 @@ export const DEFINE_CODES = Object.freeze({
   D017: "Two things in a construct that the record would put under one key: an opening argument, a child construct, a slot's as, units",
   D018: "A slot or construct named like a property runtimes probe on every object (then, toJSON, inspect, …)",
   D019: "A lambda() in a construct's opens, which is not built yet",
+  D020: "A Dialect without text(state), its text view (its screen and state as characters, sized for a model)",
 });
 
 /** The generated builder's codes. */
@@ -42,3 +45,20 @@ export const BUILD_CODES = Object.freeze({
 
 /** Letters a Dialect's own check codes may not start with. */
 export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "L", "P", "S", "V"]);
+
+/**
+ * The fields of a Dialect's own refusal, as a check's or a step's `ctx.error` makes it: the message with a
+ * did-you-mean from `suggest` against the argument at `arg`, the tip (else `write <fix>`), `arg` and `fix`.
+ * A code that is not one letter and three digits, or starts with a reserved letter, throws.
+ * @param {string} who  "check" or "step", for the throw
+ * @param {string} code @param {string} message @param {import("./define.js").ErrorOptions} o @param {unknown[]} args
+ */
+export function dialectError(who, code, message, o, args) {
+  if (!/^[A-Z]\d{3}$/.test(code) || RESERVED_LETTERS.includes(code[0])) throw new Error(`a ${who}'s code '${code}' must be the Dialect's own letter and three digits, not one of ${RESERVED_LETTERS.join(", ")}`);
+  const path = o.arg === undefined ? [] : Array.isArray(o.arg) ? o.arg : [o.arg];
+  /** @type {any} */
+  let v = args;
+  for (const p of path) v = v?.[p];
+  const mean = o.suggest && typeof v === "string" ? didYouMean(v, o.suggest) : "";
+  return { code, severity: /** @type {const} */ ("error"), message: `${message}${mean}`, tip: o.tip ?? (o.fix ? `write ${o.fix}` : ""), ...(o.arg !== undefined ? { arg: o.arg } : {}), ...(o.fix ? { fix: o.fix } : {}) };
+}

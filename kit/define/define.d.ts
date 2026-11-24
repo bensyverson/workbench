@@ -78,6 +78,8 @@ export interface DialectDef {
   /** What a constant may call: `"pure"` lets it call a pure helper; `"none"`, the default, forbids every call. */
   constants?: { calls: ConstantCalls };
   environment?: (program: Record<string, any>) => EnvironmentAddition;
+  /** The text view: the Dialect's screen and state as characters, sized for a model. What `state` is, the Dialect says. Required (D020). */
+  text: (state: any) => string;
 }
 
 /** What a Dialect's constants may call. Stores and emits stay forbidden either way. */
@@ -101,6 +103,8 @@ export interface Dialect {
   readonly intrinsics: Record<string, Intrinsic>;
   readonly library: UnitDecl[];
   readonly targets: Record<string, { accepts: "*" | string[]; compare: Compare }>;
+  /** The text view, as the definition gave it. */
+  text(state: any): string;
   /** The Library units the sources use, in dependency order. */
   libraryFor(sources: string[]): UnitDecl[];
   /** The Environment for one Program record; `states` gives each stateful lambda's construct state, by slot id. */
@@ -141,8 +145,15 @@ export interface CheckContext {
   program: Record<string, any>;
   /** The construct's state before the call; undefined at build, since state needs lowering (see README). */
   state: unknown;
-  error(code: string, message: string, options?: { tip?: string; arg?: number | Array<string | number>; suggest?: string[]; fix?: string }): void;
+  error(code: string, message: string, options?: ErrorOptions | string): void;
 }
+
+/**
+ * What a check's or a step's `ctx.error` takes after the code and message (a string is taken as `{ tip }`):
+ * the tip, the argument it is about (a did-you-mean against `suggest` when that argument is a string), and a
+ * mechanical replacement (the tip defaults to `write <fix>`).
+ */
+export interface ErrorOptions { tip?: string; arg?: number | Array<string | number>; suggest?: string[]; fix?: string }
 
 export interface SlotDef {
   kind: "decl" | "unit";
@@ -160,8 +171,8 @@ export interface StepContext {
   program: Record<string, any>;
   /** Another stateful instance's final state, by instance name, as init's `stateOf`; a loop through it is B010. */
   stateOf(name: string): any;
-  /** Refuses this call with the Dialect's own code, pinned at the call. The state `step` returns still applies. */
-  error(code: string, message: string, tip?: string): void;
+  /** Refuses this call with the Dialect's own code, pinned at the call, as a check's does. The state `step` returns still applies. */
+  error(code: string, message: string, options?: ErrorOptions | string): void;
 }
 
 export interface StateDef {

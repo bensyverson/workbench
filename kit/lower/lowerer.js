@@ -248,7 +248,8 @@ export class Lowerer {
         this.error("L006", span, `A query callback must be pure, but this has the effect '${effect}'.`, "Keep callbacks pure: compute the effect after the query, from its result.");
       }
       if (this.decl.forbid.includes(verb)) {
-        this.error("L004", span, `A ${this.slot.kind} may not '${effect}'.`, `Move it to an onFrame or an event handler: ${this.decl.forbidWhy ?? `${this.slot.kind} does not allow ${verb}`}.`);
+        const why = this.decl.forbidWhy ?? `a ${this.slot.kind} does not allow ${verb}`;
+        this.error("L004", span, `A ${this.slot.kind} may not '${effect}'.`, this.decl.forbidMove ? `${this.decl.forbidMove}: ${why}.` : `${why[0].toUpperCase()}${why.slice(1)}.`);
       }
     }
   }

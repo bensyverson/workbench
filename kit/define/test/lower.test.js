@@ -97,7 +97,7 @@ test("B010 names each instance on a stateOf loop as depending on itself, and one
 
 test("a convention that returns a reason refuses the lambda (B011); every builder code is exercised", () => {
   const d = defineDialect({
-    name: "tiny", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+    name: "tiny", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
     slots: { k: (ref) => (ref.index === 0 ? "not first" : { params: [], returns: "f64", space: "s" }) },
   });
   const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()], slots: { k: { kind: "decl", args: [lambda("k")] } } } } });

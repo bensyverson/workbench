@@ -23,7 +23,7 @@ Wherever a definition names a type, write its name as a string:
 | a declared object, e.g. `"Uniforms"` | a handle with members (see `objects`) |
 | a single capital letter, `"T"` | a type variable in an intrinsic's signature, bound per call |
 
-Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null; a lambda must check it before use, in a `const`: `if (d !== null)` or `d != null`, which keep a 0 or a date at the epoch present, or `if (d)`, JavaScript's truthiness, which does not; give null, never undefined, for an empty value), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings; nominal: two enums with the same values are different types; a type enum holds strings only, though a data shape's `enumOf` may hold numbers), and `object(label, members)`, an object type made on the spot (see "Construct state").
+Build compound types with helpers from `kit/define`: `list(t, max)` (a list of at most `max` items), `opt(t)` (may be null; a lambda must check it before use, in a `const`: `if (d != null)`, which keeps a 0 or a date at the epoch present and matches undefined too, or `if (d)`, JavaScript's truthiness, which does not; `d !== null` does not narrow, since the kit itself gives undefined for some empty values, such as `find` with no match), `struct({ x: "f64", y: "f64" }, { optional: ["y"] })`, `union(a, b, …)`, `enumOf(["a", "b"])` (one of these strings; nominal: two enums with the same values are different types; a type enum holds strings only, though a data shape's `enumOf` may hold numbers), and `object(label, members)`, an object type made on the spot (see "Construct state").
 
 **Everything `kit/define` exports:** `defineDialect`, `defineGrammar`, the helpers `vector`, `scalar`, `exact`, `tolerance`, `list`, `opt`, `struct`, `union`, `enumOf`, `object`, `name`, `ref`, `data`, `lambda`, `rest`, `oneOf`, `recordOf`, `listOf`, and `DefinitionError`, `BuildError`, `DEFINE_CODES`, `BUILD_CODES`. Importing anything else is refused (D011).
 
@@ -51,10 +51,11 @@ export const myDialect = defineDialect({
   slots: { … },                  // the calling convention of each kind of Runtime Lambda
   constants: { calls: "pure" },  // optional: a constant may call a pure helper (default "none")
   environment(program) { … },    // optional: what one Program adds (see below)
+  text(state) { … },             // the text view: your screen and state as characters (see below)
 });
 ```
 
-Every key is optional except `name`, `numberType`, `spaces`, `targets` and `slots`. An unknown key is refused (D001).
+Every key is optional except `name`, `numberType`, `spaces`, `targets`, `slots` and `text`. An unknown key is refused (D001); a missing `text`, or one that is not a function, is D020.
 
 ### `types`
 
@@ -184,6 +185,17 @@ environment(program) {
 
 This is plain JavaScript and may compute anything from the record. It runs **before** any lambda is lowered, so it cannot know a lambda's inferred type: anything that changes from one call to the next (a table's columns after each step) belongs in a construct's state, not here.
 
+### `text(state)`
+
+Every Dialect has a **text view**: a function from what your language's host shows (its screen and state) to characters a model can read, sized for a model's context. A model working in the workbench sees your language through it, so make it say what a person would see: a picture as characters, a table as rows. You decide what `state` is; say it in a comment. The fields Dialect takes a rendered frame, `{ width, height, pixels }`, and draws it as at most 64 by 32 characters, dark to light; the data Dialect takes one table, `{ name, columns, rows }`, and prints its columns with their types and its first 20 rows. A Dialect without `text`, or with one that is not a function, is refused (D020).
+
+```js
+text(table) {
+  const names = Object.keys(table.columns);
+  return [`${table.name}: ${table.rows.length} rows`, names.join(" | "), ...table.rows.slice(0, 20).map((r) => names.map((c) => String(r[c])).join(" | "))].join("\n");
+}
+```
+
 ## `defineGrammar`
 
 ```js
@@ -256,7 +268,7 @@ Any spec takes `{ as: "key" }` as a last argument, naming its record key: `ref("
 
 **Namespaces.** A Program namespace is any string: names declared with `name("table")` anywhere in the Program are what `ref("table")` accepts. A `name()` with no namespace is the construct's own name, declared in the namespace named after the construct (`name()` on `table` declares into `"table"`). A namespace may instead belong to a construct's **state** (see below): then `ref` resolves against the state just before the call, so `.groupBy("month")` is checked against the table's columns at that step.
 
-**Shapes:** `"number"`, `"string"`, `"boolean"`, `"string[]"`, `"number[]"`, an object of shapes (a key ending in `?` is optional: `{ value: "number", "min?": "number" }`), `oneOf(a, b, …)`, `enumOf([...])` (strings or numbers), `recordOf(shape)` (an object with any keys, each value of the shape), `listOf(shape)`. A shape may also hold `ref(ns)` (a string that must name something) and `lambda(convention)` (a Runtime Lambda), anywhere inside it. In a `oneOf` that holds both, a string that parses as an arrow function is the lambda and any other string is the ref (`.y("() => 1")` is the lambda, `.y("a")` the ref):
+**Shapes:** `"number"`, `"string"`, `"boolean"`, `"string[]"`, `"number[]"`, an object of shapes (a key ending in `?` is optional: `{ value: "number", "min?": "number" }`), `oneOf(a, b, …)`, `enumOf([...])` (strings or numbers), `recordOf(shape)` (an object with any keys, each value of the shape), `listOf(shape)`. A shape may also hold `ref(ns)` (a string that must name something) and `lambda(convention)` (a Runtime Lambda), anywhere inside it. In a `oneOf`, among the forms a value fits, the one holding the most lambdas wins (the first on a tie), at any depth: so a string that parses as an arrow function is the lambda and any other string is the ref or text (`.y("() => 1")` is the lambda, `.y("a")` the ref), and `{ f: () => 1 }` against `oneOf({ f: lambda("v") }, { f: "string" })` is the lambda form. Text that looks like an arrow function (it holds `=>`) but does not parse stays text, with a B007 warning that names the parse error:
 
 ```js
 limit: { kind: "decl", args: [data(oneOf("number", lambda("scalar")))] },   // .limit(10) or .limit(() => $.topN)
@@ -282,8 +294,8 @@ state: {
   // recordOf key (a key holding several lambdas has the list of their types); otherwise the list of
   // every lambda's type in call order.
   // `ctx` is { program, stateOf, error }: `program` and `stateOf(name)` are init's (stateOf is another instance's
-  // final state, so a join reads it here, with no closure in the state), and `error(code, message, tip)` refuses
-  // this call with your own code, pinned at the call. The state you return still applies after an error, so later
+  // final state, so a join reads it here, with no closure in the state), and `error(code, message, { tip, arg, suggest, fix })`
+  // (a check's form; a string third argument is the tip) refuses this call with your own code, pinned at the call. The state you return still applies after an error, so later
   // calls still type; the diagnostic is what makes the Program fail. A code with a reserved letter throws.
   step(state, call, inferred, ctx) {
     if (call.slot === "join") {
@@ -430,6 +442,7 @@ export const fields = defineDialect({
     }
     return { objects: { Uniforms: { members } } };
   },
+  text: frameText,   // a rendered frame { width, height, pixels } as at most 64 × 32 characters (kit/dialects/fields/text.js)
 });
 
 const ParamShape = oneOf(

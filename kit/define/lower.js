@@ -5,7 +5,7 @@
 // "Construct state"). It lives on the grammar because only the grammar knows where lambdas sit in a record.
 
 import { lowerProgram } from "../lower/index.js";
-import { didYouMean, RESERVED_LETTERS } from "./codes.js";
+import { didYouMean, dialectError } from "./codes.js";
 import { enumOf, opt, list, struct, union, kindOf } from "./tags.js";
 import { rematch, single, nameOf, setOwn, LOCS } from "./record.js";
 
@@ -192,6 +192,19 @@ export function lowerRecord(g, record) {
   }
   /** Lambdas the Dialect refused, by identity (never by message text). @type {Set<(typeof lambdas)[number]>} */
   const refused = new Set();
+  // A stateOf loop re-runs the calls of the instances on it, once per instance told about the loop, and each
+  // re-run finds the same mistakes again: a call reports each of its diagnostics once.
+  /** @type {Map<RecCall, Set<string>>} */
+  const reported = new Map();
+  /** @param {RecCall} call @param {Lowered["diagnostics"][number]} d */
+  const report = (call, d) => {
+    const seen = reported.get(call) ?? new Set();
+    reported.set(call, seen);
+    const key = JSON.stringify([d.code, d.message, d.tip]);
+    if (seen.has(key)) return;
+    seen.add(key);
+    diagnostics.push(d);
+  };
   const units = unitsOf(instances);
   const helpers = [...g.dialect.libraryFor([...lambdas.map((l) => l.src), ...units.map((u) => u.src)]), ...units];
 
@@ -203,7 +216,7 @@ export function lowerRecord(g, record) {
     const decl = env.slot(l.ref);
     if (typeof decl !== "string") return true;
     refused.add(l);
-    diagnostics.push({ code: "B011", severity: "error", message: `the ${l.ref.kind} lambda of ${l.inst.name}, .${l.call.slot}: ${decl}`, tip: `the ${g.dialect.name} Dialect's '${l.ref.kind}' convention refused it here`, ...l.call.at, range: [0, 0], ref: l.ref });
+    report(l.call, { code: "B011", severity: "error", message: `the ${l.ref.kind} lambda of ${l.inst.name}, .${l.call.slot}: ${decl}`, tip: `the ${g.dialect.name} Dialect's '${l.ref.kind}' convention refused it here`, ...l.call.at, range: [0, 0], ref: l.ref });
     return false;
   };
 
@@ -232,7 +245,7 @@ export function lowerRecord(g, record) {
           const names = st.names?.[r.ns];
           if (!names) continue;
           const known = /** @type {string[]} */ (names(state));
-          if (!known.includes(r.value)) diagnostics.push({ code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}', .${call.slot}: there is no ${r.ns} '${r.value}' at this step.${didYouMean(r.value, known)}`, tip: known.length ? `name one of: ${known.join(", ")}` : `this ${inst.construct.name} has no ${r.ns} yet`, ...call.at, range: [0, 0] });
+          if (!known.includes(r.value)) report(call, { code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}', .${call.slot}: there is no ${r.ns} '${r.value}' at this step.${didYouMean(r.value, known)}`, tip: known.length ? `name one of: ${known.join(", ")}` : `this ${inst.construct.name} has no ${r.ns} yet`, ...call.at, range: [0, 0] });
         }
         const here = byCall.get(call) ?? [];
         /** @type {unknown[]} */
@@ -241,9 +254,9 @@ export function lowerRecord(g, record) {
           return usable(l) ? fromCore(lowerProgram(env, [{ src: l.src, slot: l.ref }], helpers).results[0].returns) : "unknown";
         });
         // A refusal does not stop the state: step's return still applies, so later calls type and one mistake is one diagnostic.
-        const error = (/** @type {string} */ code, /** @type {string} */ message, /** @type {string} */ tip = "") => {
-          if (!/^[A-Z]\d{3}$/.test(code) || RESERVED_LETTERS.includes(code[0])) throw new Error(`a step's code '${code}' must be the Dialect's own letter and three digits, not one of ${RESERVED_LETTERS.join(", ")}`);
-          diagnostics.push({ code, severity: "error", message, tip, ...call.at, range: [0, 0], on: inst.name, slot: call.slot });
+        /** @param {string} code @param {string} message @param {T.ErrorOptions | string} [o]  a check's options, or a tip */
+        const error = (code, message, o = {}) => {
+          report(call, { ...dialectError("step", code, message, typeof o === "string" ? { tip: o } : o, call.args), ...call.at, range: [0, 0], on: inst.name, slot: call.slot });
         };
         state = st.step(state, { slot: call.slot, args: call.args }, inferredOf(here, types), { program: record, stateOf, error });
       }

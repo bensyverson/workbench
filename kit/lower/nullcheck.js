@@ -1,19 +1,20 @@
 // Lowering an explicit null check: an optional on one side of `==`, `!=`, `===` or `!==` and `null` or
 // `undefined` on the other. It tests emptiness only, so an optional number holding 0 or a date at the epoch
-// (stored as 0) is present, and it narrows a `const` local as truthiness does (see `nullFacts`).
+// (stored as 0) is present, and a loose one narrows a `const` local as truthiness does (see `nullFacts`).
 //
 // Each form keeps its JavaScript meaning, since emitted code must do what the source does:
-// - `x != null` (or `undefined`) matches both empty values; it lowers to `present`, `x == null` to `not(present)`.
-// - `x !== null` lowers to `ne(x, null)` as before. It narrows only an optional primitive (a number, a nominal
-//   scalar, a string, an enum, a bool), trusting that a Dialect gives null, never undefined, for an empty one;
-//   an optional reference does not narrow by it, because `find` gives undefined for no match.
+// - `x != null` (or `undefined`) matches both empty values; it lowers to `present`, `x == null` to `not(present)`,
+//   and it is the null check that narrows.
+// - `x !== null` lowers to `ne(x, null)` as before, and narrows nothing: the core itself gives undefined for an
+//   empty value (`find` with no match, an index past a known length, an optional struct key read by
+//   destructuring), for which `!== null` is true. (62bec66 narrowed an optional primitive by it, trusting the
+//   Dialect to give null; that premise was wrong, since the empty values above come from the core, not the Dialect.)
 // - `x !== undefined` is refused: the kit's empty value is null, for which it is true.
 
-import { binary, expr, spanOf } from "./expr.js";
-import { namedScalar } from "../ir/types.js";
+import { binary, describe, expr, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
-/** @import { Expr, Type } from "../ir/ir.js" */
+/** @import { Expr } from "../ir/ir.js" */
 /** @import { Lowerer } from "./lowerer.js" */
 
 /** @typedef {{ value: AST.Expression, emptyNode: AST.Expression, present: boolean, loose: boolean, undef: boolean }} NullCheck */
@@ -45,11 +46,6 @@ export function nullCheckOf(L, node) {
   return { value, emptyNode, present: node.operator.startsWith("!"), loose: node.operator.length === 2, undef: isUndefined(L, emptyNode) };
 }
 
-/**
- * Whether a strict `!== null` proves a value of `t` present: an optional primitive's empty value is null.
- * @param {Type} t  The optional's inner type.
- */
-const nullIsEmpty = (t) => t === "f64" || t === "f32" || t === "str" || t === "bool" || namedScalar(t) !== null || (typeof t === "object" && "enum" in t);
 
 /**
  * Lowers a null check (see `nullCheckOf`). A side that is not optional falls to the general equality
@@ -65,8 +61,12 @@ export function nullCheck(L, node, check) {
   const isOpt = typeof v.t === "object" && "opt" in v.t;
   if (isOpt && check.undef && !check.loose) {
     const src = L.src.slice(check.value.range[0], check.value.range[1]);
-    L.error("L003", node, `'${node.operator} undefined' is ${check.present ? "true" : "false"} for null, the empty value here.`, `Use ${src} ${check.present ? "!==" : "==="} null, or ${src} ${check.present ? "!=" : "=="} null to match undefined as well.`);
+    L.error("L003", node, `'${node.operator} undefined' is ${check.present ? "true" : "false"} for null, the empty value here.`, `Use ${src} ${check.present ? "!=" : "=="} null, which matches undefined as well and narrows.`);
     return L.ex({ k: "null", t: "unknown", span });
+  }
+  if (!isOpt && check.undef && v.t !== "unknown" && v.t !== "null") {
+    L.error("L003", node, `${describe(v.t)} and undefined can never be equal.`, "This value is never empty: drop the check.");
+    return L.ex({ k: "bool", v: !check.present, t: "bool", span });
   }
   if (!isOpt || !check.loose) {
     const nothing = L.ex({ k: "null", t: "null", span: spanOf(check.emptyNode) });
@@ -86,6 +86,6 @@ export function nullFacts(L, check) {
   if (check.value.type !== "Identifier") return null;
   const b = L.lookup(check.value.name);
   if (!b || b.kind !== "const" || typeof b.t !== "object" || !("opt" in b.t)) return { yes: [], no: [] };
-  if (!check.loose && (check.undef || !nullIsEmpty(b.t.opt))) return { yes: [], no: [] };
+  if (!check.loose) return { yes: [], no: [] };
   return check.present ? { yes: [b.name], no: [] } : { yes: [], no: [b.name] };
 }

@@ -6,6 +6,7 @@ import { defineDialect, vector, scalar, exact, tolerance, enumOf, object } from 
 export const data = defineDialect({
   name: "tint",
   numberType: "f32",
+  text: (state) => JSON.stringify(state),
   types: {
     vec2: vector(2, "f32"),
     color: vector(3, "f32", { aliases: { r: "x", g: "y", b: "z" } }),

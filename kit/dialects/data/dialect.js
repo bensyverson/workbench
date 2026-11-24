@@ -58,6 +58,35 @@ const groupOf = (returns) => (/** @type {DefineSlotRef} */ ref, _program, state)
   return { params: [object(`a group of ${ref.on}`, members)], returns, space: "group" };
 };
 
+/** The most rows and the widest cell the text view shows: enough to read a table, small enough for a model. */
+const TEXT_ROWS = 20;
+const TEXT_CELL = 24;
+
+/**
+ * A table as a host shows it: its name, its columns at its last step (name to type) and its rows.
+ * @typedef {{ name: string, columns: Columns, rows: Array<Record<string, unknown>> }} Table
+ */
+
+/**
+ * The text view: a table's row count, its columns with their types, then its first rows, one per line with
+ * cells split by " | " (a date as its UTC day, a long cell cut with "…").
+ * @param {Table} table
+ * @returns {string}
+ */
+function tableText(table) {
+  const names = Object.keys(table.columns);
+  /** @param {string} c @param {unknown} v */
+  const cell = (c, v) => {
+    const s = v === null || v === undefined ? "null" : table.columns[c] === "date" && typeof v === "number" && Number.isFinite(v) ? new Date(v).toISOString().slice(0, 10) : String(v);
+    return s.length > TEXT_CELL ? `${s.slice(0, TEXT_CELL - 1)}…` : s;
+  };
+  const n = table.rows.length;
+  const lines = [`${table.name}: ${n} row${n === 1 ? "" : "s"}`, names.map((c) => `${c}: ${String(table.columns[c])}`).join(" | ")];
+  for (const row of table.rows.slice(0, TEXT_ROWS)) lines.push(names.map((c) => cell(c, row[c])).join(" | "));
+  if (n > TEXT_ROWS) lines.push(`… ${n - TEXT_ROWS} more row${n - TEXT_ROWS === 1 ? "" : "s"}`);
+  return lines.join("\n");
+}
+
 export const data = defineDialect({
   name: "data",
   numberType: "f64",
@@ -119,6 +148,8 @@ export const data = defineDialect({
     }
     return { objects: { Params: { members } } };
   },
+  // The text view's state is one table as a host shows it ({ name, columns, rows }).
+  text: tableText,
 });
 
 /** The intrinsics as the interpreter and the JS backend read them: each with its signature, reference and `js` spelling. */

@@ -157,3 +157,8 @@ test("L016: a number literal that is not finite, which no number type or the IR'
   assert.equal(only("L016", "(self) => { if (self.ttl < -1e400) self.up = false; }").text, "1e400");
   assert.deepEqual(codes(lower("(self) => { self.ttl = 1.7e308; }")), [], "the largest finite doubles still lower");
 });
+
+test("L004's tip in the DMG still says where the effect belongs", () => {
+  const { d } = only("L004", "(self) => { self.up = false; return \"up\"; }", "draw");
+  assert.match(d.tip, /^Move it to an onFrame or an event handler: /);
+});

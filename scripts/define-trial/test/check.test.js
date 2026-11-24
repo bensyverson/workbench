@@ -89,6 +89,7 @@ const FAILING = [
   { code: "D015", edits: [{ file: GRAMMAR, from: `      record: "calls",\n`, to: "" }], file: GRAMMAR, message: /record/ },
   { code: "D017", edits: [{ file: GRAMMAR, from: `as: "params"`, to: `as: "tags"` }], file: GRAMMAR, message: /tags/ },
   { code: "D018", edits: [{ file: GRAMMAR, from: "tags: { kind", to: "then: { kind" }], file: GRAMMAR, line: lineOf(GRAMMAR, "tags: {"), message: /then/ },
+  { code: "D020", edits: [{ file: DIALECT, from: "  text: (state) => JSON.stringify(state),\n", to: "" }], file: DIALECT, message: /text\(state\)/ },
   { code: "D019", edits: [{ file: GRAMMAR, from: "      opens: [name()],", to: `      opens: [name(), lambda("pixel")],` }], file: GRAMMAR, message: /lambda/ },
   // At a builder call: B001 is thrown at once, the rest collected.
   { code: "B001", edits: [{ file: EX1, from: `.mute("glow")`, to: `.mut("glow")` }], file: EX1, line: lineOf(EX1, ".mute("), message: /mut\b.*did you mean 'mute'/i },

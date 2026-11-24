@@ -9,7 +9,7 @@ import { parseLambda } from "../parse/index.js";
 
 /**
  * @typedef {object} Found
- * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt }>} errors
+ * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt, severity?: "warning", tip?: string }>} errors  errors, and warnings that do not refuse the call
  * @property {Array<{ ns: string, value: string, path: Array<string | number> }>} refs
  * @property {Array<{ convention: string, src: string, ast: ArrowFunctionExpression, path: Array<string | number>, key?: string }>} lambdas
  */
@@ -21,6 +21,9 @@ import { parseLambda } from "../parse/index.js";
 
 /** @returns {Found} */
 export const found = () => ({ errors: [], refs: [], lambdas: [] });
+
+/** What refuses the value: the errors that are not warnings. @param {Found} o */
+export const refusals = (o) => o.errors.filter((e) => e.severity !== "warning");
 
 /**
  * A Runtime Lambda's source: a string as is, an arrow function's text; B007 otherwise or when it does not parse.
@@ -98,16 +101,28 @@ export function matchShape(shape, v, path, out, key) {
   switch (s[TAG]) {
     case "oneOf": {
       const tries = s.of.map((alt) => { const o = found(); return { o, value: matchShape(alt, v, path, o, key) }; });
-      // The record keeps a lambda as text, so a call and a later re-match of its record must pick the same
-      // branch: a string that parses as an arrow function is the lambda, any other string is not.
-      const arrow = typeof v === "string" && parseLambda(v).ok;
-      const fits = tries.filter((t) => t.o.errors.length === 0);
-      const hit = fits.find((t) => (t.o.lambdas.length > 0) === arrow) ?? fits[0];
-      if (hit) { out.refs.push(...hit.o.refs); out.lambdas.push(...hit.o.lambdas); return hit.value; }
+      // The record keeps a lambda as text, which a "string" branch also takes, so a call and a later re-match
+      // of its record must agree: among the branches that fit, the one holding the most lambdas wins (the
+      // first on a tie). At any depth, text that parses as an arrow function is then the lambda.
+      const fits = tries.filter((t) => refusals(t.o).length === 0);
+      const hit = fits.reduce((/** @type {(typeof fits)[number] | undefined} */ best, t) => (!best || t.o.lambdas.length > best.o.lambdas.length ? t : best), undefined);
+      if (hit) {
+        out.refs.push(...hit.o.refs);
+        out.lambdas.push(...hit.o.lambdas);
+        out.errors.push(...hit.o.errors);
+        // Text that looks like an arrow function but does not parse stays text; say so, since the author
+        // most likely meant the lambda.
+        const broken = hit.o.lambdas.length === 0 && typeof v === "string" && /=>/.test(v) ? tries.flatMap((t) => refusals(t.o)).find((e) => e.code === "B007" && e.lambda) : undefined;
+        if (broken) out.errors.push({ ...broken, severity: "warning", message: `${broken.message}; it is taken as text, not as a lambda`, tip: "fix the arrow function so it parses, if a lambda was meant" });
+        return hit.value;
+      }
+      // A function can only have meant a lambda branch: keep that branch's B007 and its detail.
+      const lambdaTries = typeof v === "function" ? tries.filter((t) => refusals(t.o).some((e) => e.code === "B007")) : [];
+      if (lambdaTries.length === 1) { out.errors.push(...lambdaTries[0].o.errors); return v; }
       // Name the nearest form only when it is the unique best; on a tie list the forms (a few, shortened).
-      const least = Math.min(...tries.map((t) => t.o.errors.length));
-      const best = tries.filter((t) => t.o.errors.length === least);
-      if (best.length === 1) return fail(`fits none of its ${s.of.length} forms; nearest: ${best[0].o.errors[0].message}`);
+      const least = Math.min(...tries.map((t) => refusals(t.o).length));
+      const best = tries.filter((t) => refusals(t.o).length === least);
+      if (best.length === 1) return fail(`fits none of its ${s.of.length} forms; nearest: ${refusals(best[0].o)[0].message}`);
       const shown = s.of.slice(0, 4).map((alt) => describeShape(alt));
       return fail(`fits none of its ${s.of.length} forms: ${shown.join(" | ")}${s.of.length > 4 ? " | …" : ""}`);
     }

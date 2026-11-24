@@ -1,5 +1,5 @@
-// An explicit null check (`x !== null`, `x != null`, `x !== undefined`, and the negated forms) narrows an
-// optional as truthiness does, but tests emptiness only: an optional date at the epoch (stored as 0) or an
+// An explicit null check lowers with its JavaScript meaning; the loose ones (`x != null`, `x == undefined`, …)
+// narrow an optional as truthiness does, but tests emptiness only: an optional date at the epoch (stored as 0) or an
 // optional number holding 0 is present. The environment is a stand-in written for these tests.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -37,8 +37,18 @@ function ok(src) {
   return /** @type {Kernel} */ (r.kernel);
 }
 
-const PRESENT = ["x !== null", "x != null", "x != undefined", "null !== x", "undefined != x"];
-const ABSENT = ["x === null", "x == null", "x == undefined", "null === x", "undefined == x"];
+// Changed in hxjaI2: the strict `x !== null` / `x === null` no longer narrow (the core gives undefined for some
+// empty values, for which `!== null` is true; see null-check-strict.test.js), so these lists hold the loose forms only.
+const PRESENT = ["x != null", "x != undefined", "undefined != x", "null != x"];
+const ABSENT = ["x == null", "x == undefined", "undefined == x", "null == x"];
+
+test("a strict null check compares but does not narrow", () => {
+  for (const c of ["x !== null", "null !== x"]) {
+    assert.ok(lower(`${P} { const x = m; if (${c}) { return x + 1 > 2; } return false; }`).diagnostics.some((d) => d.code === "L003"), c);
+    assert.ok(lower(`${P} { const x = o; if (${c} && x < a) return true; return false; }`).diagnostics.some((d) => d.code === "L003"), c);
+  }
+  for (const c of ["x === null", "null === x"]) assert.ok(lower(`${P} { const x = m; return ${c} || x > 0; }`).diagnostics.some((d) => d.code === "L003"), c);
+});
 
 test("an explicit null check narrows an optional scalar and an optional number inside the test's branch", () => {
   for (const c of PRESENT) {
@@ -55,19 +65,20 @@ test("the negated forms narrow through else branches and early returns, as truth
     ok(`${P} { const x = o; if (${c}) { return false; } else { return x < a; } }`);
     ok(`${P} { const x = m; return ${c} || x > 0; }`);
   }
-  ok(`${P} { const x = o; if (!(x === null)) return x < a; return false; }`);
-  ok(`${P} { const x = o; if (x !== null) { } else { return false; } return x < a; }`);
+  ok(`${P} { const x = o; if (!(x == null)) return x < a; return false; }`);
+  ok(`${P} { const x = o; if (x != null) { } else { return false; } return x < a; }`);
 });
 
 test("a loose null check lowers to present, its negation to not(present); a strict one keeps ne / eq", () => {
   assert.match(printKernel(ok(`${P} { const x = o; return x != null; }`)), /present\(x\)/);
   assert.match(printKernel(ok(`${P} { const x = m; return x == undefined; }`)), /not\(present\(x\)\)/);
   assert.match(printKernel(ok(`${P} { const x = o; return x !== null; }`)), /ne\(x, null\)/);
+  assert.match(printKernel(ok(`${P} { const x = o; return x === null; }`)), /eq\(x, null\)/);
 });
 
 test("an optional date at the epoch is present after an explicit null check", () => {
   // [o, expected]: the epoch is present, null is not; the loose form also takes a missing value (undefined) as absent.
-  const cases = { "x !== null": [[0, true], [null, false]], "x != null": [[0, true], [null, false], [undefined, false]] };
+  const cases = { "x != null": [[0, true], [null, false], [undefined, false]] };
   for (const [check, rows] of Object.entries(cases)) {
     const k = ok(`${P} { const x = o; if (${check} && x < a) return true; return false; }`);
     const js = instantiate(emitKernel(k));
@@ -82,7 +93,8 @@ test("a strict check against undefined is refused, since null is the empty value
   for (const c of ["x !== undefined", "undefined === x"]) {
     const r = lower(`${P} { const x = o; return ${c}; }`);
     assert.deepEqual(r.diagnostics.map((d) => d.code), ["L003"], c);
-    assert.match(r.diagnostics[0].tip, /x (!==|===) null, or x (!=|==) null/, c);
+    // The tip names only the loose check: since hxjaI2, `x !== null` narrows nothing, so recommending it misleads.
+    assert.match(r.diagnostics[0].tip, /^Use x (!=|==) null, which matches undefined/, c);
   }
 });
 

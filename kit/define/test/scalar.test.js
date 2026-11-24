@@ -12,7 +12,7 @@ import { lowerLambda } from "../../lower/index.js";
 const DATE = dialectScalar("date", "f64");
 
 const def = () => /** @type {Record<string, any>} */ ({
-  name: "rows", numberType: "f64",
+  name: "rows", numberType: "f64", text: () => "",
   types: { date: scalar("f64", { note: "milliseconds since 1970-01-01, UTC" }), vec2: vector(2, "f64") },
   spaces: { row: { pure: true } },
   objects: { Row: { label: "a row", members: { due: "date", paid: opt("date"), history: list("date", 8), price: "f64" } } },

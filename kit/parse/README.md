@@ -40,7 +40,7 @@ if (r.ok) {
 | S112 | A `for` loop with no condition | |
 | S113 | Computed object key | |
 | S114 | Default value in a parameter or pattern | |
-| S116 | Loose `==` / `!=` (a warning) | none: `x == null` also matches undefined |
+| S116 | Loose `==` / `!=` (a warning), except against a `null` literal: `x != null` is the kit's null check ([kit/lower](../lower/README.md)) | none: `x == undefined` also matches null |
 
 **The S110 fixit** is offered only when `let` cannot change the meaning: the `var` is a direct statement of the lambda's top-level block (not inside an `if`, loop or nested block), no name it declares is read before or in its own declarator, and no name is declared twice (a parameter counts). Otherwise S110 is still an error with its tip, and no edit.
 

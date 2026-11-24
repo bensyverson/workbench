@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, exact, name, ref, data, lambda, oneOf, recordOf, listOf } from "../index.js";
 
 const d = defineDialect({
-  name: "t", numberType: "f64", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+  name: "t", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
   slots: { v: { params: [], returns: "f64", space: "s" } },
 });
 /** @param {any} shape */
