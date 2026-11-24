@@ -52,11 +52,12 @@ export const fields = defineDialect({
     /** @type {Record<string, unknown>} */
     const members = {};
     for (const [n, p] of Object.entries(/** @type {Record<string, ParamDecl>} */ (program.params ?? {}))) {
-      if (n in BUILT_IN) throw new Error(`param '${n}' clashes with the built-in uniform u.${n}`);
+      if (Object.hasOwn(BUILT_IN, n)) throw new Error(`param '${n}' clashes with the built-in uniform u.${n}`);
       const t = "options" in p ? enumOf(p.options) : typeof p.value === "boolean" ? "bool" : typeof p.value === "number" ? "f32" : null;
       if (t === null) throw new Error(`param '${n}' has no type: give a number, a toggle (true or false) or a choice (value and options)`);
       const size = "max" in p && typeof p.max === "number" && p.max <= SIZE_CAP;
-      members[n] = size ? { value: t, size: true } : t;
+      // defineProperty, not assignment: a param named __proto__ must be an own member, not set a prototype.
+      Object.defineProperty(members, n, { value: size ? { value: t, size: true } : t, enumerable: true, writable: true, configurable: true });
     }
     return { objects: { [UNIFORMS]: { members } } };
   },

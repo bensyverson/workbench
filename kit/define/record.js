@@ -150,7 +150,14 @@ export function matchArgs(specs, args) {
       continue;
     }
     if (i >= args.length) out.errors.push({ code: "B004", path: [i], message: `argument ${i + 1} is missing` });
-    else made.push(spec[TAG] === "name" ? args[i] : matchArg(spec, args[i], i, out));
+    else if (spec[TAG] === "name") made.push(args[i]);
+    else {
+      const before = out.errors.length;
+      made.push(matchArg(spec, args[i], i, out));
+      // a value after a name belongs to that name: say which, so the message does not leave it to the call site
+      const owner = specs[0][TAG] === "name" && typeof args[0] === "string" && i > 0 ? args[0] : null;
+      if (owner !== null) for (let e = before; e < out.errors.length; e++) out.errors[e].message = `for '${owner}', ${out.errors[e].message}`;
+    }
     i++;
   }
   if (args.length > i) out.errors.push({ code: "B004", path: [i], message: `takes at most ${specs.length} argument${specs.length === 1 ? "" : "s"}, got ${args.length}` });

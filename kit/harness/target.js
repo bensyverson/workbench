@@ -27,7 +27,7 @@ export const glslFigure = () => targetFigure(FIELDS_DIALECT, "glsl");
  */
 export function figureFor(c) {
   const o = c.override;
-  if (o === undefined) return { figure: glslFigure(), override: null };
+  if (o === undefined || o === null) return { figure: glslFigure(), override: null };
   if (typeof o.reason !== "string" || o.reason.trim() === "") throw new Error(`Case '${c.name}': a figure override must state its reason (override: { figure, reason }); without one it is a looser figure nobody can question.`);
   if (typeof o.figure !== "number" || !(o.figure > 0) || !Number.isFinite(o.figure)) throw new Error(`Case '${c.name}': the figure override must be a positive number, got ${String(o.figure)}.`);
   return { figure: o.figure, override: o };

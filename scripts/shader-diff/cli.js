@@ -38,6 +38,13 @@ function describePair(label, p, tolerance) {
 }
 
 /**
+ * One line for a case that overrode the figure: the override's, and the figure used when the caller's replaced it.
+ * @param {{ case: string, figure: number, reason: string, held: number }} o
+ * @returns {string}
+ */
+export const overrideLine = (o) => `override: ${o.case} is held to ${o.held}${o.held === o.figure ? "" : ` by --tolerance (its override is ${o.figure})`}: ${o.reason}`;
+
+/**
  * @param {CaseResult} r
  * @param {import("../../kit/harness/cases.js").Case} c
  * @param {number} tolerance
@@ -47,7 +54,7 @@ export function describeCase(r, c, tolerance) {
   const sets = c.sets.map((s) => s.label).join("; ");
   const out = [`${r.name}  ${c.width}x${c.height} pixels, ${c.sets.length} param sets (${sets})`];
   out.push(...describePair("JS vs interp", r.jsVsInterp, "exact"));
-  if (r.override) out.push(`  GLSL figure overridden to ${r.override.figure} for this case: ${r.override.reason}`);
+  if (r.override) out.push(`  GLSL figure overridden to ${r.override.figure} for this case: ${r.override.reason}${tolerance !== r.override.figure ? `; held to ${tolerance} by --tolerance` : ""}`);
   if (r.glslError) out.push(`  GLSL did not run: ${r.glslError}`);
   else if (r.glslVsInterp) out.push(...describePair("GLSL vs interp", r.glslVsInterp, `tolerance ${tolerance}`));
   return out;
@@ -107,7 +114,7 @@ export async function main(argv) {
     const problems = faultProblems(result);
     if (json) { console.log(JSON.stringify({ ...result, tally: t, problems })); return problems.length ? 1 : 0; }
     console.log(`scale ${scale}; JS exact, GLSL tolerance ${result.tolerance}`);
-    for (const o of result.overrides) console.log(`override: ${o.case} is held to ${o.figure}: ${o.reason}`);
+    for (const o of result.overrides) console.log(overrideLine(o));
     for (const r of result.rows) {
       const state = !r.planted ? "NOT PLANTED" : r.caught === null ? (r.error ? "NO SHADER" : "skipped") : r.caught ? "caught" : "ESCAPED";
       console.log(`${r.id.padEnd(28)} ${r.target.padEnd(4)} ${state.padEnd(11)} worst ${r.worst === null ? "-" : r.worst.toExponential(2)}  ${r.what}`);

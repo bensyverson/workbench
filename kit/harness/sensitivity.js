@@ -40,7 +40,7 @@ export const FAULT_SCALE = 0.49;
  * @property {FaultRow[]} rows
  * @property {Array<{ case: string, jsExact: boolean, glslWorst: number | null, tolerance?: number }>} controls  `tolerance`: the figure the control's case was held to.
  * @property {number} tolerance  The target's declared figure (or the caller's), for a control that carries none.
- * @property {Array<{ case: string, figure: number, reason: string }>} overrides  The cases that overrode the figure, each with its reason.
+ * @property {Array<{ case: string, figure: number, reason: string, held: number }>} overrides  The cases that overrode the figure, each with its reason; `held` is the figure the case was held to, which is not `figure` when the caller's `tolerance` replaced it.
  */
 
 /**
@@ -63,8 +63,10 @@ export function faultProblems(result) {
   for (const c of result.controls) {
     if (!c.jsExact) out.push(`control ${c.case}: JS differs from the interpreter with no fault planted`);
     const figure = c.tolerance ?? result.tolerance;
-    const override = result.overrides.find((o) => o.case === c.case);
-    if (c.glslWorst !== null && !(c.glslWorst <= figure)) out.push(`control ${c.case}: GLSL differs by ${c.glslWorst} with no fault planted${override ? `; held to ${figure} (override: ${override.reason})` : ""}`);
+    // Two cases may share a name: prefer the override whose held figure is this control's.
+    const override = result.overrides.find((o) => o.case === c.case && o.held === figure) ?? result.overrides.find((o) => o.case === c.case);
+    const why = !override ? "" : override.held === override.figure ? `; held to ${figure} (override: ${override.reason})` : `; held to ${figure} (the caller's tolerance; the case's override is ${override.figure}: ${override.reason})`;
+    if (c.glslWorst !== null && !(c.glslWorst <= figure)) out.push(`control ${c.case}: GLSL differs by ${c.glslWorst} with no fault planted${why}`);
   }
   for (const r of result.rows) {
     if (!r.planted) out.push(`not planted: ${r.id} (${r.target})`);
@@ -83,15 +85,16 @@ export function faultProblems(result) {
  */
 export async function runFaults(options = {}) {
   const cases = options.cases ?? standardCases(options.scale ?? FAULT_SCALE);
-  const figures = new Map(cases.map((c) => [c.name, figureFor(c)]));
-  const toleranceOf = (/** @type {import("./cases.js").Case} */ c) => options.tolerance ?? /** @type {{ figure: number }} */ (figures.get(c.name)).figure;
-  const overrides = cases.flatMap((c) => { const o = figures.get(c.name)?.override; return o ? [{ case: c.name, figure: o.figure, reason: o.reason }] : []; });
+  // Keyed by the case object: two cases may share a name and have different overrides.
+  const figures = new Map(cases.map((c) => [c, figureFor(c)]));
+  const toleranceOf = (/** @type {import("./cases.js").Case} */ c) => options.tolerance ?? /** @type {{ figure: number }} */ (figures.get(c)).figure;
+  const overrides = cases.flatMap((c) => { const o = figures.get(c)?.override; return o ? [{ case: c.name, figure: o.figure, reason: o.reason, held: toleranceOf(c) }] : []; });
   const faults = options.faults ?? FAULTS;
-  /** @type {Map<string, Float32Array[]>} */
+  /** @type {Map<import("./cases.js").Case, Float32Array[]>} */
   const refs = new Map();
   const refOf = (/** @type {import("./cases.js").Case} */ c) => {
-    let r = refs.get(c.name);
-    if (!r) refs.set(c.name, (r = referencePixels(prepare(c.program), c)));
+    let r = refs.get(c);
+    if (!r) refs.set(c, (r = referencePixels(prepare(c.program), c)));
     return r;
   };
 

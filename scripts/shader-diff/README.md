@@ -10,7 +10,7 @@ node scripts/shader-diff/cli.js faults            # planted faults in each backe
 node scripts/shader-diff/cli.js renderer          # what WebGL reports: vendor, renderer, float readback
 ```
 
-`--json` gives any verb's result; `--tolerance <n>` overrides every figure (the target's and any case's). Exit codes: `check` 1 when a pair differs, `faults` 1 when a fault changed nothing, an escape has no recorded reason or a claimed escape was caught, 2 for usage errors (and `renderer` with no usable renderer).
+`--json` gives any verb's result; `--tolerance <n>` overrides every figure (the target's and any case's; a case with an override is then reported as `held to <n> by --tolerance`). Exit codes: `check` 1 when a pair differs, `faults` 1 when a fault changed nothing, an escape has no recorded reason or a claimed escape was caught, 2 for usage errors (and `renderer` with no usable renderer).
 
 **sleepy and the sandbox.** sleepy launches WebKit through macOS services, so inside the Bash sandbox it fails (`sandbox_extension_issue_mach … launchservicesd`); run it with the sandbox off. Where sleepy is absent or cannot run, the CLI says why and runs the JS half alone (`GLSL skipped: …`), and the prerelease test skips with the same message.
 

@@ -15,7 +15,7 @@ import { domainWarp } from "../dialects/fields/programs/domain-warp.js";
 /**
  * One program over one grid and several param sets.
  * @typedef {object} Case
- * @property {Override} [override]  Replaces the GLSL target's declared figure for this case; `figureFor` refuses it without a reason, and every report prints it.
+ * @property {Override | null} [override]  Replaces the GLSL target's declared figure for this case; `figureFor` refuses it without a reason, and every report prints it.
  * @property {string} name
  * @property {FieldProgram} program
  * @property {number} width  Pixels across.

@@ -30,6 +30,7 @@ export const found = () => ({ errors: [], refs: [], lambdas: [] });
 export function lambdaSource(v) {
   if (typeof v !== "string" && typeof v !== "function") return { error: `a Runtime Lambda is an arrow function or its source text, not ${describe(v)}` };
   const src = String(v);
+  if (typeof v === "function" && /\{\s*\[native code\]\s*\}\s*$/.test(src)) return { error: "a bound function has no source text to compile: write an arrow function" };
   const r = parseLambda(src);
   if (r.ok) return { src, ast: r.ast };
   const kind = /^\s*(async\s+)?function\b/.test(src) ? "a function expression" : typeof v === "function" && !/=>/.test(src.split("{")[0]) ? "a method shorthand" : null;
@@ -58,6 +59,18 @@ export function constSource(v) {
 export const where = (path) => path.map((p) => (typeof p === "number" ? `argument ${p + 1}` : `key '${p}'`)).join(", ");
 
 /**
+ * A shape in a few words, for a message: `{ value: number, min?: number }`, `string[]`, a tag by its kind.
+ * @param {unknown} shape
+ * @returns {string}
+ */
+function describeShape(shape) {
+  if (typeof shape === "string") return shape;
+  if (isPlainObject(shape)) return `{ ${Object.entries(shape).map(([k, x]) => `${k}: ${describeShape(x)}`).join(", ")} }`;
+  const t = tagged(shape);
+  return t ? String(t[TAG]) : "a value";
+}
+
+/**
  * Matches `v` against a shape, collecting into `out`; returns the value with lambdas as source text.
  * @param {unknown} shape @param {unknown} v @param {Array<string | number>} path @param {Found} out @param {string} [key]
  * @returns {unknown}
@@ -75,7 +88,7 @@ export function matchShape(shape, v, path, out, key) {
     /** @type {Record<string, unknown>} */
     const made = {};
     for (const [k, optional] of /** @type {Array<[string, boolean]>} */ (keys)) {
-      if (!(k in v)) { if (!optional) fail(`missing the key '${k}'`); continue; }
+      if (!(k in v) || (optional && v[k] === undefined)) { if (!optional) fail(`missing the key '${k}'`); continue; }
       made[k] = matchShape(shape[optional ? `${k}?` : k], v[k], [...path, k], out);
     }
     for (const k of Object.keys(v)) if (!keys.some(([s]) => s === k)) fail(`has the key '${k}', which this shape does not take (it takes ${keys.map(([s, o]) => `'${s}'${o ? "?" : ""}`).join(", ")})`);
@@ -91,8 +104,12 @@ export function matchShape(shape, v, path, out, key) {
       const fits = tries.filter((t) => t.o.errors.length === 0);
       const hit = fits.find((t) => (t.o.lambdas.length > 0) === arrow) ?? fits[0];
       if (hit) { out.refs.push(...hit.o.refs); out.lambdas.push(...hit.o.lambdas); return hit.value; }
-      const near = tries.reduce((a, b) => (b.o.errors.length < a.o.errors.length ? b : a));
-      return fail(`fits none of its ${s.of.length} forms; nearest: ${near.o.errors[0].message}`);
+      // Name the nearest form only when it is the unique best; on a tie list the forms (a few, shortened).
+      const least = Math.min(...tries.map((t) => t.o.errors.length));
+      const best = tries.filter((t) => t.o.errors.length === least);
+      if (best.length === 1) return fail(`fits none of its ${s.of.length} forms; nearest: ${best[0].o.errors[0].message}`);
+      const shown = s.of.slice(0, 4).map((alt) => describeShape(alt));
+      return fail(`fits none of its ${s.of.length} forms: ${shown.join(" | ")}${s.of.length > 4 ? " | …" : ""}`);
     }
     case "enum": return /** @type {unknown[]} */ (s.values).includes(v) ? v : fail(`expected one of ${/** @type {unknown[]} */ (s.values).map((x) => JSON.stringify(x)).join(", ")}, got ${describe(v)}`);
     case "recordOf": {

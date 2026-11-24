@@ -53,7 +53,7 @@ test("the stress case overrides the figure and says why", () => {
 test("faultProblems prints an override and its reason beside the control it loosened", async () => {
   const c = { ...swirl(), override: { figure: 1e-2, reason: "because" } };
   const result = await runFaults({ cases: [c], faults: [] });
-  assert.deepEqual(result.overrides, [{ case: c.name, figure: 1e-2, reason: "because" }]);
+  assert.deepEqual(result.overrides, [{ case: c.name, figure: 1e-2, reason: "because", held: 1e-2 }]);
   const loose = { ...result, controls: [{ case: c.name, jsExact: true, glslWorst: 5e-3, tolerance: 1e-2 }] };
   assert.deepEqual(faultProblems(loose), []);
   const tight = { ...result, controls: [{ case: c.name, jsExact: true, glslWorst: 5e-2, tolerance: 1e-2 }] };

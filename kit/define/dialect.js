@@ -126,14 +126,14 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
   const r = {
     vectors,
     scalars,
-    objects: { has: (n) => n in objects || Object.hasOwn(def.objects ?? {}, n) },
+    objects: { has: (n) => Object.hasOwn(objects, n) || Object.hasOwn(def.objects ?? {}, n) },
     // An object type made on the spot (a table's row at one step): named by its label, numbered when the
     // label is taken by different members, so equal declarations share one object.
     objectFor(label, members) {
       const decl = { label, members: Object.fromEntries(Object.entries(members).map(([m, t]) => [m, resolveMember(t, r)])) };
       for (let n = 1; ; n++) {
         const key = n === 1 ? label : `${label} #${n}`;
-        if (!(key in objects)) { objects[key] = decl; return key; }
+        if (!Object.hasOwn(objects, key)) { objects[key] = decl; return key; }
         if (JSON.stringify(objects[key]) === JSON.stringify(decl)) return key;
       }
     },
@@ -152,12 +152,13 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
   for (const [n, o] of Object.entries(added.objects ?? {})) {
     const into = (objects[n] ??= { label: o.label ?? n, members: {} });
     for (const [m, t] of Object.entries(o.members ?? {})) {
-      if (m in into.members) throw new Error(`environment(program) declares ${n}.${m} twice: it is already a member of ${n}`);
-      into.members[m] = resolveMember(t, r);
+      if (Object.hasOwn(into.members, m)) throw new Error(`environment(program) declares ${n}.${m} twice: it is already a member of ${n}`);
+      // defineProperty, not assignment: a member named __proto__ must be an own member, not a prototype.
+      Object.defineProperty(into.members, m, { value: resolveMember(t, r), enumerable: true, writable: true, configurable: true });
     }
   }
   for (const [n, t] of Object.entries(added.globals ?? {})) {
-    if (n in globals) throw new Error(`environment(program) declares the global '${n}' twice`);
+    if (Object.hasOwn(globals, n)) throw new Error(`environment(program) declares the global '${n}' twice`);
     globals[n] = resolveType(t, r);
   }
   /** @type {Map<string, SlotDecl>} */
