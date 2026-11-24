@@ -114,6 +114,7 @@ export function expr(e) {
     case "struct": return `{ ${Object.entries(e.fields).map(([k, v]) => `${k}: ${expr(v)}`).join(", ")} }`;
     case "field": return `${expr(e.of)}.${e.name}`;
     case "index": return `${expr(e.of)}[${expr(e.index)}]`;
+    case "array": return `[${e.items.map(expr).join(", ")}]`;
     case "list": return "[]";
   }
 }

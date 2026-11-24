@@ -85,6 +85,8 @@ export type Expr =
   | (ExprBase & { k: "field"; of: Expr; name: string })
   /** `of[index]`: the item, or JavaScript's `undefined` when out of range, so its type is `{ opt }`. */
   | (ExprBase & { k: "index"; of: Expr; index: Expr })
+  /** An array literal: its type is `{ list, max }` with `max` the number of items; items are evaluated in order. */
+  | (ExprBase & { k: "array"; items: Expr[] })
   /** A new empty list, filled by `push`. */
   | (ExprBase & { k: "list" });
 

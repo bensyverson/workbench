@@ -42,7 +42,7 @@ test("the survey covers every preset and lambda; these are the M1 report's figur
   assert.equal(t.find((r) => r.preset === "02")?.total, 0, "preset 02 has no runtime lambdas");
   assert.equal(rows.length, 126);
   const n = (/** @type {string} */ s) => rows.filter((r) => r.status === s).length;
-  assert.deepEqual({ lowered: n("lowered"), helpers: n("helpers"), subset: n("subset"), notYet: n("not-yet") }, { lowered: 107, helpers: 9, subset: 3, notYet: 7 });
+  assert.deepEqual({ lowered: n("lowered"), helpers: n("helpers"), subset: n("subset"), notYet: n("not-yet") }, { lowered: 109, helpers: 8, subset: 5, notYet: 4 });
   assert.equal(rows.filter((r) => r.topLevelRefs.length > 0).length, 11, "the inventory's topLevelRefs count");
   for (const id of ["04", "05", "06", "07"]) assert.ok(rows.filter((r) => r.preset === id).every((r) => r.status === "lowered"), id);
 });

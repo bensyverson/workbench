@@ -152,6 +152,7 @@ function expr(e) {
     case "load": return `${member(e.place.recv)}.${e.place.name}`;
     case "field": return `${member(e.of)}.${e.name}`;
     case "index": return `${member(e.of)}[${top(e.index)}]`;
+    case "array": return `[${e.items.map(expr).join(", ")}]`;
     case "list": return "[]";
     case "op": {
       const [a, b] = e.args.map(expr);

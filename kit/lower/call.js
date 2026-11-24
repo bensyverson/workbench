@@ -159,6 +159,37 @@ export function reachable(sigs, from) {
 }
 
 /**
+ * Where an argument is, for the program's call-site join.
+ * @param {Lowerer} L
+ * @param {AST.Expression} a
+ * @returns {import("./environment.js").ArgSite}
+ */
+function siteOf(L, a) {
+  return { slot: L.slot.id, line: L.lines.at(a.range[0]).line, range: [a.range[0], a.range[1]] };
+}
+
+/**
+ * Lowers one argument of a program method or helper. It is checked against the parameter's
+ * joined type, unless it is the call site the join found disagreeing: that one reports the
+ * disagreement, naming both sites.
+ * @param {Lowerer} L
+ * @param {AST.Expression} a
+ * @param {number} i
+ * @param {import("./environment.js").MethodSig | undefined} sig
+ * @param {string} what
+ * @returns {Expr}
+ */
+function argument(L, a, i, sig, what) {
+  const conflict = sig?.conflicts?.find((c) => c.param === i && c.slot === L.slot.id && c.range[0] === a.range[0] && c.range[1] === a.range[1]);
+  if (conflict) {
+    const e = expr(L, a);
+    L.error("L014", a, conflict.message, conflict.tip);
+    return e;
+  }
+  return sig ? check(L, a, sig.params[i], what) : expr(L, a);
+}
+
+/**
  * A call to a method the program defines; its signature comes from the program's inference.
  * @param {Lowerer} L
  * @param {AST.CallExpression} node
@@ -183,9 +214,9 @@ function methodCall(L, node, r, owner, name, args) {
   if (sig?.partial && (L.decl.forbid.length > 0 || L.pure > 0)) {
     L.error("L014", node, `The effects of ${key} are unknown because it, or a method it calls, does not lower.`, `Fix ${key}'s diagnostics first; a ${L.slot.kind} may call only methods whose effects are known.`);
   }
-  const vals = seq(L, [() => r.recv, ...args.map((a, i) => () => (sig ? check(L, a, sig.params[i], `argument ${i + 1} of ${key}`) : expr(L, a)))]);
+  const vals = seq(L, [() => r.recv, ...args.map((a, i) => () => argument(L, a, i, sig, `argument ${i + 1} of ${key}`))]);
   const [recv, ...rest] = vals;
-  L.calls.push({ key, args: rest.map((v) => v.t) });
+  L.calls.push({ key, args: rest.map((v) => v.t), sites: args.map((a) => siteOf(L, a)) });
   const effects = /** @type {Effect[]} */ ([`call ${key}`, ...(sig?.effects ?? [])]);
   return L.ex({ k: "method", owner, name, recv, args: rest, effects, t: sig?.returns ?? "unknown", span: spanOf(node) }, effects);
 }
@@ -216,8 +247,8 @@ function helperCall(L, node, name, args) {
   if (sig?.partial && !(self && reachable(L.sigs, key).includes(self))) {
     L.error("L014", node, `The helper ${name} does not lower, so it, and anything that calls it, cannot be compiled.`, `Fix ${name}'s diagnostics first.`);
   }
-  const vals = seq(L, args.map((a, i) => () => (sig ? check(L, a, sig.params[i], `argument ${i + 1} of ${name}`) : expr(L, a))));
-  L.calls.push({ key, args: vals.map((v) => v.t) });
+  const vals = seq(L, args.map((a, i) => () => argument(L, a, i, sig, `argument ${i + 1} of ${name}`)));
+  L.calls.push({ key, args: vals.map((v) => v.t), sites: args.map((a) => siteOf(L, a)) });
   const effects = /** @type {Effect[]} */ ([`call ${name}`, ...(sig?.effects ?? [])]);
   return L.ex({ k: "helper", name, args: vals, effects, t: sig?.returns ?? "unknown", span: spanOf(node) }, effects);
 }

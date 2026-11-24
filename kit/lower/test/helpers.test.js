@@ -57,9 +57,9 @@ test("a helper is checked against the subset, and a caller of one that does not 
   assert.match(r.results[0].diagnostics[0].message, /spin/);
 });
 
-test("call sites that disagree on a parameter's type are a mismatch at the later one", () => {
+test("call sites that disagree on a parameter's type are one error at the later one", () => {
   const r = lowerProgram(environment, [frame("(self, w) => { self.ttl = twice(self.rise); self.up = twice(\"x\") > 1; }")], [fn("twice", "(n) => n * 2")]);
-  assert.deepEqual(errs(r.results[0]), ["L003"]);
+  assert.deepEqual(errs(r.results[0]), ["L014"]);
 });
 
 test("a helper nothing calls cannot have its parameters typed", () => {

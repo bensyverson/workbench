@@ -104,9 +104,36 @@ export interface HelperSource {
   src: string;
 }
 
+/** Where one argument of a call is: its lambda, its line there, and its range in that lambda's source. */
+export interface ArgSite {
+  slot: string;
+  line: number;
+  range: [number, number];
+}
+
+/** A call from a lambda to a program method or helper, with what it passes. */
+export interface CallSite {
+  /** Keyed `Owner.name`; a helper's owner is `$`. */
+  key: string;
+  args: Type[];
+  /** One per argument. */
+  sites: ArgSite[];
+}
+
+/** A call site whose argument does not join the other call sites' type for its parameter. */
+export interface SiteConflict extends ArgSite {
+  /** The parameter's position after the slot's own parameters. */
+  param: number;
+  message: string;
+  tip: string;
+}
+
 /** A program method's signature, inferred from its body and its call sites. */
 export interface MethodSig {
+  /** The strict join of the call sites' argument types, one per parameter. */
   params: Type[];
+  /** The call sites that disagree with `params`; each is reported where it is. */
+  conflicts?: SiteConflict[];
   returns: Type;
   effects: Effect[];
   /** The methods its body calls, keyed `Owner.name`. */

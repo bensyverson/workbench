@@ -100,6 +100,7 @@ export function dmgEnvironment(d) {
     over: value(BOOL, `read ${WORLD}.over`, { type: "bool" }),
     oamStart: value(F64, `read ${WORLD}.oamStart`, { type: "u8" }),
     input: value({ obj: "Input" }),
+    bg: value({ obj: "Bg" }),
     rng: value({ obj: "Rng" }),
     rand: fn([F64], F64, ["rng"], { minArgs: 0 }),
     emit: { kind: "emit", effects: ["emit {key}"] },
@@ -154,6 +155,21 @@ export function dmgEnvironment(d) {
       held: fn([buttons], BOOL, ["input"]), pressed: fn([buttons], BOOL, ["input"]),
       released: fn([buttons], BOOL, ["input"]), repeat: fn([buttons], BOOL, ["input"]),
       dpad: fn([], xy, ["input"]), axis: fn([], xy, ["input"]),
+    },
+  };
+  // The background map: tiles are named, and the runtime throws on a name the program has no tile for.
+  // The declarations do not list tile names, so a name is a plain `str` here. Cell coordinates wrap
+  // around the 32×32 map, so any number is allowed. `fill`, `rect` and `text` are not described:
+  // no preset calls them from a runtime lambda (only from `.background`, which runs at build time).
+  const bg = /** @type {Type} */ ({ obj: "Bg" });
+  objects.Bg = {
+    label: "w.bg",
+    members: {
+      get: fn([F64, F64], "str", ["read bg"]),
+      at: fn([F64, F64], "str", ["read bg", "read bg.scroll"]),
+      cell: fn([F64, F64], { struct: { cx: F64, cy: F64 } }, ["read bg.scroll"]),
+      set: fn([F64, F64, "str"], bg, ["write bg"]),
+      scroll: fn([F64, F64], bg, ["write bg.scroll"], { minArgs: 1 }),
     },
   };
   objects.Rng = {

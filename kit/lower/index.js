@@ -6,13 +6,14 @@ import { Lowerer, dedupe } from "./lowerer.js";
 import { statements, statement, effect, inferredReturn } from "./stmt.js";
 import { check } from "./expr.js";
 import { reachable } from "./call.js";
+import { joinCallSites } from "./callsites.js";
 import { HELPER_OWNER } from "./codes.js";
 
 export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
 
 /** @import { Diagnostic, ArrowFunctionExpression, Expression } from "../parse/ast.js" */
 /** @import { Kernel, Type, Effect, Stmt, Local } from "../ir/ir.js" */
-/** @import { Environment, SlotRef, SlotDecl, Signatures, HelperDecl, HelperSource } from "./environment.js" */
+/** @import { Environment, SlotRef, SlotDecl, Signatures, HelperDecl, HelperSource, CallSite } from "./environment.js" */
 
 /**
  * @typedef {object} LowerResult
@@ -20,7 +21,7 @@ export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
  * @property {Kernel | null} kernel  Null when any diagnostic is an error.
  * @property {Diagnostic[]} diagnostics  Parser, subset and lowering diagnostics, in source order.
  * @property {Array<{ name: string, t: Type }>} emits  Event payloads this lambda sends.
- * @property {Array<{ key: string, args: Type[] }>} calls  Program methods it calls, with argument types.
+ * @property {CallSite[]} calls  Program methods and helpers it calls, with argument types.
  * @property {Type} returns  What it returns (inferred for methods), even when it failed.
  * @property {Effect[]} effects
  * @property {Type[]} params  Its parameters' types.
@@ -219,11 +220,11 @@ export function lowerProgram(environment, lambdas, helperSources = []) {
  */
 function infer(lambdas, results, decls) {
   const sigs = noSignatures(decls);
-  /** @type {Record<string, Type[]>} */
+  /** @type {Record<string, CallSite[]>} */
   const callArgs = {};
   for (const r of results) {
     for (const e of r.emits) if (!(e.name in sigs.events)) sigs.events[e.name] = e.t;
-    for (const c of r.calls) if (!(c.key in callArgs)) callArgs[c.key] = c.args;
+    for (const c of r.calls) (callArgs[c.key] ??= []).push(c);
   }
   /** @type {Record<string, boolean>} */
   const failed = {};
@@ -232,7 +233,8 @@ function infer(lambdas, results, decls) {
     const key = `${l.slot.on}.${l.slot.key}`;
     const r = results[i];
     const calls = [...new Set(r.calls.map((c) => c.key))];
-    sigs.methods[key] = { params: callArgs[key] ?? [], returns: r.returns, effects: r.effects, ...(calls.length ? { calls } : {}) };
+    const { params, conflicts } = joinCallSites(callArgs[key] ?? [], key);
+    sigs.methods[key] = { params, ...(conflicts.length ? { conflicts } : {}), returns: r.returns, effects: r.effects, ...(calls.length ? { calls } : {}) };
     failed[key] = !r.ok;
   });
   for (const [key, sig] of Object.entries(sigs.methods)) {

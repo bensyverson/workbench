@@ -2,7 +2,7 @@
 // cannot stay inside one (a store, a query's loop, a lazy branch holding either)
 // spills into statements ahead of it, in evaluation order.
 
-import { assignable, join, optional, showType } from "../ir/types.js";
+import { assignable, join, optional, showType, strictJoin } from "../ir/types.js";
 import { didYouMean } from "./codes.js";
 import { call } from "./call.js";
 import { assign, update } from "./assign.js";
@@ -109,9 +109,7 @@ export function expr(L, node, expected) {
     case "ArrowFunctionExpression":
       L.error("L005", node, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.environment.queries.join(", ")}.`);
       return bad(node);
-    case "ArrayExpression":
-      L.error("L012", node, "Array literals are not lowered yet.", "Use a declared list (w.board, w.pool(name)) instead of an array literal.");
-      return bad(node);
+    case "ArrayExpression": return array(L, node);
     default:
       L.error("L012", node, `${node.type} is not lowered yet.`, "Rewrite it with the constructs in the runtime subset.");
       return bad(node);
@@ -160,7 +158,7 @@ function inline(L, e, span) {
   /** @type {Record<string, any>} */
   const copy = { ...e, span };
   for (const key of ["test", "then", "else", "recv", "of", "index"]) if (copy[key]) copy[key] = inline(L, copy[key], span);
-  if (copy.args) copy.args = copy.args.map((/** @type {Expr} */ a) => inline(L, a, span));
+  for (const key of ["args", "items"]) if (copy[key]) copy[key] = copy[key].map((/** @type {Expr} */ a) => inline(L, a, span));
   if (copy.fields) copy.fields = Object.fromEntries(Object.entries(copy.fields).map(([k, v]) => [k, inline(L, /** @type {Expr} */ (v), span)]));
   if (copy.place) copy.place = { ...copy.place, recv: inline(L, copy.place.recv, span) };
   return L.ex(/** @type {Expr} */ (copy));
@@ -456,6 +454,34 @@ export function cond(L, node, branch) {
   const arm = (arm) => [...arm.stmts, /** @type {import("../ir/ir.js").Stmt} */ ({ k: "set", name, value: arm.value, span: arm.value.span, effects: L.effectsOf(arm.value) })];
   L.emit({ k: "if", test: c, then: arm(a), else: arm(b), span });
   return L.ex({ k: "local", name, t, span });
+}
+
+/**
+ * An array literal: a bounded list as long as the literal, of the strict join of its items.
+ * An empty one has no item type, so it is rejected; there is no tuple type, so items of
+ * different types are too (L003, at the first item that does not join).
+ * @param {Lowerer} L
+ * @param {AST.ArrayExpression} node
+ * @returns {Expr}
+ */
+function array(L, node) {
+  const elements = /** @type {AST.Expression[]} */ (node.elements);
+  if (elements.length === 0) {
+    L.error("L012", node, "An empty array literal has no item type.", "Use a declared list (w.board, w.pool(name)), or write the items out.");
+    return bad(node);
+  }
+  const items = seq(L, elements.map((el) => () => expr(L, el)));
+  /** @type {Type} */
+  let item = "unknown";
+  items.forEach((e, i) => {
+    const joined = strictJoin(item, e.t);
+    if (joined === null) {
+      L.error("L003", elements[i], `An array's items share one type, but this is ${describe(e.t)} and the items before it are ${describe(item)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
+      return;
+    }
+    item = joined;
+  });
+  return L.ex({ k: "array", items, t: item === "unknown" ? "unknown" : { list: item, max: items.length }, span: spanOf(node) });
 }
 
 /**

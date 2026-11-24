@@ -84,6 +84,34 @@ export function join(a, b) {
 }
 
 /**
+ * The one type of two values that must share one, by a closed list, or null when they do
+ * not: the same type; two string literals or enums, giving the enum of both; a string
+ * literal or enum and `str`, giving `str`; a value and null (or a possibly-empty value),
+ * giving possibly empty. Dialect, entity and struct types join only with themselves, and
+ * `unknown` (an error already reported) yields to the other side. Unlike `join` it never
+ * falls back to a union, which is why call-site parameters and array items use it.
+ * @param {Type} a
+ * @param {Type} b
+ * @returns {Type | null}
+ */
+export function strictJoin(a, b) {
+  if (a === "unknown") return b;
+  if (b === "unknown" || sameType(a, b)) return a;
+  const isOpt = (/** @type {Type} */ t) => typeof t === "object" && "opt" in t;
+  const inner = (/** @type {Type} */ t) => (typeof t === "object" && "opt" in t ? t.opt : t);
+  if (a === "null" || b === "null" || isOpt(a) || isOpt(b)) {
+    const rest = [a, b].filter((t) => t !== "null").map(inner);
+    if (rest.length === 0) return "null";
+    const both = rest.length === 2 ? strictJoin(rest[0], rest[1]) : rest[0];
+    return both === null ? null : optional(both);
+  }
+  if (typeof a === "object" && typeof b === "object" && "enum" in a && "enum" in b) return { enum: [...new Set([...a.enum, ...b.enum])].sort() };
+  if (a === "str" && typeof b === "object" && "enum" in b) return "str";
+  if (b === "str" && typeof a === "object" && "enum" in a) return "str";
+  return null;
+}
+
+/**
  * `t`, made possibly empty.
  * @param {Type} t
  * @returns {Type}

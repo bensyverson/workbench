@@ -23,7 +23,7 @@ const PURE = new Set(["read", "input"]);
 const CONSTANT_KINDS = new Set(["num", "str", "bool", "null", "undef", "global"]);
 
 /** Expression fields that hold child expressions. */
-const CHILD_KEYS = ["args", "test", "then", "else", "recv", "of", "value", "init", "list", "index"];
+const CHILD_KEYS = ["args", "test", "then", "else", "recv", "of", "value", "init", "list", "index", "items"];
 
 export class Lowerer {
   /**
@@ -57,7 +57,7 @@ export class Lowerer {
     this.returns = [];
     /** @type {Array<{ name: string, t: Type }>} */
     this.emits = [];
-    /** @type {Array<{ key: string, args: Type[] }>} */
+    /** @type {import("./index.js").LowerResult["calls"]} */
     this.calls = [];
     /** @type {WeakMap<object, Effect[]>} */
     this.fx = new WeakMap();
