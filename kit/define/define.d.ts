@@ -123,6 +123,8 @@ export interface BuildDiagnostic extends Diagnostic {
   fix?: string;
   /** The Runtime Lambda it is about, on a refusal found when lowering (B011). */
   ref?: DefineSlotRef;
+  /** The Runtime Lambda a B007 or B008 is about: its source, and the place inside it when known (the first line is 1). */
+  lambda?: { src: string; loc?: Loc };
 }
 
 /** What a slot's or construct's `check` receives besides the call or record. */

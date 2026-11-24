@@ -45,6 +45,51 @@ export async function loadProgram(file) {
   return /** @type {FieldProgram} */ (found);
 }
 
+/**
+ * Where a build diagnostic is: the lambda it is about, named as lowering names it.
+ * @param {string} message
+ */
+const buildWhere = (message) => {
+  const helper = /^the helper '([^']+)'/.exec(message) ?? /\.fn\('([^']+)'\)/.exec(message);
+  return helper ? `fn ${helper[1]}` : "pixel";
+};
+
+/**
+ * The entries for a refusal from the generated builder (B007, B008 and the other B codes), which stops the
+ * sketch at `.build()`, before lowering: each is shaped like a lowering diagnostic so the classifier reads it.
+ * @param {unknown} e
+ * @returns {Entry[] | null}  null when `e` is not a build refusal
+ */
+export function buildEntries(e) {
+  const ds = /** @type {{ diagnostics?: unknown }} */ (e)?.diagnostics;
+  if (!(e instanceof Error) || !Array.isArray(ds) || !ds.every((d) => typeof d?.code === "string" && /^B\d{3}$/.test(d.code))) return null;
+  return /** @type {import("../../kit/define/define.js").BuildDiagnostic[]} */ (ds).map((d) => {
+    const lines = (d.lambda?.src ?? "").split("\n");
+    const line = d.lambda?.loc?.start.line ?? 1;
+    return { where: buildWhere(d.message), code: d.code, severity: d.severity, message: d.message, tip: d.tip ?? "", line, text: (lines[line - 1] ?? "").trim() };
+  });
+}
+
+/** The result of a sketch that did not build. @param {Entry[]} entries */
+const refused = (entries) => ({
+  ok: false, entries,
+  styleNotes: /** @type {Array<{ where: string, op: string, line: number, text: string, use: string }>} */ ([]),
+  samples: /** @type {Array<{ uv: number[], color: number[] | null, error?: string }>} */ ([]),
+});
+
+/**
+ * Builds a Program and checks it; a refusal at `.build()` is a failed check with its entries, not a throw.
+ * @param {() => FieldProgram} make
+ * @param {"typed" | "call"} style
+ */
+export function checkBuilt(make, style) {
+  try { return check(make(), style); } catch (e) {
+    const entries = buildEntries(e);
+    if (!entries) throw e;
+    return refused(entries);
+  }
+}
+
 /** @param {Kernel["body"]} body @param {(e: Record<string, any>) => void} visit */
 function walk(body, visit) {
   /** @param {unknown} v */
@@ -157,9 +202,19 @@ async function main(argv) {
   const record = { time: new Date().toISOString(), style, file: resolve(file), source: "" };
   try {
     record.source = readFileSync(file, "utf8");
-    const program = await loadProgram(file);
-    const r = check(program, /** @type {"typed" | "call"} */ (style));
-    console.log(report(r, program.name));
+    let name = "the sketch";
+    /** @type {ReturnType<typeof check>} */
+    let r;
+    try {
+      const program = await loadProgram(file);
+      name = program.name;
+      r = check(program, /** @type {"typed" | "call"} */ (style));
+    } catch (e) {
+      const entries = buildEntries(e);
+      if (!entries) throw e;
+      r = refused(entries);
+    }
+    console.log(report(r, name));
     Object.assign(record, { ok: r.ok, loadError: null, diagnostics: r.entries, styleNotes: r.styleNotes, samples: r.samples });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

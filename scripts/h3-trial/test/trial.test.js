@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { field } from "../../../kit/dialects/fields/index.js";
-import { check, loadProgram } from "../check.js";
+import { check, checkBuilt, loadProgram } from "../check.js";
 import { classify, plainJsReason } from "../classify.js";
 import { SOLUTIONS } from "./solutions.js";
 
@@ -18,7 +18,7 @@ const CHECK = join(HERE, "..", "check.js");
 const DOCS = join(HERE, "..", "docs");
 
 /** @param {string} body @param {"typed" | "call"} [style] */
-const probe = (body, style = "typed") => check(field("probe").param("k", { value: 1 }).pixel(`(uv, u) => { ${body}\n return color(0, 0, 0); }`).build(), style);
+const probe = (body, style = "typed") => checkBuilt(() => field("probe").param("k", { value: 1 }).pixel(`(uv, u) => { ${body}\n return color(0, 0, 0); }`).build(), style);
 
 test("each packet's example is valid, and valid only in its own style without notes", async () => {
   const typed = check(await loadProgram(join(DOCS, "typed-example.js")), "typed");
@@ -67,15 +67,26 @@ test("each plain-JS mistake is classified as one", () => {
 });
 
 // The generated field() (kit/define) refuses these when the Program is built (B008 for a name the lambda cannot
-// see, B007 for a lambda that does not parse), so check.js never lowers them and reports a LOAD error instead of
-// L001 or a parse error. Kept here, failing, until the main thread rules on it (leaf iJtvVE's report).
-test("a name the Dialect lacks and a parse error reach check.js as diagnostics", { todo: "the generated builder refuses them at .build() (B008, B007)" }, () => {
+// see, B007 for a lambda that does not parse); check.js turns those refusals into ordinary entries.
+test("a name the Dialect lacks and a parse error reach check.js as diagnostics", () => {
   const r = probe("const a = Math.sin(1);");
-  assert.ok(r.entries.some((e) => e.code === "L001" && plainJsReason(e)), "Math is a plain-JS mistake");
+  assert.equal(r.ok, false);
+  assert.ok(r.entries.some((e) => e.code === "B008" && plainJsReason(e)), "Math is a plain-JS mistake");
   for (const body of ["const a = dot(uv, uv);", "const a = ;"]) {
     const errs = probe(body).entries.filter((e) => e.severity === "error");
     assert.ok(errs.length >= 1 && errs.every((e) => plainJsReason(e) === null), body);
   }
+});
+
+test("a build refusal is an entry with its code, place, line, text and tip", () => {
+  const b = probe("const ok = 1;\n const a = Math.sin(1);").entries.find((e) => e.code === "B008");
+  assert.ok(b);
+  assert.deepEqual([b.where, b.line, b.text], ["pixel", 2, "const a = Math.sin(1);"]);
+  assert.match(b.tip, /\bsin\b/);
+  const p = probe("const a = ;").entries.find((e) => e.code === "B007");
+  assert.ok(p);
+  assert.deepEqual([p.where, p.line], ["pixel", 1]);
+  assert.ok(p.message && p.tip);
 });
 
 test("other mistakes are not plain-JS expectations", () => {
@@ -121,6 +132,19 @@ test("check.js on the command line: output, exit code and the H3_LOG line; class
   assert.equal(c1.byStyle.typed.byCode.LOAD, 1);
   assert.equal(c1.byStyle.typed.sketches.find((/** @type {{ file: string }} */ s) => s.file === bad)?.firstSuccess, null);
   assert.ok(existsSync(log));
+});
+
+test("check.js on a sketch the builder refuses: an ordinary entry, logged, and the classifier counts Math", () => {
+  const dir = mkdtempSync(join(tmpdir(), "h3trial-"));
+  const file = join(dir, "m.js"), log = join(dir, "log.jsonl");
+  writeFileSync(file, `import { field } from "fields";\nexport default field("m").pixel(\`(uv, u) => {\n  return color(Math.sin(uv.x), 0, 0);\n}\`).build();\n`);
+  const r = spawnSync(process.execPath, [CHECK, "typed", file], { encoding: "utf8", env: { ...process.env, H3_LOG: log } });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /error B008 in pixel, line 2: .*"Math".*\n.*Math\.sin.*\n.*tip: use sin/);
+  assert.doesNotMatch(r.stdout, /LOAD/);
+  const rec = JSON.parse(readFileSync(log, "utf8"));
+  assert.equal(rec.loadError, null);
+  assert.equal(classify(readFileSync(log, "utf8")).all.plainJs, 1);
 });
 
 test("a call-style sketch that uses an operator on vectors is logged as a STYLE note and counted", () => {

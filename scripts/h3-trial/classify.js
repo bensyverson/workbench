@@ -8,7 +8,7 @@
 //   L003  `+` as concatenation or on non-numbers ("needs numbers or vectors, not \"a\" and vec2")
 //   L003  an f32 mixed with an f64, or two vector types mixed ("vec3 and color")
 //   L003  any other L003 on a vector operator (`%`, `**`, bitwise)
-//   L001  `Math` or another global a plain-JS author reaches for
+//   L001  `Math` or another global a plain-JS author reaches for (as B008 from the generated builder: `reads "Math"`)
 //   L002  a member plain JS or GLSL would have on a vector (`.xy`, `.length`)
 //   L015  a vector built from the wrong count of components (`vec2(1)`, `vec3(c)`)
 //   STYLE the call style's own rule broken: an operator on vectors
@@ -33,6 +33,7 @@ export const RULES = /** @type {Rule[]} */ ([
   { code: "L003", message: /not a (vec\d|color|f32).* and (a )?(vec\d|color|f32)|takes two/, reason: "an operator on mismatched types (vector and scalar)" },
   { code: "L003", message: /vector/, reason: "another operator on a vector" },
   { code: "L001", message: /'Math' is not declared/, reason: "Math (plain-JS globals)" },
+  { code: "B008", message: /reads "(Math|Number|JSON|console)"/, reason: "Math (plain-JS globals)" },
   { code: "L002", message: /(vec\d|color) has no member/, reason: "a member a vector does not have (swizzle, length)" },
   { code: "L015", message: /^(vec\d|color) got/, reason: "a vector built from the wrong number of components" },
   { code: "STYLE", message: /./, reason: "an operator on vectors in the call style" },

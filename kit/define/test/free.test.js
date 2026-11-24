@@ -40,3 +40,22 @@ for (const [what, src] of MUST_PASS) test(`bound: ${what}`, () => assert.deepEqu
 test("B008 on field() for an unknown free name after a block", () => {
   assert.ok(codes("(uv, u) => { if (uv.x > 0) { const t = 1; } return color(t, 0, 0); }").includes("B008"));
 });
+
+const tipOf = (/** @type {string} */ src) => /** @type {any} */ (field("c").pixel(src).check().find((/** @type {any} */ d) => d.code === "B008"));
+
+test("B008 for Math.sin names the bare intrinsic, not a Program const", () => {
+  const d = tipOf("(uv, u) => color(Math.sin(uv.x), 0, 0)");
+  assert.match(d.tip, /\bsin\b/);
+  assert.doesNotMatch(d.tip, /const|declare/);
+});
+
+test("B008 for a global with no bare intrinsic says it is not in the language", () => {
+  const d = tipOf("(uv, u) => color(Math.hypot(uv.x, uv.y), 0, 0)");
+  assert.match(d.tip, /Math is not in the language/);
+  assert.doesNotMatch(d.tip, /const/);
+  assert.match(tipOf("(uv, u) => { console.log(uv.x); return color(0, 0, 0); }").tip, /console is not in the language/);
+});
+
+test("B008 for an ordinary free name keeps its tip", () => {
+  assert.match(tipOf("(uv, u) => color(zzz, 0, 0)").message, /zzz/);
+});

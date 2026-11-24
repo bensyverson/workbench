@@ -4,14 +4,19 @@
 import { TAG, tagged, isPlainObject, describe } from "./tags.js";
 import { parseLambda } from "../parse/index.js";
 
-/** @import { ArrowFunctionExpression, Expression } from "../parse/ast.js" */
+/** @import { ArrowFunctionExpression, Expression, Loc } from "../parse/ast.js" */
 /** @import * as T from "./define.js" */
 
 /**
  * @typedef {object} Found
- * @property {Array<{ code: string, path: Array<string | number>, message: string }>} errors
+ * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt }>} errors
  * @property {Array<{ ns: string, value: string, path: Array<string | number> }>} refs
  * @property {Array<{ convention: string, src: string, ast: ArrowFunctionExpression, path: Array<string | number>, key?: string }>} lambdas
+ */
+
+/**
+ * The lambda a diagnostic is about: its source and, when known, the place inside that source.
+ * @typedef {{ src: string, loc?: Loc }} LambdaAt
  */
 
 /** @returns {Found} */
@@ -20,7 +25,7 @@ export const found = () => ({ errors: [], refs: [], lambdas: [] });
 /**
  * A Runtime Lambda's source: a string as is, an arrow function's text; B007 otherwise or when it does not parse.
  * @param {unknown} v
- * @returns {{ src: string, ast: ArrowFunctionExpression } | { error: string }}
+ * @returns {{ src: string, ast: ArrowFunctionExpression } | { error: string, src?: string, loc?: Loc }}
  */
 export function lambdaSource(v) {
   if (typeof v !== "string" && typeof v !== "function") return { error: `a Runtime Lambda is an arrow function or its source text, not ${describe(v)}` };
@@ -28,7 +33,7 @@ export function lambdaSource(v) {
   const r = parseLambda(src);
   if (r.ok) return { src, ast: r.ast };
   const kind = /^\s*(async\s+)?function\b/.test(src) ? "a function expression" : typeof v === "function" && !/=>/.test(src.split("{")[0]) ? "a method shorthand" : null;
-  return { error: kind ? `${kind} is not a Runtime Lambda: write an arrow function` : `the lambda does not parse: ${r.diagnostics[0]?.code} ${r.diagnostics[0]?.message}` };
+  return { src, loc: kind ? undefined : r.diagnostics[0]?.loc, error: kind ? `${kind} is not a Runtime Lambda: write an arrow function` : `the lambda does not parse: ${r.diagnostics[0]?.code} ${r.diagnostics[0]?.message}` };
 }
 
 /**
@@ -80,7 +85,11 @@ export function matchShape(shape, v, path, out, key) {
   switch (s[TAG]) {
     case "oneOf": {
       const tries = s.of.map((alt) => { const o = found(); return { o, value: matchShape(alt, v, path, o, key) }; });
-      const hit = tries.find((t) => t.o.errors.length === 0);
+      // The record keeps a lambda as text, so a call and a later re-match of its record must pick the same
+      // branch: a string that parses as an arrow function is the lambda, any other string is not.
+      const arrow = typeof v === "string" && parseLambda(v).ok;
+      const fits = tries.filter((t) => t.o.errors.length === 0);
+      const hit = fits.find((t) => (t.o.lambdas.length > 0) === arrow) ?? fits[0];
       if (hit) { out.refs.push(...hit.o.refs); out.lambdas.push(...hit.o.lambdas); return hit.value; }
       const near = tries.reduce((a, b) => (b.o.errors.length < a.o.errors.length ? b : a));
       return fail(`fits none of its ${s.of.length} forms; nearest: ${near.o.errors[0].message}`);
@@ -97,7 +106,7 @@ export function matchShape(shape, v, path, out, key) {
       return v;
     case "lambda": {
       const l = lambdaSource(v);
-      if ("error" in l) { out.errors.push({ code: "B007", path, message: `${where(path)}: ${l.error}` }); return v; }
+      if ("error" in l) { out.errors.push({ code: "B007", path, message: `${where(path)}: ${l.error}`, ...(l.src !== undefined ? { lambda: { src: l.src, ...(l.loc ? { loc: l.loc } : {}) } } : {}) }); return v; }
       out.lambdas.push({ convention: /** @type {string} */ (s.convention), src: l.src, ast: l.ast, path, ...(key !== undefined ? { key } : {}) });
       return l.src;
     }

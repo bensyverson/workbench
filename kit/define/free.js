@@ -7,16 +7,18 @@
  * nested callbacks' parameters), with the place of its first read. Block scoping is honored: a name bound
  * inside a block is free after it.
  * @param {ArrowFunctionExpression} fn
- * @returns {Array<{ name: string, loc: Loc }>}
+ * @returns {Array<{ name: string, loc: Loc, member?: string }>}  `member`: the property first read off the name, as in `Math.sin`
  */
 export function freeNames(fn) {
-  /** @type {Map<string, Loc>} */
+  /** @type {Map<string, { loc: Loc, member?: string }>} */
   const free = new Map();
 
-  /** @param {string} name @param {Loc} loc @param {Scope} scope */
-  const read = (name, loc, scope) => {
+  /** @param {string} name @param {Loc} loc @param {Scope} scope @param {string} [member] */
+  const read = (name, loc, scope, member) => {
     for (let s = /** @type {Scope | null} */ (scope); s; s = s.parent) if (s.names.has(name)) return;
-    if (!free.has(name)) free.set(name, loc);
+    const seen = free.get(name);
+    if (!seen) free.set(name, { loc, ...(member ? { member } : {}) });
+    else if (member && !seen.member) seen.member = member;
   };
 
   /** @param {Pattern} p @param {Set<string>} into @param {Scope} scope  defaults are read in `scope` */
@@ -91,7 +93,11 @@ export function freeNames(fn) {
     switch (e.type) {
       case "Identifier": read(e.name, e.loc, scope); break;
       case "ArrowFunctionExpression": func(e, scope); break;
-      case "MemberExpression": expr(e.object, scope); if (e.computed) expr(e.property, scope); break;
+      case "MemberExpression":
+        if (e.object.type === "Identifier" && !e.computed && e.property.type === "Identifier") read(e.object.name, e.object.loc, scope, e.property.name);
+        else expr(e.object, scope);
+        if (e.computed) expr(e.property, scope);
+        break;
       case "Property": if (e.computed) expr(/** @type {Expression} */ (e.key), scope); expr(e.value, scope); break;
       case "ObjectPattern": case "ArrayPattern": case "AssignmentPattern": {
         // An assignment target pattern writes names it does not declare: each is a read of a free name.
@@ -111,7 +117,7 @@ export function freeNames(fn) {
   };
 
   func(fn, null);
-  return [...free].map(([name, loc]) => ({ name, loc }));
+  return [...free].map(([name, v]) => ({ name, ...v }));
 }
 
 /** @typedef {{ names: Set<string>, parent: Scope | null }} Scope */

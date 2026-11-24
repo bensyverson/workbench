@@ -40,14 +40,14 @@ One JSON line per `check.js` invocation: `time`, `style`, `file`, the file's `so
 | L003 | `needs numbers or vectors, not "a" and vec2` | `+` as string concatenation or on non-numbers |
 | L003 | f32 with f64, or two vector types | number-type or vector-type mixing |
 | L003 | any other message about a vector operator | `%`, `**`, bitwise on a vector |
-| L001 | `'Math' is not declared here` | `Math.PI`, `Math.sin` |
+| L001 / B008 | `'Math' is not declared here` / `reads "Math"` | `Math.PI`, `Math.sin` |
 | L002 | `vec2 has no member 'xy'` | a swizzle or `.length` |
 | L015 | `vec2 got 1 argument` | a splat or a vector given to a constructor |
 | STYLE | (call style) an operator applied to a vector | the call style's own rule broken |
 
 Everything else is "other": parse errors, `dot` and other names the Dialect lacks (L001 for a name that is not `Math`), loops (L007), helpers (L014), `LOAD` errors (the file does not run or exports no Program). The classification is by pattern, so read the per-template counts (`classify.js` prints them) before quoting a total.
 
-> **Changed 2026-11-24 (leaf iJtvVE):** `field` is now the builder the Definition API generates, which refuses a name the lambda cannot see (`Math`, `dot`; `B008`) and a lambda that does not parse (`B007`) when the sketch's `.build()` runs, before `check.js` lowers it. A rerun of this trial therefore logs those as `LOAD` errors, not L001 or parse errors, and the `Math` rule above no longer fires; `B008`'s tip suggests declaring the name with `.const` instead of naming the bare intrinsic. The 2026-11-23 results were taken with the hand-written builder. `test/trial.test.js` keeps the old expectation as a `todo` test until this is ruled on.
+> **Changed 2026-11-24 (leaf iJtvVE, then Afyn1H):** `field` is the builder the Definition API generates, which refuses a name the lambda cannot see (`Math`, `dot`; `B008`) and a lambda that does not parse (`B007`) when the sketch's `.build()` runs, before lowering. `check.js` turns those refusals into ordinary entries (`B008`/`B007`, with the lambda's line, its text and the tip; no `LOAD` error), and `classify.js` counts `B008` for `Math`, `Number`, `JSON` and `console` as the same plain-JS mistake as the old `L001` for `Math`. `B008`'s tip for `Math.sin` is `use sin, not Math.sin`. A `B007` line is the parser's own, within the lambda. The 2026-11-23 results were taken with the hand-written builder, so their `L001` counts and a rerun's `B008` counts are the same mistake under two codes.
 
 ## Known confounds
 

@@ -13,6 +13,7 @@ import { freeNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 
 /** @import * as T from "./define.js" */
+/** @import { Found } from "./shapes.js" */
 /** @import { Loc, ArrowFunctionExpression } from "../parse/ast.js" */
 /** @import { Construct, Instance, Call } from "./record.js" */
 
@@ -34,6 +35,8 @@ const PROBES = new Set(PROBE_LIST);
 const UNITS = "\0unit";
 /** The namespace every stateful construct instance's name is in, whatever its construct. */
 const STATES = "\0state";
+/** JavaScript globals a lambda author may reach for; B008's tip for one differs from a Program name's. */
+const JS_GLOBALS = new Set(["Math", "Number", "JSON", "console", "Object", "Array", "String", "Boolean", "Date", "BigInt", "Symbol", "Reflect", "Intl", "globalThis", "window", "document", "process"]);
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 
 /**
@@ -83,7 +86,7 @@ class Program {
     this.names = new Map([[UNITS, new Set([...Object.keys(g.dialect.def.intrinsics ?? {}), ...g.dialect.library.map((u) => u.name), ...Object.keys(g.dialect.def.globals ?? {}), ...callableTypes(g.dialect.def.types), ...Object.keys(g.dialect.def.conversions ?? {})])]]);
     /** @type {Instance | null} */
     this.root = null;
-    /** @type {Array<{ ast: ArrowFunctionExpression, what: string, at: { file: string, loc: Loc } }>} */
+    /** @type {Array<{ ast: ArrowFunctionExpression, src: string, what: string, at: { file: string, loc: Loc } }>} */
     this.sources = [];
   }
 
@@ -110,9 +113,9 @@ class Program {
     return this.builder(inst);
   }
 
-  /** @param {Array<{ code: string, path: Array<string | number>, message: string }>} errors @param {string} what @param {{ file: string, loc: Loc }} at */
+  /** @param {Found["errors"]} errors @param {string} what @param {{ file: string, loc: Loc }} at */
   report(errors, what, at) {
-    for (const e of errors) this.diagnostics.push(diag(e.code, `${what}: ${e.message}`, e.code === "B007" ? "pass an arrow function, (x) => …, or its source text" : "pass a value of the shape the slot declares", at, { arg: e.path.length === 1 ? /** @type {number} */ (e.path[0]) : e.path }));
+    for (const e of errors) this.diagnostics.push(diag(e.code, `${what}: ${e.message}`, e.code === "B007" ? "pass an arrow function, (x) => …, or its source text" : "pass a value of the shape the slot declares", at, { arg: e.path.length === 1 ? /** @type {number} */ (e.path[0]) : e.path, ...(e.lambda ? { lambda: e.lambda } : {}) }));
   }
 
   /**
@@ -152,7 +155,7 @@ class Program {
 
   /** Remembers a call's lambdas for the free-name rule. @param {Call} call @param {{ file: string, loc: Loc }} at */
   track(call, at) {
-    for (const l of call.found.lambdas) this.sources.push({ ast: l.ast, what: `the ${l.convention} lambda${l.key ? ` '${l.key}'` : ""}`, at });
+    for (const l of call.found.lambdas) this.sources.push({ ast: l.ast, src: l.src, what: `the ${l.convention} lambda${l.key ? ` '${l.key}'` : ""}`, at });
   }
 
   /**
@@ -176,9 +179,9 @@ class Program {
       if (typeof n !== "string") { this.diagnostics.push(diag("B004", `${what}: .${slot}(name, source) takes the name as a string, not ${typeof n}`, `.${slot}("name", …)`, at)); return; }
       this.declare(null, c.name, n, at);
       const r = s.unit === "fn" ? lambdaSource(src) : constSource(src);
-      if ("error" in r) { this.diagnostics.push(diag("B007", `${what}: .${slot}('${n}'): ${r.error}`, s.unit === "fn" ? `.${slot}("${n}", (x) => …)` : `.${slot}("${n}", "0.5")`, at)); return; }
+      if ("error" in r) { this.diagnostics.push(diag("B007", `${what}: .${slot}('${n}'): ${r.error}`, s.unit === "fn" ? `.${slot}("${n}", (x) => …)` : `.${slot}("${n}", "0.5")`, at, /** @type {{ src?: string, loc?: Loc }} */ (r).src !== undefined ? { lambda: { src: /** @type {string} */ (/** @type {any} */ (r).src), ...(/** @type {any} */ (r).loc ? { loc: /** @type {any} */ (r).loc } : {}) } } : {})); return; }
       call = { slot, args: [n, r.src], loc: at.loc, file: at.file, found: found() };
-      this.sources.push({ ast: r.ast, what: `the ${s.unit === "fn" ? "helper" : "constant"} '${n}'`, at });
+      this.sources.push({ ast: r.ast, src: r.src, what: `the ${s.unit === "fn" ? "helper" : "constant"} '${n}'`, at });
     } else {
       const specs = /** @type {T.Tagged[]} */ (s.args);
       const m = matchArgs(specs, args);
@@ -270,10 +273,15 @@ class Program {
     } catch { /* a hook that cannot run on a refused record adds nothing */ }
     const constSlot = Object.values(this.g.constructs).flatMap((c) => Object.entries(/** @type {Record<string, any>} */ (c.def.slots ?? {}))).find(([, s]) => s.kind === "unit" && s.unit === "const")?.[0];
     for (const src of this.sources) {
-      for (const { name } of freeNames(src.ast)) {
+      for (const { name, member, loc } of freeNames(src.ast)) {
         if (allowed.has(name)) continue;
+        if (member !== undefined && JS_GLOBALS.has(name)) {
+          const bare = Object.hasOwn(d.intrinsics ?? {}, member) ? `use ${member}` : `${name} is not in the language`;
+          this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, `${bare}${bare === `use ${member}` ? `, not ${name}.${member}` : ""}`, src.at, { lambda: { src: src.src, loc } }));
+          continue;
+        }
         const ways = [constSlot ? `declare it on the Program, .${constSlot}("${name}", "…")` : null, d.globals && "$" in d.globals ? `make it a parameter and read $.${name}` : null].filter(Boolean);
-        this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, ways.length ? ways.join(", or ") : `use only its parameters, the ${d.name} Dialect's names and the Program's helpers`, src.at));
+        this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, ways.length ? ways.join(", or ") : `use only its parameters, the ${d.name} Dialect's names and the Program's helpers`, src.at, { lambda: { src: src.src, loc } }));
       }
     }
   }
