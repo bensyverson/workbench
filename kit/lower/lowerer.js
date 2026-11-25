@@ -71,6 +71,8 @@ export class Lowerer {
     scanNames(ast, this.taken, this.reserved, true);
     /** Where each identifier stands, for the handle rule (L018). */
     this.handleRoles = handleRoles(ast);
+    /** @type {Set<string>} the expressions already refused L018 for a handle, by name and range */
+    this.handleRefused = new Set();
   }
 
   /**

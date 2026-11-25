@@ -130,3 +130,27 @@ test("DMG: self and w are handles too", () => {
   assert.ok(errs(lower("(self, w) => { const me = self; me.up = true; }")).includes("L018"));
   assert.ok(errs(lower("(self, w) => { const ww = w; ww.score = 1; }", "onFrame", "Mole")).includes("L018"));
 });
+
+// Review of 2eae282 (reviewer-2eae282, 2026-11-25): one mistake is one L018, and a callable handle is only called.
+for (const [what, body] of [
+  ["a handle compared with itself", "if (p === p) { p.x = 1; }"],
+  ["a ternary whose arms are one handle", "const q = i > 0 ? p : p;"],
+  ["an array holding one handle twice", "const a = [p, p];"],
+]) {
+  test(`one mistake, one L018: ${what}`, () => {
+    assert.deepEqual(errs(run(body)), ["L018"]);
+  });
+}
+
+test("two separate mistakes with one handle are two L018s", () => {
+  assert.deepEqual(errs(run("const q = p; const r = p;")), ["L018", "L018"]);
+});
+
+test("L018: a callable handle's member read: a callable handle is only called", () => {
+  /** @type {Environment} */
+  const withSeed = { ...env, objects: { ...env.objects, Rng: { ...env.objects.Rng, members: { seed: { kind: "value", t: "f64" } } } } };
+  const r = lowerLambda(withSeed, "(p, rng, i, w) => { p.x = rng.seed; }", ref);
+  assert.deepEqual(errs(r), ["L018"]);
+  assert.match(r.diagnostics.find((d) => d.code === "L018")?.tip ?? "", /only called/);
+  assert.deepEqual(errs(lowerLambda(withSeed, "(p, rng, i, w) => { p.x = rng(); }", ref)), []);
+});

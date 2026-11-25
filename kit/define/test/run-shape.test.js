@@ -66,3 +66,18 @@ test("a function that opens no root and returns no builder is still the host's T
   assert.throws(() => run(() => ({ program: 1 })), /must return the Program's builder chain/);
   assert.throws(() => run(() => 3), TypeError);
 });
+
+// Review of 2eae282: B017 names what came back without printing a function's whole source, and names a Promise.
+test("B017 for a returned function says 'a function', not its source", () => {
+  const r = run(() => { one("q"); return () => 12345; });
+  assert.deepEqual(codes(r.diagnostics), ["B017"]);
+  assert.match(r.diagnostics[0].message, /returns a function,/);
+  assert.doesNotMatch(r.diagnostics[0].message, /12345/);
+});
+
+test("B017 for an async export names the Promise", () => {
+  const r = run(/** @type {any} */ (async () => one("q")));
+  assert.deepEqual(codes(r.diagnostics), ["B017"]);
+  assert.match(r.diagnostics[0].message, /a Promise/);
+  assert.match(r.diagnostics[0].tip, /async/);
+});

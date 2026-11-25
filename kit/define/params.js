@@ -268,8 +268,11 @@ export function run(programFn, options = {}) {
   const program = programOf(out);
   // The code opened its root and returned something else: the Program author's mistake, at the opening.
   if ((!program || program !== ctx.program) && ctx.program && ctx.site) {
-    const what = out === undefined ? "nothing" : out === null || typeof out !== "object" ? `${typeof out === "string" ? JSON.stringify(out) : String(out)}` : Array.isArray(out) ? "an array" : "an object";
-    return stopped([{ code: "B017", severity: "error", message: `the Program's code opens ${ctx.label} but returns ${what}, not its builder chain`, tip: "return the chain itself, export default ($) => program(…)…, without .build() and not wrapped in an object", loc: ctx.site.loc, range: [0, 0], file: ctx.site.file }]);
+    const promise = out instanceof Promise;
+    const what = out === undefined ? "nothing" : typeof out === "function" ? "a function" : promise ? "a Promise" : out === null || typeof out !== "object" ? `${typeof out === "string" ? JSON.stringify(out) : String(out)}` : Array.isArray(out) ? "an array" : "an object";
+    if (promise) /** @type {Promise<unknown>} */ (out).catch(() => {}); // its rejection is this mistake's, not an unhandled one
+    const tip = promise ? "the export must not be async: build the Program synchronously and return the chain itself" : "return the chain itself, export default ($) => program(…)…, without .build() and not wrapped in an object";
+    return stopped([{ code: "B017", severity: "error", message: `the Program's code opens ${ctx.label} but returns ${what}, not its builder chain`, tip, loc: ctx.site.loc, range: [0, 0], file: ctx.site.file }]);
   }
   if (!program || program !== ctx.program) throw new TypeError(`run(programFn): programFn($) must return the Program's builder chain (without .build()), not ${out === null || typeof out !== "object" ? String(out) : "an object"}`);
   for (const r of ctx.pending) ctx.reads.push({ ...r, by: null });

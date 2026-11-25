@@ -3,8 +3,8 @@
 // `h.method(…)`, `h(…)` when its object is callable, or passed whole as an argument of any call (a Program
 // helper, a Dialect method such as DMG's `w.overlap(self, b)`, an intrinsic, a keyed call), whose own type check
 // still applies; a callable one is only called. A value of object type that is not a handed-in name (`const m = w.spawn(…)`, a query callback's
-// item) is not a handle. A helper's own parameter of object type is a handle inside the helper, so the rule
-// holds however far a handle is passed.
+// item) is not a handle. A helper's own parameter of object type is a handle inside the helper, whatever a call
+// site passes it, so the rule holds however far a handle is passed.
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type } from "../ir/ir.js" */
@@ -12,8 +12,9 @@
 
 /**
  * Where an identifier stands, as far as the rule cares: the object of a member access, a call's callee, an
- * argument of any call, or the target of an assignment (refused by the store rules, L013).
- * @typedef {{ role: "member" | "callee" | "arg" | "target" }} Role
+ * argument of any call, or the target of an assignment (refused by the store rules, L013). Every other identifier
+ * has role "other" and its parent node, so one expression that misuses a handle twice (`p === p`) is refused once.
+ * @typedef {{ role: "member" | "callee" | "arg" | "target" } | { role: "other", parent: { range?: [number, number] } }} Role
  */
 
 /**
@@ -24,10 +25,11 @@
 export function handleRoles(root) {
   /** @type {Map<object, Role>} */
   const roles = new Map();
-  const walk = (/** @type {unknown} */ node) => {
-    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+  const walk = (/** @type {unknown} */ node, /** @type {{ range?: [number, number] } | null} */ parent = null) => {
+    if (Array.isArray(node)) { for (const n of node) walk(n, parent); return; }
     if (!node || typeof node !== "object") return;
     const n = /** @type {AST.Node & Record<string, any>} */ (node);
+    if (n.type === "Identifier" && parent && !roles.has(n)) roles.set(n, { role: "other", parent });
     if (n.type === "MemberExpression" && n.object.type === "Identifier") roles.set(n.object, { role: "member" });
     if (n.type === "CallExpression") {
       if (n.callee.type === "Identifier") roles.set(n.callee, { role: "callee" });
@@ -35,7 +37,7 @@ export function handleRoles(root) {
     }
     if (n.type === "AssignmentExpression" && n.left.type === "Identifier") roles.set(n.left, { role: "target" });
     if (n.type === "UpdateExpression" && n.argument.type === "Identifier") roles.set(n.argument, { role: "target" });
-    for (const [k, v] of Object.entries(n)) if (k !== "loc" && k !== "range") walk(v);
+    for (const [k, v] of Object.entries(n)) if (k !== "loc" && k !== "range") walk(v, n);
   };
   walk(root);
   return roles;
@@ -64,10 +66,17 @@ export function refuseHandle(L, node, t, kind) {
   if (owner === null) return false;
   const callable = Boolean(L.environment.objects[owner]?.call);
   const r = L.handleRoles.get(node);
-  if (r?.role === "member" || r?.role === "target") return false;
+  if (r?.role === "target") return false;
+  if (r?.role === "member" && !callable) return false;
   if (r?.role === "callee") return false; // calling a handle that is not callable is the call's own L003
   if (r?.role === "arg" && !callable) return false; // the call checks the argument's type against its parameter
   const h = node.name;
+  // One expression that misuses a handle twice (`p === p`, `c ? p : p`) is one mistake: refused once, silently after.
+  if (r?.role === "other") {
+    const key = `${h} ${r.parent.range?.[0]}:${r.parent.range?.[1]}`;
+    if (L.handleRefused.has(key)) return true;
+    L.handleRefused.add(key);
+  }
   const what = kind === "global" ? "a handle of the language" : L.slot.kind === "helper" ? "a handle this helper is passed" : "a handle this lambda is given";
   const tip = callable
     ? `A callable handle is only called: write ${h}(…) where the value is needed; it cannot be stored, passed or returned.`
