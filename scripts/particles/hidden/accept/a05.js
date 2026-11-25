@@ -1,8 +1,8 @@
 import { particles } from "../particles.grammar.js";
 
 // An emitter's forces list names a force declared later in the Program
-// ("each declared somewhere in the Program"); the .force call after the
-// emitter's own calls ends that emitter.
+// ("Names may refer forward"); the .force call after the emitter's own
+// calls acts on the Program ("any other call on it acts on the Program").
 export default ($) => particles("late-force")
   .bounds({ width: 200, height: 200 })
   .maxParticles(100)

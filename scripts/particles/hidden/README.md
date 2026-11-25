@@ -1,38 +1,49 @@
 # Particles hidden tests
 
-One line per file. RISKY = verdict inferred, not read straight off dream-code.md (reason given).
+One line per file. RISKY = verdict inferred, not read straight off dream-code.md (reason given). Judged against the final sheet (dream-code.md as settled in settled.md, 2026-11-24). "Changed:" says what happened to a file in that revision; every added, moved, rewritten or relabeled file is also listed in [CHANGES.md](CHANGES.md).
+
+Re-judging all 18 accept and 75 reject files from the earlier draft against the final sheet flipped no verdict and changed no refusal number. The touched old files are a01 (rewritten to the new example), a05 (comment updated), and a05, a07, a09, a10, a11, a13, r01 and r06c (RISKY marks dropped, because the final sheet now states each case). Every other old file is byte-for-byte unchanged and still means what its line says.
 
 ## accept/ (all must build and check clean)
 
-- a01.js — the sheet's own example Program, verbatim.
+- a01.js — the final sheet's own example Program, verbatim (now with the counter `burnedOut`: bumped in update, read in mist's rate). Changed: rewritten from the earlier draft's example, which had no counter. The old text is still accepted, and a02–a18 cover all it did.
 - a02.js — minimal Program: only bounds, maxParticles, one emitter; zero-parameter rate; spawn declaring only `p`.
 - a03.js — one-parameter rate `(t)` with a ternary; explicit tick(1/60) and seed(7); update that kills.
-- a04.js — three emitters: a two-force `forces` list, a one-force list, and no list (all forces act); rate reading `live`; spawn using `i`.
-- a05.js — RISKY: an emitter's `forces` list names a force declared *after* the emitter, and `.force` comes after the emitter's calls. Sheet says "each declared somewhere in the Program" and "any system call after them ends that emitter", but no example shows a forward reference.
+- a04.js — three emitters: a two-force `forces` list, a one-force list, and no list (all forces act); rate reading `live`; spawn using `i`; a param and a force both named `wind`.
+- a05.js — an emitter's `forces` list names a force declared *after* the emitter, and `.force` comes after the emitter's calls. Changed: RISKY dropped and the comment now quotes the final sheet ("Names may refer forward"; any other call on an emitter acts on the Program).
 - a06.js — top-level number constants and pure helpers; a helper calling helpers; a helper reading (not writing) a particle; helpers used in rate, force, update, spawn; `rng()` result passed as a number to a helper.
-- a07.js — vec2 arithmetic: `+`, `-`, number*vec, vec*number, vec/number, `.x`/`.y` reads, `length`, assigning a `let` local vector's components. RISKY (mild): `let v = p.vel / 2; v.x = …` assumes a local vector computed from a field is a fresh value, not an alias of the particle.
+- a07.js — vec2 arithmetic: `+`, `-`, number*vec, vec*number, vec/number, `.x`/`.y` reads, `length`, assigning a `let` local vector's components. Changed: RISKY dropped, because the sheet now says vectors are values (`let v = p.vel; v.x = 0;` leaves `p.vel` alone).
 - a08.js — every allowed Math name: min, max, abs, sqrt, floor, sin, cos, PI.
-- a09.js — `let` locals reassigned; fixed-count `for (let k = 0; k < 4; k++)` loops in update and spawn. RISKY: the sheet says "for loops with a fixed count" but never shows one; I assumed a literal bound with `k++` is the canonical fixed-count form.
-- a10.js — block-body exported function: build-time `for` loop over `$.count` (read after its `.param`) adds emitters with computed names/positions; reassigns the builder; returns it. RISKY: build-time `$.count` is taken to be the param's `value` (4), and emitter names built by `"flame" + k` are assumed fine.
-- a11.js — block-body exported function with a build-time `if ($.windy > 0.5)` adding a force, then returning the chain with an emitter. RISKY: same build-time `$` value assumption as a10.
+- a09.js — `let` locals reassigned; fixed-count `for (let k = 0; k < 4; k++)` loops in update and spawn. Changed: RISKY dropped, because the sheet now spells out the loop form.
+- a10.js — block-body exported function: a build-time `for` loop over `$.count` (read after its `.param`) adds emitters with computed names and positions; reassigns the builder; returns it. The `$`-bounded loop is build code (plain JavaScript), so R21's fixed-count rule does not reach it; the lambdas do not capture `k`. Changed: RISKY dropped, because build-time `$.name` gives `value` and names may come from expressions.
+- a11.js — block-body exported function with a build-time `if ($.windy > 0.5)` adding a force, then returning the chain with an emitter. Changed: RISKY dropped (same ruling as a10).
 - a12.js — compound assignment `+=`, `-=`, `*=`, `/=` on built-in number fields (size, life) and declared fields, in update and spawn.
-- a13.js — params read at build time inside one chain (after their `.param`): `maxParticles($.cap)`, emitter `x: $.origin`, `maxRate: $.peak`; the same params read in a rate lambda. RISKY: assumes build-time reads give `value`, and that range checks (maxParticles whole, emitter inside bounds, maxRate ≥ 0) are applied to those values and pass.
+- a13.js — params read at build time inside one chain (after their `.param`): `maxParticles($.cap)`, emitter `x: $.origin`, `maxRate: $.peak`; the same params read in a rate lambda. Changed: RISKY dropped, because the sheet now says build code gets `value` and what it builds is checked with that value.
 - a14.js — spawn calling `rng()` several times (into a `const`, inline), using `i`, writing pos, vel, life, size and a declared field; update reads the stored random field; seed(42).
 - a15.js — update calls `p.kill()` mid-body and keeps writing fields afterward; reads age, life and a param.
 - a16.js — emitters exactly on the bounds' corners (0,0), (width,height), (width,0) ("edges included"); an emitter with maxRate 0 and rate 0.
 - a17.js — lambdas declaring fewer parameters than their slot: force `(p)`, update `(p)`, spawn `(p)`, rate `()`.
-- a18.js — several params across lambdas; unary minus on a param; force reading declared fields; number comparisons `>=`, `<=` in ternaries; seed(0); tick(1/20); two declared fields.
+- a18.js — several params across lambdas; unary minus on a param; force reading declared fields; number comparisons `>=`, `<=` in ternaries; seed(0); tick(1/20); two declared fields; a param and a force both named `lift`.
+- a19.js — counters: four declared; bumped in spawn and update by `++`, `+= 1`, `+= p.size` and `+= 2 * p.size + rng()`; read in two rates (in a ternary, `&&`, `Math.min`); one never used. No counter in a force or helper. Added.
+- a20.js — counters, second form: `.counter("heat")` called last; a param, a field and a counter all named `heat`; bumps inside a constant-bounded loop in spawn and an `else` in update; a block-body rate reads it; `.update` after the emitter. RISKY (mild): that a lambda may name a counter declared later rests on "cross-checks run once the export returns", whose example is a `forces` list, not a counter. Added.
+- a21.js — block-body rate lambdas: a `let` reassigned then returned; `if`/`else` with a return on each arm and no trailing return; a boolean `const` and an early return. Added.
+- a22.js — vector compound assignment: `p.vel += v`, `p.vel *= n`, `p.vel /= n`, `p.pos += v`, `p.vel -= v`, `-=`/`*=` on a `let` vector, `v.x += 1` on its component; `-p.vel`. Added.
+- a23.js — newly listed operators: `&&` `||` `!`, `else` and `else if`, `!==`, `%` and `%=`, unary minus on a number and on a vector, `++`/`--` on a field and a `let`, bare `return;` in a force, update and spawn; boolean `const` locals and a boolean-returning helper. Added.
+- a24.js — `for` loops bounded by top-level constants (`STEPS`, `HALF = STEPS / 2`), a constant start, `<=` with `k += 1`, `continue`, `break`; in update, a block-body rate, spawn and a block-body helper. Added.
+- a25.js — `forces: []` (no force acts) beside an emitter with no list and one listing forces in reverse order. Added.
+- a26.js — range ends and call order: `tick(1)`, `maxParticles(10000)`, bounds width 4096 with fractional height 1.5, an emitter at (4096, 1.5), maxRate 1000000; param values at min and at max; emitters before `.param`, `.bounds`, `.force`, `.update`; an emitter named `gravity` beside a force `gravity`, an emitter named `t`; a rate reading params declared after it. Added.
+- a27.js — `rng` forms: spawn's second parameter named `r`, called in an `if`, in a fixed loop, as a helper argument, stored as a number in a `const`; a `let` copy of `p.vel` with `v.x = 0`. Added.
 
 ## reject/ (each must fail; first line names refusal number)
 
-All reject files are the same valid base Program with one change.
+Every reject file is a valid base Program with one change. The base is r02.js minus its one added line. The base for r23–r25d and r22r also declares `.counter("burnedOut")` and bumps it in update (`counters.burnedOut++`); that counter base is itself valid.
 
-- r01.js — 1: rate lambda assigns its parameter `live`. RISKY: needs a block-body rate (`{ live = 0; return 30; }`), which the sheet never shows, and assigning a parameter is also refusal 2. Every non-local assignment a rate can make (it has no particle) also falls under 2, so no case is purely 1.
+- r01.js — 1: block-body rate assigns its parameter `live` (`{ live = 0; return 30; }`). Changed: RISKY dropped, because block-body rate is now allowed and "Which" sends any non-local assignment in a rate to 1, not 2.
 - r02.js — 2: update writes `$.wind = 0`.
 - r02b.js — 2: update writes top-level constant `GRAVITY = 0`.
 - r02c.js — 2: update writes its parameter `dt = 0`.
 - r02d.js — 2: update assigns the particle parameter itself, `p = p`.
-- r02e.js — 2: `const q = p; q.vel = vec2(0, 0);` (particle under another name).
+- r02e.js — 2: `const q = p; q.vel = vec2(0, 0);` (particle under another name; refused at the alias, so one diagnostic).
 - r03.js — 3: a force writes `p.size = 2`.
 - r04.js — 4: update writes `p.age = 0`.
 - r04b.js — 4: spawn writes `p.age = 1`.
@@ -41,12 +52,12 @@ All reject files are the same valid base Program with one change.
 - r05b.js — 5: spawn writes `p.pos.y = 10`.
 - r06.js — 6: spawn calls `p.kill()`.
 - r06b.js — 6: a force calls `p.kill()`.
-- r06c.js — 6: a top-level helper `die` calls `p.kill()` (called from update). RISKY (mild): uses a block-body helper; the sheet only shows expression-bodied helpers.
-- r07.js — 7: rate calls `rng()` (rng is not even in scope there).
+- r06c.js — 6: block-body top-level helper `die` calls `p.kill()` (called only from update). Changed: RISKY dropped, because helpers may have block bodies and R6 names "a helper (even one only `update` calls)".
+- r07.js — 7: rate calls `rng()` (the name means nothing outside spawn).
 - r07b.js — 7: a force calls `rng()`.
 - r07c.js — 7: update calls `rng()`.
 - r07d.js — 7: helper `jitter` calls `rng()` (called from spawn).
-- r07e.js — 7: spawn passes `rng` itself to a helper as an argument.
+- r07e.js — 7: spawn passes `rng` itself to a helper as an argument (7 over 21 by "Which").
 - r08.js — 8: block-body helper `cool` writes `p.heat` (called from update).
 - r09.js — 9: update reads `p.speed`.
 - r09b.js — 9: spawn writes `p.helth`.
@@ -83,7 +94,7 @@ All reject files are the same valid base Program with one change.
 - r15c.js — 15: two fields named `heat`.
 - r16.js — 16: forces list names `"gravty"`.
 - r16b.js — 16: forces list names `"gravity"` twice.
-- r17.js — 17: bounds missing.
+- r17.js — 17: bounds missing (the emitter's position cannot be judged, so 17 is the only refusal).
 - r17b.js — 17: bounds called twice.
 - r17c.js — 17: maxParticles missing.
 - r17d.js — 17: maxParticles called twice.
@@ -91,14 +102,72 @@ All reject files are the same valid base Program with one change.
 - r17f.js — 17: no emitter.
 - r17g.js — 17: emitter missing rate.
 - r17h.js — 17: emitter missing spawn.
-- r17i.js — 17: emitter calls rate twice.
+- r17i.js — 17: emitter calls rate twice (17 over 22).
 - r17j.js — 17: emitter calls spawn twice.
 - r18.js — 18: rate reads `$.wnd`.
 - r18b.js — 18: a force reads `$.wnd`.
-- r19.js — 19: spawn uses `Math.random()` (diagnostic should point to `rng`).
+- r19.js — 19: spawn uses `Math.random()` (diagnostic should point to spawn's `rng`, kept in a field if needed later).
 - r19b.js — 19: a force uses `Math.tan`.
 - r19c.js — 19: update uses `Math.round`.
 - r19d.js — 19: rate uses `Date.now()`.
 - r20.js — 20: `.collide("walls")`.
 - r20b.js — 20: `.collide()` with no arguments.
 - r20c.js — 20: `.collide({ radius: 2 })`.
+- r21.js — 21: update uses `while`. Added.
+- r21b.js — 21: update compares with `==`. Added.
+- r21c.js — 21: update holds a string, `const tag = "hot"`. Added.
+- r21d.js — 21: a force reads `p["vel"]`. Added.
+- r21e.js — 21: update declares a nested arrow, `const twice = (x) => x * 2`. Added.
+- r21f.js — 21: update's `for` bounded by `$.wind`. Added.
+- r21g.js — 21: update's `for` bounded by a `let` local. Added.
+- r21h.js — 21: update's `for` body assigns `k`. Added.
+- r21i.js — 21: update stores a helper, `const h = half`. Added.
+- r21j.js — 21: update passes a helper as an argument, `first(p.size, half)`. Added.
+- r21k.js — 21: block-body rate uses `$` as a value, `const s = $`. Added.
+- r21l.js — 21: update declares a local named `vec2`. Added.
+- r21m.js — 21: a top-level helper named `length` (uncalled; still checked). Added.
+- r21n.js — 21: a force names its parameter `Math`. Added.
+- r21o.js — 21: update declares a third parameter, `(p, dt, extra)`. Added.
+- r21p.js — 21: a force gives `dt` a default. Added.
+- r21q.js — 21: rate declares a rest parameter, `(t, ...more)`. Added.
+- r21r.js — 21: rate destructures its first parameter, `({ x }, live)`. Added.
+- r21s.js — 21: update uses `**`. Added.
+- r21t.js — 21: update declares with `var`. Added.
+- r21u.js — 21: update builds an array literal. Added.
+- r21v.js — 21: update declares `let s;` with no initializer. Added.
+- r22.js — 22: emitter option `y` missing. Added.
+- r22b.js — 22: bounds given unknown option `depth`. Added.
+- r22c.js — 22: emitter `x: "200"`, not a number. Added.
+- r22d.js — 22: emitter `maxRate: Infinity`, not finite (maxRate has no upper limit, so 14 does not apply). Added.
+- r22e.js — 22: field `value: NaN`. Added.
+- r22f.js — 22: emitter named `"my jet"`. Added.
+- r22g.js — 22: an extra field named `""`. Added.
+- r22h.js — 22: an extra param named `"2fast"`. Added.
+- r22i.js — 22: param `value: 60` with `max: 50`. Added.
+- r22j.js — 22: param with `min: 50, max: -50`. Added.
+- r22k.js — 22: rate slot given a `function` expression. Added.
+- r22l.js — 22: rate slot given a build-code `const` holding an arrow, not one written in place. Added.
+- r22m.js — 22: `.maxParticles(200, 500)`, an extra argument. Added.
+- r22n.js — 22: `.rate` called before any emitter. Added.
+- r22o.js — 22: `.spawn` called before any emitter. Added.
+- r22p.js — 22: the export calls `particles` twice (the spare Program is complete, so it adds no other mistake). Added.
+- r22q.js — 22: the export returns `{ program: sys }`, not its Program. Added.
+- r22r.js — 22: an extra counter named `"burned out"`. Added.
+- r23.js — 23: update reads a counter in an `if`. Added.
+- r23b.js — 23: spawn reads a counter into `p.life`. Added.
+- r23c.js — 23: update assigns `counters.burnedOut = 0`. Added.
+- r23d.js — 23: spawn does `counters.burnedOut -= 1`. Added.
+- r23e.js — 23: update uses a bump as a value, `x = counters.burnedOut++`. Added.
+- r23f.js — 23: update does `counters.burnedOut *= 2`. Added.
+- r24.js — 24: block-body rate bumps `counters.burnedOut++`. Added.
+- r24b.js — 24: block-body rate assigns `counters.burnedOut = 0` (counter mistakes outrank 1). Added.
+- r24c.js — 24: block-body rate does `counters.burnedOut += live`. Added.
+- r24d.js — 24: a force reads a counter. Added.
+- r24e.js — 24: a force bumps a counter. Added.
+- r24f.js — 24: helper `worn` reads a counter (called from update). Added.
+- r24g.js — 24: helper `tally` bumps a counter (called from update; 24, not 8). Added.
+- r25.js — 25: update bumps `counters.burntOut`; only `burnedOut` is declared. Added.
+- r25b.js — 25: rate reads `counters["burnedOut"]` (25 over 21). Added.
+- r25c.js — 25: rate stores `const c = counters`. Added.
+- r25d.js — 25: two counters named `burnedOut` (25, not 15). Added.
+- r25e.js — 25: rate reads `counters.burnedOut` in a Program with no counter at all. Added.
