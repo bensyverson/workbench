@@ -12,7 +12,9 @@ const program = field("ripple")
     return mix(color(0, 0, 0), color(1, 1, 1), sin(d * u.k * 6.28));
   })
   .build();                                             // a lambda is its source text; a string works too
-const { kernel, diagnostics } = lowerField(program);   // kernel is null when anything failed
+const { kernel, diagnostics, pixel, helpers } = lowerField(program);   // kernel is null when anything failed
+// diagnostics are the pixel's own: a pixel blocked by a Library function or helper that does not lower has none,
+// and pixel.blockedBy names those functions, whose diagnostics are in helpers[i].result.diagnostics
 ```
 
 ## Files
@@ -23,7 +25,7 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 - `intrinsics.js`: each intrinsic as the Definition API declares it: its signature, its JS and GLSL spellings and a reference implementation.
 - `library.js`: Library functions written in the Runtime Subset (`pmod`, `vnoise`, `fbm`).
 - `calls.js`: `vadd`, `vsub`, `vmul`, `vdiv`, `vscale`, `vneg`, the operators as intrinsics for H3's call style ([the comparison](../../../project/2026-11-23-h3-styles-comparison.md)); `programs/*-calls.js` are the sketches written with them.
-- `grammar.js`: the `defineGrammar` call; `field(name)` is the builder it generates. An unknown method throws `B001` at once; every other refusal (`B002` a name taken, a Library name included; `B004` a param of the wrong shape; `B005` no pixel; `B006` two; `B007` a lambda that is not an arrow function or does not parse; `B008` a name the lambda cannot see; `F001` a value outside its range, `F002` a param named `t` or `aspect`, `F003` a param named like a helper or a Library entry) is collected with its call site and thrown by `.build()`. `program.js`: `lowerField`, the grammar's `lower` read back as `{ environment, kernel, diagnostics, helpers, pixel }`.
+- `grammar.js`: the `defineGrammar` call; `field(name)` is the builder it generates. An unknown method throws `B001` at once; every other refusal (`B002` a name taken, a Library name included; `B004` a param of the wrong shape; `B005` no pixel; `B006` two; `B007` a lambda that is not an arrow function or does not parse; `B008` a name the lambda cannot see; `F001` a value outside its range, `F002` a param named `t` or `aspect`, `F003` a param named like a helper or a Library entry) is collected with its call site and thrown by `.build()`. `program.js`: `lowerField`, the grammar's `lower` read back as `{ environment, kernel, diagnostics, helpers, pixel }`; `diagnostics` are the pixel lambda's own, so a pixel blocked by a function that does not lower has none: read `pixel.blockedBy` and those functions' diagnostics in `helpers` (as `scripts/h3-trial/check.js` does).
 - `programs/`: the two H3 sketches (each also in call style), and `coverage.js`, which calls every intrinsic and call-style operator inside the domain where GLSL and JavaScript agree, for the harness. `decls.d.ts`: the shapes (`FieldProgram`, `ParamDecl`, `Intrinsic`). `test/golden/hand-built.json`: what the hand-written builder this replaced built, which `test/grammar.test.js` holds the generated one to.
 
 ## The language

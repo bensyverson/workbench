@@ -41,8 +41,12 @@ const MADE = new WeakSet();
 /** @param {unknown} v @returns {v is T.Dialect} */
 export const isDialect = (v) => typeof v === "object" && v !== null && MADE.has(v);
 
-/** Every effect verb: what a constant may not do (a constant is computed once), as DMG's const convention. */
-const ALL_EFFECTS = /** @type {EffectVerb[]} */ (["read", "input", "hud", "call", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
+/**
+ * Every effect verb: what a constant may not do (a constant is computed once), as DMG's const convention. A constant
+ * cannot reach a bump today (its body is one expression, and a bump used as a value is L017; a helper it calls may
+ * not bump), so "bump" here is defense in depth.
+ */
+const ALL_EFFECTS = /** @type {EffectVerb[]} */ (["read", "input", "hud", "call", "write", "bump", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
 
 /**
  * The library units the sources name, then those they name, in declaration order.

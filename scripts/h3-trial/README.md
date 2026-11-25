@@ -27,7 +27,7 @@ A JS module that starts `import { field } from "fields";` (the tool supplies tha
 
 ## What the log holds
 
-One JSON line per `check.js` invocation: `time`, `style`, `file`, the file's `source` at that moment, `ok`, `loadError`, `diagnostics` (where, code, severity, message, tip, line, text), `styleNotes` (call style only: an operator applied to a vector), and the sample pixels. The `source` field lets the main thread read what the agent tried between checks.
+One JSON line per `check.js` invocation: `time`, `style`, `file`, the file's `source` at that moment, `ok`, `loadError`, `diagnostics` (where, code, severity, message, tip, line, text; `where` is `pixel`, `fn <name>`, or `library <name>` for a Library function that blocks the pixel, directly or through a helper, since a blocked caller reports nothing of its own), `styleNotes` (call style only: an operator applied to a vector), and the sample pixels. The `source` field lets the main thread read what the agent tried between checks.
 
 ## What counts as expecting plain-JS semantics
 

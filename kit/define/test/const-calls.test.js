@@ -10,7 +10,7 @@ import { fields } from "../../dialects/fields/dialect.js";
 
 /** @import { SlotDecl } from "../../lower/environment.js" */
 
-const ALL_VERBS = ["read", "input", "hud", "call", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"];
+const ALL_VERBS = ["read", "input", "hud", "call", "write", "bump", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"];
 
 /** A small Dialect, with `constants` as given. @param {unknown} [constants] */
 const tiny = (constants) => /** @type {Record<string, any>} */ ({

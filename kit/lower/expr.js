@@ -46,12 +46,14 @@ export const bad = (n) => ({ k: "null", t: "unknown", span: spanOf(n) });
  * @param {AST.Expression} node
  * @param {Type} expected
  * @param {string} what  What needs the value, for the message.
+ * @param {((text: string, got: Type) => string | null) | null} [fix]  A tip for a mismatch of the whole of `node`
+ *   (not a ternary's branch), given its text and type; null keeps the usual tip.
  * @returns {Expr}
  */
-export function check(L, node, expected, what) {
+export function check(L, node, expected, what, fix = null) {
   if (node.type === "ConditionalExpression") return cond(L, node, (n) => check(L, n, expected, what));
   const e = asScalar(L, expr(L, node, expected), expected);
-  if (!assignable(e.t, expected)) mismatch(L, node, e.t, expected, what);
+  if (!assignable(e.t, expected)) mismatch(L, node, e.t, expected, what, fix?.(L.src.slice(node.range[0], node.range[1]), e.t) ?? null);
   return e;
 }
 

@@ -13,7 +13,9 @@ import { LIBRARY } from "./dialect.js";
  * @typedef {object} FieldLowering
  * @property {import("../../lower/environment.js").Environment} environment
  * @property {Kernel | null} kernel  The pixel Kernel; null when anything failed.
- * @property {LowerResult["diagnostics"]} diagnostics  The pixel lambda's.
+ * @property {LowerResult["diagnostics"]} diagnostics  The pixel lambda's own, and only those: when a Library function
+ *   or helper it calls does not lower, the pixel has no kernel and may have no diagnostic; `pixel.blockedBy` names
+ *   those functions, and their diagnostics are in `helpers` (a blocked helper's own `result.blockedBy` leads on).
  * @property {HelperResult[]} helpers  The Library functions and helpers it uses, with their Kernels.
  * @property {LowerResult} pixel
  */

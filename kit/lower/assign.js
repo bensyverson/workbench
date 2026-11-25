@@ -8,7 +8,7 @@ import { components, componentOf, componentNames, isUntyped } from "./numeric.js
 import { expr, check, mismatch, bad, seq, binary, resolveMember, placeOf, identifier, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
-/** @import { Expr, Effect, Place, Span } from "../ir/ir.js" */
+/** @import { Expr, Effect, Place, Span, Type } from "../ir/ir.js" */
 /** @import { Lowerer, Binding } from "./lowerer.js" */
 
 /**
@@ -106,7 +106,8 @@ export function assign(L, node, wantValue) {
   if (!p) return bad(node);
   if (p.total) {
     if (op !== "+=" || wantValue) return refuseTotal(L, node, target, op === "+=" ? "a bump used as a value" : `changed with '${op}'`);
-    const value = check(L, node.right, "f64", `a bump of ${L.src.slice(target.range[0], target.range[1])}`);
+    const written = L.src.slice(target.range[0], target.range[1]);
+    const value = check(L, node.right, "f64", `a bump of ${written}`, (text, got) => bumpFix(L, written, text, got));
     L.emit({ k: "bump", place: p.total, value, span }, [/** @type {Effect} */ (`bump ${p.total.owner}.${p.total.name}`)]);
     return bad(node);
   }
@@ -258,4 +259,17 @@ function refuseTotal(L, node, target, why) {
   const written = L.src.slice(target.range[0], target.range[1]);
   L.error("L017", node, `'${written}' is a total, ${why}.`, `A total changes only by a statement that adds to it: ${written} += <number>; or ${written}++;`);
   return bad(node);
+}
+
+/**
+ * The L003 tip for a total bumped by an f32: a total is an f64 even in an f32 Dialect, and f32 and f64 never mix, so
+ * the fix is the statement with the Dialect's conversion written in. Null (the usual tip) for any other type.
+ * @param {Lowerer} L @param {string} written  the total as written @param {string} text  the value as written @param {Type} got
+ * @returns {string | null}
+ */
+function bumpFix(L, written, text, got) {
+  if (got !== "f32") return null;
+  const conv = Object.entries(L.environment.conversions ?? {}).find(([, t]) => t === "f64")?.[0];
+  if (conv) return `A total is an f64, and f32 and f64 never mix; convert explicitly: ${written} += ${conv}(${text});`;
+  return `A total is an f64, and f32 and f64 never mix, but this Dialect declares no conversion to f64; declare one, conversions: { f64: "f64" }, to bump a total by an f32.`;
 }

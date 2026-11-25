@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { field } from "../../../kit/dialects/fields/index.js";
-import { check, checkBuilt, loadProgram } from "../check.js";
+import { check, checkBuilt, loadProgram, report } from "../check.js";
 import { classify, plainJsReason } from "../classify.js";
 import { SOLUTIONS } from "./solutions.js";
 
@@ -95,6 +95,19 @@ test("other mistakes are not plain-JS expectations", () => {
     assert.ok(errs.length >= 1, body);
     assert.ok(errs.every((e) => plainJsReason(e) === null), `${body}: ${errs.map((e) => `${e.code} ${e.message}`).join(" | ")}`);
   }
+});
+
+test("a pixel blocked by a failing Library function shows that function's diagnostics, also through its own helper", () => {
+  for (const r of [
+    probe("const a = pmod(true, 2);"),
+    checkBuilt(() => field("probe").fn("h", "(x) => pmod(x, 2)").pixel("(uv, u) => { const a = h(true); return color(a, a, a); }").build(), "typed"),
+  ]) {
+    assert.equal(r.ok, false);
+    const lib = r.entries.filter((e) => e.where === "library pmod");
+    assert.ok(lib.length > 0 && lib.every((e) => e.code === "L003" && e.text.length > 0), JSON.stringify(r.entries));
+    assert.match(report(r, "probe"), /error L003 in library pmod, line \d+: /);
+  }
+  assert.deepEqual(probe("const a = pmod(uv.x, 2);").entries, [], "a Library function used well adds nothing");
 });
 
 test("a diagnostic carries its code, message, tip and line", () => {

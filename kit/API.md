@@ -63,7 +63,7 @@ objects: {
     wilt: { fn: { params: [], returns: "void" }, effects: ["destroy Plant"] },   // a verb: call it as a statement
   } },
   Rng: { label: "rng", call: { params: [], returns: "f64" }, effects: ["rng"] }, // a callable object: rng()
-  Totals: { label: "totals", members: { grown: { value: "f64", bump: true } } }, // a total: only += and ++ statements
+  Totals: { label: "totals", members: { grown: { value: "f64", bump: true } } }, // a total: only `+= <any f64 expression>` and ++ statements
 },
 slots: {
   rain: { params: ["f64"], returns: "f64", space: "weather", may: ["read Totals"] },
@@ -73,8 +73,8 @@ helpers: { may: ["read Plant"] },   // the default: helpers only read instance o
 ```
 
 - **Effects** are `read Obj.m` (of a writable member or total), `write Obj.m`, `destroy Obj`, `rng`, `bump Obj.m`. A pattern covers what is inside it: `"write Plant"` allows `write Plant.height`. Reading a read-only member is no effect. A slot in an instance space may always read its own instance.
-- **Only instance spaces change anything.** A `write` or `destroy` of `Obj` belongs only in a slot of the space `{ instance: "Obj" }`, which takes one `Obj` parameter, once; nothing else in the Dialect may hold or return an `Obj` (D022). A pure space's slots and `helpers` list reads only (D021).
-- **A total is never read and bumped in one slot** (D021), so the order instances run in cannot show. `environment(program)` may add writable members and totals; they are checked when the Program is lowered.
+- **Only instance spaces change anything.** A `write` or `destroy` of `Obj` belongs only in a slot of the space `{ instance: "Obj" }`, which takes one `Obj` parameter, once, and in the `effects` of `Obj`'s own verbs; nothing else in the Dialect may hold or return an `Obj` (D022). A pure space's slots and `helpers` list reads only (D021).
+- **A total is never read and bumped in one slot** (D021), so the order instances run in cannot show. In an f32 Dialect a total is still an f64: `totals.n += f64(p.x)`. `environment(program)` may add writable members and totals; they are checked when the Program is lowered.
 - **A helper's effects count at every call**, and a helper beyond `helpers.may` is one L004, at the helper. Intrinsics stay pure (`effects` on one is D021). The host (your runner) implements verbs, `rng()` and totals.
 
 ## `defineGrammar`

@@ -103,9 +103,9 @@ export function validateEffects(d) {
   for (const [n, o] of entries(d.objects)) {
     const path = ["objects", n];
     if (!isPlainObject(o)) continue;
-    for (const [m, t] of entries(o.members)) memberProblems(n, m, t, [...path, "members", m], model, out);
+    for (const [m, t] of entries(o.members)) memberProblems(n, m, t, [...path, "members", m], model, out, { defer });
     if ("effects" in o && !("call" in o)) out.push({ code: "D021", path: [...path, "effects"], message: `object '${n}' has effects but no call; effects beside an object say what calling it does.`, tip: `add call: { params: [], returns: "f64" }, or move the effects onto a verb, { fn: { … }, effects: [ … ] }` });
-    else if ("effects" in o) effectListProblems(`object '${n}''s call`, o.effects, [...path, "effects"], model, out);
+    else if ("effects" in o) effectListProblems(`object ${n}'s call`, o.effects, [...path, "effects"], model, out, { owner: null, defer });
   }
 
   for (const [n, i] of entries(d.intrinsics)) {
@@ -144,7 +144,12 @@ export function programProblems(def, added) {
   const out = [];
   const spaces = spaceModel(def);
   const model = objectModel(def.objects, added.objects);
-  for (const [n, o] of entries(added.objects)) for (const [m, t] of entries(o?.members)) memberProblems(n, m, t, ["environment", "objects", n, "members", m], model, out);
+  // The definition's verbs and calls were checked with members it lacks deferred; now every member is known.
+  for (const [n, o] of entries(def.objects)) {
+    for (const [m, t] of entries(o?.members)) if (isPlainObject(t) && "effects" in t && "fn" in t) effectListProblems(`verb ${n}.${m}`, t.effects, ["objects", n, "members", m], model, out, { owner: n, perProgram: true });
+    if (isPlainObject(o) && "effects" in o && "call" in o) effectListProblems(`object ${n}'s call`, o.effects, ["objects", n, "effects"], model, out, { owner: null, perProgram: true });
+  }
+  for (const [n, o] of entries(added.objects)) for (const [m, t] of entries(o?.members)) memberProblems(n, m, t, ["environment", "objects", n, "members", m], model, out, { perProgram: true });
   for (const [n, s] of entries(def.slots)) {
     if (!isPlainObject(s) || !("may" in s) || typeof s.space !== "string" || !(s.space in spaces)) continue;
     out.push(...checkMay(s.may, { who: `slot '${n}'`, instance: spaces[s.space], helpers: false, path: ["slots", n, "may"] }, model, { perProgram: true }));
@@ -172,10 +177,11 @@ export function conventionProblems(c, who, path, def, added) {
 }
 
 /**
- * D021 for one member's write / bump / effects.
+ * D021 for one member's write / bump / effects, and D022 for a verb that changes another object.
  * @param {string} o @param {string} m @param {unknown} t @param {Array<string | number>} path @param {ObjectModel} model @param {Problem[]} out
+ * @param {{ defer?: boolean, perProgram?: boolean }} [options]  as checkMay's
  */
-function memberProblems(o, m, t, path, model, out) {
+function memberProblems(o, m, t, path, model, out, options = {}) {
   if (!isPlainObject(t)) return;
   const x = /** @type {Record<string, unknown>} */ (t);
   const where = `member ${o}.${m}`;
@@ -189,22 +195,62 @@ function memberProblems(o, m, t, path, model, out) {
   }
   if ("effects" in x) {
     if (!("fn" in x)) out.push({ code: "D021", path, message: `${where}: effects go only on a verb, { fn: { … }, effects: [ … ] }.`, tip: "remove effects" });
-    else effectListProblems(`verb ${o}.${m}`, x.effects, path, model, out);
+    else {
+      const fn = /** @type {Record<string, unknown>} */ (x.fn);
+      if (isPlainObject(fn) && fn.returns !== "void") out.push({ code: "D021", path, message: `${where} is a verb (it has effects), so it returns "void", not ${JSON.stringify(fn.returns)}: a lambda calls it as a statement.`, tip: `fn: { …, returns: "void" }, or remove effects from a method that only computes a value` });
+      effectListProblems(`verb ${o}.${m}`, x.effects, path, model, out, { ...options, owner: o });
+    }
   }
 }
 
 /**
- * D021 for a verb's or a call's `effects`: a list of effects naming known verbs and objects.
+ * D021 for a verb's or a call's `effects`: each names a known verb, object and member as a `may` pattern does
+ * (targetProblem), and D022 for a write or destroy of an object anywhere but on a verb of that object itself: a
+ * verb of another object, or any object's call, would let a lambda change an instance it was not handed.
  * @param {string} who @param {unknown} list @param {Array<string | number>} path @param {ObjectModel} model @param {Problem[]} out
+ * @param {{ owner: string | null, defer?: boolean, perProgram?: boolean }} options  `owner`: the verb's object, null for a call
  */
-function effectListProblems(who, list, path, model, out) {
+function effectListProblems(who, list, path, model, out, options) {
+  const bad = (/** @type {string} */ message, /** @type {string} */ tip, code = "D021") => out.push({ code, path, message: `${who}: ${message}`, tip });
   if (!Array.isArray(list)) { out.push({ code: "D021", path, message: `${who}: effects must be a list of effects such as "destroy Plant" or "rng".`, tip: `effects: ["destroy Plant"]` }); return; }
   for (const e of list) {
     const p = parseEffect(e);
     if (!p) { out.push({ code: "D021", path, message: `${who}: ${JSON.stringify(e)} is not an effect: write "verb", "verb Obj" or "verb Obj.member".`, tip: `one of ${VERBS.join(", ")}, as "destroy Plant" or "rng"` }); continue; }
     if (!VERBS.includes(p.verb)) { out.push({ code: "D021", path, message: `${who}: '${p.verb}' in ${JSON.stringify(e)} is not an effect verb.${didYouMean(p.verb, [...VERBS])}`, tip: `one of ${VERBS.join(", ")}` }); continue; }
-    if (p.object !== undefined && !(p.object in model)) out.push({ code: "D021", path, message: `${who}: ${JSON.stringify(e)} names '${p.object}', which is not one of the Dialect's objects.${didYouMean(p.object, Object.keys(model))}`, tip: `name one of ${quoted(Object.keys(model))}` });
+    if (p.verb === "rng") { if (p.object !== undefined) bad(`"${e}": rng takes no object.`, `write "rng"`); continue; }
+    if (p.object === undefined) { if (p.verb !== "read") bad(`"${e}" names no object; a ${p.verb} names what it changes.`, `write "${p.verb} ${options.owner ?? "Obj"}"`); continue; }
+    if (!(p.object in model)) { bad(`"${e}" names '${p.object}', which is not one of the Dialect's objects.${didYouMean(p.object, Object.keys(model))}`, `name one of ${quoted(Object.keys(model))}`); continue; }
+    if ((p.verb === "write" || p.verb === "destroy") && p.object !== options.owner) {
+      bad(`"${e}" changes ${p.object}, and only a verb that is ${p.object}'s own member may write or destroy it, so a lambda changes only the ${p.object} it is handed.`, `remove it, and declare the change as a verb of ${p.object}: objects.${p.object}.members.<name> = { fn: { params: [], returns: "void" }, effects: ["${e}"] }`, "D022");
+      continue;
+    }
+    const problem = targetProblem(p, e, model, options);
+    if (problem) bad(problem.message, problem.tip);
   }
+}
+
+/**
+ * The D021 for one effect's target, the same in a `may` and in a verb's or a call's `effects`: a destroy names an
+ * object, not a member; a named member exists (unless `defer`); a write is of a writable member and a bump of a
+ * total; and a write or bump of a whole object finds one (unless `defer` or `perProgram`). Null when it is fine.
+ * @param {{ verb: string, object?: string, member?: string }} p  with `object` in the model
+ * @param {string} text @param {ObjectModel} model @param {{ defer?: boolean, perProgram?: boolean }} options
+ * @returns {{ message: string, tip: string, unknown?: true } | null}  `unknown`: the member does not exist
+ */
+function targetProblem(p, text, model, { defer = false, perProgram = false }) {
+  const object = /** @type {string} */ (p.object);
+  const members = model[object];
+  if (p.verb === "destroy" && p.member !== undefined) return { message: `"${text}": destroy names an object, not a member.`, tip: `write "destroy ${object}"` };
+  if (p.member !== undefined) {
+    const m = Object.hasOwn(members, p.member) ? members[p.member] : undefined;
+    if (!m) return defer ? null : { message: `"${text}" names '${p.member}', which is not a member of ${object}.${didYouMean(p.member, Object.keys(members))}`, tip: `name one of ${quoted(Object.keys(members))}`, unknown: true };
+    if (p.verb === "write" && !m.write) return { message: `"${text}": ${object}.${p.member} is not writable.`, tip: `declare it { value: …, write: true }, or leave the write out` };
+    if (p.verb === "bump" && !m.bump) return { message: `"${text}": ${object}.${p.member} is not a total.`, tip: `declare it { value: "f64", bump: true }, or leave the bump out` };
+  } else if (p.verb === "write" || p.verb === "bump") {
+    const has = Object.values(members).some((m) => (p.verb === "write" ? m.write : m.bump));
+    if (!has && !defer && !perProgram) return { message: `"${text}": ${object} has no ${p.verb === "write" ? "writable member" : "total"}.`, tip: p.verb === "write" ? `declare a member { value: …, write: true }` : `declare a member { value: "f64", bump: true }` };
+  }
+  return null;
 }
 
 /**
@@ -237,18 +283,10 @@ export function checkMay(may, where, model, { defer = false, perProgram = false 
       bad(`"${text}": a ${p.verb} of ${p.object} may appear only in a slot whose space's instance is ${p.object}${instance ? `, and this slot's is ${instance}` : ""}.`, instance ? `write "${p.verb} ${instance}…", or move the slot to a space { instance: "${p.object}" }` : `move the slot to a space { instance: "${p.object}" }`, "D022");
       continue;
     }
-    if (p.verb === "destroy" && p.member !== undefined) { bad(`"${text}": destroy names an object, not a member.`, `write "destroy ${p.object}"`); continue; }
-    const members = model[p.object];
-    if (p.member !== undefined) {
-      const m = Object.hasOwn(members, p.member) ? members[p.member] : undefined;
-      if (!m) { if (!defer) bad(`"${text}" names '${p.member}', which is not a member of ${p.object}.${didYouMean(p.member, Object.keys(members))}`, `name one of ${quoted(Object.keys(members))}`); parsed.push({ ...p, text }); continue; }
-      if (p.verb === "write" && !m.write) { bad(`"${text}": ${p.object}.${p.member} is not writable.`, `declare it { value: …, write: true }, or leave the write out`); continue; }
-      if (p.verb === "bump" && !m.bump) { bad(`"${text}": ${p.object}.${p.member} is not a total.`, `declare it { value: "f64", bump: true }, or leave the bump out`); continue; }
-    } else if (p.verb === "write" || p.verb === "bump") {
-      const has = Object.values(members).some((m) => (p.verb === "write" ? m.write : m.bump));
-      if (!has && !defer && !perProgram) { bad(`"${text}": ${p.object} has no ${p.verb === "write" ? "writable member" : "total"}.`, p.verb === "write" ? `declare a member { value: …, write: true }` : `declare a member { value: "f64", bump: true }`); continue; }
-    }
-    parsed.push({ ...p, text });
+    const problem = targetProblem(p, text, model, { defer, perProgram });
+    if (problem) bad(problem.message, problem.tip);
+    // A pattern naming a member that does not exist still takes part in the read-and-bump check below.
+    if (!problem || problem.unknown) parsed.push({ ...p, text });
   }
   for (const r of parsed.filter((p) => p.verb === "read")) {
     for (const b of parsed.filter((p) => p.verb === "bump")) {

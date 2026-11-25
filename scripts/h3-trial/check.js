@@ -8,7 +8,7 @@
 import { readFileSync, appendFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { lowerField, INTRINSICS } from "../../kit/dialects/fields/index.js";
+import { lowerField, INTRINSICS, LIBRARY } from "../../kit/dialects/fields/index.js";
 import { run } from "../../kit/interp/index.js";
 import { BuildError } from "../../kit/define/index.js";
 
@@ -24,7 +24,7 @@ export const SAMPLE_ASPECT = 1.5;
 
 /**
  * @typedef {object} Entry
- * @property {string} where  "pixel" or "fn <name>": the Lambda the diagnostic is in.
+ * @property {string} where  "pixel", "fn <name>" or, for a Library function that blocks the pixel, "library <name>": the Lambda the diagnostic is in.
  * @property {string} code
  * @property {"error" | "warning" | string} severity
  * @property {string} message
@@ -125,6 +125,20 @@ export function vectorOperators(kernel, src) {
 const OP_CALL = /** @type {Record<string, string>} */ ({ add: "vadd(a, b)", sub: "vsub(a, b)", mul: "vmul(a, b) or vscale(v, s)", div: "vdiv(a, b) or vscale(v, 1 / s)", neg: "vneg(v)", pos: "the vector itself" });
 
 /**
+ * Every function that blocks a lowering, by name: those in its `blockedBy`, then theirs, once each.
+ * @param {import("../../kit/lower/index.js").LowerResult} result
+ * @param {import("../../kit/lower/index.js").HelperResult[]} helpers
+ * @returns {string[]}
+ */
+export function blockers(result, helpers) {
+  const out = [...(result.blockedBy ?? [])];
+  for (let i = 0; i < out.length; i++) {
+    for (const n of helpers.find((h) => h.name === out[i])?.result.blockedBy ?? []) if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/**
  * Lowers one Program and gathers everything the tool shows.
  * @param {FieldProgram} program
  * @param {"typed" | "call"} style
@@ -141,6 +155,13 @@ export function check(program, style) {
   add("pixel", program.pixel, lowered.diagnostics);
   const own = new Set(program.units.map((u) => u.name));
   for (const h of lowered.helpers) if (own.has(h.name)) add(`${h.kind} ${h.name}`, program.units.find((u) => u.name === h.name)?.src ?? "", h.result.diagnostics);
+  // A caller of a function that does not lower is blocked with no diagnostic of its own, so a Library function
+  // that blocks the pixel (directly or through the sketch's helpers) shows its diagnostics here.
+  for (const name of blockers(lowered.pixel, lowered.helpers)) {
+    if (own.has(name)) continue;
+    const h = lowered.helpers.find((x) => x.name === name);
+    if (h) add(`library ${name}`, LIBRARY.find((u) => u.name === name)?.src ?? "", h.result.diagnostics);
+  }
   const ok = lowered.kernel !== null && !entries.some((e) => e.severity === "error") && lowered.helpers.every((h) => h.result.kernel);
   /** @type {Array<{ where: string, op: string, line: number, text: string, use: string }>} */
   const styleNotes = [];

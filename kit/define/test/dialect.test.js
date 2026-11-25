@@ -19,7 +19,7 @@ const PROGRAMS = /** @type {FieldProgram[]} */ ([
 ]);
 
 /** What the generated `const` convention forbids. */
-const ALL_VERBS = ["read", "input", "hud", "call", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"];
+const ALL_VERBS = ["read", "input", "hud", "call", "write", "bump", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"];
 
 test("the fields Environment: uniforms from params, the pixel and helper conventions, and the generated const convention", () => {
   const vec2 = { vec: 2, of: "f32", name: "vec2" }, color = { vec: 3, of: "f32", name: "color" };

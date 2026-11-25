@@ -4,7 +4,7 @@
 // unless `helpers.may` says more; and lowering then judges every lambda (L004, L013, L017) as the spec says.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defineDialect, exact } from "../index.js";
+import { defineDialect, defineGrammar, exact, name, lambda } from "../index.js";
 import { gardenDef, gardenGrammar } from "../fixtures/garden-dialect.js";
 import { fields } from "../../dialects/fields/dialect.js";
 
@@ -105,10 +105,55 @@ for (const [why, build, codes] of /** @type {Array<[string, (b: any) => any, str
   ["a total read in a helper helpers.may does not list is one L004, at the helper", (b) => b.fn("tall", "(pl) => pl.height > totals.grown").grow("(pl, dt) => { if (tall(pl)) pl.water = 0; }"), ["L004@tall"]],
 ])) {
   test(why, () => {
-    const got = lowered(build);
-    assert.deepEqual(got.filter((c) => c !== "L018"), codes);
+    assert.deepEqual(lowered(build), codes);
   });
 }
+
+/** Lowers a garden Program; its error diagnostics as "code message | tip". @param {(b: any) => any} build @param {(d: Record<string, any>) => void} [edit] */
+function errorTexts(build, edit = () => {}) {
+  const def = gardenDef();
+  edit(def);
+  const gg = gardenGrammar(defineDialect(/** @type {any} */ (def)));
+  const r = gg.lower(build(gg("beds").total("harvest").total("grown")).build());
+  return r.diagnostics.filter((/** @type {any} */ d) => d.severity === "error").map((/** @type {any} */ d) => `${d.code} ${d.message} | ${d.tip}`);
+}
+
+test("a total read in a helper: the L004 tip says to read it in a slot that does not bump it, since the caller that bumps it may not", () => {
+  const [l004] = errorTexts((b) => b.fn("tall", "(pl) => pl.height > totals.grown").grow("(pl, dt) => { if (tall(pl)) pl.water = 0; }"));
+  assert.match(l004, /^L004 /);
+  assert.doesNotMatch(l004, /read it in the lambda that calls the helper/);
+  assert.match(l004, /Totals\.grown.*a slot that.*does not bump it/);
+});
+
+test("a read through a helper of a total the slot may bump is L017 naming the total and the helper, not the call", () => {
+  const got = errorTexts((b) => b.fn("tall", "(pl) => pl.height > totals.grown").grow("(pl, dt) => { if (tall(pl)) pl.water = 0; }"), (d) => { d.helpers.may = ["read Plant", "read Totals"]; });
+  assert.equal(got.length, 1, got.join("\n"));
+  assert.match(got[0], /^L017 'Totals\.grown' is a total this grow may bump, so it may not read it through tall\./);
+  assert.deepEqual(errorTexts((b) => b.grow("(pl, dt) => { if (totals.grown > 3) pl.water = 0; }")).map((t) => t.split(" is ")[0]), ["L017 'totals.grown'"], "read in the lambda itself: the total as written");
+});
+
+/** A bump in a Dialect whose numberType is f32: its error diagnostics as "code message | tip". @param {string} src @param {Record<string, "f32" | "f64">} [conversions] */
+function f32Bump(src, conversions) {
+  const d = defineDialect(/** @type {any} */ ({
+    name: "dots", numberType: "f32", text: () => "", ...(conversions ? { conversions } : {}),
+    spaces: { dot: { instance: "Dot" } },
+    objects: { Dot: { label: "a dot", members: { x: { value: "f32", write: true } } }, Totals: { label: "totals", members: { n: { value: "f64", bump: true } } } },
+    globals: { totals: "Totals" },
+    targets: { js: { accepts: "*", compare: exact() } },
+    slots: { step: { params: ["Dot"], returns: "void", space: "dot", may: ["write Dot", "bump Totals"] } },
+  }));
+  const gg = defineGrammar(d, { root: "w", constructs: { w: { opens: [name()], slots: { step: { kind: "decl", args: [lambda("step")], once: true } } } } });
+  return gg.lower(gg("a").step(src).build()).diagnostics.filter((/** @type {any} */ x) => x.severity === "error").map((/** @type {any} */ x) => `${x.code} ${x.message} | ${x.tip}`);
+}
+
+test("in an f32 Dialect a total is still an f64: bumping it by an f32 is L003, and the tip writes the converted statement", () => {
+  const [l003] = f32Bump("(p) => { totals.n += p.x * 2; }", { f64: "f64", f32: "f32" });
+  assert.match(l003, /^L003 .*f32.*f64/);
+  assert.match(l003, /totals\.n \+= f64\(p\.x \* 2\);/);
+  const [none] = f32Bump("(p) => { totals.n += p.x; }");
+  assert.match(none, /^L003 .*\| A total is an f64.*no conversion to f64.*conversions: \{ f64: "f64" \}/);
+  for (const ok of ["(p) => { totals.n += f64(p.x); }", "(p) => { totals.n += 1; }", "(p) => { totals.n++; }"]) assert.deepEqual(f32Bump(ok, { f64: "f64" }), [], ok);
+});
 
 test("a Dialect that declares no effects: a member without write: true is read-only, and its slot may do nothing", () => {
   const d = defineDialect(/** @type {any} */ ({

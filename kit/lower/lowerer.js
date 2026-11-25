@@ -246,19 +246,33 @@ export class Lowerer {
    * Judges one effect against the slot's `may`: a read of a total the slot may bump is L017 (whichever order the host
    * runs instances in would show), anything `may` does not list is L004.
    * @param {Effect} effect @param {EffectVerb} verb @param {Span} span
+   * @param {string | null} via  the helper or method the effect comes through, null when it is the lambda's own
    */
-  checkMay(effect, verb, span) {
+  checkMay(effect, verb, span, via) {
     const may = /** @type {string[]} */ (this.decl.may);
     const target = effect.slice(verb.length + 1);
     if (verb === "read" && target && may.some((m) => mayMatch(m, `bump ${target}`))) {
-      const written = this.src.slice(span[0], span[1]);
-      this.error("L017", span, `'${written}' is a total this ${this.slot.kind} may bump, so it may not read it.`, `A slot that bumps a total never reads it, so the order instances run in cannot show; read it in a slot that does not bump it.`);
+      // Read here, the total is named as written; through a call, the span is the call, so it is named Owner.member.
+      const what = via ? `'${target}' is a total this ${this.slot.kind} may bump, so it may not read it through ${via}.` : `'${this.src.slice(span[0], span[1])}' is a total this ${this.slot.kind} may bump, so it may not read it.`;
+      this.error("L017", span, what, `A slot that bumps a total never reads it, so the order instances run in cannot show; read it in a slot that does not bump it.`);
       return;
     }
     if (may.some((m) => mayMatch(m, effect))) return;
     const helper = this.slot.kind === "helper";
     const allowed = may.length ? `it may only ${may.map((m) => `'${m}'`).join(", ")}` : "it may do nothing but compute";
-    this.error("L004", span, `${helper ? `The helper ${this.slot.key}` : `A ${this.slot.kind}`} may not '${effect}'.`, helper ? `A helper may only read (${may.join(", ") || "nothing"}); ${verb === "read" ? "read it in the lambda that calls the helper and pass the value in" : "make the change in the lambda that calls it"}.` : `${allowed[0].toUpperCase()}${allowed.slice(1)}.`);
+    this.error("L004", span, `${helper ? `The helper ${this.slot.key}` : `A ${this.slot.kind}`} may not '${effect}'.`, helper ? `A helper may only read (${may.join(", ") || "nothing"}); ${verb === "read" ? this.passInTip(target) : "make the change in the lambda that calls it"}.` : `${allowed[0].toUpperCase()}${allowed.slice(1)}.`);
+  }
+
+  /**
+   * How a helper gets a value it may not read: as an argument, read where reading it is allowed. A slot that may
+   * bump a total may not read it (L017), so for a total that is a slot that does not bump it.
+   * @param {string} target  `Owner.member`
+   */
+  passInTip(target) {
+    const [owner, name] = target.split(".");
+    const member = name === undefined ? undefined : this.environment.objects[owner]?.members[name];
+    if (member?.kind === "value" && member.bump) return `pass ${target} in as an argument, read in a slot that may read it and does not bump it (a slot that may bump a total never reads it)`;
+    return "read it in a lambda whose slot may read it and pass the value in";
   }
 
   /**
@@ -268,13 +282,15 @@ export class Lowerer {
    * @param {Span} span
    */
   checkEffects(effects, span) {
+    // A call lists `call <callee>` before the callee's effects, so the others come through that callee.
+    const via = effects.find((e) => e.startsWith("call "))?.slice("call ".length) ?? null;
     for (const effect of effects) {
       const verb = /** @type {EffectVerb} */ (effect.split(" ")[0]);
       // `call` only marks that a program function was called; the callee's own effects are listed beside it and judged here.
       if (this.pure > 0 && !PURE.has(verb) && verb !== "call") {
         this.error("L006", span, `A query callback must be pure, but this has the effect '${effect}'.`, "Keep callbacks pure: compute the effect after the query, from its result.");
       }
-      if (this.decl.may && verb !== "call") this.checkMay(effect, verb, span);
+      if (this.decl.may && verb !== "call") this.checkMay(effect, verb, span, via);
       if (this.decl.forbid.includes(verb)) {
         const why = this.decl.forbidWhy ?? `a ${this.slot.kind} does not allow ${verb}`;
         this.error("L004", span, `A ${this.slot.kind} may not '${effect}'.`, this.decl.forbidMove ? `${this.decl.forbidMove}: ${why}.` : `${why[0].toUpperCase()}${why.slice(1)}.`);

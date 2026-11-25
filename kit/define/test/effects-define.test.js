@@ -67,6 +67,15 @@ const CASES = [
   ["D022", "a slot in the instance space that takes two", (d) => { d.slots.sow.params = ["Plant", "Plant"]; }, "slots.sow.params", /sow.*Plant/],
   ["D022", "a write of an object outside its instance space", growMay((m) => [...m, "write Totals"]), "slots.grow.may", /Totals/],
   ["D022", "a destroy of an object in another instance space", (d) => { d.objects.Bed = { label: "a bed", members: {} }; d.spaces.bed = { instance: "Bed" }; d.slots.tend = { params: ["Bed"], returns: "void", space: "bed", may: ["destroy Plant"] }; }, "slots.tend.may", /destroy of Plant.*Bed/],
+  ["D022", "a verb of another object that destroys an instance", (d) => { d.objects.Totals.members.cull = { fn: { params: [], returns: "void" }, effects: ["destroy Plant"] }; }, "objects.Totals.members.cull", /Totals\.cull.*"destroy Plant".*Plant's own/],
+  ["D022", "a verb of another object that writes an instance's member", (d) => { d.objects.Totals.members.flatten = { fn: { params: [], returns: "void" }, effects: ["write Plant.height"] }; }, "objects.Totals.members.flatten", /Totals\.flatten.*"write Plant\.height".*Plant's own/],
+  ["D022", "an object's call that destroys an instance", (d) => { d.objects.Rng.effects = ["rng", "destroy Plant"]; }, "objects.Rng.effects", /Rng.*"destroy Plant".*Plant's own/],
+  ["D021", "a verb's write of a member that is not writable", (d) => { d.objects.Plant.members.reset = { fn: { params: [], returns: "void" }, effects: ["write Plant.age"] }; }, "objects.Plant.members.reset", /age.*not writable/],
+  ["D021", "a verb's bump of a member that is not a total", (d) => { d.objects.Plant.members.reset = { fn: { params: [], returns: "void" }, effects: ["bump Plant.height"] }; }, "objects.Plant.members.reset", /height.*not a total/],
+  ["D021", "a call's bump of a member that is not a total", (d) => { d.objects.Rng.effects = ["rng", "bump Plant.height"]; }, "objects.Rng.effects", /height.*not a total/],
+  ["D021", "a verb's effect naming an unknown member (no environment(program) to add it)", (d) => { delete d.environment; d.objects.Plant.members.reset = { fn: { params: [], returns: "void" }, effects: ["write Plant.hight"] }; }, "objects.Plant.members.reset", /hight.*did you mean 'height'/i],
+  ["D021", "a verb's destroy with no object", (d) => { d.objects.Plant.members.reset = { fn: { params: [], returns: "void" }, effects: ["destroy"] }; }, "objects.Plant.members.reset", /names no object/],
+  ["D021", "a verb that returns a value", (d) => { d.objects.Plant.members.reset = { fn: { params: [], returns: "f64" }, effects: ["destroy Plant"] }; }, "objects.Plant.members.reset", /reset.*void/],
 ];
 
 for (const [code, why, edit, path, message] of CASES) {
@@ -124,6 +133,36 @@ test("environment(program): a member it adds of the instance's type is D022, and
   const got = environmentProblems(defineDialect(/** @type {any} */ (def)), {});
   assert.deepEqual(got.map((p) => p.code).sort(), ["D021", "D022"]);
   assert.ok(got.some((p) => p.code === "D022" && /who/.test(p.text)));
+});
+
+test("a verb of the instance object that destroys it or writes its members is accepted, and so is a verb's or a call's bump of a total", () => {
+  assert.deepEqual(refused((d) => {
+    d.objects.Plant.members.reset = { fn: { params: [], returns: "void" }, effects: ["write Plant.height", "destroy Plant", "bump Totals.harvest"] };
+    d.objects.Rng.effects = ["rng", "bump Totals"];
+  }), []);
+});
+
+test("environment(program): a verb it adds to another object that destroys an instance is D022", () => {
+  const def = gardenDef();
+  const base = def.environment;
+  def.environment = (/** @type {Record<string, any>} */ p) => {
+    const r = base(p);
+    r.objects.Totals.members.cull = { fn: { params: [], returns: "void" }, effects: ["destroy Plant"] };
+    return r;
+  };
+  const got = environmentProblems(defineDialect(/** @type {any} */ (def)), {});
+  assert.deepEqual(got.map((p) => `${p.code} ${p.path}`), ["D022 environment.objects.Totals.members.cull"]);
+  assert.match(got[0].text, /Totals\.cull.*Plant's own/);
+});
+
+test("environment(program): a verb's effect naming a member it did not add is D021 when the Environment is made", () => {
+  const def = gardenDef();
+  def.objects.Plant.members.reset = { fn: { params: [], returns: "void" }, effects: ["bump Totals.harvst"] };
+  const d = defineDialect(/** @type {any} */ (def));
+  const got = environmentProblems(d, { total: { harvest: {} } });
+  assert.deepEqual(got.map((p) => `${p.code} ${p.path}`), ["D021 objects.Plant.members.reset"]);
+  assert.match(got[0].text, /harvst.*did you mean 'harvest'/i);
+  assert.deepEqual(environmentProblems(d, { total: { harvst: {} } }), [], "a Program that declares it is fine");
 });
 
 test("environment(program): a write of a member it adds read-only is D021", () => {
