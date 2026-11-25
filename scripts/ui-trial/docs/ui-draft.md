@@ -138,7 +138,7 @@ Each is an object with a `kind`. `label` is a string.
 
 | `kind` | Keys | Shows |
 |---|---|---|
-| `stat` | `label`, `value` (a number or string), `unit?`, `max?` (a number), `badIf?` (a boolean) | a readout; with `max`, shown as "value / max" and red past it; red while `badIf` holds |
+| `stat` | `label`, `value` (a number or string), `unit?`, `max?` (a number: a path or a lambda, like any value), `badIf?` (a boolean) | a readout; with `max`, shown as "value / max" and red once it goes past `max` (not at it: for "red when full", add `badIf`); red while `badIf` holds, so red if either does |
 | `check` | `label`, `expect` (a boolean) | pass or fail, live |
 | `table` | `label`, `rows` (a path to a list), `columns`, `limit?` (whole, 1 to 1000) | one row per item; `columns` lists row keys (`"name"`) or `{ label, value: (row, s, $) => … }` |
 | `plot` | `label`, `y` (a number), `window` (seconds, more than 0) | `y` over the last `window` seconds of the run |
@@ -156,7 +156,7 @@ annotate: {
 ```
 
 - Views that take annotations: `traces` (keyed by a path to a number in state) and `params` (keyed by a param name, or `"*"` for every param). A key a Program does not have is skipped.
-- Each annotation has one or more of: `note` (a string), `badge` (a string, or a lambda giving a string or `null` for none), `tone` (`"good" "warn" "bad" "dim"`, or a lambda giving one).
+- Each annotation has one or more of: `note` (a string), `badge` (a string, or a lambda giving a string or `null` for none), `tone` (`"good" "warn" "bad" "dim"`, or a lambda giving one or `null` for none).
 
 ## Two packages in one page
 

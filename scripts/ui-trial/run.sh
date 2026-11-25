@@ -30,9 +30,9 @@ case "$DIR/" in
 esac
 mkdir -p "$DIR/particles/examples" "$DIR/maze/examples"
 cp "$REPO/scripts/ui-trial/docs/ui-draft.md" "$REPO/scripts/ui-trial/docs/rules.md" "$REPO/scripts/ui-trial/docs/task.md" "$DIR/"
-cp "$REPO/scripts/particles/reference/particles.dialect.js" "$REPO/scripts/particles/reference/particles.grammar.js" "$DIR/particles/"
+cp "$REPO/scripts/ui-trial/packages/given/particles.dialect.js" "$REPO/scripts/particles/reference/particles.grammar.js" "$DIR/particles/"
 cp "$REPO/scripts/particles/reference/examples/01.js" "$DIR/particles/examples/01.js"
-cp "$REPO/scripts/ui-trial/packages/maze/maze.dialect.js" "$REPO/scripts/ui-trial/packages/maze/maze.grammar.js" "$DIR/maze/"
+cp "$REPO/scripts/ui-trial/packages/given/maze.dialect.js" "$REPO/scripts/ui-trial/packages/maze/maze.grammar.js" "$DIR/maze/"
 cp "$REPO/scripts/ui-trial/packages/maze/examples/01.js" "$DIR/maze/examples/01.js"
 cat > "$DIR/check.sh" <<EOF
 #!/bin/sh

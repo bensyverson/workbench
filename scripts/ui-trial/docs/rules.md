@@ -1,6 +1,6 @@
 # Trial rules: write the UI for two packages with the draft UI API
 
-*2026-11-25, second UI trial (the state moved into the Dialect). You have three documents: these rules, `ui-draft.md` (the UI API, a draft that is **not built**) and `task.md` (the two packages and what their UIs must show). Each package's folder also holds its Dialect and Grammar. You add one key to each Dialect, its `state`; you change nothing else in them.*
+*2026-11-25, second UI trial (the state moved into the Dialect). You have three documents: these rules, `ui-draft.md` (the UI API, a draft that is **not built**) and `task.md` (the two packages and what their UIs must show). Each package's folder also holds its Dialect and Grammar. You add one key to each Dialect, its `state` (and the `kit/define` names it uses, such as `struct` and `list`, to its import); you change nothing else in them.*
 
 ## The task
 
