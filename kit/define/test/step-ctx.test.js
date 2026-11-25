@@ -103,7 +103,7 @@ test("the state step returns after an error still applies, so later calls still 
 });
 
 test("ctx.error with a reserved letter or a malformed code throws, as a check's does", () => {
-  for (const code of ["B999", "D001", "L001", "T1", "t001"]) {
+  for (const code of ["B999", "D001", "L001", "U001", "T1", "t001"]) {
     assert.throws(() => grammar.lower(base().table("o", "orders").flag(code).build()), /must be the Dialect's own letter|reserved|B, C, D/, code);
   }
   assert.deepEqual(grammar.lower(base().table("o", "orders").flag("T002").build()).diagnostics.map((d) => d.code), ["T002"]);

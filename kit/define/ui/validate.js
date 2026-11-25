@@ -1,12 +1,12 @@
-// Judges one recorded defineUI declaration against docs/ui-draft.md. Every problem is a U code at a path inside
-// the declaration (index.js turns the path into a line), or, inside a lambda, at the lambda and a line within it.
+// Judges one defineUI declaration. Every problem is a U code at a path inside the declaration, or, inside a lambda,
+// at the lambda and a line within it (`line`, which a host that knows the file's text can turn into its own line).
 
-import { didYouMean } from "../../../kit/define/index.js";
-import { readShape, resolvePath, describe } from "./shapes.js";
+import { didYouMean } from "../codes.js";
+import { resolvePath, describe, kindOf } from "./shapes.js";
 import { checkLambda } from "./lambda.js";
 import { tagOk, definesTag } from "./elements.js";
 
-/** @import { Shape } from "./shapes.js" */
+/** @import { Type } from "../../ir/ir.js" */
 
 /** The generated views, by id (ui-draft.md, "Generated views"). */
 export const VIEWS = ["stage", "text", "params", "traces", "pad", "events", "ir", "graph", "code", "diagnostics", "reference", "presets", "editor", "agent", "book"];
@@ -15,13 +15,13 @@ export const DIRECTIONS = ["splitRight", "splitLeft", "splitAbove", "splitBelow"
 export const ROLES = ["dpad.up", "dpad.down", "dpad.left", "dpad.right", "a", "b", "start", "select"];
 export const EVENTS = ["pick", "select", "param"];
 export const TONES = ["good", "warn", "bad", "dim"];
-const TOP = ["state", "stage", "inputs", "tiles", "annotate"];
+const TOP = ["stage", "inputs", "tiles", "annotate"];
 const ELEMENT_KEYS = ["element", "module", "emits"];
 
 /** Each component kind: its required and optional keys; a layout takes no element. */
 /** @type {Record<string, { req: string[], opt?: string[], layout?: true }>} */
 export const KINDS = {
-  stat: { req: ["label", "value"], opt: ["unit", "badIf"] },
+  stat: { req: ["label", "value"], opt: ["unit", "badIf", "max"] },
   check: { req: ["label", "expect"] },
   table: { req: ["label", "rows", "columns"], opt: ["limit"] },
   plot: { req: ["label", "y", "window"] },
@@ -37,20 +37,21 @@ const MODULE_RE = /^\.\/(?!.*\.\.)[\w./-]+\.js$/;
 /**
  * @typedef {object} Problem
  * @property {string} code
- * @property {Array<string | number>} at  the path inside the declaration
+ * @property {Array<string | number>} path  the path inside the declaration
  * @property {string} message
- * @property {string} fix
- * @property {Function} [fn]  the lambda the problem is inside
- * @property {number} [inner]  the line within that lambda
+ * @property {string} tip
+ * @property {number} [line]  inside a lambda: the line within it (1-based)
  */
 
 /**
  * @typedef {object} Env
  * @property {string} pkg  the package name (the Dialect's name)
+ * @property {Type | null} state  the Dialect's declared state Type (null: it declares none)
  * @property {Record<string, any>} objects  the Dialect's objects
+ * @property {Record<string, Record<string, string>>} aliases  the Dialect's vector component aliases, by vector name
  * @property {Set<string>} free  the free names the Dialect gives a lambda
  * @property {Record<string, any>} globalObjects  the object each of the Dialect's globals names, by global name
- * @property {(path: string) => string | null} moduleText  a package file's text, or null when it is not a readable file
+ * @property {((path: string) => string | null) | null} moduleText  a package file's text, or null when it is not a readable file; the option itself null when the host cannot read files (the module checks are then skipped)
  */
 
 /** @param {unknown} v @returns {v is Record<string, any>} */
@@ -63,7 +64,7 @@ const str = (/** @type {unknown} */ v) => JSON.stringify(v) ?? String(v);
 export function validate(decl, env) {
   /** @type {Problem[]} */
   const out = [];
-  const add = (/** @type {string} */ code, /** @type {Array<string | number>} */ at, /** @type {string} */ message, /** @type {string} */ fix) => { out.push({ code, at, message, fix }); };
+  const add = (/** @type {string} */ code, /** @type {Array<string | number>} */ path, /** @type {string} */ message, /** @type {string} */ tip) => { out.push({ code, path, message, tip }); };
 
   /** Unknown keys of `o` (U001, with a did-you-mean) and missing required ones. */
   function keys(/** @type {Record<string, any>} */ o, /** @type {Array<string | number>} */ at, /** @type {string[]} */ allowed, /** @type {string[]} */ required, /** @type {string} */ what) {
@@ -71,6 +72,7 @@ export function validate(decl, env) {
     const meant = new Set();
     for (const k of Object.keys(o)) {
       if (allowed.includes(k)) continue;
+      if (k === "state" && at.length === 0) { add("U001", [...at, k], "defineUI's declaration has no key 'state': the run's state is declared in the Dialect", "declare it in defineDialect({ ..., state: { score: \"f64\", ... } }), and read it here by path or lambda"); continue; }
       const mean = didYouMean(k, allowed);
       const m = mean.match(/'(.+)'/);
       if (m) meant.add(m[1]);
@@ -79,28 +81,16 @@ export function validate(decl, env) {
     for (const k of required) if (!(k in o) && !meant.has(k)) add("U001", at, `${what} needs '${k}'`, `add ${k}: …`);
   }
 
-  if (!isObj(decl)) { add("U001", [], "defineUI's second argument is not an object", "pass { state, stage?, inputs?, tiles?, annotate? }"); return out; }
-  keys(decl, [], TOP, ["state"], "defineUI's declaration");
+  if (!isObj(decl)) { add("U001", [], "defineUI's second argument is not an object", "pass { stage?, inputs?, tiles?, annotate? }"); return out; }
+  keys(decl, [], TOP, [], "defineUI's declaration");
 
-  // state
-  /** @type {Shape | null} */
-  let root = null;
-  if ("state" in decl) {
-    if (!isObj(decl.state) || Object.keys(decl.state).length === 0) add("U006", ["state"], "state is empty or not an object of shapes", 'declare what the host hands the views: state: { t: "number", … }');
-    else {
-      /** @type {import("./shapes.js").ShapeProblem[]} */
-      const probs = [];
-      const s = readShape(decl.state, [], probs);
-      for (const p of probs) add("U006", ["state", ...p.at], p.message, p.fix);
-      root = s;
-    }
-    if (isObj(decl.state) && Object.keys(decl.state).length === 0) root = { kind: "object", keys: {} };
-  }
+  /** @type {Type | null} */
+  const root = env.state;
 
-  const viewLambda = { params: ["s", "$"], shapes: [root, null], free: env.free, objects: env.globalObjects };
+  const viewLambda = { params: ["s", "$"], shapes: [root, null], free: env.free, objects: env.globalObjects, aliases: env.aliases };
   /** A lambda's problems, as U007s. */
   function lambda(/** @type {Function} */ fn, /** @type {Array<string | number>} */ at, /** @type {import("./lambda.js").LambdaContext} */ ctx) {
-    for (const p of checkLambda(fn, ctx)) out.push({ code: "U007", at, message: p.message, fix: p.fix, fn, inner: p.line });
+    for (const p of checkLambda(fn, ctx)) out.push({ code: "U007", path: at, message: p.message, tip: p.fix, line: p.line });
   }
   /** A value: a path of one of `kinds`, or a view lambda. */
   function value(/** @type {unknown} */ v, /** @type {Array<string | number>} */ at, /** @type {string[]} */ kinds) {
@@ -108,9 +98,10 @@ export function validate(decl, env) {
     if (typeof v === "function") return lambda(v, at, viewLambda);
     if (typeof v !== "string") return add("U012", at, `${key} is ${str(v)}; it takes a path or a lambda`, `write a path such as "t", or a lambda (s, $) => …`);
     if (!root) return;
-    const r = resolvePath(root, v);
+    const r = resolvePath(root, v, env.aliases);
     if ("error" in r) return add("U005", at, r.error, r.fix);
-    if (!kinds.includes(r.shape.kind)) add("U005", at, `'${v}' is ${describe(r.shape)}; ${key} takes ${kinds.map((k) => (k === "list" ? "a list" : `a ${k}`)).join(" or ")}`, `name a path to ${kinds.join(" or ")}, or write a lambda`);
+    const got = kindOf(r.type);
+    if (!kinds.includes(got)) add("U005", at, `'${v}' is ${describe(got)}; ${key} takes ${kinds.map((k) => (k === "list" ? "a list" : `a ${k}`)).join(" or ")}`, `name a path to ${kinds.join(" or ")}, or write a lambda`);
   }
   const string = (/** @type {unknown} */ v, /** @type {Array<string | number>} */ at) => { if (typeof v !== "string") add("U012", at, `${at.at(-1)} is ${str(v)}, not a string`, `write ${String(at.at(-1))}: "…"`); };
   /** A number in lo..hi (whole if asked); `lo` excluded when `open`. */
@@ -141,7 +132,7 @@ export function validate(decl, env) {
     const mod = o.module;
     if (!("module" in o)) add("U008", [...at, "element"], `the element ${str(tag)} has no module`, `add module: "./${typeof tag === "string" ? tag : "<file>"}.js", a package file that defines it`);
     else if (typeof mod !== "string" || !MODULE_RE.test(mod)) add("U008", [...at, "module"], `${str(mod)} is not one of the package's files`, `write module: "./<file>.js"`);
-    else {
+    else if (env.moduleText) {
       const text = env.moduleText(mod);
       if (text === null) add("U008", [...at, "module"], `the module '${mod}' is not a readable file in the package`, `write ${mod}, an ES module that calls customElements.define("${tag}", …)`);
       else if (isTag && !definesTag(text, /** @type {string} */ (tag))) add("U008", [...at, "module"], `'${mod}' does not call customElements.define("${tag}", …)`, `define the tag in ${mod}: customElements.define("${tag}", class extends HTMLElement { … })`);
@@ -264,6 +255,7 @@ export function validate(decl, env) {
     if ("label" in c) string(c.label, k("label"));
     if ("unit" in c) string(c.unit, k("unit"));
     if (c.kind === "stat" && "value" in c) value(c.value, k("value"), ["number", "string"]);
+    if (c.kind === "stat" && "max" in c) value(c.max, k("max"), ["number"]);
     if ("badIf" in c) value(c.badIf, k("badIf"), ["boolean"]);
     if ("expect" in c) value(c.expect, k("expect"), ["boolean"]);
     if ("y" in c) value(c.y, k("y"), ["number"]);
@@ -284,15 +276,18 @@ export function validate(decl, env) {
     if (!spec.layout) element(c, at);
   }
   function table(/** @type {Record<string, any>} */ c, /** @type {Array<string | number>} */ at) {
-    /** @type {Shape | null} */
+    /** @type {Type | null} */
     let row = null;
     if ("rows" in c) {
       if (typeof c.rows !== "string") add("U012", [...at, "rows"], `rows is ${str(c.rows)}; it takes a path to a list in state`, 'write rows: "emitters"');
       else if (root) {
-        const r = resolvePath(root, c.rows);
+        const r = resolvePath(root, c.rows, env.aliases);
         if ("error" in r) add("U005", [...at, "rows"], r.error, r.fix);
-        else if (r.shape.kind !== "list") add("U005", [...at, "rows"], `'${c.rows}' is ${describe(r.shape)}; rows takes a list`, "name a list in state");
-        else row = r.shape.of;
+        else if (kindOf(r.type) !== "list") add("U005", [...at, "rows"], `'${c.rows}' is ${describe(kindOf(r.type))}; rows takes a list`, "name a list in state");
+        else {
+          const item = /** @type {any} */ (typeof r.type === "object" && "opt" in r.type ? r.type.opt : r.type).list;
+          row = item;
+        }
       }
     }
     if (!("columns" in c)) return;
@@ -300,10 +295,11 @@ export function validate(decl, env) {
     for (const [i, col] of c.columns.entries()) {
       const cat = [...at, "columns", i];
       if (typeof col === "string") {
-        if (row && row.kind === "object" && !Object.hasOwn(row.keys, col)) add("U005", cat, `the rows of '${c.rows}' have no key '${col}'.${didYouMean(col, Object.keys(row.keys))}`, `use one of: ${Object.keys(row.keys).join(", ")}`);
-        else if (row && row.kind !== "object") add("U005", cat, `the rows of '${c.rows}' are ${describe(row)}, which has no keys`, '{ label, value: (row) => row } shows the item itself');
+        const fields = row && kindOf(row) === "object" ? /** @type {Record<string, Type>} */ (/** @type {any} */ (typeof row === "object" && "opt" in row ? row.opt : row).struct) : null;
+        if (fields && !Object.hasOwn(fields, col)) add("U005", cat, `the rows of '${c.rows}' have no key '${col}'.${didYouMean(col, Object.keys(fields))}`, `use one of: ${Object.keys(fields).join(", ")}`);
+        else if (row && !fields) add("U005", cat, `the rows of '${c.rows}' are ${describe(kindOf(row))}, which has no keys`, '{ label, value: (row) => row } shows the item itself');
       } else if (isObj(col) && Object.keys(col).length === 2 && typeof col.label === "string" && typeof col.value === "function") {
-        lambda(col.value, [...cat, "value"], { params: ["row", "s", "$"], shapes: [row, root, null], free: env.free, objects: env.globalObjects });
+        lambda(col.value, [...cat, "value"], { params: ["row", "s", "$"], shapes: [row, root, null], free: env.free, objects: env.globalObjects, aliases: env.aliases });
       } else add("U012", cat, `${typeof col === "function" ? "a bare lambda" : str(col)} is not a column`, 'write a row key ("live") or { label: "share", value: (row, s, $) => … }');
     }
   }
@@ -324,9 +320,9 @@ export function validate(decl, env) {
     for (const [key, a] of Object.entries(marks)) {
       const kat = [...at, key];
       if (view === "traces" && root) {
-        const r = resolvePath(root, key);
+        const r = resolvePath(root, key, env.aliases);
         if ("error" in r) add("U005", kat, r.error, r.fix);
-        else if (r.shape.kind !== "number") add("U005", kat, `'${key}' is ${describe(r.shape)}; a trace is a number in state`, "annotate a number's path");
+        else if (kindOf(r.type) !== "number") add("U005", kat, `'${key}' is ${describe(kindOf(r.type))}; a trace is a number in state`, "annotate a number's path");
       }
       if (view === "params" && key !== "*" && !IDENT.test(key)) add("U012", kat, `'${key}' is not a param name`, 'key it by a param name, or "*" for every param');
       if (!isObj(a)) { add("U012", kat, `the annotation '${key}' is not an object`, 'write { note: "…" }'); continue; }

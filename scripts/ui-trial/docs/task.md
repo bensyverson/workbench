@@ -1,6 +1,6 @@
 # The task: two packages, two UIs
 
-*2026-11-25. Each package below already has its Dialect and Grammar (in its folder, with one example Program). You write its UI with `ui-draft.md`. The items are numbered so your report can answer each one.*
+*2026-11-25, second trial. Each package below already has its Dialect and Grammar (in its folder, with one example Program). Each Dialect describes the host's state in a comment above `text(state)` but does not declare it: first declare it as the Dialect's `state` (`ui-draft.md`, "The state"), then write the UI with `ui-draft.md`. The items are numbered so your report can answer each one.*
 
 ## Particles (`particles/`)
 

@@ -3,16 +3,17 @@
 // table's row), and reads no free name but the Dialect's globals, intrinsics, library and vector types.
 // Its result's type is not checked: the kit's lowering will do that (ui-draft.md, pitfall 7).
 
-import { parseLambda, checkSubset } from "../../../kit/parse/index.js";
-import { resolveChain, LEAVES } from "./shapes.js";
-import { didYouMean } from "../../../kit/define/index.js";
+import { parseLambda, checkSubset } from "../../parse/index.js";
+import { resolveChain, kindOf, LEAVES } from "./shapes.js";
+import { didYouMean } from "../codes.js";
 
-/** @import { Shape } from "./shapes.js" */
+/** @import { Type } from "../../ir/ir.js" */
 
 /**
  * @typedef {object} LambdaContext
  * @property {string[]} params      the convention's parameter names, for messages: ["s", "$"] or ["row", "s", "$"]
- * @property {Array<Shape | null>} shapes  per parameter, the shape its members are checked against (null: any member)
+ * @property {Array<Type | null>} shapes  per parameter, the Type its members are checked against (null: any member)
+ * @property {Record<string, Record<string, string>>} aliases  the Dialect's vector component aliases, by vector name
  * @property {Set<string>} free     the free names the Dialect gives
  * @property {Record<string, any>} [objects]  the Dialect objects its globals name, by global name (`Math` to Math's definition)
  */
@@ -85,7 +86,7 @@ export function checkLambda(fn, ctx) {
           const i = /** @type {number} */ (paramIndex.get(chain.root.name));
           const shape = ctx.shapes[i];
           if (shape) {
-            const p = resolveChain(shape, chain.root.name, chain.segs);
+            const p = resolveChain(shape, chain.root.name, chain.segs, ctx.aliases);
             if (p) out.push({ line: line(n), message: `${p} (the declared state)`, fix: "read only what `state` declares, or declare it there" });
           }
           visit(chain.computed);
@@ -100,7 +101,7 @@ export function checkLambda(fn, ctx) {
         if (i !== undefined) {
           const shape = ctx.shapes[i];
           // A leaf (a table over a list of strings hands the row itself) may be used whole; the state and an object row may not.
-          if (shape && !LEAVES.includes(shape.kind)) out.push({ line: line(n), message: `'${n.name}' is used whole; the state is read only as ${n.name}.member`, fix: `read the member you need: ${n.name}.<member>` });
+          if (shape && !LEAVES.includes(kindOf(shape))) out.push({ line: line(n), message: `'${n.name}' is used whole; the state is read only as ${n.name}.member`, fix: `read the member you need: ${n.name}.<member>` });
           return;
         }
         if (locals.has(n.name) || ctx.free.has(n.name)) return;

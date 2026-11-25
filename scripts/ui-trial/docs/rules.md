@@ -1,32 +1,34 @@
 # Trial rules: write the UI for two packages with the draft UI API
 
-*2026-11-25, first UI trial. You have three documents: these rules, `ui-draft.md` (the UI API, a draft that is **not built**) and `task.md` (the two packages and what their UIs must show). Each package's folder also holds its Dialect and Grammar, which you read but do not change.*
+*2026-11-25, second UI trial (the state moved into the Dialect). You have three documents: these rules, `ui-draft.md` (the UI API, a draft that is **not built**) and `task.md` (the two packages and what their UIs must show). Each package's folder also holds its Dialect and Grammar. You add one key to each Dialect, its `state`; you change nothing else in them.*
 
 ## The task
 
-Write one UI declaration per package, `particles/particles.ui.js` and `maze/maze.ui.js`, with `defineUI` as `ui-draft.md` describes it, covering what `task.md` asks for as far as the draft goes. Where the draft cannot say something, do not invent API and do not work around it: write down what you needed. A gap you report is worth as much as a declaration that checks.
+Declare each package's state in its Dialect, then write one UI declaration per package, `particles/particles.ui.js` and `maze/maze.ui.js`, with `defineUI` as `ui-draft.md` describes it, covering what `task.md` asks for as far as the draft goes. Where the draft cannot say something, do not invent API and do not work around it: write down what you needed. A gap you report is worth as much as a declaration that checks.
 
 ## What you hand in
 
 | File | What |
 |---|---|
+| `particles/particles.dialect.js` | the Dialect as given, with your `state` added |
+| `maze/maze.dialect.js` | the same, for maze |
 | `particles/particles.ui.js` | `export const particlesUI = defineUI(particles, { … })` |
 | `particles/<tag>.js` | each custom element module your particles UI names (`task.md` asks for one) |
 | `maze/maze.ui.js` | `export const mazeUI = defineUI(maze, { … })` |
 | `maze/<tag>.js` | each custom element module your maze UI names, if any |
 | `REPORT.md` | your report (rule R10) |
 
-Leave `*.dialect.js`, `*.grammar.js` and `examples/` as they are.
+Leave `*.grammar.js`, `examples/` and the rest of each Dialect as they are.
 
 If the tool you write files with refuses to write `REPORT.md`, write it from the shell with a heredoc instead (`cat > REPORT.md <<'EOF'` … `EOF`). Do not return the report as text in place of the file.
 
 ## The rules
 
-Each rule names the codes that enforce it. Run the checker as often as you like (`check.sh` checks both packages). It loads your UI file with the real `kit/define` and a stand-in `defineUI` that records your declaration, then judges it against `ui-draft.md`. It prints each problem as `<file>:<line>: <code> <message>` and a `fix:` line.
+Each rule names the codes that enforce it. Run the checker as often as you like (`check.sh` checks both packages). It loads your Dialect, Grammar and UI files with the real `kit/define`, whose `defineDialect` and `defineUI` refuse what `ui-draft.md` refuses. It prints each problem as `<file>:<line>: <code> <message>` and a `fix:` line.
 
 - **R1. Imports.** A UI file imports only from `kit/define` and the package's own files (its Grammar). An element module imports nothing. (C006; the element module is read by hand)
 - **R2. One declaration.** The UI file calls `defineUI` once, with the package's own Grammar builder, and exports the result. The Dialect has `text(state)`. (C001, U013, LOAD)
-- **R3. The state is declared** with shapes only, and matches what the Dialect's `text(state)` reads (its comment says what `state` holds). (U006; the match is read by hand)
+- **R3. The state is declared in the Dialect**, as `state` beside `text`, in the Dialect's types, and matches what `text(state)` reads (its comment says what `state` holds). (LOAD with `defineDialect`'s D code; U013 when it is missing; the match is read by hand)
 - **R4. Every path and every read resolves.** A path names a part of `state` of the type its key takes; a lambda reads only declared members of `s` (and of a table's `row`), and no free name but its parameters, its locals and the Dialect's globals, intrinsics, library and vector types. (U005, U007)
 - **R5. Lambdas are pure Runtime Lambdas:** an arrow in the Runtime Subset, no more parameters than the convention, assigning only its own `let` locals. (U007)
 - **R6. Tiles and components are well formed:** known keys, required keys present, known kinds, values of the right form, ids that are identifiers and not generated views' ids, each tile placed in exactly one direction against a view or tile that exists, with no cycle. (U001, U002, U003, U004, U011, U012)
@@ -54,14 +56,13 @@ Each rule names the codes that enforce it. Run the checker as often as you like 
 | U003 | a `place` or `annotate` that names no view or tile (or is qualified with any package's name, your own included, in this one-package trial), or tiles placed in a cycle |
 | U004 | a `place` without exactly one direction, or a `size` outside 0.1 to 0.9 or beside `tabWith` |
 | U005 | a path that names nothing in `state`, reads into a list, or names the wrong type for its key; a table column that is not a key of its rows; a `traces` annotation on something that is not a number |
-| U006 | a `state` shape that is not a shape (`"f64"`, an array literal), or an empty `state` |
 | U007 | a lambda that does not parse as one arrow, leaves the Runtime Subset, takes more parameters than its convention, assigns anything but its own `let` locals, reads a member of the state or row that is not declared, uses the state whole, or reads a free name the Dialect does not give |
 | U008 | a custom element tag without the package prefix or not a valid tag, without a `module`, with a module that is not a package file, does not exist or does not call `customElements.define` for the tag, or one tag used twice |
 | U009 | an `emits` event that is not `pick`, `select` or `param`, or `emits` without an `element` |
 | U010 | `inputs` whose `object` is not a Dialect object, whose buttons are not exactly its members or not each `"bool"`, or with an unknown or repeated `role` |
 | U011 | a tile id that is not an identifier or is a generated view's id |
 | U012 | a value of the wrong form: a `label`, `title`, `unit`, `note` or button `label` that is not a string; `limit` or `steps` out of range or not whole; a `window` or `seconds` of 0 or less, or `seconds` over 3600; `from` not below `to`; a `columns` entry that is neither a key nor `{ label, value }`; an empty `body`, `items` or `columns` |
-| U013 | `defineUI` given something other than the package's Grammar builder, or a Dialect without `text(state)` |
+| U013 | `defineUI` given something other than the package's Grammar builder, or a Dialect that declares no `state` |
 
 ### The checker's own
 
@@ -71,6 +72,6 @@ Each rule names the codes that enforce it. Run the checker as often as you like 
 | C006 | a UI file imports something other than `kit/define` and the package's own files |
 | LOAD | the UI file (or the Grammar it imports) cannot be loaded: a syntax error, an exception |
 
-Fix a `U006` first: while `state` has one, paths and lambdas' reads of the state are not checked, so new `U005` and `U007` may appear once it is fixed.
+Fix a Dialect that does not load first: until `defineDialect` accepts your `state`, no UI file can be checked.
 
 The checker does not run a host: nothing is drawn, no element is loaded, and a lambda's result type is not checked (only what it reads and writes). Whether the state matches `text(state)`, and what an element module does, are read by hand.

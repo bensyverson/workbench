@@ -4,8 +4,9 @@
 import { validateDialect } from "./validate-dialect.js";
 import { spaceModel, helpersMay, programProblems, conventionProblems } from "./effects.js";
 import { resolveType, resolveMember, intrinsicSig, checkType } from "./types.js";
-import { isPlainObject, kindOf } from "./tags.js";
+import { isPlainObject, kindOf, struct } from "./tags.js";
 import { callSite } from "./site.js";
+import { checkStateValue, stateErrorMessage } from "./state.js";
 import { dialectVector, dialectScalar } from "../ir/types.js";
 
 /** @import { Type, VecType, ScalarType, EffectVerb } from "../ir/ir.js" */
@@ -107,6 +108,17 @@ export function defineDialect(def) {
     return [n, { accepts: t.accepts === "*" ? "*" : [...t.accepts], compare: "figure" in c ? { kind: "tolerance", figure: /** @type {number} */ (c.figure) } : { kind: "exact" } }];
   }));
 
+  // The run's state (not a construct's): its core Type, a value check by path, and a text view that applies it.
+  const stateType = def.state === undefined ? undefined : resolveType(struct(def.state), statics);
+  const checkState = stateType && ((/** @type {unknown} */ v) => checkStateValue(stateType, v));
+  const text = checkState
+    ? (/** @type {unknown} */ s) => {
+      const bad = checkState(s);
+      if (bad.length) throw new Error(stateErrorMessage(def.name, bad));
+      return def.text(s);
+    }
+    : def.text;
+
   /** @type {T.Dialect} */
   const dialect = Object.freeze({
     name: def.name,
@@ -116,7 +128,8 @@ export function defineDialect(def) {
     library,
     targets: /** @type {T.Dialect["targets"]} */ (targets),
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
-    text: def.text,
+    text,
+    ...(stateType ? { state: def.state, stateType, checkState } : {}),
     environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces),
   });
   MADE.add(dialect);

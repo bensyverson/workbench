@@ -3,6 +3,7 @@
 
 import type { TAG } from "./tags.js";
 import type { Environment, FnSig, SlotRef } from "../lower/environment.js";
+import type { Type } from "../ir/ir.js";
 import type { Diagnostic, Loc } from "../parse/ast.js";
 import type { UnitDecl, Spelling } from "../dialects/fields/decls.js";
 
@@ -109,6 +110,11 @@ export interface DialectDef {
   helpers?: { may?: string[]; check?: HelperCheck };
   /** The text view: the Dialect's screen and state as characters, sized for a model. What `state` is, the Dialect says. Required (D020). */
   text: (state: any) => string;
+  /**
+   * The RUN's state: the shape of the value `text(state)` and the UI's views are handed. Not a Grammar construct's build-time state.
+   * A plain object of member types in this Dialect's vocabulary ("f64", "bool", "str", a declared vector or scalar, enumOf, opt, list(of, max)); write a nested object as struct({ … }). Optional; malformed is D023.
+   */
+  state?: Record<string, TypeDef>;
   /** The object a lambda reads the Program's params through, the name it reads it by, and the members known only at run time, which build-time code may not read (B014). */
   params?: { object: string; name: string; runtime?: string[] };
 }
@@ -129,6 +135,9 @@ export interface Intrinsic {
 
 export type Compare = { kind: "exact" } | { kind: "tolerance"; figure: number };
 
+/** One place a run's state does not fit its declaration: the path ("" for the root) and what was expected. */
+export interface StateMismatch { path: string; message: string }
+
 /** What defineDialect returns. */
 export interface Dialect {
   readonly name: string;
@@ -137,8 +146,14 @@ export interface Dialect {
   readonly intrinsics: Record<string, Intrinsic>;
   readonly library: UnitDecl[];
   readonly targets: Record<string, { accepts: "*" | string[]; compare: Compare }>;
-  /** The text view, as the definition gave it. */
+  /** The text view, as the definition gave it; with `state` declared it first checks its argument and throws an error naming the paths that do not fit. */
   text(state: any): string;
+  /** The declared run's state, as written (absent when the Dialect declares none). */
+  readonly state?: Record<string, TypeDef>;
+  /** The declared run's state as a core Type (a struct), for lowering lambdas that read it. */
+  readonly stateType?: Type;
+  /** Every place `value` does not fit the declared state, by path (`player.x`, `bodies[1].mass`); [] when it fits. Present only with `state`. */
+  readonly checkState?: (value: unknown) => StateMismatch[];
   /** The Library units the sources use, in dependency order. */
   libraryFor(sources: string[]): UnitDecl[];
   /** The Environment for one Program record; `states` gives each stateful lambda's construct state, by slot id. */
@@ -152,6 +167,8 @@ export interface DefineDiagnostic {
   message: string;
   tip: string;
   path: Array<string | number>;
+  /** A U007 inside a lambda: the line within that lambda (1-based) the problem is on. */
+  line?: number;
   /** The define call's place in the author's file. */
   file: string;
   loc: Loc;
@@ -255,4 +272,36 @@ export interface GrammarDef {
   constructs: Record<string, ConstructDef>;
   /** The root slot that declares the Program's params (name, declaration with its `value`), which `run` reads them from. */
   params?: { slot: string };
+}
+
+/** What defineGrammar returned: the builder function, with its Dialect and definition. */
+export type GrammarBuilder = ((...args: unknown[]) => any) & { dialect: Dialect; grammar: GrammarDef; lower: (record: Record<string, any>) => import("./lower.js").Lowered };
+
+/** The UI declaration `defineUI` takes: what is left after the generated views. The run's state is not here; the Dialect declares it. A value is a path into the Dialect's state ("bounds.width") or a lambda `(s, $) => …` (a table column's: `(row, s, $) => …`). */
+export interface UIDef {
+  /** The custom element that draws the stage: `{ element: "<pkg>-<name>", module: "./<file>.js", emits?: ["pick" | "select" | "param"] }`. */
+  stage?: Record<string, unknown>;
+  /** `{ object: "Pad", buttons: { left: { role: "dpad.left" }, … } }`: the Dialect object whose bool members are the buttons. */
+  inputs?: Record<string, unknown>;
+  /** Your panels by id: `{ title, place, body: [components] }`. */
+  tiles?: Record<string, Record<string, unknown>>;
+  /** Marks on the generated `traces` and `params` views. */
+  annotate?: Record<string, Record<string, Record<string, unknown>>>;
+}
+
+/** What a host passes defineUI beyond the declaration. */
+export interface UIOptions {
+  /** A package file's text by its `"./<file>.js"` path, or null when it is not a readable file. A host that cannot read files omits it, and the custom element module checks (a module that exists and defines its tag) are skipped. */
+  moduleText?: (path: string) => string | null;
+}
+
+/** What defineUI returns: the checked, frozen UI. */
+export interface UI {
+  readonly package: string;
+  readonly builder: GrammarBuilder;
+  readonly dialect: Dialect;
+  readonly stage?: Readonly<Record<string, unknown>>;
+  readonly inputs?: Readonly<Record<string, unknown>>;
+  readonly tiles: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  readonly annotate: Readonly<Record<string, unknown>>;
 }

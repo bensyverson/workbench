@@ -1,4 +1,4 @@
-import { defineDialect, vector, exact } from "kit/define";
+import { defineDialect, vector, exact, list, struct } from "kit/define";
 
 // The particle's built-in fields; a .field may not take one of these names (or "kill").
 export const BUILTIN_FIELDS = ["pos", "vel", "age", "life", "size", "kill"];
@@ -95,9 +95,15 @@ export const particlesDialect = defineDialect({
       },
     };
   },
-  // state: what the host computed after a tick:
-  // { t, maxParticles, bounds: { width, height }, emitters: [{ name, live }],
-  //   counters: [{ name, value }], particles: [{ x, y }] }
+  // The run's state: what the host computes after each tick, and hands text(state) and the UI's views.
+  state: {
+    t: "f64",
+    maxParticles: "f64",
+    bounds: struct({ width: "f64", height: "f64" }),
+    particles: list(struct({ x: "f64", y: "f64" }), 10000),
+    emitters: list(struct({ name: "str", live: "f64" }), 100),
+    counters: list(struct({ name: "str", value: "f64" }), 100),
+  },
   text(state) {
     const head = `t=${state.t.toFixed(2)} live=${state.particles.length}/${state.maxParticles} ` +
       state.emitters.map((e) => `${e.name}=${e.live}`).join(" ");

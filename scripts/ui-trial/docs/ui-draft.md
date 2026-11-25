@@ -1,20 +1,20 @@
 # The UI API (draft)
 
-*2026-11-25. A draft for a trial, not built. It adds one call, `defineUI`, to the Definition API: you already have a Dialect and a Grammar; this declares the UI that rides with them.*
+*2026-11-25, revised for the second UI trial. It adds one call, `defineUI`, to the Definition API, and one key, `state`, to `defineDialect`: you already have a Dialect and a Grammar; the Dialect says what the run's state is, and `defineUI` declares the UI that rides with them.*
 
-A package (a Dialect, its Grammar and its UI) runs in a Workbench: a page with an editor, a stage, panels and an agent. **Most of the page is generated** from the definition and the run; you write none of it. `defineUI` declares only what is left: the **state** the host hands the views, the **stage**, the **inputs**, your own **tiles** (readouts, checks, tables, plots, charts of runs) and **annotations** on the generated views. It is plain data, checked like a Dialect: every mistake is a code with a fix.
+A package (a Dialect, its Grammar and its UI) runs in a Workbench: a page with an editor, a stage, panels and an agent. **Most of the page is generated** from the definition and the run; you write none of it. Your Dialect declares the **state** the host hands the views; `defineUI` declares only what is left: the **stage**, the **inputs**, your own **tiles** (readouts, checks, tables, plots, charts of runs) and **annotations** on the generated views. It is plain data, checked like a Dialect: every mistake is a code with a fix.
 
 ## The file
 
 ```js
 // <lang>.ui.js
-import { defineUI, listOf } from "kit/define";
+import { defineUI } from "kit/define";
 import { orbits } from "./orbits.grammar.js";   // your package's own Grammar builder
 
-export const orbitsUI = defineUI(orbits, { state, stage, inputs, tiles, annotate });
+export const orbitsUI = defineUI(orbits, { stage, inputs, tiles, annotate });
 ```
 
-`defineUI(builder, decl)`: `builder` is what your `defineGrammar` returned. Its Dialect's `name` is the **package name** (`orbits`). Only `state` is required.
+`defineUI(builder, decl)`: `builder` is what your `defineGrammar` returned. Its Dialect's `name` is the **package name** (`orbits`), and its Dialect must declare `state` (below). Every key of `decl` is optional.
 
 ## Generated views (you do not write these)
 
@@ -25,7 +25,7 @@ Each has an id. You place tiles beside them and annotate some of them; you canno
 | `stage` | the run, drawn; always present, so always a `place` target | your `stage` element, else the text view's string |
 | `text` | the run as characters | the Dialect's `text(state)` (required) |
 | `params` | a control per param, with reset; an edit is written back into the Program's source | the Program's params |
-| `traces` | a time series per number in `state` (not inside a list) | `state` |
+| `traces` | a time series per number in the state (not inside a list) | the Dialect's `state` |
 | `pad` | an on-screen button per input | `inputs` |
 | `events` | a log: input presses, param edits, picks | the run |
 | `ir`, `graph` | the lowered lambdas as a listing and a dependency graph | the IR |
@@ -35,20 +35,33 @@ Each has an id. You place tiles beside them and annotate some of them; you canno
 | `presets` | the package's example Programs | the package |
 | `editor`, `agent`, `book` | the page's own (not per package) | the page |
 
-## `state`: what every view is handed
+## The state: declared in your Dialect
 
-The host computes the run's state after each tick and hands the same value to `text(state)`, the stage and every lambda below. Declare its shape with the Grammar's shapes: `"number" "string" "boolean"`, an object of shapes, or `listOf(shape)`.
+The host computes the run's state after each tick and hands the same value to `text(state)`, the stage and every lambda below. Its shape is part of what the language means, so it is declared in **the Dialect**, as `state` beside `text`, in the Dialect's own types: `"f64"`, `"bool"`, `"str"`, a vector or scalar declared in `types`, `enumOf([...])`, `opt(type)`, `struct({ … })` for an object, and `list(type, max)` for a list of at most `max` items.
 
 ```js
-state: {
-  t: "number",
-  bounds: { width: "number", height: "number" },
-  bodies: listOf({ name: "string", x: "number", y: "number", speed: "number" }),
-  energy: "number",
-}
+// orbits.dialect.js
+import { defineDialect, struct, list, exact } from "kit/define";
+
+export const orbitsDialect = defineDialect({
+  name: "orbits",
+  // … types, objects, spaces, targets, slots …
+  state: {
+    t: "f64",
+    bounds: struct({ width: "f64", height: "f64" }),
+    bodies: list(struct({ name: "str", x: "f64", y: "f64", speed: "f64" }), 64),
+    energy: "f64",
+  },
+  text(state) { /* … reads state.t, state.bodies … */ },
+});
 ```
 
-A **path** names a part of it as a string: `"t"`, `"bounds.width"`, `"bodies"`. A path stops at a list (`"bodies"`); inside a list, a table's columns name the row's keys.
+- A nested object is `struct({ … })`, never a bare `{ … }`; the top level is the one plain object.
+- `text(state)` is checked against it: a host that hands `text` a value of another shape gets an error naming each path that does not fit.
+- `state` here is the **run's** state. It has nothing to do with a Grammar construct's `state` (its `init` and `step`), which is build-time.
+- A bad `state` is refused by `defineDialect` itself, with a `D` code and a fix.
+
+A **path** names a part of the state as a string: `"t"`, `"bounds.width"`, `"bodies"`. A path stops at a list (`"bodies"`); inside a list, a table's columns name the row's keys. A number is an `"f64"` (or `"f32"`, or a scalar), a string a `"str"`, a boolean a `"bool"`.
 
 ## Values: a path or a lambda
 
@@ -125,7 +138,7 @@ Each is an object with a `kind`. `label` is a string.
 
 | `kind` | Keys | Shows |
 |---|---|---|
-| `stat` | `label`, `value` (a number or string), `unit?`, `badIf?` (a boolean) | a readout; red while `badIf` holds |
+| `stat` | `label`, `value` (a number or string), `unit?`, `max?` (a number), `badIf?` (a boolean) | a readout; with `max`, shown as "value / max" and red past it; red while `badIf` holds |
 | `check` | `label`, `expect` (a boolean) | pass or fail, live |
 | `table` | `label`, `rows` (a path to a list), `columns`, `limit?` (whole, 1 to 1000) | one row per item; `columns` lists row keys (`"name"`) or `{ label, value: (row, s, $) => … }` |
 | `plot` | `label`, `y` (a number), `window` (seconds, more than 0) | `y` over the last `window` seconds of the run |
@@ -151,26 +164,21 @@ Each package's views and tiles are named by the package: `orbits.stage`, `orbits
 
 ## A worked example: orbits
 
-A package that is not in your task: bodies circling a sun, with a `mass` param on the sun. Its Dialect gives `Math` as a global, so its lambdas may call `Math.abs`; yours may call only what your Dialect gives.
+A package that is not in your task: bodies circling a sun, with a `mass` param on the sun. Its Dialect's `state` is the one above plus `startEnergy: "f64"`. Its Dialect gives `Math` as a global, so its lambdas may call `Math.abs`; yours may call only what your Dialect gives.
 
 ```js
-import { defineUI, listOf } from "kit/define";
+import { defineUI } from "kit/define";
 import { orbits } from "./orbits.grammar.js";
 
+// The state is orbits.dialect.js's (above): t, bounds, bodies, energy, startEnergy.
 export const orbitsUI = defineUI(orbits, {
-  state: {
-    t: "number",
-    energy: "number",
-    startEnergy: "number",
-    bodies: listOf({ name: "string", x: "number", y: "number", speed: "number" }),
-  },
   stage: { element: "orbits-sky", module: "./orbits-sky.js", emits: ["select"] },
   tiles: {
     bodies: {
       title: "Bodies",
       place: { splitLeft: "stage", size: 0.25 },
       body: [
-        { kind: "stat", label: "bodies", value: (s) => s.bodies.length },
+        { kind: "stat", label: "bodies", value: (s) => s.bodies.length, max: 64 },
         { kind: "table", label: "Bodies", rows: "bodies", columns: ["name", { label: "km/s", value: (row, s, $) => row.speed / 1000 }], limit: 20 },
       ],
     },
@@ -191,7 +199,7 @@ export const orbitsUI = defineUI(orbits, {
 
 ## Pitfalls
 
-1. **The state is a contract with the host.** It must match what `text(state)` reads (say it in the Dialect's comment); the checker cannot see the host.
+1. **The state lives in the Dialect.** `defineUI` takes no `state` key (U001); declare it in `defineDialect`, in the Dialect's types (`"f64"`, not `"number"`), with `struct` and `list(type, max)`.
 2. **A path stops at a list.** `"bodies.speed"` is U005: a table over `"bodies"` with the column `"speed"` is how you show it.
 3. **A lambda gets the whole state**, not a part: `(s) => s.bodies.length`, never `(bodies) => bodies.length`.
 4. **Lambdas are pure.** `s.t = 0` or a `$` write is U007; a view never changes the run. A param edit is the `params` view's job, or a `wb-param` event.
@@ -206,16 +214,15 @@ export const orbitsUI = defineUI(orbits, {
 
 | Code | Refused when |
 |---|---|
-| U001 | an unknown key (with a did-you-mean), or a required key missing |
+| U001 | an unknown key (with a did-you-mean), or a required key missing; a `state` key (the state is the Dialect's) |
 | U002 | a component `kind` that does not exist |
 | U003 | a `place` or `annotate` that names no view or tile, or tiles placed in a cycle |
 | U004 | a `place` without exactly one direction, or a bad `size` |
-| U005 | a path that names nothing in `state`, or names the wrong type for its key (a table's `rows` that is not a list, a `badIf` that is not a boolean …) |
-| U006 | a `state` shape that is not a shape (`"f64"`, `[…]`), or an empty `state` |
+| U005 | a path that names nothing in the state, or names the wrong type for its key (a table's `rows` that is not a list, a `badIf` that is not a boolean …) |
 | U007 | a lambda that does not parse, leaves the Runtime Subset, takes more parameters than its convention, assigns anything but its own locals, reads a member of the state that is not declared, or reads a free name the Dialect does not give |
 | U008 | a custom element without the package prefix or not a valid tag, without a `module`, with a module that is not one of the package's files or does not define the tag, or one tag used twice |
 | U009 | an `emits` event that is not `pick`, `select` or `param`, or `emits` without an `element` |
 | U010 | `inputs` whose `object` is not a Dialect object, whose buttons are not exactly its members (each `"bool"`), or with an unknown or repeated `role` |
 | U011 | a tile id that is not an identifier or is a generated view's id |
 | U012 | a value of the wrong form: a `label`, `title` or `note` that is not a string, a number out of its range or not whole, a `columns` entry that is neither a key nor `{ label, value }`, an empty `body` or `items` |
-| U013 | `defineUI` given something other than the package's Grammar builder, or a Dialect without `text(state)` |
+| U013 | `defineUI` given something other than the package's Grammar builder, or a Dialect that declares no `state` |

@@ -1,6 +1,6 @@
 // The custom element rules (U008): what a tag may look like, and whether a module's code defines it.
 
-import { blank } from "../../../kit/parse/blank.js";
+import { blank } from "../../parse/blank.js";
 
 /**
  * A custom element tag under the package prefix: lowercase, with a hyphen, a non-empty name after `<package>-`

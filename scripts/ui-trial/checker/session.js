@@ -7,8 +7,10 @@ export const session = {
   dirUrl: "",
   /** Bumped per check, so a second check of one directory loads its files afresh. */
   run: 0,
-  /** @type {Array<{ builder: unknown, decl: unknown }>} */
+  /** Each defineUI call: its arguments and the kit's refusal of it, if any. @type {Array<{ builder: unknown, decl: unknown, refusal: import("../../../kit/define/dialect.js").DefinitionError | null }>} */
   calls: [],
+  /** What a hand-in's `module` paths read: a package file's text, or null when it is not a readable file. @type {(path: string) => string | null} */
+  moduleText: () => null,
   /** Imports the hooks refused: the importing file's URL and the specifier. @type {Array<{ parentURL: string, specifier: string }>} */
   imports: [],
   /** The hand-in files its own files imported, as URLs without the query. @type {Set<string>} */

@@ -45,6 +45,7 @@ export const myLang = defineDialect({
     for (const n of Object.keys(program.params ?? {})) members[n] = "f64";
     return { objects: { Params: { members } } };
   },
+  state: { score: "f64" },                      // optional: the run's state, what text(state) is handed
   text(state) { … },                             // required: your host's screen as characters, for a model
 });
 ```
@@ -54,7 +55,8 @@ export const myLang = defineDialect({
 - **Intrinsics** need `ref` and a `spell` per target. At run time a vector is a plain array (`[x, y]`). Read [docs/intrinsics.md](docs/intrinsics.md) when you write one.
 - **A convention function** may be called several times per lambda, so it must be pure. Return a string from it to refuse the lambda (B011). Read [docs/state.md](docs/state.md) when a lambda's types depend on what the Program declared before it.
 - **`environment(program)`** returns objects whose members merge into the declared ones; repeating a declared member is D007.
-- **`text(state)`** prints what a person would see, sized for a model's context. You decide what `state` is; say it in a comment.
+- **`text(state)`** prints what a person would see, sized for a model's context. You decide what `state` is; declare it with `state` (next).
+- **`state`** (optional) is the shape of the **run's** state: the value `text(state)` and a UI's views are handed while a Program runs. It is not a Grammar construct's `state` (that is build-time, and a different thing). Write a plain object of member types in this Dialect's vocabulary: `state: { score: "f64", alive: "bool", pos: "vec2", mode: enumOf(["play", "over"]), best: opt("f64"), player: struct({ x: "f64", y: "f64" }), bodies: list(struct({ mass: "f64" }), 100) }`. A nested object must be `struct({ … })`, not a bare `{ … }` (D023). The Dialect value then has `checkState(value)` (every mismatch by path) and its `text` throws on a value that does not fit.
 - **A slot that says nothing may change nothing.** A lambda changes only the one object it is handed, in an instance space, with each effect listed in its slot's `may`. Read [docs/effects.md](docs/effects.md) when a lambda must write, destroy, draw a random number or add to a total.
 
 ## `defineGrammar`
@@ -108,7 +110,7 @@ export const program = defineGrammar(myLang, {
 - `lambda(convention)` is a Runtime Lambda. It also accepts a top-level helper's name or source text; nothing requires an arrow written in place.
 - `opt(spec)` and `rest(spec)` go last. An opening argument's spec takes `{ as: "key" }` last to name its record key.
 
-**Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. Your checks report with `ctx.error(code, message, { tip, arg, suggest, fix })`; the code is one letter of your own and three digits. `fix` prints as `fix: write <fix>`, so put advice in `tip`. Read [docs/codes.md](docs/codes.md) before you write checks, or when a code is new to you.
+**Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. Your checks report with `ctx.error(code, message, { tip, arg, suggest, fix })`; the code is one letter of your own and three digits (not `B C D L P S U V`, which the kit keeps; `ctx.error` with one throws). `fix` prints as `fix: write <fix>`, so put advice in `tip`. Read [docs/codes.md](docs/codes.md) before you write checks, or when a code is new to you.
 
 **The record** is what `.build()` returns, and what checks, `environment`, `init` and conventions read. The example Program below builds to:
 
@@ -120,6 +122,22 @@ export const program = defineGrammar(myLang, {
 ```
 
 Three traps: a `once` slot with one argument holds the bare value, not an array; a child list is present and empty when there are no children; a `record: "calls"` construct keeps only `calls`, no key per slot. Read [docs/record.md](docs/record.md) before any code reads the record.
+
+## `defineUI`
+
+```js
+export const orbitsUI = defineUI(orbits, {     // orbits: what defineGrammar returned
+  stage: { element: "orbits-sky", module: "./orbits-sky.js", emits: ["select"] },
+  inputs: { object: "Pad", buttons: { left: { role: "dpad.left" }, … } },
+  tiles: { bodies: { title: "Bodies", place: { splitLeft: "stage", size: 0.25 }, body: [
+    { kind: "stat", label: "bodies", value: (s) => s.bodies.length, max: "capacity" },
+    { kind: "table", label: "Bodies", rows: "bodies", columns: ["name", { label: "km/s", value: (row) => row.speed / 1000 }] },
+  ] } },
+  annotate: { traces: { energy: { note: "kinetic plus potential" } } },
+}, { moduleText });                           // moduleText(path): a package file's text, for the stage's module checks (optional)
+```
+
+The UI reads the **run's state your Dialect's `state` declares** (above): a path is `"bounds.width"` and stops at a list; a lambda is `(s, $) => …` (a table column's `(row, s, $) => …`). A UI has no `state` key (`U001`), and a Dialect with no `state` is `U013`. The refusals are `U` codes with a fix, collected in one `DefinitionError`; the full list is `UI_CODES` in [define/codes.js](define/codes.js), and the keys and rules are in [define/README.md](define/README.md#defineui).
 
 ## A Program
 
@@ -155,6 +173,7 @@ These cost earlier authors time.
 6. **A param value has one form:** `.limit($.topN)`. `.limit(() => $.topN)` is B004.
 7. **Intrinsics exist only inside lambdas.** `const START = dayOf(2026, 1, 1)` at the top level fails when the file loads.
 8. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
+9. **`state` means two things.** A Dialect's `state` is the run's, what `text(state)` and a UI are handed; a Grammar construct's `state` (`record: "calls"`) is its build-time record. Write each where it belongs.
 
 ## Not built
 

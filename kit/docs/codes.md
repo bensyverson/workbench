@@ -26,7 +26,7 @@ Every diagnostic carries a tip or a fix: read it before guessing.
 
 Report with `ctx.error(code, message, { tip, arg, suggest, fix })`:
 
-- **`code`**: one letter of your own and three digits. `B C D L P S V` are reserved, and `ctx.error` with one throws.
+- **`code`**: one letter of your own and three digits. `B C D L P S U V` are reserved, and `ctx.error` with one throws.
 - **`arg`**: an argument's position, or a path into it.
 - **`fix`**: code to write instead. It prints as `fix: write <fix>`, so put advice in `tip`, not `fix`.
 - **`tip`**: advice. The checker prints it on the same `fix:` line when there is no `fix`. With neither, the line reads `fix: no fix given: …`.

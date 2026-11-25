@@ -1,15 +1,8 @@
-import { defineUI, listOf } from "kit/define";
+import { defineUI } from "kit/define";
 import { maze } from "./maze.grammar.js";
 
 // The passing fixture for the maze package: inputs onto the Dialect's Pad, a text-view stage, two readouts.
 export const mazeUI = defineUI(maze, {
-  state: {
-    t: "number",
-    score: "number",
-    coinsLeft: "number",
-    player: { x: "number", y: "number" },
-    grid: listOf("string"),
-  },
   inputs: {
     object: "Pad",
     buttons: {

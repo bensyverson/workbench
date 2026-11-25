@@ -93,11 +93,15 @@ test("U001: an unknown key, with a did-you-mean, at its line", async () => {
   const d = only(await check("particles", [['title: "Health"', 'titel: "Health"']]), "U001");
   assert.match(d.message, /titel/);
   assert.match(d.message, /Did you mean 'title'\?/);
-  assert.equal(d.line, 17);
+  assert.equal(d.line, 9);
 });
-test("U001: a required key missing (state; a tile's title)", async () => {
-  only(await check("maze", [["state: {", "stat: {"]]), "U001");
+test("U001: a required key missing (a tile's title)", async () => {
   only(await check("maze", [['title: "Score",', ""]]), "U001");
+});
+test("U001: a state key in the UI says the state is declared in the Dialect", async () => {
+  const d = only(await check("maze", [["defineUI(maze, {", 'defineUI(maze, {\n  state: { t: "number" },']]), "U001");
+  assert.match(d.fix, /defineDialect/);
+  assert.equal(d.line, 6);
 });
 test("U001: a component's unknown key", async () => {
   only(await check("maze", [['{ kind: "stat", label: "score", value: "score" }', '{ kind: "stat", label: "score", value: "score", color: "red" }']]), "U001");
@@ -159,17 +163,14 @@ test("U005: a traces annotation on something that is not a number", async () => 
   only(await check("particles", [["traces: { t:", "traces: { bounds:"]]), "U005");
 });
 
-// U006
-test("U006: a state leaf that is not a shape", async () => {
-  const d = only(await check("maze", [['score: "number"', 'score: "f64"']]), "U006");
-  assert.match(d.fix, /"number"/);
-});
-test("U006: an array literal for a list, and an empty state", async () => {
-  only(await check("maze", [['grid: listOf("string")', 'grid: ["string"]']]), "U006");
-  only(await check("maze", [
-    ['t: "number",\n    score: "number",\n    coinsLeft: "number",\n    player: { x: "number", y: "number" },\n    grid: listOf("string"),', ""],
-    ['value: "score" }', 'value: "Score" }'],
-  ]).then((r) => ({ ...r, diagnostics: r.diagnostics.filter((d) => d.code === "U006") })), "U006");
+// U006 is retired: the state is declared in the Dialect, where a bad one is D023 (a LOAD here: the definition is refused).
+test("D023: a malformed state in the Dialect is a LOAD, at its line in the Dialect", async () => {
+  const dialect = readFileSync(join(PACKAGES.maze, "maze.dialect.js"), "utf8");
+  const bad = dialect.replace('score: "f64",', 'score: { n: "f64" },');
+  const d = only(await check("maze", [], { "maze.dialect.js": bad }), "LOAD");
+  assert.match(d.message, /D023/);
+  assert.match(d.message, /struct/);
+  assert.equal(d.file, "maze.dialect.js");
 });
 
 // U007
@@ -258,6 +259,13 @@ test("U012: a label that is not a string, an empty body, and a bad columns entry
 // U013
 test("U013: defineUI given something other than the package's Grammar builder", async () => {
   only(await check("maze", [["defineUI(maze, {", "defineUI({}, {"]]), "U013");
+});
+test("U013: a Dialect that declares no state", async () => {
+  const dialect = readFileSync(join(PACKAGES.maze, "maze.dialect.js"), "utf8");
+  const a = dialect.indexOf("  state: {");
+  const b = dialect.indexOf("  },\n", a) + 6;
+  const d = only(await check("maze", [], { "maze.dialect.js": dialect.slice(0, a) + dialect.slice(b) }), "U013");
+  assert.match(d.message, /declares no state/);
 });
 
 // The checker's own
@@ -388,7 +396,6 @@ test("LOAD names a file in the hand-in, never hooks.js or a kit file", async () 
 test("lines: two identical lambdas are placed at their own lines, and a comment quoting one is not it", async () => {
   const head = 'import { defineUI } from "kit/define";\nimport { maze } from "./maze.grammar.js";\n';
   const ui = (/** @type {string} */ pre) => `${head}${pre}export const mazeUI = defineUI(maze, {
-  state: { t: "number" },
   tiles: {
     one: { title: "One", place: { splitBelow: "stage" }, body: [{ kind: "check", label: "a", expect: (s) => s.nope > 0 }] },
     two: { title: "Two", place: { splitBelow: "one" }, body: [{ kind: "check", label: "b", expect: (s) => s.nope > 0 }] },
@@ -396,11 +403,11 @@ test("lines: two identical lambdas are placed at their own lines, and a comment 
 });
 `;
   const two = await check("maze", [], { "maze.ui.js": ui("") });
-  assert.deepEqual(two.diagnostics.map((d) => `${d.code}@${d.line}`), ["U007@6", "U007@7"]);
+  assert.deepEqual(two.diagnostics.map((d) => `${d.code}@${d.line}`), ["U007@5", "U007@6"]);
   const commented = await check("maze", [], { "maze.ui.js": ui("// expect: (s) => s.nope > 0 was the first try\n") });
-  assert.deepEqual(commented.diagnostics.map((d) => `${d.code}@${d.line}`), ["U007@7", "U007@8"]);
+  assert.deepEqual(commented.diagnostics.map((d) => `${d.code}@${d.line}`), ["U007@6", "U007@7"]);
   // A declaration whose tiles are built above the call is still placed (searched from the top of the file).
-  const above = `${head}const tiles = {\n  one: { title: "One", place: { splitBelow: "stag" }, body: [{ kind: "stat", label: "a", value: "t" }] },\n};\nexport const mazeUI = defineUI(maze, { state: { t: "number" }, tiles });\n`;
+  const above = `${head}const tiles = {\n  one: { title: "One", place: { splitBelow: "stag" }, body: [{ kind: "stat", label: "a", value: "t" }] },\n};\nexport const mazeUI = defineUI(maze, { tiles });\n`;
   assert.deepEqual((await check("maze", [], { "maze.ui.js": above })).diagnostics.map((d) => `${d.code}@${d.line}`), ["U003@4"]);
 });
 

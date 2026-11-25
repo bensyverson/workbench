@@ -1,4 +1,4 @@
-import { defineDialect, exact } from "kit/define";
+import { defineDialect, exact, list, struct } from "kit/define";
 
 // The maze: one player walks a grid of walls and coins, steered by a D-pad and two buttons. The UI trial's
 // input-driven case (docs/task.md, "Maze"); the host is described there in prose and is not built.
@@ -40,8 +40,15 @@ export const mazeDialect = defineDialect({
     for (const n of Object.keys(program.params ?? {})) params[n] = "f64";
     return { objects: { Params: { members: params } } };
   },
-  // state: what the host computed after a tick:
-  // { t, score, coinsLeft, player: { x, y }, grid: [row strings, "#" a wall, "c" a coin, "." floor] }
+  // The run's state: what the host computes after each tick, and hands text(state) and the UI's views.
+  // grid is one string per row: "#" a wall, "c" a coin, "." floor.
+  state: {
+    t: "f64",
+    score: "f64",
+    coinsLeft: "f64",
+    player: struct({ x: "f64", y: "f64" }),
+    grid: list("str", 64),
+  },
   text(state) {
     const rows = state.grid.map((row, y) => [...row].map((ch, x) => (x === state.player.x && y === state.player.y ? "@" : ch)).join(""));
     return [`t=${state.t.toFixed(2)} score=${state.score} coins=${state.coinsLeft}`, ...rows].join("\n");

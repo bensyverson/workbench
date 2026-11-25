@@ -1,4 +1,4 @@
-// REJECT 2: transfer to its own account (expect: U005)
+// REJECT 2: transfer to its own account (expect: A005)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

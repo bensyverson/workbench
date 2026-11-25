@@ -1,16 +1,8 @@
-import { defineUI, listOf } from "kit/define";
+import { defineUI } from "kit/define";
 import { particles } from "./particles.grammar.js";
 
 // The passing fixture for the particles package: the draft's worked example plus one of each other piece.
 export const particlesUI = defineUI(particles, {
-  state: {
-    t: "number",
-    maxParticles: "number",
-    bounds: { width: "number", height: "number" },
-    particles: listOf({ x: "number", y: "number" }),
-    emitters: listOf({ name: "string", live: "number" }),
-    counters: listOf({ name: "string", value: "number" }),
-  },
   stage: { element: "particles-field", module: "./particles-field.js", emits: ["pick", "select"] },
   tiles: {
     health: {

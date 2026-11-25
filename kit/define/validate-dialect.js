@@ -4,13 +4,14 @@
 import { didYouMean } from "./codes.js";
 import { checkKeys, checkType, checkMember, checkSignature, listed, BUILTIN_TYPES, SIGNATURE_KEYS } from "./types.js";
 import { validateEffects } from "./effects.js";
+import { validateState } from "./state.js";
 import { isPlainObject, kindOf, describe } from "./tags.js";
 import { parseLambda, checkSubset } from "../parse/index.js";
 
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "conditions"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "conditions", "state"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
 /** What `conditions` may say: only bool values are conditions. */
 export const CONDITIONS = Object.freeze(["bool"]);
@@ -152,6 +153,8 @@ export function validateDialect(def) {
       }
     }
   }
+
+  if (def.state !== undefined) out.push(...validateState(def.state, scope));
 
   // Whether a space is pure or an instance space is D012, in effects.js.
   for (const [n, v] of spaces) if (isPlainObject(v)) checkKeys(v, ["pure", "instance"], [], ["spaces", n], `space '${n}'`, out);

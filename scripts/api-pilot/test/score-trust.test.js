@@ -65,7 +65,7 @@ test("a reject program refused because the candidate's grammar did not load (C00
 
 test("a crash in the candidate's check reached by one program fails that program only", async () => {
   const BOOM = handin((t) => t.replace("function checkFlowName({ args: [n] }, ctx) {", "function checkFlowName({ args: [n] }, ctx) {\n  if (n === \"boom\") throw new Error(\"boom\");"));
-  const hidden = hiddenSet({ "a1.js": GOOD, "a2.js": boom() }, { "r1.js": BAD, "r2.js": boom("// REJECT 2: crashes (expect: U003)\n") });
+  const hidden = hiddenSet({ "a1.js": GOOD, "a2.js": boom() }, { "r1.js": BAD, "r2.js": boom("// REJECT 2: crashes (expect: A003)\n") });
   try {
     const r = await score(BOOM, hidden);
     assert.equal(r.definitions.ok, true, r.definitions.codes.join(","));

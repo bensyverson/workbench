@@ -28,6 +28,23 @@ export const DEFINE_CODES = Object.freeze({
   D020: "A Dialect without text(state), its text view (its screen and state as characters, sized for a model)",
   D021: "A malformed effect declaration: an unknown verb, object or member in may; a write, destroy or bump with no object; a non-read in a pure space's slot or in helpers; a bump outside an instance space or of a member that is not a total; a write of a member that is not writable; one slot that may both read and bump a total; write and bump on one member, or on a member that is not a value; bump on a non-f64; effects on an intrinsic",
   D022: "An instance a lambda could reach other than as its instance space's slot parameter (a member, method result, global, list item, struct field, intrinsic or call result of its type; a slot outside the space that takes one; a slot in it that takes none or two), or a write or destroy of an object in a slot whose space's instance is not that object",
+  D023: "A malformed state (the run's state a Dialect declares): not an object, no members, a member that is not a type or is a nested plain object (write struct({ … })), an object() or a declared object as a member, a list without a positive whole max",
+});
+
+/** defineUI's codes: U… is a UI declaration refused when defineUI is called. U006 is retired (its job, a bad state, is D023's); its number is not reused. */
+export const UI_CODES = Object.freeze({
+  U001: "An unknown key (with a did-you-mean), or a required key missing; a `state` key, which belongs to defineDialect",
+  U002: "A component kind that does not exist",
+  U003: "A place or annotate that names no view or tile, or tiles placed in a cycle",
+  U004: "A place without exactly one direction, or a bad size",
+  U005: "A path that names nothing in the Dialect's state, or names the wrong type for its key",
+  U007: "A lambda that does not parse, leaves the subset, takes too many parameters, assigns anything but its own let locals, reads an undeclared state member or a free name the Dialect does not give",
+  U008: "A custom element without the package prefix or a valid tag, without a module, with a module that is not a package file or does not define the tag, or a tag used twice",
+  U009: "An emits event that is not pick, select or param, or emits without an element",
+  U010: "Inputs whose object is not a Dialect object, whose buttons are not exactly its bool members, or with an unknown or repeated role",
+  U011: "A tile id that is not an identifier or is a generated view's id",
+  U012: "A value of the wrong form: a non-string label, title or note, a number out of range or not whole, a bad columns entry, an empty body or items",
+  U013: "defineUI given something other than the package's Grammar builder, or a Dialect that declares no state",
 });
 
 /** The generated builder's codes. */
@@ -55,7 +72,7 @@ export const BUILD_CODES = Object.freeze({
 export const an = (w) => `${(/^[aeiou]/i.test(w) && !/^(uni(?![nm])|us[aeu]|uti|eu|one|once|ubiq)/i.test(w)) || /^(hour|honest|honor|heir)/i.test(w) ? "an" : "a"} ${w}`;
 
 /** Letters a Dialect's own check codes may not start with. */
-export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "L", "P", "S", "V"]);
+export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "L", "P", "S", "U", "V"]);
 
 /**
  * The fields of a Dialect's own refusal, as a check's or a step's `ctx.error` makes it: the message with a

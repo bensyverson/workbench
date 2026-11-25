@@ -1,16 +1,15 @@
-// The UI trial checker's library: loads a hand-in's `<lang>.ui.js` with the real kit/define (plus a defineUI that
-// records its arguments), then judges the recorded declaration against docs/ui-draft.md and docs/rules.md.
+// The UI trial checker's library: loads a hand-in's `<lang>.ui.js` with the real kit/define (its defineUI wrapped to
+// record the call and the kit's refusal), then turns the refusal's diagnostics into lines of the file. The checks
+// themselves are kit/define's defineUI; this adds the file-level ones (C001, C006, LOAD) and the line location.
 
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installHooks } from "./hooks.js";
 import { session, begin } from "./session.js";
-import { validate } from "./validate.js";
 import { locatePos, lambdaLine, lineAt } from "./locate.js";
 import { blank } from "../../../kit/parse/blank.js";
 import { LOAD } from "./codes.js";
-import { TAG } from "../../../kit/define/tags.js";
 
 /** @import { UIDiagnostic } from "./codes.js" */
 
@@ -70,6 +69,14 @@ export async function checkDir(dir, { lang }) {
   const diagnostics = [];
   const add = (/** @type {string} */ file, /** @type {number} */ line, /** @type {string} */ code, /** @type {string} */ message, /** @type {string} */ fix) => diagnostics.push({ file, line, code, severity: "error", message, fix });
   const done = () => ({ ok: diagnostics.length === 0, diagnostics, files });
+  // What a hand-in's `module` paths read: a package file's text (recorded in `files`), or null when it is not a file.
+  session.moduleText = (path) => {
+    const f = join(root, path);
+    if (!isFile(f)) return null;
+    const text = readFileSync(f, "utf8");
+    files[path.replace(/^\.\//, "")] = text;
+    return text;
+  };
 
   /** @type {Record<string, unknown>} */
   let grammarExports = {};
@@ -107,39 +114,22 @@ export async function checkDir(dir, { lang }) {
     add(names.ui, Math.max(1, src.indexOf("defineUI(") >= 0 ? lineAt(src, src.indexOf("defineUI(")) : 1), "C001", `${names.ui} calls defineUI ${session.calls.length} times; it calls it once`, `export const ${lang}UI = defineUI(${lang}, { state, … });`);
     return done();
   }
-  const { builder, decl } = session.calls[0];
+  const { builder, decl, refusal } = session.calls[0];
   const callLine = lineAt(src, Math.max(0, src.indexOf("defineUI(")));
   const b = /** @type {any} */ (builder);
-  if (typeof b !== "function" || !b.dialect || !b.grammar || !Object.values(grammarExports).includes(b)) {
+  if (!refusal && !Object.values(grammarExports).includes(b)) {
     add(names.ui, callLine, "U013", "defineUI's first argument is not the package's Grammar builder", `import the builder from "./${names.grammar}" and pass it: defineUI(${Object.keys(grammarExports)[0] ?? lang}, { … })`);
-    return done();
   }
-  const dialect = /** @type {Record<string, any>} */ (b.dialect.def);
-  if (typeof dialect.text !== "function") add(names.dialect, 1, "U013", "the Dialect has no text(state): the stage's required fallback", "add text(state) to the Dialect");
-
-  const free = new Set([
-    ...Object.keys(dialect.globals ?? {}), ...Object.keys(dialect.intrinsics ?? {}), ...Object.keys(dialect.library ?? {}),
-    ...Object.entries(dialect.types ?? {}).filter(([, t]) => /** @type {any} */ (t)?.[TAG] === "vector").map(([n]) => n),
-  ]);
-  const problems = validate(decl, {
-    pkg: String(dialect.name),
-    objects: dialect.objects ?? {},
-    globalObjects: Object.fromEntries(Object.entries(dialect.globals ?? {}).filter(([, o]) => typeof o === "string" && Object.hasOwn(dialect.objects ?? {}, o)).map(([n, o]) => [n, dialect.objects[/** @type {string} */ (o)]])),
-    free,
-    moduleText(path) {
-      const f = join(root, path);
-      if (!isFile(f)) return null;
-      const text = readFileSync(f, "utf8");
-      files[path.replace(/^\.\//, "")] = text;
-      return text;
-    },
-  });
-  for (const p of problems) {
+  for (const p of refusal?.diagnostics ?? []) {
     let line = 0;
-    const pos = p.at.length ? locatePos(src, p.at, decl) : 0;
-    if (p.fn) { const l = lambdaLine(src, p.fn, pos); if (l) line = l + (p.inner ?? 1) - 1; }
-    if (!line) line = p.at.length ? lineAt(src, pos) : callLine;
-    add(names.ui, line, p.code, p.message, p.fix);
+    const pos = p.path.length ? locatePos(src, p.path, decl) : 0;
+    if (p.line !== undefined) {
+      const fn = /** @type {any} */ (p.path.reduce((/** @type {any} */ v, seg) => v?.[seg], decl));
+      const l = typeof fn === "function" ? lambdaLine(src, fn, pos) : 0;
+      if (l) line = l + p.line - 1;
+    }
+    if (!line) line = p.path.length ? lineAt(src, pos) : callLine;
+    add(names.ui, line, p.code, p.message, p.tip);
   }
   diagnostics.sort((x, y) => (x.file === y.file ? x.line - y.line : x.file < y.file ? -1 : 1));
   return done();

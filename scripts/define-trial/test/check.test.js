@@ -93,6 +93,7 @@ const FAILING = [
   { code: "D021", why: "effects on an intrinsic", edits: [{ file: DIALECT, from: `spell: { js: "Math.sin($0)", glsl: "sin($0)" }`, to: `spell: { js: "Math.sin($0)", glsl: "sin($0)" }, effects: ["rng"]` }], file: DIALECT, line: lineOf(DIALECT, "sin: {"), message: /sin.*pure/ },
   { code: "D022", why: "a slot outside an instance space that takes its instance", edits: [{ file: DIALECT, from: "spaces: { pixel: { pure: true } }", to: `spaces: { pixel: { pure: true }, mark: { instance: "Uniforms" } }` }], file: DIALECT, line: lineOf(DIALECT, "pixel: { params"), message: /pixel.*Uniforms/ },
   { code: "D020", edits: [{ file: DIALECT, from: "  text: (state) => JSON.stringify(state),\n", to: "" }], file: DIALECT, message: /text\(state\)/ },
+  { code: "D023", why: "a nested plain object in the run's state", edits: [{ file: DIALECT, from: "  text: (state) => JSON.stringify(state),\n", to: "  text: (state) => JSON.stringify(state),\n  state: { player: { x: \"f64\" } },\n" }], file: DIALECT, message: /struct/ },
   { code: "D019", edits: [{ file: GRAMMAR, from: "      opens: [name()],", to: `      opens: [name(), lambda("pixel")],` }], file: GRAMMAR, message: /lambda/ },
   // At a builder call: B001 is thrown at once, the rest collected.
   { code: "B001", edits: [{ file: EX1, from: `.mute("glow")`, to: `.mut("glow")` }], file: EX1, line: lineOf(EX1, ".mute("), message: /mut\b.*did you mean 'mute'/i },
