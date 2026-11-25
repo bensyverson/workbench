@@ -54,7 +54,7 @@ const { results, sigs, helpers } = lowerProgram(environment, lambdas, helperSour
 | L010 | More parameters than the slot passes |
 | L011 | A name argument (param, pool, sound, event) that is not a literal, or names nothing declared |
 | L012 | A subset construct lowering does not handle yet (an empty array literal or one with a hole, a `for…of` binding that is not `const`, storing into a list element) |
-| L013 | A store to a read-only place: a baked constant, a built-in, a `const` |
+| L013 | A store to a read-only place: a baked constant, a built-in, a `const`, a global of the Dialect (`$ = 1`, which lowered clean and vanished until 2026-11-25) |
 | L014 | A signature lowering cannot infer (no call site, no emit site), emit sites that disagree, call sites that disagree on a parameter's type, a call from an effect-checked position to a method whose effects are unknown, or a call to a helper or constant that does not lower |
 | L015 | The wrong number of arguments |
 | L016 | A number literal no number type can hold: not finite (`1e999`), or past f32's finite range where it is an f32 |
