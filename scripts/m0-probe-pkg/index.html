@@ -1,0 +1,175 @@
+<title>Workbench Package Probe</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<script type="importmap">{ "imports": { "kit/define": "./kit-define-stub.js" } }</script>
+<style>
+/* One column of checks: a table of results, then the manual upload. */
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --fg: #1a1d21; --muted: #5b6470; --line: #d8dce2;
+  --ok: #1f7a46; --fail: #b3261e; --wait: #8a6d00; --accent: #2f5bd0;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #14171a; --panel: #1c2024; --fg: #e5e8eb; --muted: #9aa3ad; --line: #2d3238;
+  --ok: #5cc98a; --fail: #ff8a80; --wait: #e0c050; --accent: #8fb0ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #14171a; --panel: #1c2024; --fg: #e5e8eb; --muted: #9aa3ad; --line: #2d3238;
+  --ok: #5cc98a; --fail: #ff8a80; --wait: #e0c050; --accent: #8fb0ff; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px; }
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 20px; margin: 0; text-wrap: balance; }
+p { margin: 0; color: var(--muted); line-height: 1.5; max-width: 65ch; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+.wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+td { border-top: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+td.k { font-family: var(--mono); white-space: nowrap; }
+td.v { font-family: var(--mono); color: var(--muted); word-break: break-word; }
+td.ok { color: var(--ok); font-weight: 600; } td.fail { color: var(--fail); font-weight: 600; } td.wait { color: var(--wait); }
+label { display: grid; gap: 6px; font-size: 13px; }
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+<main>
+  <h1>Workbench Package Probe</h1>
+  <p>Can a page load a Dialect package's modules: as siblings, through an import map (static, and one added at run time), and from <code>blob:</code> URLs with their imports rewritten? Results save to this artifact's database.</p>
+  <p id="status">Running…</p>
+  <section class="wrap"><table><tbody id="rows"></tbody></table></section>
+  <section>
+    <label for="up">Manual: pick a package folder (or several files). The page reads them, hashes them, and loads any <code>*.js</code> that imports only its siblings.
+      <input id="up" type="file" multiple webkitdirectory>
+    </label>
+  </section>
+</main>
+<script>
+(function () {
+  "use strict";
+  const results = {};
+  const rowsEl = document.getElementById("rows");
+  const statusEl = document.getElementById("status");
+  let db = null;
+  function render() {
+    rowsEl.textContent = "";
+    for (const [k, r] of Object.entries(results)) {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td"); a.className = "k"; a.textContent = k;
+      const b = document.createElement("td"); b.className = r.ok === true ? "ok" : r.ok === false ? "fail" : "wait";
+      b.textContent = r.ok === true ? "yes" : r.ok === false ? "no" : "…";
+      const c = document.createElement("td"); c.className = "v"; c.textContent = r.detail;
+      tr.append(a, b, c); rowsEl.append(tr);
+    }
+  }
+  let timer = null;
+  function persist() {
+    if (!db) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      db.doc("pkgprobe/results").set({ at: new Date().toISOString(), ua: navigator.userAgent, results })
+        .then(() => { statusEl.textContent = "Saved to the artifact database at " + new Date().toLocaleTimeString(); })
+        .catch((e) => { statusEl.textContent = "Could not save results: " + (e && (e.code || e.message)); });
+    }, 400);
+  }
+  function record(key, ok, detail) { results[key] = { ok, detail: detail == null ? "" : String(detail).slice(0, 400) }; render(); persist(); }
+  const errText = (e) => (e && ((e.name ? e.name + ": " : "") + (e.message || e))) || "error";
+  async function check(key, fn) { try { record(key, true, await fn()); } catch (e) { record(key, false, errText(e)); } }
+  const assert = (c, m) => { if (!c) throw new Error(m); };
+  const blobUrl = (text) => URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
+  const sha256 = async (text) => "sha256-" + btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))));
+  const abs = (p) => new URL(p, location.href).href;
+
+  // The loader the draft proposes for an upload: each file a blob: URL, leaves first, with "./x.js" and "kit/define"
+  // rewritten to the target's URL. Static imports only, matched lexically.
+  const IMPORT = /(\bfrom\s*|\bimport\s*)(["'])([^"']+)\2/g;
+  function loadFromTexts(files) {
+    const urls = {};
+    const deps = (t) => [...t.matchAll(IMPORT)].map((m) => m[3]);
+    const order = [];
+    const seen = new Set();
+    const visit = (p) => {
+      if (seen.has(p)) return; seen.add(p);
+      for (const d of deps(files[p])) if (d.startsWith("./")) { const q = d.slice(2); assert(q in files, p + " imports missing " + d); visit(q); }
+      order.push(p);
+    };
+    Object.keys(files).forEach(visit);
+    for (const p of order) {
+      const text = files[p].replace(IMPORT, (all, kw, q, spec) => {
+        if (spec === "kit/define") return kw + q + abs("./kit-define-stub.js") + q;
+        if (spec.startsWith("./")) return kw + q + urls[spec.slice(2)] + q;
+        throw new Error(p + " imports '" + spec + "', which a package may not");
+      });
+      urls[p] = blobUrl(text);
+    }
+    return urls;
+  }
+
+  async function runAuto() {
+    record("env.userAgent", true, navigator.userAgent);
+    record("env.origin", true, location.origin);
+    record("env.importmapSupported", HTMLScriptElement.supports ? HTMLScriptElement.supports("importmap") : false, "HTMLScriptElement.supports('importmap')");
+    record("env.subtleCrypto", !!(crypto && crypto.subtle), "secure context: " + isSecureContext);
+    record("env.decompressionStream", typeof DecompressionStream === "function", typeof DecompressionStream);
+    const claude = window.claude;
+    if (claude && claude.use) { try { db = await claude.use("db"); } catch (e) { db = null; } }
+    record("env.db", !!db, db ? "db capability present" : "no db: results stay on this page");
+
+    await check("sibling.relativeImport", async () => {
+      const m = await import("./pkg/tiles/tiles.dialect.js");
+      assert(m.tiles.cell === 8, "lib.js not reached"); return "a sibling module importing ./lib.js loads";
+    });
+    await check("sibling.fetchText", async () => {
+      const r = await fetch("./pkg/tiles/tiles.dialect.js"); assert(r.ok, "status " + r.status);
+      const t = await r.text(); return (await sha256(t)) + " (" + t.length + " chars)";
+    });
+    await check("importmap.static", async () => {
+      const m = await import("./uses-bare.js");
+      assert(m.viaMap.made === "stub", "not the stub"); return "a page-level import map resolves 'kit/define'";
+    });
+    await check("importmap.dynamic", async () => {
+      const target = blobUrl("export const late = 42;");
+      const s = document.createElement("script"); s.type = "importmap";
+      s.textContent = JSON.stringify({ imports: { "late-pkg": target } });
+      document.body.append(s);
+      const m = await import(blobUrl('import { late } from "late-pkg"; export const got = late;'));
+      assert(m.got === 42, "wrong value"); return "a map added after modules loaded resolves a new bare name";
+    });
+    await check("blob.relativeFails", async () => {
+      try { await import(blobUrl('import { cell } from "./lib.js"; export const c = cell;')); return "unexpected: resolved (so no rewrite needed?)"; }
+      catch (e) { return "as expected, a blob: module cannot resolve ./lib.js: " + errText(e); }
+    });
+    await check("blob.rewriteLoader", async () => {
+      const files = {
+        "lib.js": "export const cell = 8;",
+        "tiles.dialect.js": 'import { cell } from "./lib.js";\nimport { defineDialect } from "kit/define";\nexport const tiles = defineDialect({ name: "tiles", cell });',
+      };
+      const urls = loadFromTexts(files);
+      const m = await import(urls["tiles.dialect.js"]);
+      assert(m.tiles.cell === 8 && m.tiles.made === "stub", "wrong module graph");
+      return "rewritten blob graph loads, kit/define from a sibling URL";
+    });
+    await check("blob.refusesForeignImport", async () => {
+      try { loadFromTexts({ "a.js": 'import x from "other-pkg";' }); throw new Error("not refused"); }
+      catch (e) { if (/may not/.test(e.message)) return e.message; throw e; }
+    });
+    record("upload.folder", null, "manual: pick a folder below");
+    statusEl.textContent = db ? "Automatic checks done. Saving…" : "Automatic checks done. No database here.";
+    persist();
+  }
+
+  document.getElementById("up").addEventListener("change", async (ev) => {
+    const list = [...ev.target.files];
+    await check("upload.folder", async () => {
+      assert(list.length, "no files");
+      const files = {};
+      for (const f of list) if (f.name.endsWith(".js")) files[f.name] = await f.text();
+      const hashes = await Promise.all(list.slice(0, 3).map(async (f) => f.name + " " + (await sha256(await f.text())).slice(0, 18)));
+      let loaded = "no .js";
+      if (Object.keys(files).length) {
+        try { const urls = loadFromTexts(files); await Promise.all(Object.values(urls).map((u) => import(u))); loaded = "loaded " + Object.keys(urls).length + " modules"; }
+        catch (e) { loaded = "load failed: " + errText(e); }
+      }
+      return list.length + " files (paths like " + (list[0].webkitRelativePath || list[0].name) + "); " + hashes.join(", ") + "; " + loaded;
+    });
+  });
+  runAuto();
+})();
+</script>
