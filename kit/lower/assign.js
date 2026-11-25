@@ -65,7 +65,7 @@ function writableLocal(L, target) {
   const b = L.lookup(target.name);
   const top = L.sigs.helpers?.[target.name];
   if (!b && top) { L.error("L013", target, `'${target.name}' is a top-level ${top.kind === "const" ? "constant" : "function"} of the program.`, L.environment.tips?.topLevel ?? "A top-level binding is fixed at run time; keep what changes in a let local, or in a member the slot may write."); return null; }
-  if (!b && L.environment.globals[target.name]) { L.error("L013", target, `'${target.name}' is a global of the language.`, "A global is read-only; keep what changes in a let local, or in a member the slot may write."); return null; }
+  if (!b && Object.hasOwn(L.environment.globals, target.name)) { L.error("L013", target, `'${target.name}' is a global of the language.`, "A global is read-only; keep what changes in a let local, or in a member the slot may write."); return null; }
   if (!b) { identifier(L, target); return null; }
   if (b.kind !== "let") { L.error("L013", target, `'${target.name}' is ${b.kind === "param" ? "a parameter" : "const"}.`, "Declare it with let to change it, or use a new name."); return null; }
   if (L.pure > 0) { L.error("L006", target, `A query callback must be pure, but this changes '${target.name}'.`, "Keep callbacks pure: compute the change after the query, from its result."); return null; }

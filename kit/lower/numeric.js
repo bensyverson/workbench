@@ -14,6 +14,15 @@ import { bad, spanOf, seq, check, expr, mismatch } from "./expr.js";
 /** @import { Lowerer } from "./lowerer.js" */
 
 /** The operators this file types, by source spelling. */
+/**
+ * A declared table's own entry, so `toString` or `constructor` is never a vector or conversion.
+ * @template T
+ * @param {Record<string, T> | undefined} table
+ * @param {string} name
+ * @returns {T | undefined}
+ */
+const own = (table, name) => (table && Object.hasOwn(table, name) ? table[name] : undefined);
+
 const ARITH = /** @type {Record<string, Op>} */ ({ "+": "add", "-": "sub", "*": "mul", "/": "div", "%": "rem", "**": "pow" });
 const COMPARE = /** @type {Record<string, Op>} */ ({ "<": "lt", "<=": "le", ">": "gt", ">=": "ge" });
 const EQUALITY = /** @type {Record<string, Op>} */ ({ "===": "eq", "!==": "ne", "==": "eq", "!=": "ne" });
@@ -286,8 +295,8 @@ export const componentOf = (L, t, name) => aliasesOf(L, t)[name] ?? name;
  * @returns {Expr | null}
  */
 export function numericCall(L, node, name, args) {
-  const v = L.environment.vectors?.[name];
-  const to = L.environment.conversions?.[name];
+  const v = own(L.environment.vectors, name);
+  const to = own(L.environment.conversions, name);
   if (!v && !to) return null;
   const n = v ? v.vec : 1;
   if (args.length !== n) {
@@ -350,5 +359,5 @@ export function numericBinding(L, node, limit, bound, label) {
  * @param {string} name
  */
 export function isNumericName(L, name) {
-  return Boolean(L.environment.vectors?.[name] || L.environment.conversions?.[name]);
+  return Boolean(own(L.environment.vectors, name) || own(L.environment.conversions, name));
 }

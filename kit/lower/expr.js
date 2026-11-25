@@ -165,7 +165,7 @@ export function identifier(L, node) {
     const baked = inline(L, h.value, span, { node, name: node.name });
     return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
   }
-  const g = L.environment.globals[node.name];
+  const g = Object.hasOwn(L.environment.globals, node.name) ? L.environment.globals[node.name] : undefined;
   if (g) return refuseHandle(L, node, g, "global") ? bad(node) : L.ex({ k: "global", name: node.name, t: g, span });
   if (isNumericName(L, node.name)) {
     L.error("L003", node, `'${node.name}' is a function here.`, `Call it: ${node.name}(…).`);
@@ -340,10 +340,11 @@ export function resolveOn(L, recv, name, node) {
     owner = "vector";
     members = components(L, t);
   }
-  const decl = members?.[name];
+  const decl = members && Object.hasOwn(members, name) ? members[name] : undefined;
   if (!decl) {
-    const no = owner ? L.environment.objects[owner]?.rejected?.[name] : undefined;
-    if (no && Object.hasOwn(L.environment.objects[owner].rejected ?? {}, name)) {
+    const rejected = owner ? L.environment.objects[owner]?.rejected : undefined;
+    const no = rejected && Object.hasOwn(rejected, name) ? rejected[name] : undefined;
+    if (no) {
       L.error("L002", node.property, `${label} does not offer '${name}': ${no.message}`, no.tip);
       return null;
     }
@@ -551,14 +552,22 @@ function logical(L, node, mode) {
     L.error("L012", node, "'??' is not lowered yet.", "Write the check out: x !== null ? x : fallback.");
     return bad(node);
   }
+  /** @type {{ node: AST.Expression, e: Expr } | null} */
+  let refused = null;
   const side = (/** @type {AST.Expression} */ n) => {
     const e = mode === "test" ? test(L, n) : expr(L, n);
-    if (!assignable(e.t, "bool")) L.error("L003", n, `'${node.operator}' in a value needs bools on both sides, not ${describe(e.t)}.`, "Use a ternary, or compare explicitly (x !== 0).");
+    if (!refused && !assignable(e.t, "bool")) refused = { node: n, e };
     return e;
   };
   const a = side(node.left);
   const f = facts(L, node.left);
   const b = L.capture(() => side(node.right), node.operator === "&&" ? f.yes : f.no);
+  if (refused) {
+    // One mistake, one diagnostic: at the first non-bool operand, and the result is unknown so nothing cascades.
+    const r = /** @type {{ node: AST.Expression, e: Expr }} */ (refused);
+    L.error("L003", r.node, `'${node.operator}' in a value needs bools on both sides, not ${describe(r.e.t)}.`, "Use a ternary, or compare explicitly (x !== 0).");
+    return bad(node);
+  }
   const op = node.operator === "&&" ? "and" : "or";
   if (!b.stmts.length) return L.ex({ k: "op", op, args: [a, b.value], t: "bool", span });
   const name = L.temp("bool");

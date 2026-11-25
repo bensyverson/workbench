@@ -547,7 +547,7 @@ class Program {
           const child = c.children.find((x) => x.name === prop);
           if (child) return (/** @type {unknown[]} */ ...args) => program.open(child, owner, args, callSite());
         }
-        const rejected = inst.construct.rejected[prop];
+        const rejected = Object.hasOwn(inst.construct.rejected, prop) ? inst.construct.rejected[prop] : undefined;
         if (rejected) return () => { program.diagnostics.push(diag("B009", `${inst.construct.name} does not offer .${prop}(): ${rejected.message}`, rejected.tip ?? (rejected.fix ? `write ${rejected.fix}` : ""), callSite(), rejected.fix ? { fix: rejected.fix } : {})); return proxy; };
         const methods = [...KIT_METHODS];
         for (let i = /** @type {Instance | null} */ (inst); i; i = i.parent) methods.push(...Object.keys(i.construct.def.slots ?? {}), ...i.construct.children.map((x) => x.name));
