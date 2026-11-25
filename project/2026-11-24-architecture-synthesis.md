@@ -77,6 +77,8 @@ The composition note covered imports and nominal types and said nothing about ti
 
 We can show that every fast path (emitted JS, GLSL, later C) agrees with a reference: the kit's interpreter for Kernels, the dialect's runtime for structure. We cannot show that a model-written reference runtime means what the user intended. The proposal's §12 should say so, and B suggests the UI should too.
 
+> **Corrected 2026-11-25 (Manuel consult, informed pass):** "every fast path agrees with a reference" holds only *on the grids and param sets it records*: a planted fault a recorded grid does not reach escapes (the planted-fault run catches JS 24/26 and GLSL 21/24, which measures how strong that distribution is), and the coverage case added 2026-11-25 is the first to run every fields intrinsic on a GPU at all. See [the informed pass](2026-11-25-manuel-ir-workbench/informed.md), §5.
+
 ### 3.7 The build is recorded and can explain itself (Manuel's pass-design gist)
 
 *Added 2026-11-24, after the consults, from [Manuel's pass-design gist](https://gist.github.com/wesen/2c6e5beb40c65cfdb958c240d2de63e0), written for Jig.* It proposes a compiler orchestration and observability layer: transformations kept apart from the strategies that schedule them; artifacts with separate **identity, revision and content hash**; four graphs kept apart (IR, dependency, provenance, execution); a queryable record of each compilation; structured explanations ("mounting hole: cache miss, because the build direction changed +Z → +Y"); one algorithm interface whose context does `require`, `read`, `derive`, `decide`, `emit` and `diagnostic`; and view providers registered per artifact kind.

@@ -501,6 +501,7 @@ One tool, `eval`, over the lab API, as today. Its scope and its prompt are gener
 > **Corrected 2026-11-23 (M2):** the debugger steps the **reference interpreter**, not the emitted JavaScript (`kit/debugger`, through the interpreter's per-node `onNode` hook, which carries a span, a value and a depth). The emitted JS has a line map but no per-node stepping, and under typed operators the "JavaScript form" is an output, not a runnable closure. It was checked in a browser: a click gave pixel (75, 75) with a 157-step trace, and the GPU's byte matched the interpreter's in every channel for that pixel and three fixed ones (from job YqeZpz's note). Item 1 is built (`kit/interp`); item 3's tolerance is 1e-3 per color component, measured on one GPU. See [the M2 findings](2026-11-23-m2-findings.md).
 5. **Programs are tests.** Each example carries its own assertions. Each optimisation pass must leave differential results unchanged.
 > **Corrected 2026-11-24 (architecture review):** this section shows that each fast path agrees with a reference: the interpreter for Kernels, a Dialect's runtime for structure. It cannot show that a model-written Dialect runtime means what the user intended, and the workbench should say so rather than imply it. See [the architecture synthesis](2026-11-24-architecture-synthesis.md), §3.6.
+> **Corrected 2026-11-25 (Manuel consult, informed pass):** "agrees with a reference" holds only *on the grids and param sets it records*: a planted fault a recorded grid does not reach escapes (the planted-fault run catches JS 24/26 and GLSL 21/24, which measures how strong that distribution is), and the coverage case added 2026-11-25 is the first to run every fields intrinsic on a GPU at all. See [the informed pass](2026-11-25-manuel-ir-workbench/informed.md), §5.
 
 6. **Spec checks.** No network assets, required comments present, every view placed, budgets met. This is what stops template drift.
 
@@ -594,7 +595,7 @@ The thin slices come before the kit extraction on purpose. If the subset is unco
 | Standardising erases what made workbenches good | Only infrastructure is shared. Vocabulary, domain views, skins and books stay generated |
 | Our emitters produce slow code | Acceptable for the stage and for shaders. C and Rust text remain for anyone who needs an optimising compiler |
 | `fn.toString()` varies between engines | Source is never minified. Any parse doubt is a diagnostic, not a guess |
-| Backends drift from the reference | Differential checks gate every backend and every pass |
+| Backends drift from the reference | Differential checks gate every backend and every pass (corrected 2026-11-25: on the recorded grids and param sets only; planted faults measure how much drift they catch, JS 24/26 and GLSL 21/24) |
 
 ---
 
