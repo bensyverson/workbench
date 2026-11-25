@@ -4,6 +4,7 @@
 // project/2026-11-24-architecture-synthesis.md §3.2.
 
 import { lambdaSource, constSource } from "./shapes.js";
+import { functionAsArrow } from "../parse/toplevel.js";
 import { describe } from "./tags.js";
 
 /** @import { ArrowFunctionExpression } from "../parse/ast.js" */
@@ -74,25 +75,45 @@ export function bake(v, seen = new Set()) {
 }
 
 /**
+ * B012: a function whose text is not the one its top-level declaration writes.
+ * @param {string} name @param {"arrow" | "function"} kind @param {string | undefined} source
+ */
+function notDeclared(name, kind, source) {
+  const decl = kind === "arrow" ? `const ${name} = …` : `function ${name}(…) {…}`;
+  const what = kind === "arrow" ? "arrow function" : "function";
+  const now = source === undefined ? `no top-level \`${decl}\` declaration writes this ${what}` : `its top-level declaration is \`${source.length > 40 ? `${source.slice(0, 40)}…` : source}\`, not this ${what}`;
+  return { code: "B012", reason: `it is a function made by other code (${now}), so the names it closes over are lost`, tip: `declare it at the top level as the arrow itself, const ${name} = (…) => …, or as \`function ${name}(…) {…}\`, with every value it needs a parameter, a top-level constant or written into its text` };
+}
+
+/**
  * One top-level binding as a Program unit: an arrow function as a helper (its source, whose own free names
  * resolve in turn), plain data as a constant. A refusal carries its code and fix.
  *
  * A helper's free names resolve against the module scope, which is right only when the arrow is the one its
  * top-level declaration writes: one made by another function (`const triple = mk(3)`) closes over that
  * function's locals, which `String(fn)` loses. So an arrow is a helper only when its text is `source`, the
- * initializer text of the name's top-level `const` declaration (a `let` may have been reassigned).
+ * initializer text of the name's top-level `const` declaration (a `let` may have been reassigned). A function
+ * declaration `function name(…) {…}` is the arrow that means the same, vouched for the same way by its own text.
  * @param {string} name @param {unknown} v
- * @param {string} [source]  the initializer text of the name's top-level `const` declaration, when the host found one
+ * @param {string} [source]  the initializer text of the name's top-level `const` declaration, or the text of its `function` declaration, when the host found one
  * @returns {{ unit: { name: string, kind: "fn" | "const", src: string }, ast?: ArrowFunctionExpression } | { code: string, reason: string, tip: string }}
  */
 export function unitOf(name, v, source) {
   if (typeof v === "function") {
+    const text = String(v);
+    const declared = /^(?:async\s+)?function(?![\p{ID_Continue}$])\s*\*?\s*([\p{ID_Start}$_][\p{ID_Continue}$]*)?/u.exec(text);
+    // A function declaration is the arrow that means the same, when it is the one its own top-level declaration writes.
+    if (declared?.[1] === name) {
+      const f = functionAsArrow(text);
+      if ("error" in f) return { code: "B007", reason: f.error, tip: `write it as an arrow function: const ${name} = (…) => …` };
+      if (text !== source) return notDeclared(name, "function", source);
+      const r = lambdaSource(f.arrow);
+      if ("error" in r) return { code: "B007", reason: r.error, tip: `fix the body of '${name}' so it parses as a Runtime Lambda` };
+      return { unit: { name, kind: "fn", src: r.src }, ast: r.ast };
+    }
     const r = lambdaSource(v);
     if ("error" in r) return { code: "B007", reason: r.error, tip: `write it as an arrow function: const ${name} = (…) => …` };
-    if (String(v) !== source) {
-      const why = source === undefined ? `no top-level \`const ${name} = …\` declaration writes this arrow function` : `its top-level declaration is \`const ${name} = ${source.length > 40 ? `${source.slice(0, 40)}…` : source}\`, not this arrow function`;
-      return { code: "B012", reason: `it is a function made by other code (${why}), so the names it closes over are lost`, tip: `declare it at the top level as the arrow itself, const ${name} = (…) => …, with every value it needs a parameter, a top-level constant or written into its text` };
-    }
+    if (String(v) !== source) return notDeclared(name, "arrow", source);
     return { unit: { name, kind: "fn", src: r.src }, ast: r.ast };
   }
   const b = bake(v);

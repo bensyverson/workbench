@@ -9,7 +9,7 @@ import { TAG, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
 import { lambdaSource, constSource, found, where } from "./shapes.js";
 import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
-import { freeNames } from "./free.js";
+import { freeNames, paramNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 import { unitOf, PLAIN } from "./scope.js";
 import { noteRoot, noteCall, noteConvention, misfit } from "./params.js";
@@ -458,6 +458,10 @@ class Program {
           }
           resolved.set(name, r.unit);
           if (r.ast) sources.push({ ast: r.ast, src: r.unit.src, what: `the top-level helper '${name}'`, at: src.at });
+          continue;
+        }
+        if (buildTime.has(name) && sources.some((o) => o.ast !== src.ast && paramNames(o.ast).includes(name))) {
+          this.diagnostics.push(diag("B013", `${src.what} reads "${name}": "${name}" is a parameter of another lambda, not a name this lambda can see.`, `pass it in as an argument (or a parameter of this lambda), or move this use into the lambda whose parameter it is`, src.at, lambdaAt));
           continue;
         }
         if (buildTime.has(name)) {

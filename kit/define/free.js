@@ -120,6 +120,25 @@ export function freeNames(fn) {
   return [...free].map(([name, v]) => ({ name, ...v }));
 }
 
+/**
+ * The names the arrow's own parameter list binds (patterns included).
+ * @param {ArrowFunctionExpression} fn
+ * @returns {string[]}
+ */
+export function paramNames(fn) {
+  /** @type {string[]} */
+  const out = [];
+  /** @param {Pattern} p */
+  const add = (p) => {
+    if (p.type === "Identifier") out.push(p.name);
+    else if (p.type === "ObjectPattern") for (const prop of p.properties) add(prop.value);
+    else if (p.type === "ArrayPattern") for (const e of p.elements) { if (e) add(e); }
+    else if (p.type === "AssignmentPattern") add(p.left);
+  };
+  for (const p of fn.params) add(p);
+  return out;
+}
+
 /** @typedef {{ names: Set<string>, parent: Scope | null }} Scope */
 
 /** @param {unknown} v @returns {v is Node} */

@@ -6,7 +6,7 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames, topLevelBindings, ScanError, blank } from "../../../kit/parse/toplevel.js";
+import { buildTimeNames, topLevelBindings, topLevelFunctions, ScanError, blank } from "../../../kit/parse/toplevel.js";
 import { LOAD } from "./codes.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */
@@ -148,13 +148,14 @@ export function moduleScope(file, mod) {
 }
 
 /**
- * Each top-level `const` declaration's initializer text, by name: what vouches for a helper. A `let`'s does not,
+ * Each top-level `const` declaration's initializer text and each function declaration's text, by name: what
+ * vouches for a helper. A `let`'s does not,
  * since the binding may be reassigned to an arrow made by other code with the same text.
  * @param {string} text
  * @returns {Record<string, string>}
  */
 export function helperSources(text) {
-  return Object.fromEntries(topLevelBindings(text).filter((b) => b.keyword === "const").map((b) => [b.name, b.init]));
+  return Object.fromEntries([...topLevelBindings(text).filter((b) => b.keyword === "const"), ...topLevelFunctions(text)].map((b) => [b.name, b.init]));
 }
 
 /**

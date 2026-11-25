@@ -161,7 +161,7 @@ function initText(code, b, from, to) {
 /**
  * Each plain-named `const` and `let` a program declares at its top level, with its initializer's
  * source. A `const a = 1, b = 2` gives two. Destructuring declarations, `var` and functions are
- * not listed. A name declared twice where one of the two is a `const` or `let` throws a ScanError: a
+ * not listed (`topLevelFunctions` lists functions). A name declared twice where one of the two is a `const` or `let` throws a ScanError: a
  * program cannot do that, so the scan misread it, and these initializers vouch for helpers.
  * @param {string} code
  * @returns {Binding[]}
@@ -180,6 +180,52 @@ export function topLevelBindings(code) {
     }
   }
   return out;
+}
+
+/**
+ * Each function declaration a program has at its top level, with its whole text from `function` to the closing
+ * `}` (`export` before it left out), which is what `String(fn)` gives. A host vouches for a function-declaration
+ * helper with it, as it does for an arrow with `topLevelBindings`' `init`. Async functions and generators are
+ * listed too (the Definition API refuses them by name). Throws a ScanError as `topLevelBindings` does.
+ * @param {string} code
+ * @returns {Array<{ name: string, init: string }>}
+ */
+export function topLevelFunctions(code) {
+  const b = blank(code);
+  refuseRedeclared(code, topLevelDecls(b));
+  /** @type {Array<{ name: string, init: string }>} */
+  const out = [];
+  for (const k of topLevelKeywords(b)) {
+    if (k.word !== "function" || !startsStatement(b, k.at)) continue;
+    const f = FN_NAME.exec(b.slice(k.end));
+    const open = f ? b.indexOf("(", k.end) : -1;
+    const close = open < 0 ? -1 : matching(b, open);
+    const brace = close < 0 ? -1 : b.indexOf("{", close);
+    if (f && brace >= 0 && /^\s*$/.test(b.slice(close + 1, brace))) out.push({ name: f[1], init: code.slice(k.at, matching(b, brace) + 1) });
+  }
+  return out;
+}
+
+/**
+ * A function declaration's text as the arrow function that means the same: `function f(a, b) { … }` is
+ * `(a, b) => { … }`. Refused (with its reason) are async functions, generators, a function with no name and
+ * text that is no function declaration; whether the body is in the subset is the parser's to say.
+ * @param {string} text  a function declaration as `String(fn)` writes it
+ * @returns {{ arrow: string } | { error: string }}
+ */
+export function functionAsArrow(text) {
+  const b = blank(text);
+  if (/^\s*async\b/.test(b)) return { error: "an async function is not a Runtime Lambda" };
+  const m = /^\s*function(?![\p{ID_Continue}$])\s*(\*)?\s*/u.exec(b);
+  if (!m) return { error: "the text is not a function declaration" };
+  if (m[1]) return { error: "a generator is not a Runtime Lambda" };
+  const n = FN_NAME.exec(b.slice(m[0].length));
+  if (!n) return { error: "a function declaration needs a name" };
+  const open = b.indexOf("(", m[0].length);
+  const close = matching(b, open);
+  const brace = b.indexOf("{", close);
+  if (open < 0 || close >= b.length || brace < 0 || !/^\s*$/.test(b.slice(close + 1, brace)) || matching(b, brace) !== b.trimEnd().length - 1) return { error: "the text is not a function declaration" };
+  return { arrow: `${text.slice(open, close + 1)} => ${text.slice(brace, b.trimEnd().length)}` };
 }
 
 /**

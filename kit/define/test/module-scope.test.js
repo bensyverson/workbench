@@ -85,11 +85,14 @@ test("a value that is not plain data is B012 with a fix, and the rest of the Pro
   }
 });
 
-test("a function that is not an arrow is B007, with the arrow form as the fix", () => {
-  function twice(v) { return v * 2; }
+test("a function expression is B007, with the arrow form as the fix; a function declaration no declaration vouches for is B012", () => {
+  const twice = function (v) { return v * 2; };
   const ds = g("c").keep((x) => twice(x)).check({ scope: { twice } });
   assert.deepEqual(ds.map((d) => d.code), ["B007"]);
   assert.match(ds[0].tip, /const twice = \(/);
+  // 2026-11-25: a top-level `function twice` is a helper (function-helpers.test.js); without its declaration's text it is B012, as an arrow is
+  function thrice(v) { return v * 3; }
+  assert.deepEqual(g("c").keep((x) => thrice(x)).check({ scope: { thrice } }).map((d) => d.code), ["B012"]);
 });
 
 test("a name the host lists as build-time only is B013 with a fix, not B008; an unknown name stays B008", () => {

@@ -165,7 +165,7 @@ export interface BuildDiagnostic extends Diagnostic {
  * What a host passes to `.check(options)` and `.build(options)`: the Program file's module scope.
  * `scope` is its top-level bindings by name (a lambda's free name one of them holds resolves into the record's
  * units: an arrow function as a helper, plain data as a constant); `sources` each top-level declaration's
- * initializer text by name (`topLevelBindings(text)`), since an arrow is a helper only when its text is its
+ * initializer text by name (`topLevelBindings(text)`, and `topLevelFunctions(text)` for `function` declarations), since an arrow is a helper only when its text is its
  * declaration's (else B012: another function made it, and its closure is lost); `buildTime` the names the file
  * declares only inside build-time code (`buildTimeNames(text)`), which a lambda reading one is told it cannot
  * see (B013).
