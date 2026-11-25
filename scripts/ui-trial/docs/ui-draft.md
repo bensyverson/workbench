@@ -78,11 +78,11 @@ stage: { element: "orbits-sky", module: "./orbits-sky.js", emits: ["select"] }
 - **Required:** the text view. With no `stage`, or on a host that runs no custom elements, the stage is `text(state)`.
 - The element draws; it never handles keys for inputs (below) and never calls `focus()`.
 
-## Custom elements (optional, on any component)
+## Custom elements (optional, on any component but `row` and `col`)
 
-Any component (below) and the stage may name a custom element that draws it instead. The component's own form is always the **fallback**: a host that runs no custom elements, or before the module loads, shows the plain form.
+Any component (below) but `row` and `col`, which are layouts and draw nothing of their own, and the stage may name a custom element that draws it instead. The component's own form is always the **fallback**: a host that runs no custom elements, or before the module loads, shows the plain form.
 
-- `element`: a custom element tag `<package>-<name>`, lowercase, with a hyphen (`orbits-sky`). `customElements` is one global registry, so the package name is the prefix. `wb-` is the host's.
+- `element`: a custom element tag `<package>-<name>`, lowercase, with a hyphen (`orbits-sky`; digits, `.` and `_` are fine too, as in HTML's custom element names). `customElements` is one global registry, so the package name is the prefix. `wb-` is the host's.
 - `module`: `"./<file>.js"`, one of your package's files, an ES module that calls `customElements.define` for that tag (and imports nothing).
 - `emits`: as for the stage.
 - A component's element gets, besides `state`, `params` and `text`, the property `value`: what the component resolved to (a stat's number, a table's rows, a plot's points).
@@ -147,7 +147,7 @@ annotate: {
 
 ## Two packages in one page
 
-Each package's views and tiles are named by the package: `orbits.stage`, `orbits.bodies`. Inside your own UI a bare id is your own. Another package's view is named in full (`fields.stage`) in a `place` or an `annotate` key. (This trial's page holds one package, so a qualified id is an error here.)
+Each package's views and tiles are named by the package: `orbits.stage`, `orbits.bodies`. Inside your own UI a bare id is your own. Another package's view is named in full (`fields.stage`) in a `place` or an `annotate` key. (This trial's page holds one package, so a qualified id is an error here, your own package's included: write `stage`, not `orbits.stage`.)
 
 ## A worked example: orbits
 

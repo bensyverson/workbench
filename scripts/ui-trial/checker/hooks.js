@@ -20,7 +20,10 @@ export function installHooks() {
       const parent = context.parentURL ?? "";
       if (session.dirUrl && parent.startsWith(session.dirUrl)) {
         if (!r.url.startsWith(session.dirUrl)) session.imports.push({ parentURL: parent, specifier });
-        else if (!r.url.includes("?")) return { ...r, url: `${r.url}?run=${session.run}` };
+        else {
+          session.loaded.add(r.url.replace(/\?.*$/, ""));
+          if (!r.url.includes("?")) return { ...r, url: `${r.url}?run=${session.run}` };
+        }
       }
       return r;
     },

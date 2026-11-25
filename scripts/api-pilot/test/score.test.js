@@ -207,3 +207,27 @@ test("a hand-in's own modules beside its definitions are copied too, so a defini
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a hand-in's own modules in subdirectories are copied too, but its own examples are not", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "score-own-sub-"));
+  try {
+    const hidden = hiddenSet({ "a.js": GOOD }, { "r.js": BAD });
+    const handin = join(dir, "handin");
+    mkdirSync(join(handin, "lib", "deep"), { recursive: true });
+    mkdirSync(join(handin, "examples"));
+    const fs = await import("node:fs");
+    const dialect = fs.readFileSync(join(REFERENCE, "budget.dialect.js"), "utf8");
+    writeFileSync(join(handin, "lib", "util.js"), 'export { DEEP as OWN } from "./deep/leaf.js";\n');
+    writeFileSync(join(handin, "lib", "deep", "leaf.js"), "export const DEEP = 1;\n");
+    // The agent's own example program must not collide with the scorer's examples/ folder.
+    writeFileSync(join(handin, "examples", "01.js"), "this is not valid javascript (\n");
+    writeFileSync(join(handin, "budget.dialect.js"), `import { OWN } from "./lib/util.js";\nif (OWN !== 1) throw new Error("own module");\n${dialect}`);
+    cpSync(join(REFERENCE, "budget.grammar.js"), join(handin, "budget.grammar.js"));
+    const r = await score(handin, hidden);
+    assert.deepEqual(r.definitions.codes, []);
+    assert.deepEqual([r.accept, r.reject], [{ pass: 1, of: 1 }, { pass: 1, of: 1 }]);
+    rmSync(hidden, { recursive: true, force: true });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

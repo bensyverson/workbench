@@ -1,13 +1,14 @@
 // The UI trial checker's library: loads a hand-in's `<lang>.ui.js` with the real kit/define (plus a defineUI that
 // records its arguments), then judges the recorded declaration against docs/ui-draft.md and docs/rules.md.
 
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installHooks } from "./hooks.js";
 import { session, begin } from "./session.js";
 import { validate } from "./validate.js";
-import { locate, lambdaLine, lineAt } from "./locate.js";
+import { locatePos, lambdaLine, lineAt } from "./locate.js";
+import { blank } from "../../../kit/parse/blank.js";
 import { LOAD } from "./codes.js";
 import { TAG } from "../../../kit/define/tags.js";
 
@@ -17,6 +18,32 @@ import { TAG } from "../../../kit/define/tags.js";
 export class CheckTargetError extends Error {}
 
 /** @typedef {{ ok: boolean, diagnostics: UIDiagnostic[], files: Record<string, string> }} CheckResult */
+
+/** Whether `path` is a readable regular file. @param {string} path */
+function isFile(path) {
+  try { return statSync(path).isFile(); } catch { return false; }
+}
+
+/**
+ * Where a load failure points: the first stack frame inside the hand-in's directory (a file of the hand-in, not the
+ * checker's hooks or a kit file), else the UI file's first line.
+ * @param {unknown} stack @param {string} dirUrl @param {string} fallback
+ * @returns {{ file: string, line: number }}
+ */
+function loadSite(stack, dirUrl, fallback) {
+  for (const m of String(stack ?? "").matchAll(/(file:\/\/[^\s()]*?)(?:\?run=\d+)?:(\d+)(?::\d+)?(?=[\s)]|$)/g)) {
+    if (!m[1].startsWith(dirUrl)) continue;
+    return { file: decodeURIComponent(m[1].slice(dirUrl.length)), line: Number(m[2]) };
+  }
+  return { file: fallback, line: 1 };
+}
+
+/** Text of a package file that reaches Node's built-ins without an import the hooks see: a deferred import(), process.getBuiltinModule.
+ * @type {Array<[RegExp, string]>} */
+const ESCAPES = [
+  [/(?<![\w$.])import\s*\(/g, "a deferred import()"],
+  [/getBuiltinModule/g, "process.getBuiltinModule"],
+];
 
 /** The files one package's UI check reads. @param {string} lang */
 export function packageFiles(lang) {
@@ -31,7 +58,7 @@ export function packageFiles(lang) {
 export async function checkDir(dir, { lang }) {
   const root = resolve(dir);
   const names = packageFiles(lang);
-  for (const f of [names.ui, names.grammar]) if (!existsSync(join(root, f))) throw new CheckTargetError(`${join(dir, f)} does not exist`);
+  for (const f of [names.ui, names.grammar]) if (!isFile(join(root, f))) throw new CheckTargetError(`${join(dir, f)} does not exist (or is not a file)`);
   installHooks();
   // Node resolves through symlinks (macOS tmp is /private/var), so the hooks compare against the real path.
   const dirUrl = pathToFileURL(realpathSync(root)).href + "/";
@@ -52,8 +79,8 @@ export async function checkDir(dir, { lang }) {
   } catch (e) {
     const err = /** @type {Error & { problems?: Array<{ code: string, message: string }> }} */ (e);
     const detail = err.problems?.length ? err.problems.map((p) => `${p.code} ${p.message}`).join("; ") : err.message;
-    const where = String(err.stack ?? "").match(/\/([\w.-]+\.js)(?:\?run=\d+)?:(\d+)/);
-    add(where?.[1] ?? names.ui, where ? Number(where[2]) : 1, LOAD, `the package does not load: ${detail}`, `fix the file so it loads; run node on it to see the error`);
+    const where = loadSite(err.stack, dirUrl, names.ui);
+    add(where.file, where.line, LOAD, `the package does not load: ${detail}`, `fix the file so it loads; run node on it to see the error`);
     return done();
   }
   for (const { parentURL, specifier } of session.imports) {
@@ -61,6 +88,20 @@ export async function checkDir(dir, { lang }) {
     const text = file === names.ui ? src : readFileSync(join(root, file), "utf8");
     const at = text.indexOf(`"${specifier}"`) >= 0 ? text.indexOf(`"${specifier}"`) : text.indexOf(`'${specifier}'`);
     add(file, at < 0 ? 1 : lineAt(text, at), "C006", `${file} imports '${specifier}'; only "kit/define" and the package's own files may be imported`, "remove the import (rules.md R1)");
+  }
+  // Code that reaches a built-in without a static import the hooks see. A lexical scan of every package file that
+  // loaded: it finds the plain spellings, not a computed one (README, "What it does not do").
+  const own = [names.ui, names.grammar, ...[...session.loaded].map((u) => decodeURIComponent(u.slice(dirUrl.length)))];
+  for (const file of new Set(own)) {
+    const text = file === names.ui ? src : readFileSync(join(root, file), "utf8");
+    const code = blank(text);
+    for (const [re, what] of ESCAPES) {
+      for (const m of code.matchAll(re)) {
+        const line = lineAt(text, m.index);
+        if (diagnostics.some((d) => d.code === "C006" && d.file === file && d.line === line)) continue;
+        add(file, line, "C006", `${file} uses ${what}; only "kit/define" and the package's own files may be imported`, "remove it (rules.md R1)");
+      }
+    }
   }
   if (session.calls.length !== 1) {
     add(names.ui, Math.max(1, src.indexOf("defineUI(") >= 0 ? lineAt(src, src.indexOf("defineUI(")) : 1), "C001", `${names.ui} calls defineUI ${session.calls.length} times; it calls it once`, `export const ${lang}UI = defineUI(${lang}, { state, … });`);
@@ -83,10 +124,11 @@ export async function checkDir(dir, { lang }) {
   const problems = validate(decl, {
     pkg: String(dialect.name),
     objects: dialect.objects ?? {},
+    globalObjects: Object.fromEntries(Object.entries(dialect.globals ?? {}).filter(([, o]) => typeof o === "string" && Object.hasOwn(dialect.objects ?? {}, o)).map(([n, o]) => [n, dialect.objects[/** @type {string} */ (o)]])),
     free,
     moduleText(path) {
       const f = join(root, path);
-      if (!existsSync(f)) return null;
+      if (!isFile(f)) return null;
       const text = readFileSync(f, "utf8");
       files[path.replace(/^\.\//, "")] = text;
       return text;
@@ -94,8 +136,9 @@ export async function checkDir(dir, { lang }) {
   });
   for (const p of problems) {
     let line = 0;
-    if (p.fn) { const l = lambdaLine(src, p.fn); if (l) line = l + (p.inner ?? 1) - 1; }
-    if (!line) line = p.at.length ? locate(src, p.at, decl) : callLine;
+    const pos = p.at.length ? locatePos(src, p.at, decl) : 0;
+    if (p.fn) { const l = lambdaLine(src, p.fn, pos); if (l) line = l + (p.inner ?? 1) - 1; }
+    if (!line) line = p.at.length ? lineAt(src, pos) : callLine;
     add(names.ui, line, p.code, p.message, p.fix);
   }
   diagnostics.sort((x, y) => (x.file === y.file ? x.line - y.line : x.file < y.file ? -1 : 1));

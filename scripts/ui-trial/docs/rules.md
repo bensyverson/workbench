@@ -51,7 +51,7 @@ Each rule names the codes that enforce it. Run the checker as often as you like 
 |---|---|
 | U001 | an unknown key (with a did-you-mean), or a required key missing |
 | U002 | a component `kind` that does not exist |
-| U003 | a `place` or `annotate` that names no view or tile (or another package's, in this one-package trial), or tiles placed in a cycle |
+| U003 | a `place` or `annotate` that names no view or tile (or is qualified with any package's name, your own included, in this one-package trial), or tiles placed in a cycle |
 | U004 | a `place` without exactly one direction, or a `size` outside 0.1 to 0.9 or beside `tabWith` |
 | U005 | a path that names nothing in `state`, reads into a list, or names the wrong type for its key; a table column that is not a key of its rows; a `traces` annotation on something that is not a number |
 | U006 | a `state` shape that is not a shape (`"f64"`, an array literal), or an empty `state` |

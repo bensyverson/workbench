@@ -4,6 +4,7 @@
 import { didYouMean } from "../../../kit/define/index.js";
 import { readShape, resolvePath, describe } from "./shapes.js";
 import { checkLambda } from "./lambda.js";
+import { tagOk, definesTag } from "./elements.js";
 
 /** @import { Shape } from "./shapes.js" */
 
@@ -31,7 +32,6 @@ export const KINDS = {
 };
 
 const IDENT = /^[A-Za-z_$][\w$]*$/;
-const TAG_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)+$/;
 const MODULE_RE = /^\.\/(?!.*\.\.)[\w./-]+\.js$/;
 
 /**
@@ -49,7 +49,8 @@ const MODULE_RE = /^\.\/(?!.*\.\.)[\w./-]+\.js$/;
  * @property {string} pkg  the package name (the Dialect's name)
  * @property {Record<string, any>} objects  the Dialect's objects
  * @property {Set<string>} free  the free names the Dialect gives a lambda
- * @property {(path: string) => string | null} moduleText  a package file's text, or null when it does not exist
+ * @property {Record<string, any>} globalObjects  the object each of the Dialect's globals names, by global name
+ * @property {(path: string) => string | null} moduleText  a package file's text, or null when it is not a readable file
  */
 
 /** @param {unknown} v @returns {v is Record<string, any>} */
@@ -96,7 +97,7 @@ export function validate(decl, env) {
     if (isObj(decl.state) && Object.keys(decl.state).length === 0) root = { kind: "object", keys: {} };
   }
 
-  const viewLambda = { params: ["s", "$"], shapes: [root, null], free: env.free };
+  const viewLambda = { params: ["s", "$"], shapes: [root, null], free: env.free, objects: env.globalObjects };
   /** A lambda's problems, as U007s. */
   function lambda(/** @type {Function} */ fn, /** @type {Array<string | number>} */ at, /** @type {import("./lambda.js").LambdaContext} */ ctx) {
     for (const p of checkLambda(fn, ctx)) out.push({ code: "U007", at, message: p.message, fix: p.fix, fn, inner: p.line });
@@ -131,19 +132,19 @@ export function validate(decl, env) {
     }
     const tag = o.element;
     const prefix = `${env.pkg.toLowerCase()}-`;
-    if (typeof tag !== "string" || !TAG_RE.test(tag) || !tag.startsWith(prefix)) {
-      add("U008", [...at, "element"], `${str(tag)} is not a custom element tag under the package's prefix '${prefix}'`, `write element: "${prefix}<name>" (lowercase, letters and digits, joined by hyphens)`);
+    const isTag = tagOk(tag, prefix);
+    if (!isTag) {
+      add("U008", [...at, "element"], `${str(tag)} is not a custom element tag under the package's prefix '${prefix}'`, `write element: "${prefix}<name>" (lowercase, with a hyphen, starting with the package name)`);
     } else if (tags.has(tag)) {
       add("U008", [...at, "element"], `the tag '${tag}' is used twice (first at ${tags.get(tag)})`, "give each element its own tag");
     } else tags.set(tag, at.join("."));
-    const tagOk = typeof tag === "string" && TAG_RE.test(tag) && tag.startsWith(prefix);
     const mod = o.module;
     if (!("module" in o)) add("U008", [...at, "element"], `the element ${str(tag)} has no module`, `add module: "./${typeof tag === "string" ? tag : "<file>"}.js", a package file that defines it`);
     else if (typeof mod !== "string" || !MODULE_RE.test(mod)) add("U008", [...at, "module"], `${str(mod)} is not one of the package's files`, `write module: "./<file>.js"`);
     else {
       const text = env.moduleText(mod);
-      if (text === null) add("U008", [...at, "module"], `the module '${mod}' does not exist in the package`, `write ${mod}, an ES module that calls customElements.define("${tag}", …)`);
-      else if (tagOk && !new RegExp(`customElements\\.define\\(\\s*["'\`]${tag}["'\`]`).test(text)) add("U008", [...at, "module"], `'${mod}' does not call customElements.define("${tag}", …)`, `define the tag in ${mod}: customElements.define("${tag}", class extends HTMLElement { … })`);
+      if (text === null) add("U008", [...at, "module"], `the module '${mod}' is not a readable file in the package`, `write ${mod}, an ES module that calls customElements.define("${tag}", …)`);
+      else if (isTag && !definesTag(text, /** @type {string} */ (tag))) add("U008", [...at, "module"], `'${mod}' does not call customElements.define("${tag}", …)`, `define the tag in ${mod}: customElements.define("${tag}", class extends HTMLElement { … })`);
     }
     if ("emits" in o) {
       if (!Array.isArray(o.emits)) add("U012", [...at, "emits"], `emits is ${str(o.emits)}, not a list`, 'write emits: ["pick"]');
@@ -167,6 +168,7 @@ export function validate(decl, env) {
     if ("object" in inp && !obj) add("U010", ["inputs", "object"], `${str(objName)} is not an object of the Dialect.${typeof objName === "string" ? didYouMean(objName, Object.keys(env.objects)) : ""}`, `name the Dialect object whose bool members are the buttons: ${Object.keys(env.objects).join(", ")}`);
     if (!("buttons" in inp)) return;
     if (!isObj(inp.buttons)) return add("U012", ["inputs", "buttons"], "buttons is not an object", "write buttons: { left: { role: \"dpad.left\" }, … }");
+    if (Object.keys(inp.buttons).length === 0) add("U010", ["inputs", "buttons"], "inputs has no buttons", `declare one button per bool member of ${typeof objName === "string" ? objName : "the object"}: left: { role: "dpad.left" }, …`);
     /** @type {Map<string, string>} */
     const roles = new Map();
     for (const [name, b] of Object.entries(inp.buttons)) {
@@ -218,12 +220,12 @@ export function validate(decl, env) {
     if ("place" in t) place(id, t.place, [...at, "place"]);
     if ("body" in t) components(t.body, [...at, "body"]);
   }
-  /** A view or tile id named in a place or an annotate key, made local; null (and a U003) when it is another package's. */
+  /** A view or tile id named in a place or an annotate key; null (and a U003) when it is qualified: this page holds one package, so every qualified id is an error (ui-draft.md, "Naming"). */
   function local(/** @type {string} */ name, /** @type {Array<string | number>} */ at) {
     const dot = name.indexOf(".");
     if (dot < 0) return name;
-    if (name.slice(0, dot) === env.pkg) return name.slice(dot + 1);
-    add("U003", at, `'${name}' names another package's view; this page holds only '${env.pkg}'`, `name your own view or tile: ${name.slice(dot + 1)}`);
+    const own = name.slice(0, dot) === env.pkg;
+    add("U003", at, own ? `'${name}' is qualified; this page holds only '${env.pkg}', so name its views and tiles bare` : `'${name}' names another package's view; this page holds only '${env.pkg}'`, `name your own view or tile: ${name.slice(dot + 1)}`);
     return null;
   }
   function place(/** @type {string} */ id, /** @type {unknown} */ p, /** @type {Array<string | number>} */ at) {
@@ -301,7 +303,7 @@ export function validate(decl, env) {
         if (row && row.kind === "object" && !Object.hasOwn(row.keys, col)) add("U005", cat, `the rows of '${c.rows}' have no key '${col}'.${didYouMean(col, Object.keys(row.keys))}`, `use one of: ${Object.keys(row.keys).join(", ")}`);
         else if (row && row.kind !== "object") add("U005", cat, `the rows of '${c.rows}' are ${describe(row)}, which has no keys`, '{ label, value: (row) => row } shows the item itself');
       } else if (isObj(col) && Object.keys(col).length === 2 && typeof col.label === "string" && typeof col.value === "function") {
-        lambda(col.value, [...cat, "value"], { params: ["row", "s", "$"], shapes: [row, root, null], free: env.free });
+        lambda(col.value, [...cat, "value"], { params: ["row", "s", "$"], shapes: [row, root, null], free: env.free, objects: env.globalObjects });
       } else add("U012", cat, `${typeof col === "function" ? "a bare lambda" : str(col)} is not a column`, 'write a row key ("live") or { label: "share", value: (row, s, $) => … }');
     }
   }

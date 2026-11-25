@@ -11,6 +11,8 @@ export const session = {
   calls: [],
   /** Imports the hooks refused: the importing file's URL and the specifier. @type {Array<{ parentURL: string, specifier: string }>} */
   imports: [],
+  /** The hand-in files its own files imported, as URLs without the query. @type {Set<string>} */
+  loaded: new Set(),
   /** @type {UIDiagnostic[]} */
   diagnostics: [],
 };
@@ -21,5 +23,6 @@ export function begin(dirUrl) {
   session.run++;
   session.calls = [];
   session.imports = [];
+  session.loaded = new Set();
   session.diagnostics = [];
 }

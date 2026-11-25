@@ -66,7 +66,7 @@ export function resolvePath(root, path) {
   for (const seg of segs) {
     if (s.kind === "list") return { error: `'${path}' reads into the list '${done.join(".")}'; a path stops at a list`, fix: `show '${done.join(".")}' in a table, with '${seg}' as a column` };
     if (s.kind !== "object") return { error: `'${path}': '${done.join(".")}' is ${describe(s)}, which has no '${seg}'`, fix: `use the path '${done.join(".")}'` };
-    const next = s.keys[seg];
+    const next = Object.hasOwn(s.keys, seg) ? s.keys[seg] : undefined;
     if (!next) {
       const names = Object.keys(s.keys);
       return { error: `'${path}' names nothing in the state: ${done.length ? `'${done.join(".")}'` : "the state"} has no '${seg}'.${didYouMean(seg, names)}`, fix: `use one of: ${names.map((n) => [...done, n].join(".")).join(", ")}` };
@@ -90,7 +90,7 @@ export function resolveChain(root, rootName, segs) {
   for (const seg of segs) {
     if (s.kind === "object") {
       if (seg === "[]") return `${text} is an object; read its members by name`;
-      const next = s.keys[seg];
+      const next = Object.hasOwn(s.keys, seg) ? s.keys[seg] : undefined;
       if (!next) return `${text} has no member '${seg}'.${didYouMean(seg, Object.keys(s.keys))}`;
       s = next;
     } else if (s.kind === "list") {

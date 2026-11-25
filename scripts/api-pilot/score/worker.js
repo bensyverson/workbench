@@ -23,7 +23,19 @@ export async function scoreHere(handin, hidden, lang = LANG) {
   try {
     for (const f of [defs.dialect, defs.grammar]) if (existsSync(join(handin, f))) cpSync(join(handin, f), join(work, f));
     // The hand-in's own modules beside them, which its definitions may import (START.md: "your own files").
-    for (const e of readdirSync(handin, { withFileTypes: true })) if (e.isFile() && /\.m?js$/.test(e.name) && !existsSync(join(work, e.name))) cpSync(join(handin, e.name), join(work, e.name));
+    // Subdirectories too (a `lib/` it imports from), but not its own example programs, which the hidden ones replace.
+    /** @param {string} rel */
+    const copyModules = (rel) => {
+      for (const e of readdirSync(join(handin, rel), { withFileTypes: true })) {
+        const path = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          if (path === EXAMPLES_DIR || e.name === "node_modules" || e.name.startsWith(".")) continue;
+          mkdirSync(join(work, path), { recursive: true });
+          copyModules(path);
+        } else if (e.isFile() && /\.m?js$/.test(e.name) && !existsSync(join(work, path))) cpSync(join(handin, path), join(work, path));
+      }
+    };
+    copyModules("");
     mkdirSync(join(work, EXAMPLES_DIR));
     const programs = listPrograms(hidden).map((p) => ({ ...p, as: `${EXAMPLES_DIR}/${p.kind}-${p.file}` }));
     for (const p of programs) cpSync(p.path, join(work, p.as));
