@@ -28,8 +28,9 @@ test("the fields Environment: uniforms from params, the pixel and helper convent
     assert.equal(got.numberType, "f32");
     assert.deepEqual(got.componentAliases, { color: { r: "x", g: "y", b: "z" } });
     assert.deepEqual(got.globals.mix, { obj: "mix" }, "an intrinsic is a callable global");
-    assert.deepEqual(got.slot({ id: `${p.name}.pixel`, kind: "pixel", on: p.name }), { params: [vec2, { obj: "Uniforms" }], returns: color, space: "pixel", forbid: [] });
-    assert.deepEqual(got.slot({ id: "ring", kind: "helper", on: "$", key: "ring" }), { params: [], inferParams: true, returns: "infer", space: "helper ring", forbid: [] });
+    // Changed in 8vQJOw: every generated convention carries `may`, the effects its lambda may have; fields says none.
+    assert.deepEqual(got.slot({ id: `${p.name}.pixel`, kind: "pixel", on: p.name }), { params: [vec2, { obj: "Uniforms" }], returns: color, space: "pixel", forbid: [], may: [] });
+    assert.deepEqual(got.slot({ id: "ring", kind: "helper", on: "$", key: "ring" }), { params: [], inferParams: true, returns: "infer", space: "helper ring", forbid: [], may: [] });
     // fields declares constants: { calls: "pure" } (Ben's ruling on iySXYx), so its const convention forbids every effect but a call.
     const { forbid, forbidWhy } = /** @type {import("../../lower/environment.js").SlotDecl} */ (got.slot({ id: "K", kind: "const", on: "$", key: "K" }));
     assert.deepEqual([...forbid].sort(), ALL_VERBS.filter((v) => v !== "call").sort());
@@ -110,7 +111,7 @@ test("every problem is collected, not only the first", () => {
 });
 
 test("every define code is exercised by these tests or the grammar's", () => {
-  assert.deepEqual(Object.keys(DEFINE_CODES).filter((c) => c.startsWith("D")), ["D001", "D002", "D003", "D004", "D005", "D006", "D007", "D008", "D009", "D010", "D011", "D012", "D013", "D014", "D015", "D017", "D018", "D019", "D020"]);
+  assert.deepEqual(Object.keys(DEFINE_CODES).filter((c) => c.startsWith("D")), ["D001", "D002", "D003", "D004", "D005", "D006", "D007", "D008", "D009", "D010", "D011", "D012", "D013", "D014", "D015", "D017", "D018", "D019", "D020", "D021", "D022"]);
 });
 
 test("a convention may be a function of (ref, program, state); a string refuses the slot", () => {

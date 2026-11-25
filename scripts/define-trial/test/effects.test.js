@@ -1,7 +1,7 @@
-// The checker's --effects mode: the per-slot effects draft (docs/api-effects.md), checked before it is built.
-// The garden fixture checks clean; each new code (D012 widened, every D021 and D022 case, L004, L017, C008) has a
-// fixture that trips it, a small edit of the garden in a temp directory, at the right file and line; a write the
-// real lowering refuses stays L013; and the mode changes nothing without the flag.
+// The checker on per-slot effects (docs/api-effects.md), which kit/define now checks itself, and the --effects mode,
+// which holds an example marked // REFUSED: <code> to failing. The garden fixture checks clean; each code (D012
+// widened, every D021 and D022 case, L004, L013, L017, C008) has a fixture that trips it, a small edit of the garden
+// in a temp directory, at the right file and line.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -10,8 +10,6 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkDir, EFFECTS_CODES } from "../checker/index.js";
-import { validateEffects } from "../checker/effects/validate.js";
-import { stripEffects } from "../checker/effects/strip.js";
 
 /** @import { CheckDiagnostic } from "../checker/index.js" */
 
@@ -97,7 +95,7 @@ const FAILING = [
   { code: "D022", why: "a slot in the instance space that takes two", edits: [{ file: DIALECT, from: SOW_PARAMS, to: `params: ["Plant", "Plant"]` }], file: DIALECT, line: lineOf(DIALECT, "sow: {"), message: /sow.*Plant/ },
   { code: "D022", why: "a write of an object outside its instance space", edits: [{ file: DIALECT, from: GROW_MAY, to: `may: ["write Plant", "destroy Plant", "bump Totals", "write Totals"]` }], file: DIALECT, line: lineOf(DIALECT, "grow: {"), message: /Totals/ },
   // L004: an effect the slot's may does not allow.
-  { code: "L004", why: "the lambda's own write", edits: [{ file: EX1, from: "    pl.water = rng();\n", to: "    pl.water = rng();\n    pl.height = 0;\n" }], file: EX1, line: lineOf(EX1, "pl.water = rng();") + 1, message: /write Plant\.height.*sow.*write Plant\.water/s },
+  { code: "L004", why: "the lambda's own write", edits: [{ file: EX1, from: "    pl.water = rng();\n", to: "    pl.water = rng();\n    pl.height = 0;\n" }], file: EX1, line: lineOf(EX1, "pl.water = rng();") + 1, message: /sow may not 'write Plant\.height'.*write Plant\.water/s },
   { code: "L004", why: "a verb the slot may not call", edits: [{ file: EX1, from: "    pl.water = rng();\n", to: "    pl.water = rng();\n    pl.wilt();\n" }], file: EX1, line: lineOf(EX1, "pl.water = rng();") + 1, message: /destroy Plant/ },
   { code: "L004", why: "a read of a total the slot may not read", edits: [{ file: EX1, from: "    pl.water = rng();\n", to: "    pl.water = rng() + totals.grown;\n" }], file: EX1, line: lineOf(EX1, "pl.water = rng();"), message: /read Totals\.grown/ },
   { code: "L004", why: "a bump the slot may not make", edits: [{ file: EX1, from: "    pl.water = rng();\n", to: "    pl.water = rng();\n    totals.grown++;\n" }], file: EX1, line: lineOf(EX1, "pl.water = rng();") + 1, message: /bump Totals\.grown/ },
@@ -122,10 +120,12 @@ test("the garden fixture checks clean in --effects mode, its refusal reported be
   assert.ok(refused.some((d) => /declared L004/.test(d.message) && /L004/.test(d.message.replace(/declared L004/, ""))), show(refused));
 });
 
-test("without --effects the garden is refused by the kit as built: the mode is what accepts it", async () => {
+// Changed in 8vQJOw: the kit now has per-slot effects, so without --effects the garden's definitions are accepted
+// (they were D012 and D001 before); what fails is its refusal, which only --effects expects to fail.
+test("without --effects the garden's definitions are accepted, and its refusal is an ordinary violation", async () => {
   const r = await checkDir(VALID, { lang: "garden" });
   assert.equal(r.ok, false);
-  assert.ok(r.diagnostics.some((d) => d.code === "D012") && r.diagnostics.some((d) => d.code === "D001"), show(r.diagnostics));
+  assert.deepEqual(errors(r.diagnostics).map((d) => `${d.file} ${d.code}`), [`${R01} L004`], show(r.diagnostics));
 });
 
 test("every new code has a failing fixture", () => {
@@ -186,18 +186,6 @@ test("without --effects a REFUSED file needs no Program, as before", async () =>
   assert.ok(!r.diagnostics.some((d) => d.file === "examples/r02.js"), show(r.diagnostics));
 });
 
-test("validateEffects is a pure function of the definition: the garden has no problem, a widened D012 has one", () => {
-  const def = {
-    spaces: { weather: { pure: true }, plant: { instance: "Plant" }, bad: { pure: true, instance: "Plant" } },
-    objects: { Plant: { members: { h: { value: "f64", write: true } } } },
-    slots: { grow: { params: ["Plant"], returns: "void", space: "plant", may: ["write Plant.h"] } },
-  };
-  const before = JSON.stringify(def);
-  const problems = validateEffects(def);
-  assert.deepEqual(problems.map((p) => [p.code, p.path.join(".")]), [["D012", "spaces.bad"]]);
-  assert.equal(JSON.stringify(def), before, "the definition is not changed");
-});
-
 const NO_HELPERS = { file: DIALECT, from: `  helpers: { may: ["read Plant"] },\n`, to: "" };
 
 test("with no helpers key, a helper reading a total is L004 at the helper: the default reads only instance objects", async () => {
@@ -206,48 +194,13 @@ test("with no helpers key, a helper reading a total is L004 at the helper: the d
   assert.ok(hit.length > 0, show(r.diagnostics));
   assert.equal(hit[0].file, EX1);
   assert.equal(hit[0].line, lineOf(EX1, "const tall"));
-  assert.match(`${hit[0].message} ${hit[0].fix}`, /read Totals\.grown.*"read Plant".*default/s);
+  // Changed in 8vQJOw: the kit's lowering words the helper's L004 ("may only read (read Plant)"), not the shim.
+  assert.match(`${hit[0].message} ${hit[0].fix}`, /read Totals\.grown.*read Plant/s);
 });
 
 test("with no helpers key, a helper may still read the plant it is passed", async () => {
   const r = await checkEdited([NO_HELPERS]);
   assert.equal(show(errors(r.diagnostics)), "");
-});
-
-test("stripEffects' default helpers may reads each instance space's object, and nothing else", () => {
-  const { info } = stripEffects({ spaces: { a: { instance: "Plant" }, b: { pure: true }, c: { instance: "Bed" } }, objects: { Plant: { members: {} }, Bed: { members: {} } } });
-  assert.deepEqual(info.helpers, ["read Plant", "read Bed"]);
-  assert.equal(info.helpersDefault, true);
-});
-
-test("stripEffects leaves what the kit as built accepts, and keeps what it stripped", () => {
-  const def = {
-    spaces: { plant: { instance: "Plant" }, weather: { pure: true } },
-    objects: {
-      Plant: { label: "p", members: { h: { value: "f64", write: true }, age: "f64", die: { fn: { params: [], returns: "void" }, effects: ["destroy Plant"] } } },
-      Rng: { label: "r", call: { params: [], returns: "f64" }, effects: ["rng"] },
-      Totals: { members: { n: { value: "f64", bump: true } } },
-    },
-    slots: { grow: { params: ["Plant"], returns: "void", space: "plant", may: ["write Plant"] } },
-    helpers: { may: ["read Plant"] },
-  };
-  const { def: out, info } = stripEffects(def);
-  const o = /** @type {any} */ (out);
-  assert.deepEqual(o.spaces, { plant: { pure: true }, weather: { pure: true } });
-  assert.equal(o.objects.Plant.members.h, "f64");
-  assert.equal(o.objects.Plant.members.age, "f64");
-  assert.deepEqual(o.objects.Plant.members.die, { fn: { params: [], returns: "void" } });
-  assert.equal(o.objects.Totals.members.n, "f64");
-  assert.ok(!("call" in o.objects.Rng) && !("effects" in o.objects.Rng));
-  assert.ok(!("may" in o.slots.grow) && !("helpers" in o));
-  assert.equal(info.spaces.plant, "Plant");
-  assert.equal(info.spaces.weather, null);
-  assert.deepEqual(info.objects.Plant.members.h, { write: true });
-  assert.deepEqual(info.objects.Totals.members.n, { bump: true });
-  assert.deepEqual(info.objects.Plant.verbs.die, ["destroy Plant"]);
-  assert.deepEqual(info.objects.Rng.callEffects, ["rng"]);
-  assert.deepEqual(info.slots.grow, { may: ["write Plant"], space: "plant", params: ["Plant"] });
-  assert.deepEqual(info.helpers, ["read Plant"]);
 });
 
 test("the CLI's --effects runs the mode, and prints the refusal line", () => {

@@ -30,7 +30,8 @@ test("a scalar in types is accepted, and its name resolves to the core's named s
   assert.deepEqual(env.objects.Row.members.history, { kind: "value", t: { list: DATE, max: 8 } });
   assert.deepEqual(env.globals.epoch, DATE);
   assert.deepEqual(d.intrinsics.later.sig, { params: [DATE, DATE], returns: DATE, effects: [] });
-  assert.deepEqual(env.slot({ id: "r.keep", kind: "keep", on: "r" }), { params: [{ obj: "Row" }, DATE], returns: "bool", space: "row", forbid: [] });
+  // Changed in 8vQJOw: every generated convention carries `may`; this one says none.
+  assert.deepEqual(env.slot({ id: "r.keep", kind: "keep", on: "r" }), { params: [{ obj: "Row" }, DATE], returns: "bool", space: "row", forbid: [], may: [] });
   assert.deepEqual(Object.keys(env.vectors ?? {}), ["vec2"], "a scalar is no vector constructor");
 });
 

@@ -46,8 +46,11 @@ export interface IntrinsicDef {
 
 export type LibraryDef = { fn: string } | { const: string };
 
-/** A slot convention as declared: static, or a function of where the lambda sits. */
-export interface ConventionDef { params: TypeDef[]; returns: TypeDef | "infer"; space: string }
+/**
+ * A slot convention as declared: static, or a function of where the lambda sits. `may` lists the effects its lambda
+ * may have, as patterns (`"write Plant"`, `"bump Totals"`, `"rng"`, `"read Totals.n"`); absent, none.
+ */
+export interface ConventionDef { params: TypeDef[]; returns: TypeDef | "infer"; space: string; may?: string[] }
 export type ConventionFn = (ref: DefineSlotRef, program: Record<string, unknown>, state: unknown) => ConventionDef | string;
 
 /** What a slot convention function receives: the core SlotRef plus the call's position. */
@@ -62,12 +65,26 @@ export interface EnvironmentAddition {
   globals?: Record<string, TypeDef>;
 }
 
+/** A space: pure (its lambdas change nothing), or an instance space (each lambda is handed one `instance` and may change only it). */
+export type SpaceDef = { pure: true } | { instance: string };
+
+/**
+ * A declared object. A member is a type, `{ value, size?, write?, bump? }`, `{ fn, effects? }` or `{ keyed }`;
+ * `call` makes the object itself callable, with `effects` saying what calling it does.
+ */
+export interface ObjectDef {
+  label?: string;
+  members?: Record<string, unknown>;
+  call?: { params: TypeDef[]; returns: TypeDef; minArgs?: number; rest?: TypeDef };
+  effects?: string[];
+}
+
 export interface DialectDef {
   name: string;
   numberType: "f32" | "f64";
   types?: Record<string, Tagged>;
-  spaces: Record<string, { pure: true }>;
-  objects?: Record<string, { label?: string; members?: Record<string, unknown> }>;
+  spaces: Record<string, SpaceDef>;
+  objects?: Record<string, ObjectDef>;
   globals?: Record<string, TypeDef>;
   intrinsics?: Record<string, IntrinsicDef>;
   library?: Record<string, LibraryDef>;
@@ -79,6 +96,8 @@ export interface DialectDef {
   /** What a constant may call: `"pure"` lets it call a pure helper; `"none"`, the default, forbids every call. */
   constants?: { calls: ConstantCalls };
   environment?: (program: Record<string, any>) => EnvironmentAddition;
+  /** What a helper may do: reads only. Absent, a read of each instance space's object. */
+  helpers?: { may: string[] };
   /** The text view: the Dialect's screen and state as characters, sized for a model. What `state` is, the Dialect says. Required (D020). */
   text: (state: any) => string;
   /** The object a lambda reads the Program's params through, the name it reads it by, and the members known only at run time, which build-time code may not read (B014). */

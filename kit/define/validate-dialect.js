@@ -1,14 +1,16 @@
-// defineDialect's checks: every problem in a Dialect definition, collected (D001–D008, D011–D013).
+// defineDialect's checks: every problem in a Dialect definition, collected (D001–D008, D011, D013, D020; D012,
+// D021 and D022, the per-slot effects checks, are effects.js's).
 
 import { didYouMean } from "./codes.js";
-import { checkKeys, checkType, checkMember, checkSignature, listed, BUILTIN_TYPES } from "./types.js";
+import { checkKeys, checkType, checkMember, checkSignature, listed, BUILTIN_TYPES, SIGNATURE_KEYS } from "./types.js";
+import { validateEffects } from "./effects.js";
 import { isPlainObject, kindOf, describe } from "./tags.js";
 import { parseLambda, checkSubset } from "../parse/index.js";
 
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
 export const CONSTANT_CALLS = Object.freeze(["none", "pure"]);
 const DIALECT_REQUIRED = Object.freeze(["name", "numberType", "spaces", "targets", "slots"]);
@@ -125,21 +127,21 @@ export function validateDialect(def) {
     }
   }
 
-  for (const [n, v] of spaces) {
-    const path = ["spaces", n];
-    if (!isPlainObject(v)) { out.push({ code: "D012", path, message: `space '${n}' must be { pure: true }.`, tip: `${n}: { pure: true }` }); continue; }
-    checkKeys(v, ["pure"], [], path, `space '${n}'`, out);
-    if (v.pure !== true) out.push({ code: "D012", path: [...path, "pure"], message: `space '${n}' is not pure; every space must be pure (effects are not part of the API yet).`, tip: `${n}: { pure: true }` });
-  }
+  // Whether a space is pure or an instance space is D012, in effects.js.
+  for (const [n, v] of spaces) if (isPlainObject(v)) checkKeys(v, ["pure", "instance"], [], ["spaces", n], `space '${n}'`, out);
 
   for (const [n, v] of objects) {
     const path = ["objects", n];
     if (!isPlainObject(v)) { out.push({ code: "D011", path, message: `object '${n}' must be { label, members }.`, tip: `${n}: { label: "…", members: { … } }` }); continue; }
-    checkKeys(v, ["label", "members"], [], path, `object '${n}'`, out);
+    checkKeys(v, ["label", "members", "call", "effects"], [], path, `object '${n}'`, out);
     if (v.label !== undefined && typeof v.label !== "string") out.push({ code: "D011", path: [...path, "label"], message: `object '${n}': label must be a string.`, tip: `label: "the uniforms (u)"` });
+    if (v.call !== undefined) {
+      if (!isPlainObject(v.call)) out.push({ code: "D011", path: [...path, "call"], message: `object '${n}': call must be { params, returns }, the signature of calling the object.`, tip: `call: { params: [], returns: "f64" }` });
+      else { checkKeys(v.call, SIGNATURE_KEYS, ["params", "returns"], [...path, "call"], `object '${n}''s call`, out); checkSignature(v.call, scope, [...path, "call"], `object '${n}''s call`, out); }
+    }
     if (v.members === undefined) continue;
     if (!isPlainObject(v.members)) { out.push({ code: "D011", path: [...path, "members"], message: `object '${n}': members must be an object.`, tip: `members: { t: "f32" }` }); continue; }
-    for (const [m, t] of Object.entries(v.members)) checkMember(t, scope, [...path, "members", m], `member ${n}.${m}`, out);
+    for (const [m, t] of Object.entries(v.members)) checkMember(t, scope, [...path, "members", m], `member ${n}.${m}`, out, { effects: true });
   }
 
   for (const [n, t] of globals) checkType(t, scope, {}, ["globals", n], `global '${n}'`, out);
@@ -169,7 +171,8 @@ export function validateDialect(def) {
   for (const [n, v] of intrinsics) {
     const path = ["intrinsics", n];
     if (!isPlainObject(v)) { out.push({ code: "D004", path, message: `intrinsic '${n}' must be an object with params, returns, ref and spell.`, tip: `${n}: { params: ["f32"], returns: "f32", ref: (x) => …, spell: { … } }` }); continue; }
-    checkKeys(v, INTRINSIC_KEYS, [], path, `intrinsic '${n}'`, out);
+    // effects on an intrinsic is D021 (an intrinsic is pure), not an unknown key
+    checkKeys(v, [...INTRINSIC_KEYS, "effects"], [], path, `intrinsic '${n}'`, out);
     const missing = ["ref", "params", "returns"].filter((key) => !(key in v));
     if (missing.length) out.push({ code: "D004", path, message: `intrinsic '${n}' has no ${missing.join(", ")}.`, tip: `add ${missing.join(", ")}` });
     if ("ref" in v && typeof v.ref !== "function") out.push({ code: "D004", path: [...path, "ref"], message: `intrinsic '${n}': ref must be a function (the reference implementation), not ${describe(v.ref)}.`, tip: "ref: (x) => …" });
@@ -205,7 +208,7 @@ export function validateDialect(def) {
     if (KIT_CONVENTIONS.includes(n)) { out.push({ code: "D007", path, message: `slot convention '${n}' is one the kit makes${n === "method" ? " (lowering reads it as a program method)" : " for unit slots"}.`, tip: `rename the convention; .fn and .const units get their conventions from the kit` }); continue; }
     if (typeof v === "function") continue;
     if (!isPlainObject(v)) { out.push({ code: "D011", path, message: `slot convention '${n}' must be { params, returns, space } or a function (ref, program, state) => convention.`, tip: `${n}: { params: [], returns: "infer", space: "${spaceNames[0] ?? "…"}" }` }); continue; }
-    checkKeys(v, ["params", "returns", "space"], ["params", "returns", "space"], path, `slot convention '${n}'`, out);
+    checkKeys(v, ["params", "returns", "space", "may"], ["params", "returns", "space"], path, `slot convention '${n}'`, out);
     if (v.params !== undefined && !Array.isArray(v.params)) out.push({ code: "D011", path: [...path, "params"], message: `slot convention '${n}': params must be a list of types.`, tip: `params: ["vec2"]` });
     else if (Array.isArray(v.params)) v.params.forEach((t, i) => checkType(t, scope, {}, [...path, "params"], `slot convention '${n}', param ${i + 1}`, out));
     if (v.returns !== undefined) checkType(v.returns, scope, { infer: true }, [...path, "returns"], `slot convention '${n}', returns`, out);
@@ -230,5 +233,6 @@ export function validateDialect(def) {
       }
     }
   }
+  out.push(...validateEffects(def));
   return out;
 }

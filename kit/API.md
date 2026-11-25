@@ -18,7 +18,7 @@ export const myLang = defineDialect({
     vec2: vector(2, "f32"),                      // built in a lambda as vec2(x, y); read .x .y; nominal
     day: scalar("f64", { note: "days since 1970-01-01" }),  // nominal: compares with itself only, no arithmetic
   },
-  spaces: { row: { pure: true } },               // required: where lambdas run; every space must be pure
+  spaces: { row: { pure: true } },               // required: where lambdas run; pure, or { instance: "Obj" } (below)
   objects: {                                     // handles a lambda reads members from
     Math: { label: "Math", members: {
       min: { fn: { params: ["f64", "f64"], rest: "f64", returns: "f64" } },  // a method; minArgs: n for optional args
@@ -50,6 +50,32 @@ export const myLang = defineDialect({
 - **Intrinsics.** `params`, `returns`, `ref` (required), `spell` per target (a string with `$0 $1 …`, or `{ call, prelude }`). Optional: `minArgs`, `rest`, `numeric: "number" | "vector"` (what a type variable may be), `componentwise: true`.
 - **A slot convention** is `{ params, returns, space }` (`returns: "infer"` takes the body's type), or a function `(ref, program, state) => convention` called once per lambda at lowering. `ref` is `{ id, kind, on, index, key }`, where `on` is the instance's name and `index` the call's position. `state` is the construct's state just before this call. Return a string instead to refuse the lambda (B011, with your string as the reason).
 - **The text view.** `text(state)`: you decide what `state` is (say it in a comment), for example a rendered frame or a computed table. Print what a person would see, sized for a model's context.
+
+### Per-slot effects
+
+A slot that says nothing may change nothing. To let a lambda change **the one object it is handed**, run its slot in an **instance space** and list what it may do in `may`:
+
+```js
+spaces: { weather: { pure: true }, plant: { instance: "Plant" } },   // each plant lambda gets one Plant, changes only it
+objects: {
+  Plant: { label: "a plant (pl)", members: {
+    height: { value: "f64", write: true },                            // writable; "f64" alone is read-only (L013)
+    wilt: { fn: { params: [], returns: "void" }, effects: ["destroy Plant"] },   // a verb: call it as a statement
+  } },
+  Rng: { label: "rng", call: { params: [], returns: "f64" }, effects: ["rng"] }, // a callable object: rng()
+  Totals: { label: "totals", members: { grown: { value: "f64", bump: true } } }, // a total: only += and ++ statements
+},
+slots: {
+  rain: { params: ["f64"], returns: "f64", space: "weather", may: ["read Totals"] },
+  grow: { params: ["Plant", "f64"], returns: "void", space: "plant", may: ["write Plant", "destroy Plant", "bump Totals"] },
+},
+helpers: { may: ["read Plant"] },   // the default: helpers only read instance objects
+```
+
+- **Effects** are `read Obj.m` (of a writable member or total), `write Obj.m`, `destroy Obj`, `rng`, `bump Obj.m`. A pattern covers what is inside it: `"write Plant"` allows `write Plant.height`. Reading a read-only member is no effect. A slot in an instance space may always read its own instance.
+- **Only instance spaces change anything.** A `write` or `destroy` of `Obj` belongs only in a slot of the space `{ instance: "Obj" }`, which takes one `Obj` parameter, once; nothing else in the Dialect may hold or return an `Obj` (D022). A pure space's slots and `helpers` list reads only (D021).
+- **A total is never read and bumped in one slot** (D021), so the order instances run in cannot show. `environment(program)` may add writable members and totals; they are checked when the Program is lowered.
+- **A helper's effects count at every call**, and a helper beyond `helpers.may` is one L004, at the helper. Intrinsics stay pure (`effects` on one is D021). The host (your runner) implements verbs, `rng()` and totals.
 
 ## `defineGrammar`
 
@@ -147,8 +173,8 @@ These cost earlier authors time. The rest, you can infer.
 
 ## Codes you will meet
 
-`D…` is a bad definition (D001 an unknown key, D002 an unknown type, D010 a method-name clash). `B…` is a Program the builder refuses (B001 no such method, B002 a duplicate name, B003 a ref to nothing, B004 a bad value, B005 a required slot or child missing, B006 a second `once` call, B008 a free name not allowed, B009 a rejected name). `L…` is a lambda's type error. Every diagnostic carries a tip or a fix: read it before guessing.
+`D…` is a bad definition (D001 an unknown key, D002 an unknown type, D010 a method-name clash, D021 a bad effect declaration, D022 an instance reachable another way). `B…` is a Program the builder refuses (B001 no such method, B002 a duplicate name, B003 a ref to nothing, B004 a bad value, B005 a required slot or child missing, B006 a second `once` call, B008 a free name not allowed, B009 a rejected name). `L…` is a lambda's error (L004 an effect its slot's `may` lacks, L013 a write to a read-only member, L017 a total changed other than by `+=` or `++`). Every diagnostic carries a tip or a fix: read it before guessing.
 
 ## Not built
 
-Effects (every space is pure), fragments, build-time slots that return grammar, Dialect imports, and lambdas in a construct's opening arguments. If you need one, report it as a gap; don't invent API.
+Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, and lambdas in a construct's opening arguments. If you need one, report it as a gap; don't invent API.

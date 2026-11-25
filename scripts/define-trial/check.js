@@ -24,10 +24,10 @@ L…, P… and S… about a lambda's body (lowering), C… the checker's own rul
 Exit 0: no violations. 1: violations. 2: bad invocation. 4: <dir> or a definition file is missing.
 --json prints the result as one JSON object instead.
 --lang <name> checks <dir>/<name>.dialect.js and <name>.grammar.js instead (default: data).
---effects checks the per-slot effects draft (docs/api-effects.md, rules in docs/rules-effects.md): its
-  declarations (D012, D021, D022), every lambda's effects against its slot's may (L004) and totals (L017);
-  an example whose first line is // REFUSED: <code> must fail (C008 if it checks clean), and what it failed
-  with is printed beside its declared code.`;
+--effects runs trial 4's rules (docs/rules-effects.md): an example whose first line is // REFUSED: <code>
+  must fail (C008 if it checks clean), and what it failed with is printed beside its declared code. The
+  per-slot effects themselves (docs/api-effects.md: D012, D021, D022, L004, L013, L017) are kit/define's,
+  checked with or without the flag.`;
 
 /**
  * The text the author reads.

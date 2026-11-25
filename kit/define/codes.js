@@ -18,7 +18,7 @@ export const DEFINE_CODES = Object.freeze({
   D009: "A lambda(convention) that names no slot convention",
   D010: "A child construct with a method of its parent's name, a parent or root that is not a construct, or a method the kit makes",
   D011: "A malformed declaration, argument spec or shape",
-  D012: "A space without pure: true",
+  D012: "A space with neither pure: true nor instance, or with both, or whose instance names no object",
   D013: "A library entry that is not { fn: src } or { const: src }, or whose source does not parse",
   D014: "A slot without a kind, or with a kind other than decl or unit",
   D015: "A construct state without record: \"calls\", init or step, or whose names clash with a Program namespace; an opt or rest argument that is not last",
@@ -26,6 +26,8 @@ export const DEFINE_CODES = Object.freeze({
   D018: "A slot or construct named like a property runtimes probe on every object (then, toJSON, inspect, …)",
   D019: "A lambda() in a construct's opens, which is not built yet",
   D020: "A Dialect without text(state), its text view (its screen and state as characters, sized for a model)",
+  D021: "A malformed effect declaration: an unknown verb, object or member in may; a write, destroy or bump with no object; a non-read in a pure space's slot or in helpers; a bump outside an instance space or of a member that is not a total; a write of a member that is not writable; one slot that may both read and bump a total; write and bump on one member, or on a member that is not a value; bump on a non-f64; effects on an intrinsic",
+  D022: "An instance a lambda could reach other than as its instance space's slot parameter (a member, method result, global, list item, struct field, intrinsic or call result of its type; a slot outside the space that takes one; a slot in it that takes none or two), or a write or destroy of an object in a slot whose space's instance is not that object",
 });
 
 /** The generated builder's codes. */

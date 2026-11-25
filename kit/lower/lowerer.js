@@ -258,7 +258,7 @@ export class Lowerer {
     if (may.some((m) => mayMatch(m, effect))) return;
     const helper = this.slot.kind === "helper";
     const allowed = may.length ? `it may only ${may.map((m) => `'${m}'`).join(", ")}` : "it may do nothing but compute";
-    this.error("L004", span, `${helper ? `The helper ${this.slot.key}` : `A ${this.slot.kind}`} may not '${effect}'.`, helper ? `A helper may only read (${may.join(", ") || "nothing"}); do the change in the lambda that calls it.` : `${allowed[0].toUpperCase()}${allowed.slice(1)}.`);
+    this.error("L004", span, `${helper ? `The helper ${this.slot.key}` : `A ${this.slot.kind}`} may not '${effect}'.`, helper ? `A helper may only read (${may.join(", ") || "nothing"}); ${verb === "read" ? "read it in the lambda that calls the helper and pass the value in" : "make the change in the lambda that calls it"}.` : `${allowed[0].toUpperCase()}${allowed.slice(1)}.`);
   }
 
   /**

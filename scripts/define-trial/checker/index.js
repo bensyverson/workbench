@@ -52,7 +52,7 @@ let queue = Promise.resolve();
 /**
  * Checks one candidate directory. Checks run one at a time (the candidate's kit/define reports to one session).
  * @param {string} dir
- * @param {{ lang?: string, effects?: boolean }} [options]  `lang` names the definition files (definitionFiles); `effects` runs the per-slot effects draft (docs/api-effects.md, checker/effects/)
+ * @param {{ lang?: string, effects?: boolean }} [options]  `lang` names the definition files (definitionFiles); `effects` holds each example marked `// REFUSED: <code>` to failing (trial 4's rules-effects.md; the effects themselves are kit/define's)
  * @returns {Promise<CheckResult>}
  */
 export function checkDir(dir, { lang = "data", effects = false } = {}) {

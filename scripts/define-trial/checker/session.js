@@ -37,15 +37,8 @@ export const session = {
   grammar: null,
   /** Whether a define call was refused; the examples are then not run, since each would repeat it. */
   refused: false,
-  /** Whether this check runs the per-slot effects draft (--effects: checker/effects/). */
+  /** Whether this check holds an example marked // REFUSED: <code> to failing (--effects, trial 4's rules). */
   effects: false,
-  /**
-   * In --effects mode, lowering a record of the first Grammar against the patched Environment, with the draft's
-   * checks: the lowering's diagnostics and the effect checks' (L004, L017), and the definition problems found only
-   * once a Program is known (D021, D022).
-   * @type {((record: Record<string, any>) => { diagnostics: any[], lambdas: any[], problems: Problem[] }) | null}
-   */
-  effectsLower: null,
 
   /**
    * Starts a new check of `dirUrl`.
@@ -55,7 +48,6 @@ export const session = {
    */
   reset(dirUrl, sources, effects = false) {
     this.effects = effects;
-    this.effectsLower = null;
     this.run++;
     this.dirUrl = dirUrl;
     this.sources = sources;

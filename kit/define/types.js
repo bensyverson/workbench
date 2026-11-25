@@ -86,7 +86,7 @@ export function checkType(t, scope, allow, path, where, out) {
   }
 }
 
-const SIGNATURE_KEYS = Object.freeze(["params", "returns", "minArgs", "rest"]);
+export const SIGNATURE_KEYS = Object.freeze(["params", "returns", "minArgs", "rest"]);
 
 /**
  * params, returns, minArgs and rest of an intrinsic or method; type variables are allowed.
@@ -102,23 +102,29 @@ export function checkSignature(sig, scope, path, where, out) {
   if (sig.minArgs !== undefined && !(typeof sig.minArgs === "number" && Number.isInteger(sig.minArgs) && sig.minArgs >= 0)) out.push({ code: "D011", path: [...path, "minArgs"], message: `${where}: minArgs must be a whole number.`, tip: "minArgs: 1" });
 }
 
+/** The keys a member of a declared object may carry for per-slot effects; effects.js judges them (D021). */
+const EFFECT_KEYS = Object.freeze(["write", "bump", "effects"]);
+
 /**
- * An object member: a type, or { value, size }, { fn: signature }, { keyed: { what, keys } }.
+ * An object member: a type, or { value, size }, { fn: signature }, { keyed: { what, keys } }. With `effects`, a
+ * member of a declared object, it may also carry write, bump and effects (checked by effects.js, D021).
  * @param {unknown} t @param {TypeScope} scope @param {Array<string | number>} path @param {string} where @param {Problem[]} out
+ * @param {{ effects?: boolean }} [options]
  */
-export function checkMember(t, scope, path, where, out) {
+export function checkMember(t, scope, path, where, out, { effects = false } = {}) {
   if (!isPlainObject(t)) { checkType(t, scope, {}, path, where, out); return; }
   const bad = (/** @type {string} */ m, /** @type {string} */ tip) => out.push({ code: "D011", path, message: `${where}: ${m}`, tip });
+  const extra = effects ? EFFECT_KEYS : [];
   if ("value" in t) {
-    checkKeys(t, ["value", "size"], [], path, where, out);
+    checkKeys(t, ["value", "size", ...extra], [], path, where, out);
     checkType(t.value, scope, {}, path, where, out);
     if (t.size !== undefined && t.size !== true) bad("size must be true when present.", `{ value: "f64", size: true }`);
   } else if ("fn" in t) {
-    checkKeys(t, ["fn"], [], path, where, out);
+    checkKeys(t, ["fn", ...extra], [], path, where, out);
     if (!isPlainObject(t.fn)) bad("fn must be { params, returns }.", `{ fn: { params: ["f64"], returns: "f64" } }`);
     else { checkKeys(t.fn, SIGNATURE_KEYS, ["params", "returns"], [...path, "fn"], `${where}'s fn`, out); checkSignature(t.fn, scope, [...path, "fn"], where, out); }
   } else if ("keyed" in t) {
-    checkKeys(t, ["keyed"], [], path, where, out);
+    checkKeys(t, ["keyed", ...extra], [], path, where, out);
     const k = t.keyed;
     if (!isPlainObject(k)) { bad("keyed must be { what, keys }.", `{ keyed: { what: "column", keys: { … } } }`); return; }
     checkKeys(k, ["what", "keys"], ["what", "keys"], [...path, "keyed"], `${where}'s keyed`, out);
@@ -201,13 +207,23 @@ export function intrinsicSig(i, r) {
 }
 
 /**
- * @param {unknown} m @param {Resolver} r
+ * A member in the core's terms. `at` names a declared object's member (`Plant.height`): a writable one stores with
+ * the value rule and a total is a bump, each recording `read Plant.height` when read; a verb carries its effects.
+ * @param {unknown} m @param {Resolver} r @param {string} [at]
  * @returns {Member}
  */
-export function resolveMember(m, r) {
+export function resolveMember(m, r, at) {
   if (!isPlainObject(m)) return { kind: "value", t: resolveType(m, r) };
-  if ("value" in m) return { kind: "value", t: resolveType(m.value, r), ...(m.size === true ? { size: true } : {}) };
-  if ("fn" in m) return { kind: "fn", ...resolveSig(/** @type {Record<string, unknown>} */ (m.fn), r), effects: [] };
+  if ("value" in m) {
+    const write = at !== undefined && m.write === true, bump = at !== undefined && m.bump === true;
+    return {
+      kind: "value", t: resolveType(m.value, r), ...(m.size === true ? { size: true } : {}),
+      ...(write ? { store: { type: /** @type {const} */ ("value") } } : {}),
+      ...(bump ? { bump: /** @type {const} */ (true) } : {}),
+      ...(write || bump ? { effect: /** @type {import("../ir/ir.js").Effect} */ (`read ${at}`) } : {}),
+    };
+  }
+  if ("fn" in m) return { kind: "fn", ...resolveSig(/** @type {Record<string, unknown>} */ (m.fn), r), effects: at !== undefined && Array.isArray(m.effects) ? [...m.effects] : [] };
   const k = /** @type {{ what: string, keys: Record<string, Record<string, unknown>> }} */ (m.keyed);
   return { kind: "keyed", what: k.what, keys: Object.fromEntries(Object.entries(k.keys).map(([key, sig]) => [key, resolveSig(sig, r)])), effects: [] };
 }

@@ -2,6 +2,7 @@
 // (kit/lower/environment.d.ts, unchanged), the intrinsic table the backends read, and the Library.
 
 import { validateDialect } from "./validate-dialect.js";
+import { spaceModel, helpersMay, programProblems, conventionProblems } from "./effects.js";
 import { resolveType, resolveMember, intrinsicSig, checkType } from "./types.js";
 import { isPlainObject, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
@@ -12,6 +13,7 @@ import { dialectVector, dialectScalar } from "../ir/types.js";
 /** @import { UnitDecl } from "../dialects/fields/decls.js" */
 /** @import * as T from "./define.js" */
 /** @import { Problem, Resolver } from "./types.js" */
+/** @import { SpaceModel } from "./effects.js" */
 
 /** A bad definition: every problem found, each a DefineDiagnostic. */
 export class DefinitionError extends Error {
@@ -78,6 +80,7 @@ export function defineDialect(def) {
   }
   /** @type {Resolver} */
   const statics = { vectors, scalars };
+  const spaces = spaceModel(/** @type {Record<string, any>} */ (def));
   const targetNames = Object.keys(def.targets);
 
   /** @type {Record<string, T.Intrinsic>} */
@@ -107,7 +110,7 @@ export function defineDialect(def) {
     targets: /** @type {T.Dialect["targets"]} */ (targets),
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
     text: def.text,
-    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, program, states),
+    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, program, states, spaces),
   });
   MADE.add(dialect);
   return dialect;
@@ -118,9 +121,10 @@ export function defineDialect(def) {
  * @param {T.DialectDef} def @param {{ vectors: Record<string, VecType>, scalars: Record<string, ScalarType> }} named  the types declared in `types`
  * @param {Record<string, Record<string, string>>} componentAliases
  * @param {Record<string, any>} program @param {Map<string, unknown>} states
+ * @param {SpaceModel} spaces  each space's instance object, or null when it is pure
  * @returns {Environment}
  */
-function environmentOf(def, { vectors, scalars }, componentAliases, program, states) {
+function environmentOf(def, { vectors, scalars }, componentAliases, program, states, spaces) {
   /** @type {Record<string, ObjectDecl>} */
   const objects = {};
   /** @type {Resolver} */
@@ -140,7 +144,8 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
     },
   };
   for (const [n, o] of Object.entries(def.objects ?? {})) {
-    objects[n] = { label: o.label ?? n, members: Object.fromEntries(Object.entries(o.members ?? {}).map(([m, t]) => [m, resolveMember(t, r)])) };
+    objects[n] = { label: o.label ?? n, members: Object.fromEntries(Object.entries(o.members ?? {}).map(([m, t]) => [m, resolveMember(t, r, `${n}.${m}`)])) };
+    if (o.call) objects[n].call = { ...intrinsicSig(/** @type {any} */ (o.call), r), effects: /** @type {import("../ir/ir.js").Effect[]} */ ([...(o.effects ?? [])]) };
   }
   /** @type {Record<string, Type>} */
   const globals = Object.fromEntries(Object.entries(def.globals ?? {}).map(([n, t]) => [n, resolveType(t, r)]));
@@ -150,12 +155,14 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
     globals[n] = { obj: n };
   }
   const added = def.environment ? def.environment(program) : {};
+  // What a Program added can break an effect rule the definition alone could not (a may naming a member it lacks).
+  if (def.environment) refuse("environment(program)", programProblems(/** @type {Record<string, any>} */ (def), added));
   for (const [n, o] of Object.entries(added.objects ?? {})) {
     const into = (objects[n] ??= { label: o.label ?? n, members: {} });
     for (const [m, t] of Object.entries(o.members ?? {})) {
       if (Object.hasOwn(into.members, m)) throw new Error(`environment(program) declares ${n}.${m} twice: it is already a member of ${n}`);
       // defineProperty, not assignment: a member named __proto__ must be an own member, not a prototype.
-      Object.defineProperty(into.members, m, { value: resolveMember(t, r), enumerable: true, writable: true, configurable: true });
+      Object.defineProperty(into.members, m, { value: resolveMember(t, r, `${n}.${m}`), enumerable: true, writable: true, configurable: true });
     }
   }
   for (const [n, t] of Object.entries(added.globals ?? {})) {
@@ -164,6 +171,7 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
   }
   /** @type {Map<string, SlotDecl>} */
   const fixed = new Map();
+  const helperMay = helpersMay(/** @type {Record<string, any>} */ (def), spaces);
   return {
     name: def.name,
     objects,
@@ -175,28 +183,27 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
     numberType: def.numberType,
     conversions: { ...(def.conversions ?? {}) },
     slot(ref) {
-      if (ref.kind === "helper") return { params: [], inferParams: true, returns: "infer", space: `helper ${ref.key}`, forbid: [] };
+      if (ref.kind === "helper") return { params: [], inferParams: true, returns: "infer", space: `helper ${ref.key}`, forbid: [], may: [...helperMay] };
       if (ref.kind === "const") return constConvention(ref.key, def.constants?.calls ?? "none");
       const c = Object.hasOwn(def.slots, ref.kind) ? def.slots[ref.kind] : undefined;
       if (c === undefined) return `the ${def.name} Dialect has no '${ref.kind}' slot convention`;
       if (typeof c !== "function") {
         let d = fixed.get(ref.kind);
-        if (!d) fixed.set(ref.kind, (d = convention(c, r)));
+        if (!d) fixed.set(ref.kind, (d = convention(c, r, spaces)));
         return d;
       }
       const made = c(ref, program, states.get(ref.id));
       if (typeof made === "string") return made;
-      checkConvention(made, def, objects, ref);
-      return convention(made, r);
+      checkConvention(made, def, objects, ref, added);
+      return convention(made, r, spaces);
     },
   };
 }
 
 /**
  * The kit's `const` convention. A constant is computed once, so it reads and changes nothing; with
- * `calls: "pure"` it may call a helper. Lowering lists a callee's effects beside the call, so a helper that
- * stored or emitted would be refused by this forbid list; but a generated Dialect can express no effect other
- * than `call` (every space is pure, no member carries an effect), so today that rule is never exercised.
+ * `calls: "pure"` it may call a helper. Lowering lists a callee's effects beside the call, so a helper that reads
+ * something that changes (a writable member, a total) is refused here by this forbid list.
  * @param {string | undefined} key @param {T.ConstantCalls} calls
  * @returns {SlotDecl}
  */
@@ -207,20 +214,25 @@ function constConvention(key, calls) {
 }
 
 /**
- * A convention in the core's terms. Every space is pure and no member can carry an effect, so purity holds
- * by construction and `forbid` stays empty (as fields' pixel convention has it).
- * @param {T.ConventionDef} c @param {Resolver} r
+ * A convention in the core's terms. What its lambda may do is `may`, an allow-list (absent, nothing), plus a read of
+ * its instance in an instance space; `forbid` stays empty (as fields' pixel convention has it).
+ * @param {T.ConventionDef} c @param {Resolver} r @param {SpaceModel} spaces
  * @returns {SlotDecl}
  */
-function convention(c, r) {
-  return { params: c.params.map((p) => resolveType(p, r)), returns: c.returns === "infer" ? "infer" : resolveType(c.returns, r), space: c.space, forbid: [] };
+function convention(c, r, spaces) {
+  const instance = spaces[c.space] ?? null;
+  return {
+    params: c.params.map((p) => resolveType(p, r)), returns: c.returns === "infer" ? "infer" : resolveType(c.returns, r), space: c.space, forbid: [],
+    may: [...(c.may ?? []), ...(instance ? [`read ${instance}`] : [])],
+  };
 }
 
 /**
  * Checks what a convention function returned, as defineDialect checks a static one.
  * @param {unknown} c @param {T.DialectDef} def @param {Record<string, ObjectDecl>} objects @param {SlotRef} ref
+ * @param {Record<string, any>} added  what environment(program) returned, for its members' effect flags
  */
-function checkConvention(c, def, objects, ref) {
+function checkConvention(c, def, objects, ref, added) {
   /** @type {Problem[]} */
   const out = [];
   // "unknown" is what a lambda that failed to lower returns; a state built from it stays quiet, as lowering does.
@@ -230,6 +242,7 @@ function checkConvention(c, def, objects, ref) {
     c.params.forEach((t, i) => checkType(t, scope, {}, ["slots", ref.kind, "params"], `slot convention '${ref.kind}' for ${ref.id}, param ${i + 1}`, out));
     checkType(c.returns, scope, { infer: true }, ["slots", ref.kind, "returns"], `slot convention '${ref.kind}' for ${ref.id}, returns`, out);
     if (typeof c.space !== "string" || !(c.space in def.spaces)) out.push({ code: "D005", path: ["slots", ref.kind, "space"], message: `slot convention '${ref.kind}' for ${ref.id} runs in an undeclared space.`, tip: `space: one of ${Object.keys(def.spaces).join(", ")}` });
+    else out.push(...conventionProblems(c, `slot convention '${ref.kind}' for ${ref.id}`, ["slots", ref.kind], /** @type {Record<string, any>} */ (def), added));
   }
   refuse(`the slot convention '${ref.kind}'`, out);
 }
