@@ -1,4 +1,4 @@
-// REJECT 1: f.food read before food is declared
+// REJECT 1: f.food read before food is declared (expect: L002)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

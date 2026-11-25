@@ -1,4 +1,4 @@
-// REJECT 5: lambda returns a boolean
+// REJECT 5: lambda returns a boolean (expect: L003)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

@@ -1,4 +1,4 @@
-// REJECT 10: Date.now in a lambda
+// REJECT 10: Date.now in a lambda (expect: B008)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

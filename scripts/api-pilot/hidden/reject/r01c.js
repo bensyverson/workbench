@@ -1,4 +1,4 @@
-// REJECT 1: reads a flow of another account
+// REJECT 1: reads a flow of another account (expect: L002)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

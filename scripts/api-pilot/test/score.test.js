@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, cpSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,5 +95,72 @@ test("score.js exits 1 when either kind has no programs", () => {
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stderr, /no reject programs/);
   } finally { rmSync(hidden, { recursive: true, force: true }); }
+});
+
+// Review of 81a0eee: candidate code must not be able to end or hang the scorer.
+/** A hand-in: the reference's definitions with `extra` appended to its grammar. @param {string} extra */
+function handinWith(extra) {
+  const dir = mkdtempSync(join(tmpdir(), "api-pilot-handin-"));
+  cpSync(join(REFERENCE, "budget.dialect.js"), join(dir, "budget.dialect.js"));
+  cpSync(join(REFERENCE, "budget.grammar.js"), join(dir, "budget.grammar.js"));
+  appendFileSync(join(dir, "budget.grammar.js"), `\n${extra}\n`);
+  return dir;
+}
+
+test("a candidate that calls process.exit(0) fails every program, and the CLI exits 1", async () => {
+  const handin = handinWith("process.exit(0);");
+  const hidden = hiddenSet({ "a1.js": GOOD }, { "r1.js": BAD });
+  try {
+    const r = await score(handin, hidden);
+    assert.ok(r.results.length === 2 && r.results.every((x) => !x.pass));
+    assert.equal(r.definitions.ok, false);
+    const cli = spawnSync(process.execPath, [CLI, handin, hidden], { encoding: "utf8" });
+    assert.equal(cli.status, 1, cli.stdout + cli.stderr);
+    assert.match(cli.stdout, /definitions: FAIL/);
+  } finally { rmSync(handin, { recursive: true, force: true }); rmSync(hidden, { recursive: true, force: true }); }
+});
+
+test("a candidate with an endless loop fails every program once the timeout passes", async () => {
+  const handin = handinWith("for (;;) {}");
+  const hidden = hiddenSet({ "a1.js": GOOD }, { "r1.js": BAD });
+  try {
+    const t0 = Date.now();
+    const r = await score(handin, hidden, { timeoutMs: 1500 });
+    assert.ok(Date.now() - t0 < 20000);
+    assert.ok(r.results.length === 2 && r.results.every((x) => !x.pass));
+    assert.match(r.definitions.codes.join(","), /TIMEOUT/);
+    const cli = spawnSync(process.execPath, [CLI, handin, hidden, "--timeout", "1.5"], { encoding: "utf8", timeout: 30000 });
+    assert.equal(cli.status, 1, cli.stdout + cli.stderr);
+  } finally { rmSync(handin, { recursive: true, force: true }); rmSync(hidden, { recursive: true, force: true }); }
+});
+
+test("the CLI rejects a bad --timeout with exit 2", () => {
+  const r = spawnSync(process.execPath, [CLI, REFERENCE, "--timeout", "abc"], { encoding: "utf8" });
+  assert.equal(r.status, 2);
+});
+
+// Review of 81a0eee: a reject program refused for an incidental reason still passes, but is reported.
+test("a reject program refused with none of its declared codes passes with a warning; a declared code does not warn", async () => {
+  const hidden = hiddenSet({ "a1.js": GOOD }, {
+    "r1.js": BAD.replace("REJECT 1: f.nope", "REJECT 1: f.nope (expect: B999, L002)"),
+    "r2.js": BAD.replace("REJECT 1: f.nope", "REJECT 1: f.nope (expect: B999)"),
+    "r3.js": BAD,
+  });
+  try {
+    const r = await score(REFERENCE, hidden);
+    assert.ok(r.results.filter((x) => x.kind === "reject").every((x) => x.pass));
+    assert.deepEqual(r.results.find((x) => x.file === "r2.js")?.expected, ["B999"]);
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /reject\/r2\.js.*L002.*B999/);
+    const cli = spawnSync(process.execPath, [CLI, REFERENCE, hidden], { encoding: "utf8" });
+    assert.match(cli.stdout, /warning: reject\/r2\.js/);
+    assert.equal(cli.status, 0, cli.stdout + cli.stderr);
+  } finally { rmSync(hidden, { recursive: true, force: true }); }
+});
+
+test("the reference gets the declared code from every hidden reject program, with no warning", async () => {
+  const r = await score(REFERENCE, join(ROOT, "hidden"));
+  assert.deepEqual(r.warnings, []);
+  assert.ok(r.results.filter((x) => x.kind === "reject").every((x) => x.expected.length > 0));
 });
 

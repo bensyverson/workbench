@@ -28,9 +28,9 @@ import { BuildError, programOf } from "./grammar.js";
 /**
  * One run: the host's values, the reads so far, the Program once it opens, and every refusal the recording `$`
  * made (each is thrown into build-time code and also kept here, so code that catches one does not make the run
- * succeed). `early` holds reads made before the Program opened of a name some Dialect knows only at run time:
+ * succeed) and the host's bad value, if one was read (`hostError`: kept for the same reason, and it outranks every refusal). `early` holds reads made before the Program opened of a name some Dialect knows only at run time:
  * whether such a read is B014 or B003 depends on the Program's Dialect, so it is decided when the Program opens.
- * @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, closed: boolean, refusals: T.BuildDiagnostic[], early: Array<{ prop: string, diagnostic: T.BuildDiagnostic }> }} Run
+ * @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, closed: boolean, refusals: T.BuildDiagnostic[], hostError: Error | null, early: Array<{ prop: string, diagnostic: T.BuildDiagnostic }> }} Run
  */
 
 /** The open run, while `programFn` runs. @type {Run | null} */
@@ -147,19 +147,13 @@ export function misfit(value, decl) {
   return null;
 }
 
-/** The errors checkValue threw: the host's own mistake, never a knock-on of a refusal, so run() lets them through. */
-const HOST_ERRORS = new WeakSet();
-
 /**
  * Throws when a host value does not fit its declaration (a host's mistake, not the Program's).
  * @param {string} name @param {unknown} value @param {Record<string, unknown>} decl
  */
 function checkValue(name, value, decl) {
   const why = misfit(value, decl);
-  if (!why) return;
-  const e = new TypeError(`run({ values }): '${name}' ${why}`);
-  HOST_ERRORS.add(e);
-  throw e;
+  if (why) throw new TypeError(`run({ values }): '${name}' ${why}`);
 }
 
 /**
@@ -191,7 +185,11 @@ function paramsProxy(run) {
       if (!declared.has(prop)) throw refuse(run, refusal("B003", `there is no param '${prop}' declared before this read.${didYouMean(prop, [...declared.keys()])}`, `declare it before reading it: .${slot}("${prop}", { value: … })`));
       const own = Object.hasOwn(run.values, prop);
       const value = own ? run.values[prop] : isObject(decl) ? decl.value : undefined;
-      if (own && isObject(decl)) checkValue(prop, value, decl);
+      if (own && isObject(decl)) {
+        // the host's own mistake, never a knock-on of a refusal: kept on the run so build-time code that catches it
+        // (or wraps it) cannot lose it
+        try { checkValue(prop, value, decl); } catch (e) { run.hostError ??= /** @type {Error} */ (e); throw e; }
+      }
       const at = callSite();
       run.pending.push({ param: prop, value, file: at.file, loc: at.loc });
       return value;
@@ -225,7 +223,7 @@ export function run(programFn, options = {}) {
   if (values === null || typeof values !== "object" || Array.isArray(values)) throw new TypeError("run({ values }): values are the params' values, by name");
   if (current) throw new Error("run() does not nest: a Program's code may not call run");
   /** @type {Run} */
-  const ctx = { values, reads: [], pending: [], program: null, closed: false, refusals: [], early: [] };
+  const ctx = { values, reads: [], pending: [], program: null, closed: false, refusals: [], hostError: null, early: [] };
   current = ctx;
   /** @type {unknown} */
   let out;
@@ -245,8 +243,8 @@ export function run(programFn, options = {}) {
     out = programFn(paramsProxy(ctx));
   } catch (e) {
     settleEarly(ctx);
+    if (ctx.hostError) throw ctx.hostError;
     if (e instanceof BuildError) return stopped([...ctx.refusals, ...e.diagnostics.filter((d) => !ctx.refusals.includes(d))], e);
-    if (e !== null && typeof e === "object" && HOST_ERRORS.has(e)) throw e;
     // an exception after a refusal (one build-time code caught, or a read before the Program opened, which
     // answered nothing) follows from it: the refusal is what to fix
     if (ctx.refusals.length) return stopped(ctx.refusals, e);
@@ -256,6 +254,7 @@ export function run(programFn, options = {}) {
     ctx.closed = true;
   }
   settleEarly(ctx);
+  if (ctx.hostError) throw ctx.hostError; // build-time code caught the host's bad value and went on
   // build-time code caught a refusal and went on: the run still fails with it
   if (ctx.refusals.length) return stopped(ctx.refusals);
   const program = programOf(out);

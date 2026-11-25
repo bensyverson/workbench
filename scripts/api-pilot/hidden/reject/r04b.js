@@ -1,4 +1,4 @@
-// REJECT 4: arithmetic on m.date
+// REJECT 4: arithmetic on m.date (expect: L003)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

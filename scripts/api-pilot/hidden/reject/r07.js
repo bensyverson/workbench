@@ -1,4 +1,4 @@
-// REJECT 7: horizon given a lambda
+// REJECT 7: horizon given a lambda (expect: B004)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

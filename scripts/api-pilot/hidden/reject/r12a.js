@@ -1,4 +1,4 @@
-// REJECT 12: start is missing
+// REJECT 12: start is missing (expect: B005)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

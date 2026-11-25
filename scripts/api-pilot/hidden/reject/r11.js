@@ -1,4 +1,4 @@
-// REJECT 11: lambda calls a function made by another function
+// REJECT 11: lambda calls a function made by another function (expect: B012)
 import { budget } from "../budget.grammar.js";
 
 const makeBump = (n) => (m) => m.index * n;

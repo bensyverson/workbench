@@ -1,4 +1,4 @@
-// REJECT 2: transfer to an account that does not exist
+// REJECT 2: transfer to an account that does not exist (expect: B003)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

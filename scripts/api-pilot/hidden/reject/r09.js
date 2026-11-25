@@ -1,4 +1,4 @@
-// REJECT 9: reads undeclared param $.rnet
+// REJECT 9: reads undeclared param $.rnet (expect: L002)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

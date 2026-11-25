@@ -1,4 +1,4 @@
-// REJECT 10: Math.sin in a lambda
+// REJECT 10: Math.sin in a lambda (expect: L002)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

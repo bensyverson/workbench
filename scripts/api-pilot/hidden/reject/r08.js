@@ -1,4 +1,4 @@
-// REJECT 8: .loan does not exist
+// REJECT 8: .loan does not exist (expect: B009)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

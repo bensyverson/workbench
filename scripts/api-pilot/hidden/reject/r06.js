@@ -1,4 +1,4 @@
-// REJECT 6: negative opening
+// REJECT 6: negative opening (expect: U006)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

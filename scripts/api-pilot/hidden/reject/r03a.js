@@ -1,4 +1,4 @@
-// REJECT 3: two flows with the same name in one account
+// REJECT 3: two flows with the same name in one account (expect: U003)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

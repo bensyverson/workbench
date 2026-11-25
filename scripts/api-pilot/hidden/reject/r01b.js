@@ -1,4 +1,4 @@
-// REJECT 1: misspelled flow name f.salery
+// REJECT 1: misspelled flow name f.salery (expect: L002)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

@@ -1,4 +1,4 @@
-// REJECT 12: start called twice
+// REJECT 12: start called twice (expect: B006)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")

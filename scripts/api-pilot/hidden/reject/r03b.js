@@ -1,4 +1,4 @@
-// REJECT 3: two accounts with the same name
+// REJECT 3: two accounts with the same name (expect: B002)
 import { budget } from "../budget.grammar.js";
 
 export default ($) => budget("t")
