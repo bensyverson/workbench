@@ -79,7 +79,7 @@
 ## Next
 
 1. Ben's decisions above. If he chooses to build the parked rules, that is a design leaf, then dogfood, then a third H5 run.
-2. **The UI DSL trial** (`vp27OC`): run `scripts/ui-trial/run.sh` with 2 Sonnet and 1 Haiku (Ben prefers three agents), score it with `scripts/ui-trial/check.js`, write the findings, then put the draft's six open questions (draft doc, end) to Ben. Ben leaned toward running the trial before answering them.
+2. **The UI DSL trial** (`vp27OC`): run `scripts/ui-trial/run.sh` with 2 Sonnet and 1 Haiku (Ben prefers three agents), score it with `scripts/ui-trial/check.js`, write the findings, then put the draft's six open questions (draft doc, end) to Ben. The main thread recommended running the trial first, since questions 1 and 2 (where state and inputs are declared) are what it tests; Ben had not answered at handoff.
 3. **M4 Composition** (`SPPLaM`): `vp27OC` done first and `Uld5D0` (packages, now unblocked); `hjdIRt`, `f2dMku` and `HKNInI` are unblocked design leaves.
 3. Issues `kRYm3Y` and `JYmuWM` (the shadow scan; Sonnet-sized, red tests from `local/rev-kit3-probes/shadow-rule.probe.js`). `JYmuWM`'s narrow fix needs to know which arrows are Runtime Lambdas, which the builder knows and the scan does not.
 4. Review `ce4ff4f` and `4a9111e` with the next batch.
