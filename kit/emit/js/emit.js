@@ -99,6 +99,7 @@ function block(stmts, depth, out, cx) {
       case "let": out(`${pad}let ${id(cx, s.name)}${s.value ? ` = ${top(s.value, cx)}` : ""};`, s.span); break;
       case "set": out(`${pad}${id(cx, s.name)} = ${top(s.value, cx)};`, s.span); break;
       case "store": out(`${pad}${member(s.place.recv, cx)}.${s.place.name} = ${top(s.value, cx)};`, s.span); break;
+      case "bump": out(`${pad}${member(s.place.recv, cx)}.${s.place.name} += ${top(s.value, cx)};`, s.span); break;
       case "do": out(`${pad}${expr(s.value, cx)};`, s.span); break;
       case "push": out(`${pad}${id(cx, s.name)}.push(${top(s.value, cx)});`, s.span); break;
       case "return": out(`${pad}return${s.value ? ` ${top(s.value, cx)}` : ""};`, s.span); break;

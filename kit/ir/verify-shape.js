@@ -32,6 +32,7 @@ const STMT = {
   let: { name: "string", t: "type", value: "expr|null" },
   set: { name: "string", value: "expr" },
   store: { place: "place", value: "expr" },
+  bump: { place: "place", value: "expr" },
   do: { value: "expr" },
   if: { test: "expr", then: "stmts", else: "stmts" },
   for: { name: "string", init: "expr", test: "expr", update: "stmts", body: "stmts", bound: "string" },

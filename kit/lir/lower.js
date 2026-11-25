@@ -202,6 +202,7 @@ function stmt(cx, s) {
     }
     case "break": case "continue": return { k: s.k, span };
     case "store": cx.report("R002", `it writes ${s.place.owner}.${s.place.name}, and nothing in a shader holds state`, span); return null;
+    case "bump": cx.report("R002", `it bumps ${s.place.owner}.${s.place.name}, and nothing in a shader holds state`, span); return null;
     case "each": cx.report("R002", "it loops over a list, and lists have no form in the LIR", span); return null;
     case "push": cx.report("R002", "it pushes onto a list, and lists have no form in the LIR", span); return null;
   }

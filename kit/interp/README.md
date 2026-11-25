@@ -18,6 +18,7 @@ run(kernel, inputs, { helpers, intrinsics: INTRINSICS, onNode: (e) => … });
 | `intrinsics` | a Dialect's intrinsics, by the name a Kernel calls: `{ ref, componentwise }`, as the fields Dialect's `INTRINSICS` already are |
 | `globals` | what a `global` node names (`Math`) |
 | `host.store` | takes over a `store`, given the raw and the coerced value (default: assign the coerced one) |
+| `host.bump` | takes over a `bump`, given the place, the receiver and the value (default: add it into the receiver's member, in the order the run reaches it) |
 | `onNode` | the per-node hook (below) |
 | `maxSteps`, `maxDepth` | the budget: loop passes plus calls (10 million) and call nesting (200); passing either is an error, not a hang |
 
@@ -27,7 +28,7 @@ run(kernel, inputs, { helpers, intrinsics: INTRINSICS, onNode: (e) => … });
 - **Vectors** are arrays of their components (a `vec` node builds one; `field` `x`…`w` reads one). `add`, `sub`, `mul`, `div`, `neg`, `pos` are componentwise; a scalar broadcasts only where the verifier's `OPS` allow it (`mul` either side, `div` on the right). The rest is refused with an error rather than guessed: the interpreter is stricter than JavaScript where the IR is.
 - **Nominal scalars** (a Dialect's `date`) are their backing f64, compared as numbers; the IR gives them no other operator.
 - **Operators** are JavaScript's (`rem` is `%`, the bitwise ones go through int32). `and`, `or` and `cond` are lazy. Operands, call arguments and array items are evaluated left to right, a call's receiver first.
-- **Stores** apply the place's rule with `coerce` ([`coerce.js`](coerce.js)): a sized integer truncates toward zero, clamps to `min`/`max`, then wraps; `fix` rounds to 1/256, clamps, then wraps into [-128, 128); `f64`/`f32` refuse a non-finite value; `bool` stores truthiness; `enum` refuses a string outside its values. Refusing is a `TypeError`, as the DMG host does. The host's wrap and fraction *warnings* are not reproduced: a host that logs them takes over the store with `host.store` and receives the raw value.
+- **Stores** apply the place's rule with `coerce` ([`coerce.js`](coerce.js)): a sized integer truncates toward zero, clamps to `min`/`max`, then wraps; `fix` rounds to 1/256, clamps, then wraps into [-128, 128); `f64`/`f32` refuse a non-finite value; `value` stores what it is given; `bool` stores truthiness; `enum` refuses a string outside its values. Refusing is a `TypeError`, as the DMG host does. The host's wrap and fraction *warnings* are not reproduced: a host that logs them takes over the store with `host.store` and receives the raw value.
 - **Intrinsics** run their reference implementation (`ref`), never the Dialect's JS or GLSL spelling, so a spelling that disagrees with its reference is caught by a comparison. A `componentwise` one runs once per component of its vector arguments (scalars are passed whole); any other gets every vector argument's components spread (`length` is `Math.hypot`). The result is rounded to the call's type. Lowering gives a Dialect's bare function (`length(v)`) a `global` receiver of its own name; the interpreter does not evaluate it.
 - **Calls** that are not intrinsics go to the host: `recv.name(args)`, or `recv(args)` when `fn` has no dot (`at(0, 0)`).
 - **Loops** are bounded by the IR: `each` over more than its `max` items is an error.

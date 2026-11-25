@@ -6,7 +6,7 @@ import { assignable, exactLimit, mixesNumbers, namedScalar, sameType, showType, 
 /** @import { Type, Op, EffectVerb, Expr, Stmt, Coerce } from "./ir.js" */
 
 /** Every verb an effect may start with (ir.d.ts, `EffectVerb`). */
-export const EFFECT_VERBS = new Set(/** @type {EffectVerb[]} */ (["read", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "call", "hud", "input", "log", "end"]));
+export const EFFECT_VERBS = new Set(/** @type {EffectVerb[]} */ (["read", "write", "bump", "rng", "emit", "sfx", "toast", "spawn", "destroy", "call", "hud", "input", "log", "end"]));
 
 /** The named types; `unknown` is not one: a Kernel holds only types that lowered. */
 const NAMED = new Set(["f64", "f32", "bool", "str", "null", "void"]);
@@ -210,6 +210,7 @@ export function ownerOf(t) {
  * @param {Type} t
  */
 export function storeFits(c, t) {
+  if (c.type === "value") return t !== "void" && t !== "unknown";
   if (c.type === "bool") return t === "bool";
   if (c.type === "enum") return typeof t === "object" && "enum" in t && sameType({ enum: t.enum }, { enum: c.values ?? [] });
   if (c.type === "f32") return t === "f32";

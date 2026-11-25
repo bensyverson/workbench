@@ -316,7 +316,7 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
     does.push(...c.place(e.place, `${path}.place`, e.span));
     if (!sameType(e.t, e.place.t)) bad(`A load is typed as its place, ${showSafe(e.place.t)}, not ${showSafe(e.t)}.`);
     // A writable place is state, and reading state is a recorded effect.
-    if (e.place.store) does.push(/** @type {Effect} */ (`read ${e.place.owner}.${e.place.name}`));
+    if (e.place.store || e.place.total) does.push(/** @type {Effect} */ (`read ${e.place.owner}.${e.place.name}`));
   },
   op: ({ e, sub, bad }) => {
     e.args.forEach((a, i) => sub(a, `args[${i}]`));
@@ -427,8 +427,18 @@ const STMT = /** @type {{ [K in Stmt["k"]]: (x: { c: Checker, s: Extract<Stmt, {
     does.push(...c.place(s.place, `${path}.place`, s.span));
     ex(s.value, "value");
     if (!s.place.store) c.report("V006", `${s.place.owner}.${s.place.name} is read-only: its place has no store rule.`, path, s.span);
+    else if (s.place.total) c.report("V006", `${s.place.owner}.${s.place.name} is a total, which is only bumped: its place has a store rule.`, path, s.span);
     if (!assignable(s.value.t, s.place.t)) c.report("V002", `${s.place.owner}.${s.place.name} is ${showSafe(s.place.t)}, but is stored ${showSafe(s.value.t)}.`, path, s.span);
     does.push(/** @type {Effect} */ (`write ${s.place.owner}.${s.place.name}`));
+  },
+  bump: ({ c, s, path, ex, does }) => {
+    does.push(...c.place(s.place, `${path}.place`, s.span));
+    ex(s.value, "value");
+    const where = `${s.place.owner}.${s.place.name}`;
+    if (!s.place.total) c.report("V006", `${where} is bumped, but its place is not a total.`, path, s.span);
+    else if (s.place.store) c.report("V006", `${where} is a total, which is only bumped: its place has a store rule.`, path, s.span);
+    if (s.place.t !== "f64" || !assignable(s.value.t, "f64")) c.report("V002", `A bump adds an f64 to an f64 total, not ${showSafe(s.value.t)} to ${showSafe(s.place.t)}.`, path, s.span);
+    does.push(/** @type {Effect} */ (`bump ${where}`));
   },
   do: ({ s, ex }) => { ex(s.value, "value"); },
   if: ({ c, s, path, ex }) => {

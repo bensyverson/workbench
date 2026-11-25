@@ -19,6 +19,8 @@ export interface Host {
    * The default assigns `coerced`; a host whose objects coerce for themselves assigns `value` (it may refuse it).
    */
   store?(place: Place, recv: Value, value: Value, coerced: Value): void;
+  /** Performs a bump: adds `value` to the total `place` on `recv`. The default adds in place, in the order the run reaches it. */
+  bump?(place: Place, recv: Value, value: Value): void;
 }
 
 /** One evaluated node, reported to `onNode` after it finishes. */

@@ -53,6 +53,7 @@ function stmt(s, depth, out) {
     case "let": return line(`let ${s.name}: ${showType(s.t)}${s.value ? ` = ${expr(s.value)}` : ""}`);
     case "set": return line(`${s.name} = ${expr(s.value)}`);
     case "store": return line(`store.${coerce(s.place.store)} ${expr(s.place.recv)}.${s.place.name}, ${expr(s.value)}`);
+    case "bump": return line(`bump ${expr(s.place.recv)}.${s.place.name}, ${expr(s.value)}`);
     case "do": return line(expr(s.value));
     case "push": return line(`push ${s.name}, ${expr(s.value)}`);
     case "return": return line(s.value ? `return ${expr(s.value)}` : "return");

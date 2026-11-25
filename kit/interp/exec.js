@@ -69,6 +69,14 @@ export function execStmt(f, s, path) {
       else /** @type {Record<string, Value>} */ (recv)[s.place.name] = coerced;
       break;
     }
+    case "bump": {
+      const recv = evalExpr(f, s.place.recv, `${path}.place.recv`);
+      handled = evalExpr(f, s.value, `${path}.value`);
+      const host = f.m.env.host;
+      if (host?.bump) host.bump(s.place, recv, handled);
+      else /** @type {Record<string, number>} */ (recv)[s.place.name] += /** @type {number} */ (handled);
+      break;
+    }
     case "return":
       handled = s.value ? evalExpr(f, s.value, `${path}.value`) : undefined;
       sig = { signal: "return", value: handled };

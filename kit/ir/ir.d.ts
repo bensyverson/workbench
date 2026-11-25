@@ -54,16 +54,17 @@ export interface Coerce {
   /**
    * `f64` and `f32` check only finiteness, of a place of that number type. Sized integers truncate toward zero, then clamp to
    * `min`/`max` when given, then wrap into the type's range. `fix` rounds to 1/256,
-   * clamps, then wraps into [-128, 128).
+   * clamps, then wraps into [-128, 128). `value` stores the value unchanged, of any type, and refuses
+   * nothing: a Definition API writable member, whose host decides what a non-finite number means.
    */
-  type: "u8" | "i8" | "u16" | "i16" | "fix" | "bool" | "enum" | "f64" | "f32";
+  type: "u8" | "i8" | "u16" | "i16" | "fix" | "bool" | "enum" | "f64" | "f32" | "value";
   min?: number;
   max?: number;
   values?: string[];
 }
 
-/** A read or write of state, or an intrinsic with an effect. Rendered `verb what`, e.g. `write Mole.ttl`. */
-export type EffectVerb = "read" | "write" | "rng" | "emit" | "sfx" | "toast" | "spawn" | "destroy" | "call" | "hud" | "input" | "log" | "end";
+/** A read or write of state, or an intrinsic with an effect. Rendered `verb what`, e.g. `write Mole.ttl`. `bump` adds to a total (`bump Counters.hits`). */
+export type EffectVerb = "read" | "write" | "bump" | "rng" | "emit" | "sfx" | "toast" | "spawn" | "destroy" | "call" | "hud" | "input" | "log" | "end";
 export type Effect = `${EffectVerb} ${string}` | EffectVerb;
 
 /** A field of an entity or the world: an attribute, a built-in like `x`, a baked constant. */
@@ -77,6 +78,11 @@ export interface Place {
   store?: Coerce;
   /** Present when the Dialect declares this read-only place a size: it bounds a `for` loop. Never set with `store`. */
   size?: true;
+  /**
+   * Present when the place is a shared total: an f64 a Kernel only adds to (`bump`), never stores. Reading one
+   * records `read Owner.name`, as reading a writable place does. Never set with `store` or `size`.
+   */
+  total?: true;
 }
 
 interface ExprBase { t: Type; span: Span }
@@ -143,6 +149,8 @@ export type Stmt =
   | (StmtBase & { k: "set"; name: string; value: Expr })
   /** Writes a place, applying `place.store`. The stored value never flows back into the expression that wrote it. */
   | (StmtBase & { k: "store"; place: Place; value: Expr })
+  /** Adds an f64 to a total (`place.total`), recorded `bump Owner.name`. It reads nothing, so the order bumps run in never shows in a Kernel. */
+  | (StmtBase & { k: "bump"; place: Place; value: Expr })
   /** Evaluates an expression for its effects. */
   | (StmtBase & { k: "do"; value: Expr })
   | (StmtBase & { k: "if"; test: Expr; then: Stmt[]; else: Stmt[] })

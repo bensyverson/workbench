@@ -10,7 +10,7 @@ const RANGE = { u8: [0, 255], i8: [-128, 127], u16: [0, 65535], i16: [-32768, 32
  * What `rule` stores for `v`. A sized integer truncates toward zero, then clamps to `min` and
  * `max` when given, then wraps into its range. `fix` rounds to 1/256, clamps, then wraps into
  * [-128, 128). `f64` and `f32` keep the number (an f32 rounded) and only refuse one that is not
- * finite, as every numeric rule does; `bool` stores truthiness; an `enum` accepts only its values.
+ * finite, as every numeric rule does; `value` stores `v` unchanged; `bool` stores truthiness; an `enum` accepts only its values.
  * Refusing is a TypeError.
  * @param {Coerce} rule
  * @param {Value} v
@@ -18,6 +18,7 @@ const RANGE = { u8: [0, 255], i8: [-128, 127], u16: [0, 65535], i16: [-32768, 32
  */
 export function coerce(rule, v) {
   switch (rule.type) {
+    case "value": return v;
     case "bool": return !!v;
     case "enum":
       if (!(rule.values ?? []).includes(/** @type {string} */ (v))) throw new TypeError(`${JSON.stringify(v)} is not one of ${(rule.values ?? []).join(", ")}`);

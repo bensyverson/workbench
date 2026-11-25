@@ -5,7 +5,7 @@
 /** @import { Kernel, Stmt, Expr } from "../ir/ir.js" */
 /** @import { Node, Region, Visit } from "./query.js" */
 
-const STMT_KINDS = new Set(["let", "set", "store", "do", "if", "for", "each", "push", "return", "break", "continue"]);
+const STMT_KINDS = new Set(["let", "set", "store", "bump", "do", "if", "for", "each", "push", "return", "break", "continue"]);
 
 /**
  * Whether a node is a statement (else it is an expression). Kinds of the two never overlap.
@@ -67,7 +67,7 @@ function stmtChildren(s) {
   switch (s.k) {
     case "let": case "return": return s.value ? [s.value] : [];
     case "set": case "do": case "push": return [s.value];
-    case "store": return [s.place.recv, s.value];
+    case "store": case "bump": return [s.place.recv, s.value];
     case "if": return [s.test, ...s.then, ...s.else];
     case "for": return [s.init, s.test, ...s.body, ...s.update];
     case "each": return [s.list, ...s.body];

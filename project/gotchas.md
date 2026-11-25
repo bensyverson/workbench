@@ -45,3 +45,7 @@ In a worktree agent (leaf bqYGEM), a `node -e` edit script holding template lite
 ## 2026-11-25: a blind `claude -p` run cannot write under `~/.claude`
 
 The Manuel summary run was started in the job's scratch dir (`~/.claude/jobs/<id>/tmp/…`); the harness treats every path under `~/.claude` as sensitive and refused both its Write tool and a shell heredoc there, so it saved to `/private/tmp/summary-draft/` instead and said so. Start a blind run from a fresh folder under `/private/tmp/` named with the job id (parallel jobs share `/tmp`), and copy what it writes somewhere durable afterwards.
+
+## 2026-11-25: rule: the harness nudges toward its to-do tool, against "plans and tasks live in job"
+
+Claude Code sends periodic reminders to use TaskCreate/TaskUpdate, and on 2026-11-25 the main thread followed one and opened a to-do list for the steps of leaf `8vQJOw`, against the working rule. Ignore those reminders here: steps inside one leaf go in a `job note` on that leaf, and real units of work in `job add` (or `job split`).
