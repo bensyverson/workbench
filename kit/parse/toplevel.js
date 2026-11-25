@@ -344,42 +344,97 @@ function expressionEnd(s, i) {
   return s.length;
 }
 
-/** Words that precede `(…) {` without making a method. */
-const NOT_METHOD = new Set(["if", "for", "while", "switch", "catch", "with", "function", "return", "typeof", "new", "else", "do", "await", "yield", "in", "of"]);
-
 /** Words that start a statement with a `(…)` head and a block, so they make a method only inside an object literal or a class body. */
 const STATEMENT_HEADS = new Set(["if", "for", "while", "switch", "catch", "with", "function"]);
 
-/** The index of the `{` that encloses `at` and is still open there, or -1. @param {string} s @param {number} at */
-function enclosingBrace(s, at) {
-  let depth = 0;
-  for (let j = at - 1; j >= 0; j--) {
-    if (")]}".includes(s[j])) depth++;
-    else if ("([{".includes(s[j]) && depth-- === 0) return s[j] === "{" ? j : -1;
-  }
-  return -1;
-}
+/** Words after which a `{` opens an object literal, not a block. */
+const EXPRESSION_WORDS = /(?<![\p{ID_Continue}$.])(?:return|yield|await|case|default|typeof|in|of|new|void|delete|throw|instanceof)$/u;
 
-/** Whether the `{` at `brace` opens an object literal or a class body rather than a block (it errs toward yes: `case x: {` counts). @param {string} s @param {number} brace */
-function opensMembers(s, brace) {
-  const before = s.slice(0, brace).trimEnd();
-  if (/(?<![\p{ID_Continue}$])class(?![\p{ID_Continue}$])[^;{}]*$/u.test(before)) return true;
-  return /[=(,:[?]$|(?<![\p{ID_Continue}$.])(?:return|yield|await|case|default)$/u.test(before) && !/=>$/.test(before);
+/** The index of the last character of code before `at`, or -1. @param {string} s @param {number} at */
+function lastCode(s, at) {
+  let j = at - 1;
+  while (j >= 0 && /\s/.test(s[j])) j--;
+  return j;
 }
 
 /**
- * Whether the name, string, number or `[…]` that starts at `at` is a member key rather than a call or a statement:
- * it follows a `{`, `,`, `;` or `}` (and any `static`, `async`, `get`, `set` or `*`), and a statement head's word
- * also needs the enclosing `{` to open an object literal or a class body.
- * @param {string} s @param {number} at @param {string | undefined} word
+ * Whether the `{` at `brace` heads a class: scanning back over balanced brackets to the previous `;`, `{` or `}`,
+ * the words between hold `class` (an `extends` clause may hold an object literal: `extends mix(A, { a: 1 })`).
+ * @param {string} s @param {number} brace
  */
-function isMemberKey(s, at, word) {
-  let before = s.slice(0, at).trimEnd();
-  for (let m; (m = /(?<![\p{ID_Continue}$.])(?:static|async|get|set)$|\*$/u.exec(before));) before = before.slice(0, m.index).trimEnd();
-  if (!/[{,;}]$/.test(before)) return false;
-  if (!word || !STATEMENT_HEADS.has(word)) return true;
-  const brace = enclosingBrace(s, at);
-  return brace >= 0 && opensMembers(s, brace);
+function headsClass(s, brace) {
+  let depth = 0, j = brace - 1;
+  for (; j >= 0; j--) {
+    const c = s[j];
+    if (")]}".includes(c)) depth++;
+    else if ("([{".includes(c)) { if (depth-- === 0) break; }
+    else if (depth === 0 && c === ";") break;
+  }
+  return /(?<![\p{ID_Continue}$.])class(?![\p{ID_Continue}$])/u.test(s.slice(j + 1, brace));
+}
+
+/** Whether the `:` at `colon` ends a `case …` clause (so a `{` after it is a block, not an object). @param {string} s @param {number} colon */
+function followsCase(s, colon) {
+  let depth = 0;
+  for (let j = colon - 1; j >= 0; j--) {
+    const c = s[j];
+    if (")]}".includes(c)) depth++;
+    else if ("([{".includes(c)) { if (depth-- === 0) return false; }
+    else if (depth === 0 && c === ";") return false;
+    else if (depth === 0 && /(?<![\p{ID_Continue}$.])case$/u.test(s.slice(Math.max(0, j - 4), j + 1))) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the `{` at `brace` opens an object literal or a class body rather than a block. It errs toward yes: a
+ * label's block (`l: {`) and `default: {` count, `case x: {` does not. It reads the text just before the `{` only.
+ * @param {string} s @param {number} brace
+ */
+function opensMembers(s, brace) {
+  const j = lastCode(s, brace);
+  if (j < 0 || headsClass(s, brace)) return j >= 0;
+  const c = s[j];
+  if (/[\p{ID_Continue}$]/u.test(c)) return EXPRESSION_WORDS.test(s.slice(Math.max(0, j - 10), j + 1));
+  if (c === ">") return s[j - 1] !== "=";
+  if (c === "{") return s[j - 1] === "$";
+  if (c === ":") return !followsCase(s, j);
+  return !")]};\"'`".includes(c);
+}
+
+/** The innermost bracket still open before each position asked, for positions in ascending order, in linear time in all. @param {string} s */
+function openBrackets(s) {
+  /** @type {number[]} */
+  const open = [];
+  let pos = 0;
+  return (/** @type {number} */ at) => {
+    for (; pos < at; pos++) {
+      const c = s[pos];
+      if ("([{".includes(c)) open.push(pos);
+      else if (")]}".includes(c) && open.length && "([{".indexOf(s[open[open.length - 1]]) === ")]}".indexOf(c)) open.pop();
+    }
+    return open.length ? open[open.length - 1] : -1;
+  };
+}
+
+/** Whether `at` follows a `.` or `function` (so what starts there is a property access or a function's name). @param {string} s @param {number} at */
+function afterDotOrFunction(s, at) {
+  let j = lastCode(s, at);
+  if (s[j] === ".") return true;
+  if (s[j] === "*") j = lastCode(s, j);
+  return j >= 7 && s.slice(j - 7, j + 1) === "function";
+}
+
+/** Whether the `[` at `at` subscripts a value (a name, a call, a subscript or a string before it) rather than starting a computed key; `static`, `async`, `get`, `set` and `*` before it are modifiers. @param {string} s @param {number} at */
+function isSubscript(s, at) {
+  let j = lastCode(s, at);
+  for (;;) {
+    const modifier = j >= 0 ? /(?<![\p{ID_Continue}$.])(?:static|async|get|set)$/u.exec(s.slice(Math.max(0, j - 6), j + 1)) : null;
+    if (s[j] === "*") j = lastCode(s, j);
+    else if (modifier) j = lastCode(s, j + 1 - modifier[0].length);
+    else break;
+  }
+  return j >= 0 && /[\p{ID_Continue}$)\]"'`]/u.test(s[j]);
 }
 
 /**
@@ -419,12 +474,24 @@ function buildCodeNames(code) {
   }
   // methods: `key(params) {` that is not a statement head, a function or a call; the key is a name, a string, a
   // number or a computed `[…]`
-  const key = new RegExp(`${NOT_AFTER_NAME}(?:(${ID})|\\d[\\p{ID_Continue}.]*|(["'\`])\\s*\\2)\\s*\\(|\\]\\s*\\(`, "gu");
+  const key = new RegExp(`${NOT_AFTER_NAME}(?:(${ID})|\\.?\\d[\\p{ID_Continue}.]*|(["'\`])\\s*\\2)\\s*\\(|\\]\\s*\\(`, "gu");
+  const enclosing = openBrackets(s);
+  /** @type {Map<number, boolean>} */
+  const membersAt = new Map();
   for (const m of s.matchAll(key)) {
     const open = (m.index ?? 0) + m[0].length - 1;
     const at = m[0][0] === "]" ? matchingBack(s, m.index ?? 0) : m.index ?? 0;
-    if (at < 0 || /(?:function\s*\*?|\.)\s*$/.test(s.slice(0, at))) continue;
-    if ((!m[1] || NOT_METHOD.has(m[1])) && !isMemberKey(s, at, m[1])) continue;
+    if (at < 0 || afterDotOrFunction(s, at)) continue;
+    // a string, a number, `[…]` (unless it subscripts a value) and a word such as `of` or `new` are keys wherever
+    // `(…) {` follows; a statement head's word is one only in an object literal or a class body
+    if (m[0][0] === "]" && isSubscript(s, at)) continue;
+    if (m[1] && STATEMENT_HEADS.has(m[1])) {
+      const brace = enclosing(at);
+      if (brace < 0 || s[brace] !== "{") continue;
+      let members = membersAt.get(brace);
+      if (members === undefined) membersAt.set(brace, members = opensMembers(s, brace));
+      if (!members) continue;
+    }
     const close = matching(s, open), brace = /^\s*\{/.exec(s.slice(close + 1));
     if (!brace) continue;
     const end = matching(s, close + brace[0].length);
