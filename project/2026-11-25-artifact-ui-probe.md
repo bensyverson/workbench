@@ -2,7 +2,7 @@
 
 *2026-11-25 · findings · extends [M0](2026-11-23-m0-platform-probe.md) and tests the representation recommended in [the UI survey](2026-11-25-workbench-ui-survey.md) (a kit UI DSL, Web Components as the escape hatch, properties in and events out)*
 
-**Bottom line: pending Ben's run.** The probe is published and has not been opened yet. The results column below is filled from the database doc once Ben has run it.
+**Bottom line: a DSL-built UI with Web Components as an opt-in upgrade runs in a Claude artifact.** 40 of 41 checks pass in one run (Ben, 2026-11-25, WebKit, Safari 27.2 UA, macOS, mouse; read with `ArtifactData get`, collection `uiprobe`, doc `results`, version 7). Custom elements, Shadow DOM, slots, adopted sheets, `::part` and theme variables all work. A fallback renders until its component is defined and stays when it never is, so a low-end path costs nothing. Components load from a sibling module, a `blob:` module and `new Function` text. A four-line reactive DSL drives a slider and a canvas. Properties go in and composed events come out. The one failure is programmatic `focus()` on load (`activeElement is not the pad`), while focus by a real click passes: the frame does not take focus until the viewer interacts, so a game stage needs one click before it gets keys. Untested: Chromium, the mobile apps, touch input (`maxTouchPoints` 0) and a real gamepad (the API is present, with no pad connected).
 
 ## Method
 
@@ -47,18 +47,18 @@
 
 ## Results
 
-Pending Ben's run. Fill this table from `uiprobe/results`.
+Ben's run, 2026-11-25 (`uiprobe/results`, version 7).
 
 | Area | Result | Detail |
 |---|---|---|
-| Custom elements (3 checks) | pending Ben's run | |
-| Shadow DOM, slots, adopted sheets, `::part`, theme vars (5) | pending Ben's run | |
-| Fallback then upgrade (4) | pending Ben's run | |
-| Definitions from sibling and `blob:` modules (4) | pending Ben's run | |
-| Input, automatic (5) | pending Ben's run | |
-| Input, real: keys, repeat, capture, focus (8) | pending Ben's run | |
-| Reactive-cell DSL end to end (4) | pending Ben's run | |
-| Properties in, events out (3) | pending Ben's run | |
+| Custom elements (3 checks) | 3/3 pass | |
+| Shadow DOM, slots, adopted sheets, `::part`, theme vars (5) | 5/5 pass | |
+| Fallback then upgrade (4) | 4/4 pass | |
+| Definitions from sibling and `blob:` modules (4) | 4/4 pass (sibling, blob, late blob upgrading markup, `new Function`) | |
+| Input, automatic (5) | 4/5: `input.focusApi` fails, programmatic focus refused before any interaction | |
+| Input, real: keys, repeat, capture, focus (8) | 8/8 pass (mouse; pointer capture held outside the pad, key repeat seen, click focus works) | |
+| Reactive-cell DSL end to end (4) | 4/4 pass (slider to cell to canvas; a syntax error names its DSL line) | |
+| Properties in, events out (3) | 3/3 pass (including a property set before the definition loads) | |
 
 ## The compiler workbench's UI DSL, from inspection only
 
