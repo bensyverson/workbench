@@ -347,6 +347,41 @@ function expressionEnd(s, i) {
 /** Words that precede `(…) {` without making a method. */
 const NOT_METHOD = new Set(["if", "for", "while", "switch", "catch", "with", "function", "return", "typeof", "new", "else", "do", "await", "yield", "in", "of"]);
 
+/** Words that start a statement with a `(…)` head and a block, so they make a method only inside an object literal or a class body. */
+const STATEMENT_HEADS = new Set(["if", "for", "while", "switch", "catch", "with", "function"]);
+
+/** The index of the `{` that encloses `at` and is still open there, or -1. @param {string} s @param {number} at */
+function enclosingBrace(s, at) {
+  let depth = 0;
+  for (let j = at - 1; j >= 0; j--) {
+    if (")]}".includes(s[j])) depth++;
+    else if ("([{".includes(s[j]) && depth-- === 0) return s[j] === "{" ? j : -1;
+  }
+  return -1;
+}
+
+/** Whether the `{` at `brace` opens an object literal or a class body rather than a block (it errs toward yes: `case x: {` counts). @param {string} s @param {number} brace */
+function opensMembers(s, brace) {
+  const before = s.slice(0, brace).trimEnd();
+  if (/(?<![\p{ID_Continue}$])class(?![\p{ID_Continue}$])[^;{}]*$/u.test(before)) return true;
+  return /[=(,:[?]$|(?<![\p{ID_Continue}$.])(?:return|yield|await|case|default)$/u.test(before) && !/=>$/.test(before);
+}
+
+/**
+ * Whether the name, string, number or `[…]` that starts at `at` is a member key rather than a call or a statement:
+ * it follows a `{`, `,`, `;` or `}` (and any `static`, `async`, `get`, `set` or `*`), and a statement head's word
+ * also needs the enclosing `{` to open an object literal or a class body.
+ * @param {string} s @param {number} at @param {string | undefined} word
+ */
+function isMemberKey(s, at, word) {
+  let before = s.slice(0, at).trimEnd();
+  for (let m; (m = /(?<![\p{ID_Continue}$.])(?:static|async|get|set)$|\*$/u.exec(before));) before = before.slice(0, m.index).trimEnd();
+  if (!/[{,;}]$/.test(before)) return false;
+  if (!word || !STATEMENT_HEADS.has(word)) return true;
+  const brace = enclosingBrace(s, at);
+  return brace >= 0 && opensMembers(s, brace);
+}
+
 /**
  * The names the export's build code and the file's methods declare (see `buildTimeShadows`), in blanked-text terms.
  * @param {string} code
@@ -382,10 +417,14 @@ function buildCodeNames(code) {
     add(at, [...(m[1] ? [m[1]] : []), ...params(s.slice(open + 1, close))], extent);
     blocks.push(extent);
   }
-  // methods: `name(params) {` that is not a statement head, a function or a call
-  for (const m of s.matchAll(new RegExp(`${NOT_AFTER_NAME}(${ID})\\s*\\(`, "gu"))) {
-    const at = m.index ?? 0, open = at + m[0].length - 1;
-    if (NOT_METHOD.has(m[1]) || /(?:function\s*\*?|\.)\s*$/.test(s.slice(0, at))) continue;
+  // methods: `key(params) {` that is not a statement head, a function or a call; the key is a name, a string, a
+  // number or a computed `[…]`
+  const key = new RegExp(`${NOT_AFTER_NAME}(?:(${ID})|\\d[\\p{ID_Continue}.]*|(["'\`])\\s*\\2)\\s*\\(|\\]\\s*\\(`, "gu");
+  for (const m of s.matchAll(key)) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    const at = m[0][0] === "]" ? matchingBack(s, m.index ?? 0) : m.index ?? 0;
+    if (at < 0 || /(?:function\s*\*?|\.)\s*$/.test(s.slice(0, at))) continue;
+    if ((!m[1] || NOT_METHOD.has(m[1])) && !isMemberKey(s, at, m[1])) continue;
     const close = matching(s, open), brace = /^\s*\{/.exec(s.slice(close + 1));
     if (!brace) continue;
     const end = matching(s, close + brace[0].length);
