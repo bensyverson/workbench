@@ -72,6 +72,7 @@ export const program = defineGrammar(myLang, {
     },
     table: {
       parent: "program",                         // opened by calling .table(…) on the program's builder
+      required: true,                            // a program with no table is B005
       opens: [name(), ref("source", { as: "from" })],   // .table("big", "sales")
       record: "calls",                           // keep its calls as one ordered list
       state: {
@@ -93,7 +94,7 @@ export const program = defineGrammar(myLang, {
 });
 ```
 
-**Arguments:** `name(ns)` declares a name in namespace `ns` (an identifier, unique: B004, B002); a namespace spans the **whole Program**, not one construct instance. `ref(ns)` names a declared one, earlier or later in the Program (B003, did-you-mean); `data(shape)` is a value of a shape (B004); `lambda(convention)` is a Runtime Lambda; `opt(spec)` (last only); `rest(spec)` (last only). Any spec takes `{ as: "key" }` last to name its record key. **Shapes:** `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, plus `ref` and `lambda` anywhere inside.
+**Arguments:** `name(ns)` declares a name in namespace `ns` (an identifier, unique: B004, B002); a namespace spans the **whole Program**, unless `name(ns, { within: "account" })` makes it unique only within each `account` instance (the construct declaring it or an ancestor). `ref(ns)` names a declared one, earlier or later (B003, did-you-mean), within the enclosing instance when `ns` has `within`; a `ref` outside every such instance is D011. `data(shape)` is a value of a shape (B004); `lambda(convention)` is a Runtime Lambda; `opt(spec)` (last only); `rest(spec)` (last only). Any spec takes `{ as: "key" }` last to name its record key. **Shapes:** `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, plus `ref` and `lambda` anywhere inside. A number takes bounds, `data("number", { min: 1, max: 120, whole: true })`, also inside a shape (`{ opening: data("number", { min: 0 }) }`): outside them is B004.
 
 **Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. **Your checks** report with `ctx.error(code, message, { tip, arg, suggest, fix })`: your code is one letter of your own and three digits (not B C D L P S V), `arg` an argument's position or a path into it, and `fix` the text to write instead.
 
@@ -132,23 +133,21 @@ The host calls `run(programFn, { values })`, which hands the function a `$` that
 
 These cost earlier authors time. The rest, you can infer.
 
-1. **A name is unique in the whole Program.** If a name must be unique only within one instance (a column of one table, a flow of one account), take it as `data("string")` and refuse a repeat yourself, in `step` with `ctx.error`, where the state holds the names so far.
-2. **A child construct has every method of its parent** (calling one ends the child) and inherits its `rejected` names. So a child and its parent may not both declare a slot named `fn` (D010).
-3. **A child construct cannot be `required`.** To require at least one, check `record.<child>.length` in the parent construct's `check(record, ctx)`: the list is there, empty, when there are none.
-4. **`init` reads other declarations from the record** by their record key: `program.source[opened.from]` above is the `source` slot's object by name. Another instance's final state is `stateOf(name)`, available to both `init` and `step` (`ctx.stateOf`).
-5. **State needs `record: "calls"` (D015 without it), and exists only at lowering.** `.check()` and slot checks never see it (`ctx.state` is undefined). Anything that depends on the state at a step belongs in `state.names`, a convention function or `step`'s `ctx.error`.
-6. **A slot's `check` runs at the call**, and `ctx.program` is the record so far: the instance being built is last in its list (`ctx.program.table.at(-1)`), with this call already in it. Exclude it when you look for duplicates.
-7. **`suggest` appends its own "Did you mean 'x'?"** to your message. Don't write one yourself.
-8. **A nominal scalar is not a constructor.** A lambda gets one through a parameter, a member or an intrinsic that returns it (`dayOf` above).
-9. **Params need both halves:** the Grammar's `params: { slot }` and the Dialect's `params: { object, name }`, plus a `$` global whose object `environment` fills.
-10. **A value from a param has one form:** `.limit($.topN)`. `.limit(() => $.topN)` is B004. Build-time code reads a param only after its `.param` call, and only by name (no `in`, spread or `Object.keys` on `$`: B015).
-11. **A lambda is checked only once its Program builds.** Fix the `B…` errors first. A lambda's type errors (`L…`) then show at its exact place.
-12. **A top-level helper must be an arrow its own `const` writes, and a top-level constant must be plain data.** Intrinsics exist only inside lambdas, so `const START = dayOf(2026, 1, 1)` fails when the file loads. A helper made by another function (`const f = make(3)`) loses what it closes over and is refused (B012). A name declared only inside build-time code is B013.
-13. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
+1. **A child construct has every method of its parent** (calling one ends the child) and inherits its `rejected` names. So a child and its parent may not both declare a slot named `fn` (D010).
+2. **`init` reads other declarations from the record** by their record key: `program.source[opened.from]` above is the `source` slot's object by name. Another instance's final state is `stateOf(name)`, available to both `init` and `step` (`ctx.stateOf`).
+3. **State needs `record: "calls"` (D015 without it), and exists only at lowering.** `.check()` and slot checks never see it (`ctx.state` is undefined). Anything that depends on the state at a step belongs in `state.names`, a convention function or `step`'s `ctx.error`.
+4. **A slot's `check` runs at the call**, and `ctx.program` is the record so far: the instance being built is last in its list (`ctx.program.table.at(-1)`), with this call already in it. Exclude it when you look for duplicates.
+5. **`suggest` appends its own "Did you mean 'x'?"** to your message. Don't write one yourself.
+6. **A nominal scalar is not a constructor.** A lambda gets one through a parameter, a member or an intrinsic that returns it (`dayOf` above).
+7. **Params need both halves:** the Grammar's `params: { slot }` and the Dialect's `params: { object, name }`, plus a `$` global whose object `environment` fills.
+8. **A value from a param has one form:** `.limit($.topN)`. `.limit(() => $.topN)` is B004. Build-time code reads a param only after its `.param` call, and only by name (no `in`, spread or `Object.keys` on `$`: B015).
+9. **A lambda is checked only once its Program builds.** Fix the `B…` errors first. A lambda's type errors (`L…`) then show at its exact place.
+10. **A top-level helper must be an arrow its own `const` writes, and a top-level constant must be plain data.** Intrinsics exist only inside lambdas, so `const START = dayOf(2026, 1, 1)` fails when the file loads. A helper made by another function (`const f = make(3)`) loses what it closes over and is refused (B012). A name declared only inside build-time code is B013.
+11. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
 
 ## Codes you will meet
 
-`D…` is a bad definition (D001 an unknown key, D002 an unknown type, D010 a method-name clash). `B…` is a Program the builder refuses (B001 no such method, B002 a duplicate name, B003 a ref to nothing, B004 a bad value, B005 a required slot missing, B006 a second `once` call, B008 a free name not allowed, B009 a rejected name). `L…` is a lambda's type error. Every diagnostic carries a tip or a fix: read it before guessing.
+`D…` is a bad definition (D001 an unknown key, D002 an unknown type, D010 a method-name clash). `B…` is a Program the builder refuses (B001 no such method, B002 a duplicate name, B003 a ref to nothing, B004 a bad value, B005 a required slot or child missing, B006 a second `once` call, B008 a free name not allowed, B009 a rejected name). `L…` is a lambda's type error. Every diagnostic carries a tip or a fix: read it before guessing.
 
 ## Not built
 

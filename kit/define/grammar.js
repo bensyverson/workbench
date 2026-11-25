@@ -2,9 +2,9 @@
 // builder has its slots, its child constructs and (forwarded) its ancestors' methods; an unknown method
 // throws B001 at once, everything else is collected with the call site and thrown by `.build()`.
 
-import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST, OBJECT_PROBES } from "./validate-grammar.js";
+import { validateGrammar, KIT_METHODS, PROBES as PROBE_LIST, OBJECT_PROBES, scopedNamespaces } from "./validate-grammar.js";
 import { refuse, isDialect } from "./dialect.js";
-import { didYouMean, dialectError } from "./codes.js";
+import { didYouMean, dialectError, an } from "./codes.js";
 import { TAG, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
 import { lambdaSource, constSource, found, where } from "./shapes.js";
@@ -69,7 +69,7 @@ export function defineGrammar(dialect, def) {
   for (const c of Object.values(cs)) if (c.def.parent) { c.parent = cs[c.def.parent]; c.parent.children.push(c); }
   for (const c of Object.values(cs)) for (let a = /** @type {Construct | null} */ (c); a; a = a.parent) c.rejected = { ...(a.def.rejected ?? {}), ...c.rejected };
   /** @type {Compiled} */
-  const g = { dialect, def: /** @type {Record<string, any>} */ (def), constructs: cs, root: cs[def.root] };
+  const g = { dialect, def: /** @type {Record<string, any>} */ (def), constructs: cs, root: cs[def.root], scoped: scopedNamespaces(def.constructs) };
   noteConvention(dialect.def.params);
   const builder = (/** @type {unknown[]} */ ...args) => new Program(g).open(g.root, null, args, callSite());
   return Object.assign(builder, {
@@ -93,7 +93,7 @@ function checkOptions(o) {
   if (x.buildTime !== undefined && !(Array.isArray(x.buildTime) && x.buildTime.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTime }): buildTime is a list of names");
 }
 
-/** @typedef {{ dialect: T.Dialect, def: Record<string, any>, constructs: Record<string, Construct>, root: Construct }} Compiled */
+/** @typedef {{ dialect: T.Dialect, def: Record<string, any>, constructs: Record<string, Construct>, root: Construct, scoped: Map<string, string> }} Compiled */
 
 /**
  * B004's tip and fix when a lambda of no parameters stands where a value goes: pass its value, which build-time
@@ -125,6 +125,8 @@ class Program {
     this.diagnostics = [];
     /** @type {Map<string, Set<string>>} */
     this.names = new Map([[UNITS, new Set([...Object.keys(g.dialect.def.intrinsics ?? {}), ...g.dialect.library.map((u) => u.name), ...Object.keys(g.dialect.def.globals ?? {}), ...callableTypes(g.dialect.def.types), ...Object.keys(g.dialect.def.conversions ?? {})])]]);
+    /** The names of each namespace a `within` scopes, per instance of its `within` construct. @type {WeakMap<Instance, Map<string, Set<string>>>} */
+    this.scopedNames = new WeakMap();
     /** @type {Instance | null} */
     this.root = null;
     /** @type {Array<{ ast: ArrowFunctionExpression, src: string, what: string, at: { file: string, loc: Loc } }>} */
@@ -146,8 +148,10 @@ class Program {
     /** @type {Instance} */
     const inst = { construct: c, opened, parent, children: [], calls: [], loc: at.loc, file: at.file };
     this.report(f.errors, c.name, at);
-    specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") this.declare(/** @type {T.NameTag} */ (s), c.name, made[i], at, true); });
-    if (c.def.state) this.declareState(c, instanceName(inst), at);
+    let named = true;
+    specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") named = this.declare(/** @type {T.NameTag} */ (s), inst, made[i], at, true) && named; });
+    // a name its namespace refused already is one mistake: the state namespace would only say it again
+    if (c.def.state && named) this.declareState(c, instanceName(inst), at);
     /** @type {Call} */
     const call = { slot: "(opens)", args: made, loc: at.loc, file: at.file, found: f };
     this.track(call, at);
@@ -162,20 +166,48 @@ class Program {
   }
 
   /**
-   * Declares a name; B002 when its namespace has it.
+   * Declares a name; B002 when its namespace has it. Returns whether it was declared.
    * @param {T.NameTag | null} spec  null for a unit
-   * @param {string} construct @param {string} value @param {{ file: string, loc: Loc }} at
+   * @param {Instance} inst  the instance the call is on (or the one being opened)
+   * @param {string} value @param {{ file: string, loc: Loc }} at
    * @param {boolean} [label]  an opening name, which lambdas never read, so any non-empty string (`domain-warp`)
    */
-  declare(spec, construct, value, at, label = false) {
-    const ns = spec === null ? UNITS : typeof spec.ns === "string" ? spec.ns : construct;
-    if (label ? value.trim() === "" : !IDENT.test(value)) { this.diagnostics.push(diag("B004", `${label ? "an empty name" : `'${value}' is not a name: a name is an identifier`}`, "use letters, digits, _ and $, not starting with a digit", at)); return; }
-    const set = this.names.get(ns) ?? new Set();
-    this.names.set(ns, set);
+  declare(spec, inst, value, at, label = false) {
+    const ns = spec === null ? UNITS : typeof spec.ns === "string" ? spec.ns : inst.construct.name;
+    if (label ? value.trim() === "" : !IDENT.test(value)) { this.diagnostics.push(diag("B004", `${label ? "an empty name" : `'${value}' is not a name: a name is an identifier`}`, "use letters, digits, _ and $, not starting with a digit", at)); return false; }
+    const { set, owner } = this.namespace(ns, inst);
     if (set.has(value)) {
       const dialect = spec === null && this.g.dialect.library.some((u) => u.name === value) ? "the Library" : spec === null && this.ownNames().has(value) ? `the ${this.g.dialect.name} Dialect` : null;
-      this.diagnostics.push(diag("B002", dialect ? `'${value}' is already defined by ${dialect}; a second one would replace it${dialect === "the Library" ? " inside the Library too" : ""}` : `'${value}' is already declared${ns === UNITS ? " as a helper or constant" : ` as a ${ns}`}`, `rename it`, at));
-    } else set.add(value);
+      const within = owner ? ` in ${owner.construct.name} '${instanceName(owner)}'` : "";
+      this.diagnostics.push(diag("B002", dialect ? `'${value}' is already defined by ${dialect}; a second one would replace it${dialect === "the Library" ? " inside the Library too" : ""}` : `'${value}' is already declared${ns === UNITS ? " as a helper or constant" : ` as ${an(ns)}${within}`}`, `rename it`, at));
+      return false;
+    }
+    set.add(value);
+    return true;
+  }
+
+  /**
+   * The names declared so far in a namespace, as seen from an instance: the whole Program's, or for a namespace
+   * a `within` scopes, those of the nearest enclosing instance of that construct (`owner`, the instance itself
+   * included; null when none encloses it).
+   * @param {string} ns @param {Instance} inst
+   * @returns {{ set: Set<string>, owner: Instance | null }}
+   */
+  namespace(ns, inst) {
+    const within = this.g.scoped.get(ns);
+    if (within === undefined) {
+      const set = this.names.get(ns) ?? new Set();
+      this.names.set(ns, set);
+      return { set, owner: null };
+    }
+    let owner = /** @type {Instance | null} */ (inst);
+    while (owner && owner.construct.name !== within) owner = owner.parent;
+    if (!owner) return { set: new Set(), owner: null };
+    const byNs = this.scopedNames.get(owner) ?? new Map();
+    this.scopedNames.set(owner, byNs);
+    const set = byNs.get(ns) ?? new Set();
+    byNs.set(ns, set);
+    return { set, owner };
   }
 
   /**
@@ -242,7 +274,7 @@ class Program {
     const nth = c.def.record === "calls" ? inst.calls.length : inst.calls.filter((x) => x.slot === slot).length;
     noteCall(this, `${instanceName(inst)}.${slot}${s.once ? "" : `#${nth}`}`);
     if (s.once && inst.calls.some((x) => x.slot === slot)) {
-      this.diagnostics.push(diag("B006", `${what} already has a ${slot}: .${slot}(…) may be called once`, `remove the second .${slot}(…)`, at));
+      this.diagnostics.push(diag("B006", `${what} already has ${an(slot)}: .${slot}(…) may be called once`, `remove the second .${slot}(…)`, at));
       return;
     }
     const before = this.diagnostics.length;
@@ -251,7 +283,7 @@ class Program {
     if (s.kind === "unit") {
       const [n, src] = args;
       if (typeof n !== "string") { this.diagnostics.push(diag("B004", `${what}: .${slot}(name, source) takes the name as a string, not ${typeof n}`, `.${slot}("name", …)`, at)); return; }
-      this.declare(null, c.name, n, at);
+      this.declare(null, inst, n, at);
       const r = s.unit === "fn" ? lambdaSource(src) : constSource(src);
       if ("error" in r) { this.diagnostics.push(diag("B007", `${what}: .${slot}('${n}'): ${r.error}`, s.unit === "fn" ? `.${slot}("${n}", (x) => …)` : `.${slot}("${n}", "0.5")`, at, /** @type {{ src?: string, loc?: Loc }} */ (r).src !== undefined ? { lambda: { src: /** @type {string} */ (/** @type {any} */ (r).src), ...(/** @type {any} */ (r).loc ? { loc: /** @type {any} */ (r).loc } : {}) } } : {})); return; }
       call = { slot, args: [n, r.src], loc: at.loc, file: at.file, found: found() };
@@ -265,7 +297,7 @@ class Program {
         const via = this.dialectParams()?.name ?? "$";
         this.diagnostics.push(diag("B004", `${what}, .${slot}: '${args[0]}' cannot name a param: runtimes and test libraries probe it on every object, so ${via}.${args[0]} would not read the param`, `rename the param, .${slot}("${args[0]}Value", …)`, at, { arg: 0 }));
       }
-      specs.forEach((sp, i) => { if (sp[TAG] === "name" && typeof m.args[i] === "string") this.declare(/** @type {T.NameTag} */ (sp), c.name, /** @type {string} */ (m.args[i]), at); else if (sp[TAG] === "name" && i < args.length) this.diagnostics.push(diag("B004", `${what}, .${slot}: argument ${i + 1} must be a name (a string), not ${typeof args[i]}`, `.${slot}("name", …)`, at)); });
+      specs.forEach((sp, i) => { if (sp[TAG] === "name" && typeof m.args[i] === "string") this.declare(/** @type {T.NameTag} */ (sp), inst, /** @type {string} */ (m.args[i]), at); else if (sp[TAG] === "name" && i < args.length) this.diagnostics.push(diag("B004", `${what}, .${slot}: argument ${i + 1} must be a name (a string), not ${typeof args[i]}`, `.${slot}("name", …)`, at)); });
       call = { slot, args: m.args, loc: at.loc, file: at.file, found: m.found };
       this.track(call, at);
     }
@@ -349,13 +381,18 @@ class Program {
     for (const [sn, s] of Object.entries(/** @type {Record<string, any>} */ (c.def.slots ?? {}))) {
       if (s.required && !inst.calls.some((x) => x.slot === sn)) this.diagnostics.push(diag("B005", `${what} has no ${sn}`, `add .${sn}(…)`, at));
     }
+    for (const child of c.children) {
+      if (child.def.required === true && !inst.children.some((i) => i.construct === child)) this.diagnostics.push(diag("B005", `${what} has no ${child.name}`, `add .${child.name}(…)`, at));
+    }
     // a state's namespaces, and a stateless construct's names, exist only when lowered
     const stateNames = Object.keys(c.def.state?.names ?? c.def.names ?? {});
     for (const call of [/** @type {Call} */ (/** @type {any} */ (inst).openCall), ...inst.calls]) {
       for (const r of call.found.refs) {
         if (stateNames.includes(r.ns)) continue; // checked against the state when lowered
-        const known = [...(this.names.get(r.ns) ?? [])];
-        if (!known.includes(r.value)) this.diagnostics.push(diag("B003", `${what}${call.slot === "(opens)" ? "" : `, .${call.slot}`}: ${where(r.path)}: there is no ${r.ns} '${r.value}'.${didYouMean(r.value, known)}`, known.length ? `name one of: ${known.join(", ")}` : `declare a ${r.ns} first`, { file: call.file, loc: call.loc }));
+        const { set, owner } = this.namespace(r.ns, inst);
+        const known = [...set];
+        const within = owner ? ` in ${owner.construct.name} '${instanceName(owner)}'` : "";
+        if (!known.includes(r.value)) this.diagnostics.push(diag("B003", `${what}${call.slot === "(opens)" ? "" : `, .${call.slot}`}: ${where(r.path)}: there is no ${r.ns} '${r.value}'${within}.${didYouMean(r.value, known)}`, known.length ? `name one of: ${known.join(", ")}` : `declare ${an(r.ns)} first${within}`, { file: call.file, loc: call.loc }));
       }
     }
     if (typeof c.def.check === "function") c.def.check(recordOf(inst), this.context(at, [], record));

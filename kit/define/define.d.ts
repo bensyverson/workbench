@@ -18,7 +18,8 @@ export type EnumTag = { [TAG]: "enum"; values: unknown };
 export type ObjectTag = { [TAG]: "object"; label: unknown; members: unknown };
 /** The argument specs. `as` is the record key a trailing `{ as }` named; `opts` that object, kept for validation. */
 interface SpecBase { count: number; as: string | undefined; opts: unknown }
-export type NameTag = { [TAG]: "name"; ns: unknown } & SpecBase;
+/** `within`: the construct whose nearest enclosing instance the name is unique in (absent: the whole Program). */
+export type NameTag = { [TAG]: "name"; ns: unknown; within: unknown } & SpecBase;
 export type RefTag = { [TAG]: "ref"; ns: unknown } & SpecBase;
 export type DataTag = { [TAG]: "data"; shape: unknown } & SpecBase;
 export type LambdaTag = { [TAG]: "lambda"; convention: unknown } & SpecBase;
@@ -201,6 +202,8 @@ export interface StateDef {
 export interface ConstructDef {
   opens?: Tagged[];
   parent?: string;
+  /** A child construct its parent must open at least once (B005 when a parent instance has none). */
+  required?: boolean;
   slots?: Record<string, SlotDef>;
   record?: "calls";
   state?: StateDef;

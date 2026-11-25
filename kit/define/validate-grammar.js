@@ -1,6 +1,6 @@
 // defineGrammar's checks: every problem in a Grammar definition, collected (D001, D009–D011, D014, D015).
 
-import { didYouMean } from "./codes.js";
+import { didYouMean, an } from "./codes.js";
 import { checkKeys, listed } from "./types.js";
 import { TAG, isPlainObject, kindOf, describe, tagged } from "./tags.js";
 import { openKey } from "./record.js";
@@ -10,7 +10,7 @@ import { openKey } from "./record.js";
 
 const GRAMMAR_KEYS = Object.freeze(["root", "constructs"]);
 const GRAMMAR_OPTIONAL = Object.freeze(["params"]);
-const CONSTRUCT_KEYS = Object.freeze(["opens", "parent", "slots", "record", "state", "names", "rejected", "check"]);
+const CONSTRUCT_KEYS = Object.freeze(["opens", "parent", "required", "slots", "record", "state", "names", "rejected", "check"]);
 const SLOT_KEYS = Object.freeze(["kind", "args", "unit", "once", "required", "as", "check"]);
 const SLOT_KINDS = Object.freeze(["decl", "unit"]);
 export const SHAPE_NAMES = Object.freeze(["number", "string", "boolean", "string[]", "number[]"]);
@@ -22,6 +22,10 @@ export const PROBES = Object.freeze(["then", "toJSON", "constructor", "inspect",
  * as a param's name.
  */
 export const OBJECT_PROBES = Object.freeze(["constructor", "valueOf", "toString"]);
+/** The bounds a number shape takes in data("number", { … }). */
+const BOUNDS = Object.freeze(["min", "max", "whole"]);
+/** The keys a spec's trailing options object may hold, by spec; any other spec takes only `as`. */
+const SPEC_OPTIONS = /** @type {Record<string, string[]>} */ ({ name: ["as", "within"], data: ["as", ...BOUNDS] });
 /** Methods every builder has, which no slot or construct may take. */
 export const KIT_METHODS = Object.freeze(["check", "build"]);
 
@@ -56,6 +60,87 @@ function declared(specs, construct, into) {
     const t = tagged(s);
     if (t?.[TAG] === "name") into.add(typeof t.ns === "string" ? t.ns : construct);
     if (t?.[TAG] === "rest" || t?.[TAG] === "opt") declared([/** @type {any} */ (t).spec ?? /** @type {any} */ (t).of], construct, into);
+  }
+}
+
+/**
+ * Every name() a construct declares with, at the top of its opens and slots' args: the spec, its namespace,
+ * and where it sits.
+ * @param {Record<string, any>} cs
+ * @returns {Array<{ cn: string, spec: T.NameTag, ns: string, path: Array<string | number> }>}
+ */
+function nameSpecs(cs) {
+  /** @type {Array<{ cn: string, spec: T.NameTag, ns: string, path: Array<string | number> }>} */
+  const out = [];
+  for (const [cn, c] of Object.entries(cs)) {
+    const lists = [[["constructs", cn, "opens"], c.opens], ...Object.entries(isPlainObject(c.slots) ? c.slots : {}).map(([sn, s]) => [["constructs", cn, "slots", sn, "args"], /** @type {any} */ (s)?.args])];
+    for (const [path, specs] of lists) {
+      if (!Array.isArray(specs)) continue;
+      specs.forEach((s, i) => { const t = tagged(s); if (t?.[TAG] === "name") out.push({ cn, spec: /** @type {T.NameTag} */ (t), ns: typeof t.ns === "string" ? t.ns : cn, path: [...path, i] }); });
+    }
+  }
+  return out;
+}
+
+/**
+ * Each namespace a `name(ns, { within })` scopes, to the construct it is unique within (a namespace without
+ * `within` spans the whole Program and is not listed). The builder resolves names and refs by it.
+ * @param {Record<string, any>} cs
+ * @returns {Map<string, string>}
+ */
+export function scopedNamespaces(cs) {
+  /** @type {Map<string, string>} */
+  const out = new Map();
+  for (const { spec, ns } of nameSpecs(cs)) if (typeof spec.within === "string" && !out.has(ns)) out.set(ns, spec.within);
+  return out;
+}
+
+/**
+ * Every ref() a spec list holds, at any depth (through opt, rest and data shapes), with the argument it sits in.
+ * @param {unknown} spec @param {(ns: unknown) => void} found
+ */
+function refsIn(spec, found) {
+  if (Array.isArray(spec)) { spec.forEach((x) => refsIn(x, found)); return; }
+  const t = tagged(spec);
+  if (!t) { if (isPlainObject(spec)) Object.values(spec).forEach((x) => refsIn(x, found)); return; }
+  const any = /** @type {any} */ (t);
+  switch (t[TAG]) {
+    case "ref": found(any.ns); return;
+    case "opt": case "recordOf": case "listOf": case "oneOf": refsIn(any.of, found); return;
+    case "rest": refsIn(any.spec, found); return;
+    case "data": refsIn(any.shape, found);
+  }
+}
+
+/**
+ * name()'s `within`: a construct that is the declaring one or an ancestor of it, one scope per namespace, and
+ * every ref into a scoped namespace inside an instance of its `within` construct (D011).
+ * @param {Record<string, any>} cs @param {Problem[]} out
+ */
+function checkWithin(cs, out) {
+  const names = Object.keys(cs);
+  /** @type {Map<string, { within: unknown, cn: string }>} */
+  const first = new Map();
+  for (const { cn, spec, ns, path } of nameSpecs(cs)) {
+    const w = spec.within;
+    const enclosing = [cn, ...ancestors(cs, cn)];
+    if (w !== undefined) {
+      if (typeof w !== "string") out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}")'s within must be the name of a construct, not ${describe(w)}.`, tip: `name("${ns}", { within: "${cn}" })` });
+      else if (!cs[w]) out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}")'s within '${w}' names no construct.${didYouMean(w, names)}`, tip: `within: one of ${listed(enclosing)}` });
+      else if (!enclosing.includes(w)) out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}")'s within '${w}' is not '${cn}' or one of its ancestors, so no '${w}' instance encloses the name.`, tip: `within: one of ${listed(enclosing)}` });
+    }
+    const seen = first.get(ns);
+    if (!seen) first.set(ns, { within: w, cn });
+    else if (seen.within !== w) out.push({ code: "D011", path, message: `construct '${cn}': the namespace '${ns}' is declared ${w === undefined ? "Program-wide" : `within '${String(w)}'`} here and ${seen.within === undefined ? "Program-wide" : `within '${String(seen.within)}'`} in '${seen.cn}'; a namespace has one scope.`, tip: `give every name("${ns}") the same within, or use two namespaces` });
+  }
+  const scoped = scopedNamespaces(cs);
+  for (const [cn, c] of Object.entries(cs)) {
+    const enclosing = [cn, ...ancestors(cs, cn)];
+    const where = [[["constructs", cn, "opens"], c.opens], ...Object.entries(isPlainObject(c.slots) ? c.slots : {}).map(([sn, s]) => [["constructs", cn, "slots", sn, "args"], /** @type {any} */ (s)?.args])];
+    for (const [path, specs] of where) refsIn(specs, (ns) => {
+      const w = typeof ns === "string" ? scoped.get(ns) : undefined;
+      if (typeof ns === "string" && w !== undefined && cs[w] && !enclosing.includes(w)) out.push({ code: "D011", path, message: `construct '${cn}': ref("${ns}") stands outside every ${w}, but ${an(ns)} is unique only within one ${w} (name("${ns}", { within: "${w}" })), so it would name no ${ns}.`, tip: `move the ref into '${w}' or a construct under it, or declare name("${ns}") without within` });
+    });
   }
 }
 
@@ -102,6 +187,10 @@ export function validateGrammar(dialect, def) {
       checkSpecs(c.opens, conventions, [...path, "opens"], `construct '${cn}', opens`, out);
       if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => { if (holdsLambda(spec)) out.push({ code: "D019", path: [...path, "opens", i], message: `construct '${cn}', opens, argument ${i + 1}: a lambda in an opening is not built yet; only a slot's lambdas are lowered.`, tip: `put the lambda in a decl slot of '${cn}'` }); });
     }
+    if (c.required !== undefined) {
+      if (typeof c.required !== "boolean") out.push({ code: "D011", path: [...path, "required"], message: `construct '${cn}': required must be true or false, not ${describe(c.required)}.`, tip: "required: true" });
+      else if (c.parent === undefined) out.push({ code: "D011", path: [...path, "required"], message: `construct '${cn}' is required but has no parent; the root is the Program itself, and only a child construct can be required of its parent.`, tip: `remove required from '${cn}'` });
+    }
     if (c.record !== undefined && c.record !== "calls") out.push({ code: "D011", path: [...path, "record"], message: `construct '${cn}': record must be "calls", not ${describe(c.record)}.`, tip: `record: "calls", or remove it` });
     if (c.check !== undefined && typeof c.check !== "function") out.push({ code: "D011", path: [...path, "check"], message: `construct '${cn}': check must be a function (record, ctx) => ….`, tip: "check(record, ctx) { … }" });
     if (c.state !== undefined) {
@@ -138,6 +227,7 @@ export function validateGrammar(dialect, def) {
   }
 
   for (const cn of names) collideKeys(cs, cn, cn === def.root, out);
+  checkWithin(cs, out);
 
   // The slot that declares the Program's params: a root decl slot whose first argument is the param's name and
   // whose second is its declaration (its `value` the default a build-time read gets).
@@ -251,14 +341,20 @@ function checkSpecs(specs, conventions, path, where, out) {
 function checkSpec(spec, conventions, path, where, out, inner) {
   const bad = (/** @type {string} */ m, /** @type {string} */ tip) => out.push({ code: "D011", path, message: `${where}: ${m}`, tip });
   const s = tagged(spec);
-  if (s && "opts" in s && s.opts !== undefined && !(isPlainObject(s.opts) && Object.keys(s.opts).every((key) => key === "as") && typeof s.as === "string")) bad("a spec's last argument may only be { as: \"key\" }.", `ref("table", { as: "from" })`);
+  if (s && "opts" in s && s.opts !== undefined) {
+    const keys = SPEC_OPTIONS[/** @type {string} */ (s[TAG])] ?? ["as"];
+    const o = s.opts;
+    if (!(isPlainObject(o) && Object.keys(o).every((key) => keys.includes(key)) && (!("as" in o) || typeof s.as === "string"))) {
+      bad(`${String(s[TAG])}()'s last argument may only be { ${keys.join(", ")} }, each optional; as is the record key, a string.`,s[TAG] === "name" ? `name("flow", { within: "account" })` : `ref("table", { as: "from" })`);
+    }
+  }
   switch (s?.[TAG]) {
     case "name": if (s.count > 1 || (s.ns !== undefined && typeof s.ns !== "string")) bad("name() takes at most one namespace string.", `name("table") or name()`); return;
     case "ref": if (s.count !== 1 || typeof s.ns !== "string") bad("ref() takes the namespace it refers to, as one string.", `ref("table")`); return;
     case "lambda": checkLambda(s.convention, s.count, conventions, path, where, out); return;
     case "data":
       if (s.count !== 1) bad(s.count === 0 ? "data() has no shape." : "data() takes one shape.", `data("number"), data({ value: "number" }) or data(oneOf(…))`);
-      else checkShape(s.shape, conventions, path, where, out);
+      else { checkShape(s.shape, conventions, path, where, out); checkBounds(s, path, where, out); }
       return;
     case "opt": case "rest": {
       const of = s[TAG] === "opt" ? /** @type {T.OptTag} */ (s).of : /** @type {T.RestTag} */ (s).spec;
@@ -282,7 +378,24 @@ function checkLambda(convention, count, conventions, path, where, out) {
 }
 
 /**
- * A data shape: a shape name, an object of shapes (keys may end in `?`), oneOf, enumOf, recordOf, listOf, ref, lambda.
+ * A number shape's bounds (D011): only on "number", each of min and max a finite number with min at most max,
+ * whole true or false. Unknown keys are refused with the options.
+ * @param {T.DataTag} s @param {Array<string | number>} path @param {string} where @param {Problem[]} out
+ */
+function checkBounds(s, path, where, out) {
+  const o = isPlainObject(s.opts) ? s.opts : {};
+  const given = BOUNDS.filter((k) => o[k] !== undefined);
+  if (!given.length) return;
+  const bad = (/** @type {string} */ m, /** @type {string} */ tip) => out.push({ code: "D011", path, message: `${where}: ${m}`, tip });
+  if (s.shape !== "number") { bad(`only a number shape takes min, max and whole, not ${describe(s.shape)}.`, `data("number", { min: 0 })`); return; }
+  for (const k of ["min", "max"]) if (o[k] !== undefined && !(typeof o[k] === "number" && Number.isFinite(o[k]))) bad(`its ${k} must be a finite number, not ${describe(o[k])}.`, `data("number", { ${k}: 0 })`);
+  if (o.whole !== undefined && typeof o.whole !== "boolean") bad(`its whole must be true or false, not ${describe(o.whole)}.`, `data("number", { whole: true })`);
+  if (typeof o.min === "number" && typeof o.max === "number" && o.min > o.max) bad(`its min ${o.min} is above its max ${o.max}, so no value fits.`, `data("number", { min: ${o.max}, max: ${o.min} })`);
+}
+
+/**
+ * A data shape: a shape name, an object of shapes (keys may end in `?`), oneOf, enumOf, recordOf, listOf, ref, lambda,
+ * and data("number", { bounds }).
  * @param {unknown} shape @param {string[]} conventions @param {Array<string | number>} path @param {string} where @param {Problem[]} out
  */
 function checkShape(shape, conventions, path, where, out) {
@@ -304,6 +417,12 @@ function checkShape(shape, conventions, path, where, out) {
     case "recordOf": case "listOf": checkShape(s.of, conventions, path, where, out); return;
     case "ref": if (s.count !== 1 || typeof s.ns !== "string") bad("ref() takes the namespace it refers to, as one string.", `ref("table")`); return;
     case "lambda": checkLambda(s.convention, s.count, conventions, path, where, out); return;
+    case "data":
+      // a bounded number inside a shape: data("number", { min: 0 }); a key inside a shape has no record key
+      if (s.count !== 1) bad(s.count === 0 ? "data() has no shape." : "data() takes one shape.", `data("number", { min: 0 })`);
+      else if (s.opts !== undefined && !(isPlainObject(s.opts) && Object.keys(s.opts).every((k) => BOUNDS.includes(k)))) bad(`data() inside a shape takes only { ${BOUNDS.join(", ")} }: a value inside a shape has no record key of its own.`, `data("number", { min: 0 })`);
+      else { checkShape(s.shape, conventions, path, where, out); checkBounds(s, path, where, out); }
+      return;
   }
-  bad(`${describe(shape)} is not a shape.`, `use ${listed([...SHAPE_NAMES])}, an object of shapes, oneOf, enumOf, recordOf, listOf, ref or lambda`);
+  bad(`${describe(shape)} is not a shape.`,`use ${listed([...SHAPE_NAMES])}, an object of shapes, oneOf, enumOf, recordOf, listOf, ref or lambda`);
 }

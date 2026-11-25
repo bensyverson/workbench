@@ -38,20 +38,30 @@ export const enumOf = (values) => ({ [TAG]: "enum", values });
 /** An object type made on the spot, with members as in `objects`. @param {unknown} label @param {unknown} members @returns {T.ObjectTag} */
 export const object = (label, members) => ({ [TAG]: "object", label, members });
 
-/** @param {...unknown} a @returns {T.NameTag} */
+/** @param {unknown} v @returns {v is Record<string, unknown>} */
+const isOptions = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && !(TAG in v);
+
+/** `name(ns?, { within?, as? })`: a namespace is a string, so a trailing plain object is always the options. @param {...unknown} a @returns {T.NameTag} */
 export function name(...a) {
-  const [rest, as, opts] = splitAs(a);
-  return { [TAG]: "name", ns: rest[0], count: rest.length, as, opts };
+  const opts = isOptions(a.at(-1)) ? /** @type {Record<string, unknown>} */ (a.at(-1)) : undefined;
+  const rest = opts ? a.slice(0, -1) : a;
+  return { [TAG]: "name", ns: rest[0], count: rest.length, as: /** @type {any} */ (opts?.as), within: opts?.within, opts };
 }
 /** @param {...unknown} a @returns {T.RefTag} */
 export function ref(...a) {
   const [rest, as, opts] = splitAs(a);
   return { [TAG]: "ref", ns: rest[0], count: rest.length, as, opts };
 }
-/** @param {...unknown} a @returns {T.DataTag} */
+/**
+ * `data(shape, { min?, max?, whole?, as? })`: the bounds are a number shape's; a trailing plain object after the
+ * shape is the options (a lone one is still the shape, unless it holds `as`, as before).
+ * @param {...unknown} a @returns {T.DataTag}
+ */
 export function data(...a) {
-  const [rest, as, opts] = splitAs(a);
-  return { [TAG]: "data", shape: rest[0], count: rest.length, as, opts };
+  const [, , asOpts] = splitAs(a);
+  const opts = asOpts ?? (a.length > 1 && isOptions(a.at(-1)) ? /** @type {Record<string, unknown>} */ (a.at(-1)) : undefined);
+  const rest = opts ? a.slice(0, -1) : a;
+  return { [TAG]: "data", shape: rest[0], count: rest.length, as: /** @type {any} */ (opts)?.as, opts };
 }
 /** @param {...unknown} a @returns {T.LambdaTag} */
 export function lambda(...a) {

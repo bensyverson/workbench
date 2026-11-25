@@ -3,6 +3,7 @@
 
 import { TAG, tagged, isPlainObject, describe } from "./tags.js";
 import { parseLambda } from "../parse/index.js";
+import { an } from "./codes.js";
 
 /** @import { ArrowFunctionExpression, Expression, Loc } from "../parse/ast.js" */
 /** @import * as T from "./define.js" */
@@ -59,7 +60,7 @@ export function constSource(v) {
 }
 
 /** @param {Array<string | number>} path */
-export const where = (path) => path.map((p) => (typeof p === "number" ? `argument ${p + 1}` : `key '${p}'`)).join(", ");
+export const where = (path) => path.map((p, i) => (typeof p === "number" ? `${i === 0 ? "argument" : "item"} ${p + 1}` : `key '${p}'`)).join(", ");
 
 /**
  * A shape in a few words, for a message: `{ value: number, min?: number }`, `string[]`, a tag by its kind.
@@ -70,6 +71,11 @@ function describeShape(shape) {
   if (typeof shape === "string") return shape;
   if (isPlainObject(shape)) return `{ ${Object.entries(shape).map(([k, x]) => `${k}: ${describeShape(x)}`).join(", ")} }`;
   const t = tagged(shape);
+  if (t?.[TAG] === "data") {
+    const o = /** @type {Record<string, unknown>} */ (t.opts ?? {});
+    const bounds = ["min", "max", "whole"].filter((k) => o[k] !== undefined).map((k) => `${k}: ${o[k]}`);
+    return `${describeShape(t.shape)}${bounds.length ? ` (${bounds.join(", ")})` : ""}`;
+  }
   return t ? String(t[TAG]) : "a value";
 }
 
@@ -149,9 +155,20 @@ export function matchShape(shape, v, path, out, key) {
     }
     case "listOf": return Array.isArray(v) ? v.map((x, i) => matchShape(s.of, x, [...path, i], out, key)) : fail(`expected a list, got ${describe(v)}`);
     case "ref":
-      if (typeof v !== "string") return fail(`expected the name of a ${s.ns}, got ${describe(v)}`);
+      if (typeof v !== "string") return fail(`expected the name of ${an(/** @type {string} */ (s.ns))}, got ${describe(v)}`);
       out.refs.push({ ns: /** @type {string} */ (s.ns), value: v, path });
       return v;
+    case "data": {
+      // data(shape, { min, max, whole }): the shape, then a number shape's bounds
+      const before = refusals(out).length;
+      const made = matchShape(/** @type {T.DataTag} */ (s).shape, v, path, out, key);
+      const o = /** @type {Record<string, unknown> | undefined} */ (/** @type {T.DataTag} */ (s).opts);
+      if (refusals(out).length > before || typeof v !== "number" || !o) return made;
+      if (typeof o.min === "number" && !(v >= o.min)) return fail(`${v} is below its min, ${o.min}`);
+      if (typeof o.max === "number" && !(v <= o.max)) return fail(`${v} is above its max, ${o.max}`);
+      if (o.whole === true && !Number.isInteger(v)) return fail(`${v} is not a whole number (whole: true)`);
+      return made;
+    }
     case "lambda": {
       const l = lambdaSource(v);
       if ("error" in l) { out.errors.push({ code: "B007", path, message: `${where(path)}: ${l.error}`, ...(l.src !== undefined ? { lambda: { src: l.src, ...(l.loc ? { loc: l.loc } : {}) } } : {}) }); return v; }
@@ -168,8 +185,7 @@ export function matchShape(shape, v, path, out, key) {
  */
 export function matchArg(spec, v, i, out) {
   switch (spec[TAG]) {
-    case "data": return matchShape(/** @type {T.DataTag} */ (spec).shape, v, [i], out);
-    case "ref": case "lambda": return matchShape(spec, v, [i], out);
+    case "data": case "ref": case "lambda": return matchShape(spec, v, [i], out);
   }
   return v;
 }
