@@ -862,3 +862,5 @@
 {"v":1,"rep":"OddpJO","seq":862,"ts":1795621201576,"actor":"claude","type":"unblocked","task":"3Cd9hb","data":{"blocked_id":"3Cd9hb","blocker_id":"8vQJOw","reason":"blocker_done"}}
 {"v":1,"rep":"OddpJO","seq":863,"ts":1795621201590,"actor":"claude","type":"labeled","task":"8vQJOw","data":{"names":["reviewed"],"existing":[]}}
 {"v":1,"rep":"OddpJO","seq":864,"ts":1795621201591,"actor":"claude","type":"labeled","task":"cunk5u","data":{"names":["reviewed"],"existing":[]}}
+{"v":1,"rep":"OddpJO","seq":865,"ts":1795621347785,"actor":"kit-lows","type":"claimed","task":"3YNVB3","data":{"duration":"2h","expires_at":1795628547}}
+{"v":1,"rep":"OddpJO","seq":866,"ts":1795621462088,"actor":"claude","type":"claimed","task":"3Cd9hb","data":{"duration":"3h","expires_at":1795632262}}
