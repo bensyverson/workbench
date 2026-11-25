@@ -127,6 +127,7 @@ function checkWithin(cs, out) {
     if (w !== undefined) {
       if (typeof w !== "string") out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}")'s within must be the name of a construct, not ${describe(w)}.`, tip: `name("${ns}", { within: "${cn}" })` });
       else if (!cs[w]) out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}")'s within '${w}' names no construct.${didYouMean(w, names)}`, tip: `within: one of ${listed(enclosing)}` });
+      else if (w === cn && path[2] === "opens") out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}") opens '${cn}', so it is its own instance's name and no instance of '${cn}' encloses it; within '${cn}' would never check it for duplicates.`, tip: `within: an ancestor of '${cn}', or remove within` });
       else if (!enclosing.includes(w)) out.push({ code: "D011", path, message: `construct '${cn}': name("${ns}")'s within '${w}' is not '${cn}' or one of its ancestors, so no '${w}' instance encloses the name.`, tip: `within: one of ${listed(enclosing)}` });
     }
     const seen = first.get(ns);
@@ -189,7 +190,7 @@ export function validateGrammar(dialect, def) {
     }
     if (c.required !== undefined) {
       if (typeof c.required !== "boolean") out.push({ code: "D011", path: [...path, "required"], message: `construct '${cn}': required must be true or false, not ${describe(c.required)}.`, tip: "required: true" });
-      else if (c.parent === undefined) out.push({ code: "D011", path: [...path, "required"], message: `construct '${cn}' is required but has no parent; the root is the Program itself, and only a child construct can be required of its parent.`, tip: `remove required from '${cn}'` });
+      else if (c.parent === undefined) out.push({ code: "D011", path: [...path, "required"], message: `construct '${cn}' has no parent, so required means nothing on it: the root is the Program itself, and only a child construct can be required of its parent.`, tip: `remove required from '${cn}'` });
     }
     if (c.record !== undefined && c.record !== "calls") out.push({ code: "D011", path: [...path, "record"], message: `construct '${cn}': record must be "calls", not ${describe(c.record)}.`, tip: `record: "calls", or remove it` });
     if (c.check !== undefined && typeof c.check !== "function") out.push({ code: "D011", path: [...path, "check"], message: `construct '${cn}': check must be a function (record, ctx) => ….`, tip: "check(record, ctx) { … }" });
@@ -390,6 +391,7 @@ function checkBounds(s, path, where, out) {
   if (s.shape !== "number") { bad(`only a number shape takes min, max and whole, not ${describe(s.shape)}.`, `data("number", { min: 0 })`); return; }
   for (const k of ["min", "max"]) if (o[k] !== undefined && !(typeof o[k] === "number" && Number.isFinite(o[k]))) bad(`its ${k} must be a finite number, not ${describe(o[k])}.`, `data("number", { ${k}: 0 })`);
   if (o.whole !== undefined && typeof o.whole !== "boolean") bad(`its whole must be true or false, not ${describe(o.whole)}.`, `data("number", { whole: true })`);
+  if (o.whole === true && typeof o.min === "number" && typeof o.max === "number" && o.min <= o.max && Math.ceil(o.min) > Math.floor(o.max)) bad(`no whole number lies between its min ${o.min} and its max ${o.max}, so no value fits.`, "widen min..max to include an integer, or drop whole");
   if (typeof o.min === "number" && typeof o.max === "number" && o.min > o.max) bad(`its min ${o.min} is above its max ${o.max}, so no value fits.`, `data("number", { min: ${o.max}, max: ${o.min} })`);
 }
 

@@ -164,6 +164,7 @@ export function matchShape(shape, v, path, out, key) {
       const made = matchShape(/** @type {T.DataTag} */ (s).shape, v, path, out, key);
       const o = /** @type {Record<string, unknown> | undefined} */ (/** @type {T.DataTag} */ (s).opts);
       if (refusals(out).length > before || typeof v !== "number" || !o) return made;
+      if ((typeof o.min === "number" || typeof o.max === "number") && !Number.isFinite(v)) return fail(`${v} is not finite, and a number with a min or max must be`);
       if (typeof o.min === "number" && !(v >= o.min)) return fail(`${v} is below its min, ${o.min}`);
       if (typeof o.max === "number" && !(v <= o.max)) return fail(`${v} is above its max, ${o.max}`);
       if (o.whole === true && !Number.isInteger(v)) return fail(`${v} is not a whole number (whole: true)`);
