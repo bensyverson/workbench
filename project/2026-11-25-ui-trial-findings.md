@@ -23,7 +23,9 @@ From `node scripts/particles/h5/summarize.js <agent dirs>` over the live directo
 | e | Sonnet | 5 | 71 s | $0.25 | 4 | 2 |
 | f | Haiku | 9 | 101 s | $0.02 | 2 | 2 |
 
-None read a file outside its directory (summarize's "outside" lines are heredoc text naming `kit/define`).
+None read a file outside its directory. A reviewer went through every tool call of all six transcripts by hand.
+
+> **Corrected (2026-11-25, reviewer-tools-1):** this line first said summarize's "outside" lines were heredoc text naming `kit/define`. That cause was wrong. They are `//` comment markers (and `</canvas>`), which summarize's path regex reads as absolute paths. Its `read:` line counts only the Read tool, and every agent read with `cat`, so "read: nothing" says nothing. The blindness rests on the brief alone: the agents had unrestricted Bash, and `check.sh` prints the repository's path. Only the hand check above shows that no agent broke it.
 
 ## Round 1 findings and the changes they caused
 
