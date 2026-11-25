@@ -3,8 +3,8 @@
 // w.param("n"), both DMG's). DMG's own wording is unchanged.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lowerLambda } from "../index.js";
-import { lower } from "./fixture.js";
+import { lowerLambda, lowerProgram } from "../index.js";
+import { lower, environment } from "./fixture.js";
 
 /** @import { Environment } from "../environment.js" */
 
@@ -27,6 +27,14 @@ const one = (e, code, src) => {
   return d;
 };
 
+/** The L013 for a store to a top-level constant of the program. @param {Environment} e @param {string} src @param {string} on */
+const topLevelStore = (e, src, on, kind = "k") => {
+  const r = lowerProgram(e, [{ src, slot: { id: `${on}.${kind}#0`, kind, on } }], [{ name: "G", kind: "const", src: "3" }]);
+  const d = r.results[0].diagnostics.find((x) => x.code === "L013");
+  assert.ok(d, "L013 for a store to a top-level constant");
+  return d;
+};
+
 const DMG_WORDS = /ROM|\.attr|\bframe\b|w\.param/;
 
 test("without tips: L013's tip says nothing of ROM, frame or .attr", () => {
@@ -39,6 +47,8 @@ test("without tips: L007's tips name no w.param, and a member bound says how a D
   const member = one(env, "L007", "(p) => { for (let k = 0; k < $.n; k++) { p.size += 1; } }");
   assert.doesNotMatch(member.tip ?? "", DMG_WORDS);
   assert.match(member.tip ?? "", /size: true/);
+  assert.match(member.tip ?? "", /Dialect's author/, "only the Dialect's author can declare a size");
+  assert.doesNotMatch(member.tip ?? "", /declare it a size, \{/, "a Program author is not told to declare a size");
   const loose = one(env, "L007", "(p) => { for (let k = 0; k < 4; k += 2) { p.size += 1; } }");
   assert.doesNotMatch(loose.tip ?? "", DMG_WORDS);
   const shape = one(env, "L007", "(p) => { for (let k = 0; k > 4; k++) { p.size += 1; } }");
@@ -46,13 +56,21 @@ test("without tips: L007's tips name no w.param, and a member bound says how a D
 });
 
 test("an Environment's tips replace the neutral ones", () => {
-  const own = { ...env, tips: { readOnly: "R", loopBound: "B", size: "S" } };
+  const own = { ...env, tips: { readOnly: "R", loopBound: "B", size: "S", topLevel: "T" } };
   assert.equal(one(own, "L013", "(p) => { p.age = 1; }").tip, "R");
+  assert.equal(topLevelStore(own, "(p) => { G = 0; }", "jet").tip, "T");
   assert.equal(one(own, "L007", "(p) => { for (let k = 0; k < $.n; k++) { p.size += 1; } }").tip, "S");
   assert.equal(one(own, "L007", "(p) => { for (let k = 0; k > 4; k++) { p.size += 1; } }").tip, "B");
 });
 
+test("without tips: a store to a top-level constant says nothing of attributes", () => {
+  const d = topLevelStore(env, "(p) => { G = 0; }", "jet");
+  assert.doesNotMatch(d.tip ?? "", /attribute|\.attr|ROM/);
+  assert.match(d.tip ?? "", /let/);
+});
+
 test("DMG keeps its own wording, word for word", () => {
+  assert.equal(topLevelStore(environment, "(self) => { G = 0; }", "Mole", "onFrame").tip, "A baked constant cannot change at run time; keep changing state in an attribute.");
   const ro = lower("(self) => { self.stay = 3; }").diagnostics.find((d) => d.code === "L013");
   assert.equal(ro?.tip, "Baked values are ROM constants and built-ins like frame belong to the runtime; declare an .attr to change it.");
   const size = lower("(self) => { for (let i = 0; i < self.ttl; i++) self.rise++; }").diagnostics.find((d) => d.code === "L007");

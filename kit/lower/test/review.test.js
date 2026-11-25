@@ -72,7 +72,7 @@ test("a method that calls itself, directly or through another, is unbounded", ()
   assert.deepEqual(codes(direct.results[0]), ["L007"]);
   const mutual = lowerProgram(environment, [m("pop", "(self) => { self.whack(); }"), m("whack", "(self) => { self.pop(); }"), onFrame]);
   assert.deepEqual(codes(mutual.results[0]), ["L007"]);
-  assert.deepEqual(codes(mutual.results[1]), ["L007"]);
+  assert.deepEqual(codes(mutual.results[1]), [], "one L007 per cycle, at its least key (review of 8ad7338, L2)");
   const chain = lowerProgram(environment, [m("pop", "(self) => { self.whack(); }"), m("whack", "(self) => { self.up = false; }"), onFrame]);
   assert.deepEqual(chain.results.map(codes), [[], [], []]);
 });

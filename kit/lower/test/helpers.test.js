@@ -91,8 +91,29 @@ test("a helper that calls itself, or through another, cannot be bounded", () => 
   const direct = lowerProgram(environment, [frame("(self, w) => { w.next = fact(5); }")], [fn("fact", "(n) => (n <= 1 ? 1 : n * fact(n - 1))")]);
   assert.deepEqual(errs(direct.helpers[0].result), ["L007"]);
   const mutual = lowerProgram(environment, [frame("(self, w) => { w.next = a(5); }")], [fn("a", "(n) => (n <= 0 ? 0 : b(n - 1))"), fn("b", "(n) => a(n)")]);
-  assert.deepEqual(errs(mutual.helpers[0].result), ["L007"]);
-  assert.deepEqual(errs(mutual.helpers[1].result), ["L007"]);
+  // one L007 per cycle (review of 8ad7338, L2), not one per helper in it
+  assert.deepEqual([...errs(mutual.helpers[0].result), ...errs(mutual.helpers[1].result), ...errs(mutual.results[0])], ["L007"]);
+  const three = lowerProgram(environment, [frame("(self, w) => { w.next = a(5); }")], [fn("a", "(n) => (n <= 0 ? 0 : b(n - 1))"), fn("b", "(n) => c(n)"), fn("c", "(n) => a(n)")]);
+  assert.deepEqual(three.helpers.flatMap((h) => errs(h.result)), ["L007"]);
+});
+
+test("a helper that returns a value on some path has no bare return (one L003, at the bare return)", () => {
+  const both = (/** @type {string} */ src) => lowerProgram(environment, [frame("(self, w) => { w.next = h(self.ttl); }")], [fn("h", src)]);
+  const mixed = both("(a) => { if (a > 1) { return 1; } return; }");
+  const d = mixed.helpers[0].result.diagnostics.filter((x) => x.code === "L003");
+  assert.equal(d.length, 1);
+  assert.match(d[0].message, /bare return gives none/);
+  assert.deepEqual(errs(mixed.results[0]), [], "callers add nothing");
+  assert.equal(mixed.sigs.methods["$.h"].returns, "f64", "the type omits void");
+  // a bare return and a fall-through is still one diagnostic
+  const open = both("(a) => { if (a > 1) { return 1; } else if (a > 0) { return; } }");
+  assert.deepEqual(errs(open.helpers[0].result), ["L003"]);
+  assert.deepEqual(errs(open.results[0]), []);
+  // a bare return first, the value later
+  assert.deepEqual(errs(both("(a) => { if (a > 1) { return; } return 1; }").helpers[0].result), ["L003"]);
+  // still fine: only bare returns, or only values
+  assert.deepEqual(errs(lowerProgram(environment, [frame("(self, w) => { h(self.ttl); }")], [fn("h", "(a) => { if (a > 1) { return; } }")]).helpers[0].result), []);
+  assert.deepEqual(errs(both("(a) => { if (a > 1) { return 1; } return 2; }").helpers[0].result), []);
 });
 
 test("a helper with effects may not be called where the slot forbids them", () => {

@@ -20,3 +20,27 @@ test("names declared once, at the top level or only below it, are no shadow", ()
   assert.deepEqual(buildTimeShadows(code), []);
   assert.deepEqual(buildTimeShadows("const a = 1; const b = 2;"), []);
 });
+
+// A helper's or a Runtime Lambda's parameter is not build-time code (review of 9dfb56b, finding H1).
+test("a top-level helper's parameter, a lambda's parameter and the export's own parameter are no shadow", () => {
+  assert.deepEqual(buildTimeShadows("const WIDTH = 80;\nconst spread = (r, WIDTH) => r * WIDTH;\nexport default ($) => b().f((p) => WIDTH);"), []);
+  assert.deepEqual(buildTimeShadows("const dt = 2;\nexport default ($) => b().force('d', (p, dt) => 1).update((p, step) => dt);"), []);
+  assert.deepEqual(buildTimeShadows("const r = 1;\nfunction area(r) { return r * r; }\nexport default () => 0;"), []);
+  assert.deepEqual(buildTimeShadows("const $ = 1;\nexport default ($) => 0;"), []);
+  assert.deepEqual(buildTimeShadows("const q = 1;\nexport default function (q) { return 0; }"), []);
+});
+
+test("a name the export's own build code declares again is still a shadow", () => {
+  assert.deepEqual(buildTimeShadows("const K = 1;\nexport default () => { const K = 2; return b(); };"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nexport default () => { function f(K) { return K; } return b(); };"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nexport default () => { try { f(); } catch (K) {} return b(); };"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nexport default () => { for (const K of xs) {} return b(); };"), ["K"]);
+});
+
+test("methods (object-literal shorthand, class) and arrow parameters after a parenthesized default are seen", () => {
+  assert.deepEqual(buildTimeShadows("const K = 1;\nconst make = { add(K) { return K; } };\nexport default () => 0;"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nclass B { add(K) { return K; } }\nexport default () => 0;"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nexport default () => { return [1].map((a = f(1), K) => K); };"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nexport default () => { return [1].map((a, K = 2) => K); };"), ["K"]);
+  assert.deepEqual(buildTimeShadows("const K = 1;\nif (K) { f(K); }\nexport default () => 0;"), []);
+});

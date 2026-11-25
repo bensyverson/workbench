@@ -168,6 +168,15 @@ export function reachable(sigs, from) {
 }
 
 /**
+ * Whether `self`, a member of a call cycle, is the one that reports it: the cycle's least key, so a cycle is one
+ * L007, not one per helper in it.
+ * @param {import("./environment.js").Signatures} sigs @param {string} self
+ */
+function firstOfCycle(sigs, self) {
+  return reachable(sigs, self).every((k) => self <= k || !reachable(sigs, k).includes(self));
+}
+
+/**
  * Where an argument is, for the program's call-site join.
  * @param {Lowerer} L
  * @param {AST.Expression} a
@@ -218,7 +227,7 @@ function methodCall(L, node, r, owner, name, args) {
   }
   // Both are reported without bailing out, so the call is still recorded and the next pass sees the same call graph.
   const self = L.slot.kind === "method" || L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;
-  if (self && reachable(L.sigs, key).includes(self)) {
+  if (self && reachable(L.sigs, key).includes(self) && firstOfCycle(L.sigs, self)) {
     L.error("L007", node, `${self} calls itself${key === self ? "" : ` through ${key}`}, so how long it runs cannot be bounded.`, "Replace the recursion with a counted for loop or a query.");
   }
   if (sig?.partial && (L.decl.forbid.length > 0 || L.pure > 0)) {
@@ -250,7 +259,7 @@ function helperCall(L, node, name, args) {
     return bad(node);
   }
   const self = L.slot.kind === "method" || L.slot.kind === "helper" ? `${L.slot.on}.${L.slot.key}` : null;
-  if (self && reachable(L.sigs, key).includes(self)) {
+  if (self && reachable(L.sigs, key).includes(self) && firstOfCycle(L.sigs, self)) {
     L.error("L007", node, `${self === key ? name : self.replace(`${HELPER_OWNER}.`, "")} calls itself${key === self ? "" : ` through ${name}`}, so how long it runs cannot be bounded.`, "Replace the recursion with a counted for loop or a query.");
   }
   // A helper that does not lower reported why at the helper; the caller has no code to call, so it has no kernel,

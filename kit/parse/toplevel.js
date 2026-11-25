@@ -306,16 +306,120 @@ export function buildTimeNames(code) {
 }
 
 /**
- * The names a file declares at its top level and again below it (a loop's `k` beside a top-level `k`, a function
- * inside the export that shares a top-level function's name). A lambda's text cannot say which one it reads, and the
- * kit resolves it to the top-level one, so the host passes these and a lambda that reads one is refused. Like
- * `buildTimeNames`, it errs toward listing.
+ * The names a file declares at its top level and again in the export's build code (a loop's `k` beside a top-level
+ * `k`, a function inside the export that shares a top-level function's name). A lambda's text cannot say which one
+ * it reads, and the kit resolves it to the top-level one, so the host passes these and a lambda that reads one is
+ * refused. Build code is the export's block body (with the locals, loop and `catch` variables and nested functions'
+ * parameters in it) and the methods the file declares; a top-level helper's parameters, a Runtime Lambda's
+ * parameters (an arrow in the export's expression, as `.update((p, dt) => …)`) and the export's own parameters
+ * are not. Like `buildTimeNames`, it errs toward listing: an arrow inside a block body counts.
  * @param {string} code
  * @returns {string[]}
  */
 export function buildTimeShadows(code) {
   const top = new Set(topLevelNames(code));
-  return [...belowTopLevel(code)].filter((n) => top.has(n));
+  return [...buildCodeNames(code)].filter((n) => top.has(n));
+}
+
+/** @typedef {{ from: number, to: number }} Extent */
+
+/** The index of the bracket that opens the one that closes at `i`, or -1. @param {string} s @param {number} i */
+function matchingBack(s, i) {
+  let depth = 0;
+  for (let j = i; j >= 0; j--) {
+    if (")]}".includes(s[j])) depth++;
+    else if ("([{".includes(s[j]) && --depth === 0) return j;
+  }
+  return -1;
+}
+
+/** Where the expression that starts at `i` ends: a `,`, `;` or closing bracket outside its own brackets. @param {string} s @param {number} i */
+function expressionEnd(s, i) {
+  let depth = 0;
+  for (let j = i; j < s.length; j++) {
+    if ("([{".includes(s[j])) depth++;
+    else if (")]}".includes(s[j])) { if (depth-- === 0) return j; }
+    else if (depth === 0 && (s[j] === "," || s[j] === ";")) return j;
+  }
+  return s.length;
+}
+
+/** Words that precede `(…) {` without making a method. */
+const NOT_METHOD = new Set(["if", "for", "while", "switch", "catch", "with", "function", "return", "typeof", "new", "else", "do", "await", "yield", "in", "of"]);
+
+/**
+ * The names the export's build code and the file's methods declare (see `buildTimeShadows`), in blanked-text terms.
+ * @param {string} code
+ * @returns {Set<string>}
+ */
+function buildCodeNames(code) {
+  const s = blank(code);
+  const atTop = new Set(topLevelKeywords(s).map((k) => k.at));
+  /** @type {Array<{ at: number, names: string[] }>} */
+  const found = [];
+  /** @type {Extent[]} */
+  const blocks = [];
+  /** @type {Extent[]} */
+  const arrows = [];
+  /** @type {Map<number, Extent>} */
+  const exportBlock = new Map();
+  const add = (/** @type {number} */ at, /** @type {string[]} */ names) => found.push({ at, names });
+  const params = (/** @type {string} */ list) => splitTopLevel(list).flatMap(patternNames);
+
+  for (const m of s.matchAll(DECL)) if (!atTop.has(m.index ?? 0)) add(m.index ?? 0, declaredNames(s, (m.index ?? 0) + m[0].length));
+  for (const m of s.matchAll(new RegExp(`${NOT_AFTER_NAME}catch\\s*\\(`, "gu"))) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    add(m.index ?? 0, params(s.slice(open + 1, matching(s, open))));
+  }
+  for (const m of s.matchAll(new RegExp(`${NOT_AFTER_NAME}function(?![\\p{ID_Continue}$])\\s*\\*?\\s*(${ID})?\\s*\\(`, "gu"))) {
+    const at = m.index ?? 0, open = at + m[0].length - 1, close = matching(s, open);
+    const brace = s.indexOf("{", close);
+    if (atTop.has(at)) continue; // a top-level helper: its parameters are not build-time code
+    add(at, [...(m[1] ? [m[1]] : []), ...params(s.slice(open + 1, close))]);
+    blocks.push({ from: at, to: brace < 0 ? s.length : matching(s, brace) });
+  }
+  // methods: `name(params) {` that is not a statement head, a function or a call
+  for (const m of s.matchAll(new RegExp(`${NOT_AFTER_NAME}(${ID})\\s*\\(`, "gu"))) {
+    const at = m.index ?? 0, open = at + m[0].length - 1;
+    if (NOT_METHOD.has(m[1]) || /(?:function\s*\*?|\.)\s*$/.test(s.slice(0, at))) continue;
+    const close = matching(s, open), brace = /^\s*\{/.exec(s.slice(close + 1));
+    if (!brace) continue;
+    const end = matching(s, close + brace[0].length);
+    add(at, params(s.slice(open + 1, close)));
+    blocks.push({ from: at, to: end });
+  }
+  for (let i = s.indexOf("=>"); i >= 0; i = s.indexOf("=>", i + 2)) {
+    let j = i - 1;
+    while (j >= 0 && /\s/.test(s[j])) j--;
+    let from = j, list = "";
+    if (s[j] === ")") { from = matchingBack(s, j); list = s.slice(from + 1, j); }
+    else { while (from > 0 && isNameUnit(s[from - 1])) from--; list = s.slice(from, j + 1); }
+    let k = i + 2;
+    while (/\s/.test(s[k] ?? "")) k++;
+    const to = s[k] === "{" ? matching(s, k) : expressionEnd(s, k);
+    if (from >= 0) { arrows.push({ from, to }); add(from, params(list)); if (s[k] === "{") exportBlock.set(from, { from: k, to }); }
+  }
+  // the export: a block body is build code; an expression body is lambdas and builder calls
+  const ex = new RegExp(`${NOT_AFTER_NAME}export\\s+default(?![\\p{ID_Continue}$])\\s*`, "u").exec(s);
+  if (ex) {
+    let i = ex.index + ex[0].length;
+    const fn = /^function(?![\p{ID_Continue}$])\s*\*?\s*(?:[\p{ID_Start}$_][\p{ID_Continue}$]*)?\s*\(/u.exec(s.slice(i));
+    if (fn) { const brace = s.indexOf("{", matching(s, i + fn[0].length - 1)); if (brace >= 0) blocks.push({ from: brace, to: matching(s, brace) }); }
+    else { const a = arrows.find((x) => x.from === i); if (a && exportBlock.has(a.from)) blocks.push(/** @type {Extent} */ (exportBlock.get(a.from))); }
+  }
+  // a position is build code when the innermost block or free-standing arrow around it is a block
+  const free = arrows.filter((a) => !blocks.some((b) => b.from <= a.from && a.to <= b.to));
+  const inside = (/** @type {Extent} */ e, /** @type {number} */ at) => e.from <= at && at <= e.to;
+  const isBuild = (/** @type {number} */ at) => {
+    const block = blocks.filter((b) => inside(b, at)).sort((a, b) => b.from - a.from)[0];
+    if (!block) return false;
+    const lambda = free.filter((a) => inside(a, at)).sort((a, b) => b.from - a.from)[0];
+    return !lambda || lambda.from < block.from;
+  };
+  /** @type {Set<string>} */
+  const names = new Set();
+  for (const f of found) if (isBuild(f.at)) for (const n of f.names) names.add(n);
+  return names;
 }
 
 /**

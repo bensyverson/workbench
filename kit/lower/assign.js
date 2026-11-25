@@ -64,7 +64,7 @@ function saved(L, e) {
 function writableLocal(L, target) {
   const b = L.lookup(target.name);
   const top = L.sigs.helpers?.[target.name];
-  if (!b && top) { L.error("L013", target, `'${target.name}' is a top-level ${top.kind === "const" ? "constant" : "function"} of the program.`, "A baked constant cannot change at run time; keep changing state in an attribute."); return null; }
+  if (!b && top) { L.error("L013", target, `'${target.name}' is a top-level ${top.kind === "const" ? "constant" : "function"} of the program.`, L.environment.tips?.topLevel ?? "A top-level binding is fixed at run time; keep what changes in a let local, or in a member the slot may write."); return null; }
   if (!b && L.environment.globals[target.name]) { L.error("L013", target, `'${target.name}' is a global of the language.`, "A global is read-only; keep what changes in a let local, or in a member the slot may write."); return null; }
   if (!b) { identifier(L, target); return null; }
   if (b.kind !== "let") { L.error("L013", target, `'${target.name}' is ${b.kind === "param" ? "a parameter" : "const"}.`, "Declare it with let to change it, or use a new name."); return null; }

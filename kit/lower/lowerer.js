@@ -4,7 +4,7 @@
 import { LineTable } from "../parse/lexer.js";
 import { handleRoles } from "./handles.js";
 
-/** @import { Diagnostic, Node, ArrowFunctionExpression } from "../parse/ast.js" */
+/** @import { Diagnostic, Node, ArrowFunctionExpression, ReturnStatement } from "../parse/ast.js" */
 /** @import { Type, Expr, Stmt, Local, Effect, EffectVerb, Span } from "../ir/ir.js" */
 /** @import { Environment, SlotRef, SlotDecl, Signatures } from "./environment.js" */
 /** @import { LowerCode } from "./codes.js" */
@@ -57,6 +57,8 @@ export class Lowerer {
     this.pure = 0;
     /** @type {Type[]} */
     this.returns = [];
+    /** The `return;` statements of an inferred-return body, for the helper check that a value path has none. @type {ReturnStatement[]} */
+    this.bareReturns = [];
     /** @type {Array<{ name: string, t: Type }>} */
     this.emits = [];
     /** @type {import("./index.js").LowerResult["calls"]} */

@@ -82,7 +82,7 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
   const L = new Lowerer(environment, src, slot, decl, sigs, ast);
   const params = bindParams(L, ast, decl);
   const body = L.capture(() => lowerBody(L, ast, decl)).stmts;
-  const open = endsOpen(L, ast, decl, body);
+  const open = bareReturnInValueHelper(L, decl) || endsOpen(L, ast, decl, body);
   const returns = decl.returns === "infer" ? inferredReturn(L, body, open) : decl.returns;
   const untyped = environment.checkAllHelpers === true && slot.kind === "helper" && params.some((p) => p.t === "unknown");
   const effects = dedupe(collectEffects(body));
@@ -159,6 +159,20 @@ function lowerBody(L, ast, decl) {
   if (decl.returns === "void") { effect(L, body); return; }
   if (decl.returns === "infer") { statement(L, { type: "ReturnStatement", argument: body, loc: body.loc, range: body.range }); return; }
   L.emit({ k: "return", value: check(L, body, decl.returns, `a ${L.slot.kind}'s result`), span });
+}
+
+/**
+ * A helper that returns a value on some path must not also have a bare `return;` (L003 at the first one, so one
+ * mistake is one diagnostic: the helper's type then leaves out void, and neither a caller nor the fall-through check
+ * adds a second). A method keeps its optional type.
+ * @param {Lowerer} L @param {SlotDecl} decl
+ * @returns {boolean}  whether it reported
+ */
+function bareReturnInValueHelper(L, decl) {
+  if (decl.returns !== "infer" || L.slot.kind !== "helper" || !L.bareReturns.length || !L.returns.some((t) => t !== "void")) return false;
+  L.error("L003", L.bareReturns[0], `This helper (${L.slot.key}) returns a value on some paths, but this bare return gives none.`, "Return a value here too, or return nothing on every path.");
+  L.returns = L.returns.filter((t) => t !== "void");
+  return true;
 }
 
 /**

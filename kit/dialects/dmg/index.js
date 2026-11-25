@@ -23,6 +23,7 @@ const DMG_TIPS = Object.freeze({
   readOnly: "Baked values are ROM constants and built-ins like frame belong to the runtime; declare an .attr to change it.",
   loopBound: "Count with for (let i = 0; i < n; i++), starting from an integer or a param, where n is a constant, a param such as w.param(\"n\"), or a list's length, and leave i alone in the body.",
   size: "Bound the loop by a constant, a list's length, or a member its Dialect declares a size (such as a param with a small max).",
+  topLevel: "A baked constant cannot change at run time; keep changing state in an attribute.",
 });
 
 const F64 = /** @type {Type} */ ("f64");

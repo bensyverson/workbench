@@ -139,6 +139,8 @@ export interface EnvironmentTips {
   loopBound?: string;
   /** L007, a loop bounded by a read-only member that is not a size: what may bound a loop here. */
   size?: string;
+  /** L013, a store to a top-level constant or function of the program: how to keep a changing value in this Dialect. */
+  topLevel?: string;
 }
 
 /** What lowering inferred across a whole program: event payloads and method signatures. */

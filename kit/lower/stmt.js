@@ -210,7 +210,7 @@ function forStatement(L, node) {
       if (b?.k === "load") {
         // A read-only member (a Definition API param such as $.n) could hold any number unless its Dialect declares it a size.
         const written = L.src.slice(boundNode.range[0], boundNode.range[1]);
-        L.error("L007", boundNode, `'${written}' is not declared a size, so it could hold any number and the loop might not end.`, L.environment.tips?.size ?? "Bound the loop by a constant or a list's length. A member bounds it only when its Dialect declares it a size, { value: \"f64\", size: true }, such as a param with a small max.");
+        L.error("L007", boundNode, `'${written}' is not declared a size, so it could hold any number and the loop might not end.`, L.environment.tips?.size ?? "Bound the loop by a constant or a list's length. A member can bound it only when the Dialect's author declares it a size, { value: \"f64\", size: true }; until then, count to a constant.");
       } else L.error("L007", boundNode, "This loop's bound is not a constant, a param or a declared size.", tip);
       return;
     }
@@ -281,6 +281,7 @@ function returnStatement(L, node) {
       for (const before of L.returns) if (clash(L, node, before, v.t, "This return and an earlier return are", null, text)) break;
     }
     L.returns.push(v ? v.t : "void");
+    if (!v) L.bareReturns.push(node);
     L.emit({ k: "return", value: v, span });
     return;
   }
