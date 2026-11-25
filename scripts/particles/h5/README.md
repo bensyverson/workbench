@@ -7,7 +7,7 @@ H5 (M3, leaf `3Cd9hb`): fresh agents build the particles language from [kit/STAR
 | `brief.md` | the brief each agent got, word for word |
 | `run.sh` | sets up one agent's directory (`START.md`, `API.md`, `dream-code.md`, `check.sh`) and runs `claude -p` there with the brief: Bash, Read, Write, Edit, Glob and Grep allowed; web, subagents and MCP servers off |
 | `summarize.js` | per directory: model, turns, time, tokens, tool calls, every Read, every call that touched a path outside the directory, checker runs and the first clean run |
-| `runs/<date>/agent-x/` | the record: each agent's definitions (and any module of its own), examples, `REPORT.md`, and `log.jsonl.gz` and `transcript.jsonl.gz` (gzipped; `gunzip -k` them into a scratch copy before `summarize.js`). The first run, 2026-11-25, is [project/2026-11-25-h5-run.md](../../../project/2026-11-25-h5-run.md) |
+| `runs/<date>/agent-x/` | the record: each agent's definitions (and any module of its own), examples, `REPORT.md`, and `log.jsonl.gz` and `transcript.jsonl.gz` (gzipped; `gunzip -k` them into a scratch copy before `summarize.js`). The first run, 2026-11-25, is [project/2026-11-25-h5-run.md](../../../project/2026-11-25-h5-run.md); the rerun after the rulings, `runs/2026-11-25-rerun/`, is [project/2026-11-25-h5-rerun.md](../../../project/2026-11-25-h5-rerun.md). From the rerun on, each recorded log line keeps only the files that changed since that file was last logged (`filesPresent` lists them all), since probe loops of a thousand checker runs otherwise repeat every file each time |
 
 ## Usage
 
