@@ -205,7 +205,15 @@ function forStatement(L, node) {
     const cond = test(L, t);
     if (L.out.length > mark) { L.error("L007", t, "This loop's test needs statements of its own.", tip); return; }
     const bound = boundOf(cond);
-    if (!bound) { L.error("L007", boundNode, "This loop's bound is not a constant, a param or a declared size.", tip); return; }
+    if (!bound) {
+      const b = cond.k === "op" ? cond.args[1] : null;
+      if (b?.k === "load") {
+        // A read-only member (a Definition API param such as $.n) could hold any number unless its Dialect declares it a size.
+        const written = L.src.slice(boundNode.range[0], boundNode.range[1]);
+        L.error("L007", boundNode, `'${written}' is not declared a size, so it could hold any number and the loop might not end.`, "Bound the loop by a constant, a list's length, or a member its Dialect declares a size (such as a param with a small max).");
+      } else L.error("L007", boundNode, "This loop's bound is not a constant, a param or a declared size.", tip);
+      return;
+    }
     const step = L.capture(() => effect(L, u)).stmts;
     const body = L.capture(() => statement(L, node.body)).stmts;
     L.emit({ k: "for", name, init: start, test: cond, update: step, body, bound, span: spanOf(node) });

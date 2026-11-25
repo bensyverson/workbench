@@ -156,3 +156,17 @@ for (const [what, src] of [
     assert.equal(r.results[0].ok, false);
   });
 }
+
+// 3YNVB3 item 7 (trial 4): a loop bounded by a Definition API param (`$.n`, a read-only member, not DMG's
+// w.param("n")) was told the bound "is not a constant, a param or a declared size", which reads as wrong.
+test("L007 for a read-only member bound names it and says it is not declared a size", () => {
+  /** @type {Environment} */
+  const withParams = { ...env, globals: { ...env.globals, $: { obj: "Params" } }, objects: { ...env.objects, Params: { label: "the params ($)", members: { n: { kind: "value", t: "f64" } } } } };
+  const r = lowerLambda(withParams, "(p, dt) => { for (let k = 0; k < $.n; k++) { p.size += 1; } }", { id: "update#0", kind: "update", on: "jet" });
+  const d = r.diagnostics.find((x) => x.code === "L007");
+  assert.ok(d);
+  assert.match(d.message, /'\$\.n'/);
+  assert.match(d.message, /not declared a size/);
+  assert.doesNotMatch(d.message, /not a constant, a param/);
+  assert.match(d.tip, /constant|length/);
+});
