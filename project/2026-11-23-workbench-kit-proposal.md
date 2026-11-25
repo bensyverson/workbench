@@ -115,6 +115,8 @@ core IR        types · functions · kernels · effects · declarations · spans
 
 JavaScript is the first front end. YAML and canvas editing lower into the same IR and write back to source through spans; they come later.
 
+> **Corrected 2026-11-25 (M3):** the "analyses, optimisations" arrow is half built. `kit/query` answers read-only questions over Kernels (who writes a place, what a region reads, purity), and the GLSL capability check uses it. There is no pass manager and no pass, so nothing optimizes the IR, and H11 is untested. See [the M3 findings](2026-11-25-m3-findings.md), H11.
+
 ### 5.2 What is in the core
 
 | Category | Members |
@@ -129,6 +131,13 @@ JavaScript is the first front end. YAML and canvas editing lower into the same I
 The whole IR has a JSON form that is diffable and readable by the agent.
 
 > **Corrected 2026-11-23 (M2):** the Types row lists more than the core has. M2 added `f32` and the vectors `vec2` to `vec4` of a scalar type (a Dialect's `color` or `vec2` is a nominal name over one); the core has **no** matrices, fixed-point values or fixed-length arrays as value types, integer sizes live on stores only, and there is no integer arithmetic (a shader's integer hash is an intrinsic, `ihash`). The table also omits a setting every Dialect needs: the **default number type** (`numberType`, DMG `f64`, fields `f32`), which M1 had hard-wired as `f64` in lowering and the verifier. And "each numeric type states its overflow rule" holds for stored integers only; `f32` has a rounding rule, not an overflow one. See [the M2 findings](2026-11-23-m2-findings.md), H2.
+
+> **Corrected 2026-11-25 (M3):** the core gained three more things.
+> - A **nominal scalar** over f64 (`{ scalar: "date", of: "f64" }`, the data Dialect's date), which compares only with its own kind.
+> - For effects: a **`bump` statement**, a **total** place and a **`value` store rule**, so a per-instance lambda can add to a shared counter (particles).
+> - A slot's **`may`** list. It judges a lambda's effects against what the slot allows, which turns the Effects row's "recorded" into "checked per slot".
+>
+> Entities, tables and queries are still not in the core (§5.3), and a data table's algebra (`groupBy`, `join`, `sort`) is not in the IR at all. See [the M3 findings](2026-11-25-m3-findings.md), H2.
 
 ### 5.3 What is deliberately not in the core
 
@@ -322,6 +331,15 @@ Intrinsics written in the subset itself (`impl: "lib/fbm.js"`) reach every backe
 
 > **Corrected 2026-11-23 (M2):** this fluent `Dialect(...)` sketch was not built. The fields Dialect is hand-written data (`FIELDS_DIALECT` in `kit/dialects/fields/index.js`), an Environment function, a hand-written `field(name)` builder and `lowerField`; the generic Definition API is M3's. What the build changed against the sketch: (a) `.type("vec2", { of, n })` is a table of nominal vector types (`vec3` and `color` share one shape and never join); (b) `.domain` is an **Iteration Space** and the Kernel field is `space`; (c) the Dialect declares a **default number type** (`numberType: "f32"`), which the sketch lacks and the core needed; (d) an intrinsic's signature can limit a type variable to numbers or vectors (`numeric`), so `mix` and `length` are generic; (e) `impl: "lib/fbm.js"` became the **Library**, intrinsics written as Runtime Subset source in `library.js` and lowered like helpers; (f) `compare: "tolerance"` names no figure: the figure (`GLSL_TOLERANCE`, 1e-3) lives in `kit/harness/tolerance.js` and should move to the target; (g) no forbidden calls (every slot's `forbid` list is empty; `Math` is simply not a name, L001), no `.check`, no `texture` or `sample`, and no `tick` space. See [the M2 findings](2026-11-23-m2-findings.md), "What M3 should change".
 
+> **Corrected 2026-11-25 (M3):** the Definition API is built, as data rather than a fluent chain. `defineDialect({ name, numberType, types, objects, spaces, slots, intrinsics, library, targets, … })` returns a Dialect value that yields the Environment, the intrinsic table and the Library ([kit/define](../kit/define/README.md); [kit/API.md](../kit/API.md)). Against the sketch:
+> - `.domain` is `spaces` plus `slots`, with an instance object and a `may` list of allowed effects;
+> - `compare` takes a figure, `tolerance(1e-3)`, on the GLSL target;
+> - `.forbid` is an object's `rejected` entry, with a message and a fix;
+> - there is no `.check`: domain checks are the Grammar's `check` functions;
+> - a Dialect may opt into strictness (`conditions: "bool"`, `vector(…, { multiply: "scalar" })`, `helpers: { check: "all" }`).
+>
+> fields, data and particles are declared this way. DMG is not. See [the M3 findings](2026-11-25-m3-findings.md), H4.
+
 ### 8.2 Grammar
 
 The fluent vocabulary is declared, not hand-written. Each construct lists its slots, and each lambda slot says whether it is build-time or runtime and which domain it runs over.
@@ -346,6 +364,15 @@ From this the kit generates:
 - the language reference, the graph legend and the agent's prompt
 
 Fragments are mixins over constructs. A grammar that does not fit this shape can still supply hand-written builders that produce the same IR nodes.
+
+> **Corrected 2026-11-25 (M3):** the Grammar half is built as `defineGrammar(dialect, { root, params, constructs })`. A construct has opening arguments, slots and child constructs (`required`, names unique per instance). Its slots are decls, with `lambda(slot)` as an argument spec for a Runtime Lambda. It may carry state through `step`, so a table's columns follow each lambda's inferred type. The generated builder refuses misuse at `.build()` with a code, a line, a did-you-mean and a fix (B001–B017).
+>
+> Not built:
+> - fragments and mixins;
+> - build-time lambda slots: binding-time params cover what `bake` was for, by recording which params build-time code read;
+> - a generated language reference, legend or prompt.
+>
+> Three Grammars (fields, data, particles) needed no hand-written builder. DMG's was not attempted, so H4 is untested against it. See [the M3 findings](2026-11-25-m3-findings.md), H4.
 
 > **To be superseded (ruled 2026-11-24):** the `live: true` flag below gives way to binding time: a parameter read by build-time code is folded and changing it rebuilds; one read inside a Kernel stays a uniform. The kit records which, so "live" becomes a derived fact. See [the architecture synthesis](2026-11-24-architecture-synthesis.md), §3.1.
 
@@ -469,6 +496,8 @@ A build step bundles a workbench into an artifact: either several files, or one 
 
 Budgets are enforced by the kit's own tests. Kit size is tracked but does not count, because the agent never reads it.
 
+> **Corrected 2026-11-25 (M3):** the budgets did not hold as written. There is no `hello`: Ben ruled that API.md's worked example replaces it. START.md and API.md together are 7,994 tokens (`node scripts/api-pilot/count-tokens.js kit/START.md kit/API.md`), against H5's 8,000, not 1,500 + 4,000. No test enforces a budget: counting needs the token-counting API. See [the M3 findings](2026-11-25-m3-findings.md), H5.
+
 ### 11.3 The loop
 
 ```
@@ -560,6 +589,9 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 | H10 | The IR earns its keep | Remove direct closure execution from one workbench | Something visible depended on it |
 | H11 | Dialects can own their passes | A fresh agent writes a correct domain pass against the query and pass API from the documentation alone (added 2026-11-23) | It has to read kit source, or its passes pass the verifier but break the differential check |
 
+
+> **After M3 (2026-11-25):** H2 is supported for four Dialects. The core stayed neutral, effects gained a second user, and the IR carries only the data Dialect's row lambdas (7 of 21 table calls). H4 is not tested against DMG, but three Grammars generated with no hand-written builder. H5 holds for building a language: six blind agents on three tiers, with no kit source read and no builder hand-written. It does not hold for a sheet's full strictness, since three agents wrote parsers for rules the API cannot say. H11 is not tested. See [the M3 findings](2026-11-25-m3-findings.md).
+
 ---
 
 ## 15. Roadmap
@@ -579,6 +611,16 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 > **Corrected 2026-11-23 (M2):** M2 is done. One fields source drives the reference interpreter, emitted JS (identical bits) and emitted GLSL ES 3.00 (within 2.19e-4 per component on one GPU), with a pixel debugger. H2 is supported for two Dialects at the cost of changes to 14 existing source files (the "one change to the core" in the plan was wrong), and H3 is provisional. H2's test says "three dialects, one of each kind": M2 tried two. See [the M2 findings](2026-11-23-m2-findings.md).
 
 > **Revised 2026-11-24 (Ben, after the architecture review):** a **Composition** milestone follows M3, ahead of form and book, which move down one (M4 Composition, M5 Form and book, M6 More backends, M7 Regenerate). It covers dialects as packages loaded from a repo, a path or an upload; seam types, ports, clocks, a snapshot scheduler and frames; a build record that can say why something rebuilt; and one workbench composed from two dialects written in separate sessions. M3 also gains a required text view, binding-time parameters and module-scope resolution in the Definition API. See [the architecture synthesis](2026-11-24-architecture-synthesis.md), §6.
+
+
+> **Corrected 2026-11-25 (M3):** M3 is done. Built:
+> - a Definition API that declares a Dialect as data and generates its builder (fields, data, particles);
+> - per-slot effects;
+> - binding-time params, module scope and a required text view;
+> - read-only Kernel queries;
+> - START.md and API.md (7,994 tokens).
+>
+> The done-when ran on particles, a stateful fourth domain, not on data tools. Not done: the DMG re-declaration, passes and H11, and the SQL plugin (void). See [the M3 findings](2026-11-25-m3-findings.md).
 
 The thin slices come before the kit extraction on purpose. If the subset is uncomfortable to write in, we should learn that before building a kit around it.
 

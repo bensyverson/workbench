@@ -44,6 +44,8 @@ A uniform node list (id, kind, declared data, span, phase, owned Kernels) that D
 
 A way for a Dialect to add a pass above the core, gated by the verifier and the differential check. Parked because nothing consumes an optimization yet (the JS backend is DMG's only backend). Un-park when the Kernel queries have a real client and a backend wants a transformation; H11 is "not tested" in M3 until then. This extends the 2026-11-23 query and pass API entry, whose un-park trigger ("start of M3") fired and was answered: queries only, and only with a client (rewrite `kit/emit/glsl/capabilities.js` on them, or the data Dialect's "which params does this lambda read"). Job xMYcAM.
 
+> **2026-11-25 ([the M3 findings](2026-11-25-m3-findings.md)):** half the trigger fired. The queries have a client, since the GLSL capability check reads `kit/query` (`cbe32a0`). No backend wants a transformation yet, so this stays parked.
+
 ## 2026-11-24: re-declaring DMG through the Definition API
 
 The kit has no DMG Grammar: `kit/dialects/dmg` is only the Environment, derived from declarations extracted from the original builder; the builder (about 145 lines) and `compile()` (about 230) live in the original HTML, and the delivery decisions forbid copying them. Re-declaring DMG means writing a DMG builder from scratch (9 injected globals, `art` templates, the nested `board(b => ...)`, `timer`'s optional middle argument, aliases, fragment merge order, `bake`). It is M3's largest possible leaf and the place an API would bloat. Parked until the minimal Grammar is proved on fields and the data Dialect. The M1 survey (126/111/7/4/4), goldens and differential run read lambdas from the original builder, so they are regression checks, not H4 evidence; pointing them at a generated builder's record would make them evidence. Job Ieojrm.
@@ -92,6 +94,8 @@ A `default` on a `once` slot, so the record carries the value when the slot is n
 
 > **2026-11-25:** the H5 run hit it again (agent F: `tick` 1/60, `seed` 0); still parked (Ben, decision `MpZZsU`).
 
+> **2026-11-25, the [H5 rerun](2026-11-25-h5-rerun.md):** asked again by E and F.
+
 ## 2026-11-24: may a cave's `.carve` read another part's output?
 
 The composition checker's open question: `scripts/compose-trial/docs/cave.md` says the cave re-runs when its `.seed()` lambda reads another part's output (`game.out`), but does not say whether `.carve` may. Parked by Ben (2026-11-24) because no composition rerun is scheduled. Un-park when one is, and settle it before it runs ([composition trial](2026-11-24-composition-trial.md)).
@@ -105,6 +109,8 @@ The review of `c189880` found that the scan in `kit/parse/blank.js` and `topleve
 A Dialect declaration that makes the shared Runtime Subset narrower (no `==`, no strings, no arrays, no `**`, reserved global names), which six blind hidden particles rejects need (r21b, r21c, r21s, r21u, r21l, r21n; [trial 4](2026-11-25-definition-api-trial-4.md)). Parked by Ben (2026-11-25): those bans are the sheet's taste, and hardware limits are already per-target capability refusals and store rules, so the six are out of H5's scope instead. The version worth building, if any: derive the narrowing from the intersection of what a Dialect's declared targets can compile, so an author learns of a GLSL refusal while writing, with no new API. **Un-park when** a Dialect author asks to learn of a target's refusals at authoring time, or a second domain's sheet needs a narrower subset for a reason other than taste.
 
 > **2026-11-25:** the H5 run hit it again (agents C, E, F; the seven excluded rejects); still parked (Ben, decision `MpZZsU`).
+
+> **2026-11-25, the [H5 rerun](2026-11-25-h5-rerun.md):** this is now the main reason agents write their own parsers. A, B, C and D enforced it, three of them with a tokenizer or parser of 320–560 lines, and E and F named it. It is Ben's call in the rerun's "For Ben".
 
 ## 2026-11-25: machine-checked guarantees in Lean, for the kit and for whole Programs
 
@@ -122,6 +128,10 @@ A range for every number in a Kernel, computed over the interval lattice: a colo
 
 The particles sheet refuses a lambda given through a variable or as source text (hidden r22l); a lambda slot accepts a named top-level arrow or a string today, and the builder sees only the function value, so telling the forms apart needs the file's text at the call. Three H5 agents asked for `lambda(conv, { inline: true })` ([project/2026-11-25-h5-run.md](2026-11-25-h5-run.md)). Parked (Ben, 2026-11-25, decision `MpZZsU`): rare, and r22l is out of H5's scope. **Un-park when** a second Dialect needs it, or the host gains call-site source spans that make it cheap.
 
+> **2026-11-25, the [H5 rerun](2026-11-25-h5-rerun.md):** four of six agents (A, B, C, D) enforced it by matching source text; D's version refuses an inline lambda identical to an uncalled helper.
+
 ## 2026-11-25: handles that are never passed whole
 
 API.md lets a handle be passed whole as any call's argument, so `h($)` and `h(counters)` type-check where the particles sheet refuses them (refusals 21 and 25). Two H5 agents asked for a handle flag, "never passed whole" ([project/2026-11-25-h5-run.md](2026-11-25-h5-run.md)). Parked (Ben, 2026-11-25, decision `MpZZsU`). **Un-park when** a hidden program or a second Dialect needs it, or the narrower Runtime Subset (above) is designed, which would decide it with the same mechanism.
+
+> **2026-11-25, the [H5 rerun](2026-11-25-h5-rerun.md):** one agent (B) enforced it with a regex.
