@@ -7,7 +7,7 @@ H5 (M3, leaf `3Cd9hb`): fresh agents build the particles language from [kit/STAR
 | `brief.md` | the brief each agent got, word for word |
 | `run.sh` | sets up one agent's directory (`START.md`, `API.md`, `dream-code.md`, `check.sh`) and runs `claude -p` there with the brief: Bash, Read, Write, Edit, Glob and Grep allowed; web, subagents and MCP servers off |
 | `summarize.js` | per directory: model, turns, time, tokens, tool calls, every Read, every call that touched a path outside the directory, checker runs and the first clean run |
-| `runs/<date>/agent-x/` | the record: each agent's definitions, examples, `REPORT.md`, `log.jsonl` and `transcript.jsonl` |
+| `runs/<date>/agent-x/` | the record: each agent's definitions (and any module of its own), examples, `REPORT.md`, and `log.jsonl.gz` and `transcript.jsonl.gz` (gzipped; `gunzip -k` them into a scratch copy before `summarize.js`). The first run, 2026-11-25, is [project/2026-11-25-h5-run.md](../../../project/2026-11-25-h5-run.md) |
 
 ## Usage
 
@@ -19,4 +19,4 @@ node scripts/api-pilot/score.js /private/tmp/<job>-h5/agent-a scripts/particles/
 
 The directory must lie outside the repository and outside `~/.claude` (a blind run cannot write there: project/gotchas.md); `run.sh` refuses either. Its Bash runs unsandboxed, since `claude` and the checker need the home directory. The H5 score leaves out seven hidden rejects (r21b, r21c, r21s, r21u, r21l, r21n, r22l; [hidden/README.md](../hidden/README.md)): report the score over the rest, and those seven separately.
 
-`summarize.js` flags a Bash command as outside when it names an absolute path not under the directory (system binaries aside), climbs out with `..`, or names `~`; it lists every Bash command it flags whole, so the reader judges. A path built some other way (a variable, `cd` then a relative path) is not caught: read the flagged list and skim the transcript's Bash calls.
+`summarize.js` flags a Bash command as outside when it names an absolute path not under the directory (system binaries aside), climbs out with `..`, or names `~`; it lists every Bash command it flags whole, so the reader judges. A path built some other way (a variable, `cd` then a relative path) is not caught: read the flagged list and skim the transcript's Bash calls. It also over-flags: a heredoc that writes `import … from "../particles.grammar.js"` counts as climbing out, so in the first run nearly every agent was flagged. The check that settled it was a scan of every tool input for a repository path (`/Users/`, `workbench`, `kit/define/`), which found none.
