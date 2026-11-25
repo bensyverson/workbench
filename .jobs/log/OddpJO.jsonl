@@ -749,3 +749,10 @@
 {"v":1,"rep":"OddpJO","seq":749,"ts":1795574532232,"actor":"claude","type":"labeled","task":"CmIJKc","data":{"names":["reviewed"],"existing":[]}}
 {"v":1,"rep":"OddpJO","seq":750,"ts":1795574532233,"actor":"claude","type":"labeled","task":"AkBOlK","data":{"names":["reviewed"],"existing":[]}}
 {"v":1,"rep":"OddpJO","seq":751,"ts":1795574532234,"actor":"claude","type":"labeled","task":"EwxjrV","data":{"names":["reviewed"],"existing":[]}}
+{"v":1,"rep":"OddpJO","seq":752,"ts":1795574569432,"actor":"lows-fixer","type":"claimed","task":"cKtlR4","data":{"duration":"30m","expires_at":1795576369}}
+{"v":1,"rep":"OddpJO","seq":753,"ts":1795574576850,"actor":"sheet-writer","type":"claimed","task":"6VctPg","data":{"duration":"2h","expires_at":1795581776}}
+{"v":1,"rep":"OddpJO","seq":754,"ts":1795574658091,"actor":"lows-fixer","type":"released","task":"cKtlR4","data":{"was_claimed_by":"lows-fixer","was_expires_at":1795576369}}
+{"v":1,"rep":"OddpJO","seq":755,"ts":1795574695992,"actor":"claude","type":"criterion_state","task":"cKtlR4","data":{"label":"Each probe's case is a kept test, red first, and passes","state":"passed","prior":"pending","short_id":"9xf"}}
+{"v":1,"rep":"OddpJO","seq":756,"ts":1795574696001,"actor":"claude","type":"done","task":"cKtlR4","data":{"note":"Fixed in 5167587.","cascade":false,"criteria_bulk_state":"passed","was_status":"available"}}
+{"v":1,"rep":"OddpJO","seq":757,"ts":1795574748069,"actor":"sheet-writer","type":"noted","task":"6VctPg","data":{"text":"sheet-writer: drafted scripts/particles/docs/dream-code.md (worktree agent-ae881bcef69a5fd35) with 20 refusals, plus scripts/particles/README.md. Choices stated in the sheet: no spawn verb in lambdas (emitters are the only source); spawn may not kill; rng only directly in spawn; force writes vel only; no lambda writes age; whole-field writes only (p.vel.x = 0 refused); helpers are pure. Not yet through its blind readers."}}
+{"v":1,"rep":"OddpJO","seq":758,"ts":1795574748123,"actor":"sheet-writer","type":"released","task":"6VctPg","data":{"was_claimed_by":"sheet-writer","was_expires_at":1795581776}}
