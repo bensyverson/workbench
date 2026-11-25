@@ -50,11 +50,15 @@ test("a caller's effects include the helper's, and a helper may take the world",
   assert.ok(r.results[0].effects.includes("call bump"));
 });
 
-test("a helper is checked against the subset, and a caller of one that does not lower fails", () => {
+// Changed 2026-11-25 (leaf 8vQJOw): the caller used to add an L014 naming the helper, a second diagnostic for the
+// helper's one mistake; now it has no kernel and names the helper in blockedBy, and only the helper reports.
+test("a helper is checked against the subset, and a caller of one that does not lower fails without a second diagnostic", () => {
   const r = lowerProgram(environment, [frame("(self, w) => { self.ttl = spin(3); }")], [fn("spin", "(n) => { while (n > 0) n--; return n; }")]);
   assert.deepEqual(errs(r.helpers[0].result), ["S101"]);
-  assert.deepEqual(errs(r.results[0]), ["L014"]);
-  assert.match(r.results[0].diagnostics[0].message, /spin/);
+  assert.deepEqual(errs(r.results[0]), []);
+  assert.equal(r.results[0].ok, false);
+  assert.equal(r.results[0].kernel, null);
+  assert.deepEqual(r.results[0].blockedBy, ["spin"]);
 });
 
 test("call sites that disagree on a parameter's type are one error at the later one", () => {
@@ -164,7 +168,9 @@ test("a pure helper may be called inside a query callback; one with an effect ma
   const impure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(o) => { o.ttl = 1; return 1; }")]);
   assert.deepEqual(lambdaErrors(impure)[0], ["L006"]);
   const unknown = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(x) => nope")]);
-  assert.deepEqual(lambdaErrors(unknown)[0], ["L014"], "a helper that does not lower is still unknown");
+  // Changed 2026-11-25 (leaf 8vQJOw): was L014 at the caller; the helper's own L001 is the one diagnostic now.
+  assert.deepEqual(lambdaErrors(unknown)[0], [], "the helper reports its own mistake");
+  assert.equal(unknown.results[0].kernel, null, "a caller of a helper that does not lower has no kernel");
 });
 
 test("a list or struct value has no identity: === and !== on one are L003, baked or not", () => {

@@ -27,7 +27,8 @@ export const switches = { verify: false };
 /**
  * @typedef {object} LowerResult
  * @property {boolean} ok
- * @property {Kernel | null} kernel  Null when any diagnostic is an error.
+ * @property {Kernel | null} kernel  Null when any diagnostic is an error, or when it calls a helper that does not lower.
+ * @property {string[]} [blockedBy]  The helpers it calls that do not lower: its own diagnostics are clean, but it has no kernel, since the helper's code would not exist (the helper's diagnostics say why).
  * @property {Diagnostic[]} diagnostics  Parser, subset and lowering diagnostics, in source order.
  * @property {Array<{ name: string, t: Type }>} emits  Event payloads this lambda sends.
  * @property {CallSite[]} calls  Program methods and helpers it calls, with argument types.
@@ -94,9 +95,10 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
       L.diagnostics.push({ code: d.code, severity: "error", message: d.message, tip: `This is a bug in the kit, not in the program (at ${d.path || "the kernel"}).`, loc: { start: L.lines.at(start), end: L.lines.at(end) }, range: [start, end] });
     }
   }
-  const kernel = L.failed ? null : made;
+  const blocked = L.blockedBy.size > 0;
+  const kernel = L.failed || blocked ? null : made;
   const diagnostics = [...subset, ...L.diagnostics].sort((a, b) => a.range[0] - b.range[0]);
-  return { ok: !L.failed, kernel, diagnostics, emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t), arity: Math.max(0, ast.params.length - decl.params.length) };
+  return { ok: !L.failed && !blocked, kernel, diagnostics, ...(blocked ? { blockedBy: [...L.blockedBy] } : {}), emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t), arity: Math.max(0, ast.params.length - decl.params.length) };
 }
 
 /**

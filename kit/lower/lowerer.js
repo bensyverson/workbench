@@ -73,6 +73,8 @@ export class Lowerer {
     this.handleRoles = handleRoles(ast);
     /** @type {Set<string>} the expressions already refused L018 for a handle, by name and range */
     this.handleRefused = new Set();
+    /** @type {Set<string>} helpers this lambda calls that do not lower: it gets no kernel, and no diagnostic of its own for that */
+    this.blockedBy = new Set();
   }
 
   /**
@@ -241,7 +243,27 @@ export class Lowerer {
   }
 
   /**
-   * Reports effects this position may not have: state changes inside a query callback, or verbs the slot forbids.
+   * Judges one effect against the slot's `may`: a read of a total the slot may bump is L017 (whichever order the host
+   * runs instances in would show), anything `may` does not list is L004.
+   * @param {Effect} effect @param {EffectVerb} verb @param {Span} span
+   */
+  checkMay(effect, verb, span) {
+    const may = /** @type {string[]} */ (this.decl.may);
+    const target = effect.slice(verb.length + 1);
+    if (verb === "read" && target && may.some((m) => mayMatch(m, `bump ${target}`))) {
+      const written = this.src.slice(span[0], span[1]);
+      this.error("L017", span, `'${written}' is a total this ${this.slot.kind} may bump, so it may not read it.`, `A slot that bumps a total never reads it, so the order instances run in cannot show; read it in a slot that does not bump it.`);
+      return;
+    }
+    if (may.some((m) => mayMatch(m, effect))) return;
+    const helper = this.slot.kind === "helper";
+    const allowed = may.length ? `it may only ${may.map((m) => `'${m}'`).join(", ")}` : "it may do nothing but compute";
+    this.error("L004", span, `${helper ? `The helper ${this.slot.key}` : `A ${this.slot.kind}`} may not '${effect}'.`, helper ? `A helper may only read (${may.join(", ") || "nothing"}); do the change in the lambda that calls it.` : `${allowed[0].toUpperCase()}${allowed.slice(1)}.`);
+  }
+
+  /**
+   * Reports effects this position may not have: state changes inside a query callback, verbs the slot forbids, and
+   * effects outside its `may`.
    * @param {Effect[]} effects
    * @param {Span} span
    */
@@ -252,12 +274,28 @@ export class Lowerer {
       if (this.pure > 0 && !PURE.has(verb) && verb !== "call") {
         this.error("L006", span, `A query callback must be pure, but this has the effect '${effect}'.`, "Keep callbacks pure: compute the effect after the query, from its result.");
       }
+      if (this.decl.may && verb !== "call") this.checkMay(effect, verb, span);
       if (this.decl.forbid.includes(verb)) {
         const why = this.decl.forbidWhy ?? `a ${this.slot.kind} does not allow ${verb}`;
         this.error("L004", span, `A ${this.slot.kind} may not '${effect}'.`, this.decl.forbidMove ? `${this.decl.forbidMove}: ${why}.` : `${why[0].toUpperCase()}${why.slice(1)}.`);
       }
     }
   }
+}
+
+/**
+ * Whether a `may` pattern allows an effect: the same verb, and the pattern's target absent, the same, or holding it.
+ * @param {string} pattern @param {string} effect
+ */
+export function mayMatch(pattern, effect) {
+  const [pv, pt = ""] = splitVerb(pattern), [ev, et = ""] = splitVerb(effect);
+  return pv === ev && (pt === "" || et === pt || et.startsWith(`${pt}.`));
+}
+
+/** @param {string} s */
+function splitVerb(s) {
+  const at = s.indexOf(" ");
+  return at < 0 ? [s] : [s.slice(0, at), s.slice(at + 1)];
 }
 
 /**

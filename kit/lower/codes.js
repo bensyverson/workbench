@@ -19,6 +19,7 @@ export const LOWER_CODES = Object.freeze({
   L014: "A signature lowering cannot infer, that call sites disagree on, or whose effects are unknown",
   L015: "The wrong number of arguments",
   L016: "A number literal no number type can hold: not finite (1e999), or past f32's finite range where it is an f32",
+  L017: "A total changed other than by a += <number> or ++ statement, a bump used as a value, or a total read in a slot that may bump it",
   L018: "A handle the language hands a lambda (a slot parameter or global of object type, or a helper's parameter of object type) used other than as h.member, h.method(…), h(…) when callable, or passed whole as a call's argument; a callable handle passed",
 });
 

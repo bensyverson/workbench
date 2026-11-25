@@ -24,9 +24,10 @@ export type Member =
   /**
    * A field. Writable when `store` is present; `effect` is what a read records. `size` declares a
    * read-only number that stays small for the whole run (a grid's rows, a param's capped max), so a
-   * loop `i < it` ends: being read-only is not enough (`w.frame` never stops growing).
+   * loop `i < it` ends: being read-only is not enough (`w.frame` never stops growing). `bump` makes an f64 a
+   * total: changed only by a `+=` or `++` statement, which lowers to the IR's bump; never with `store`.
    */
-  | { kind: "value"; t: Type; store?: Coerce; effect?: Effect; size?: boolean }
+  | { kind: "value"; t: Type; store?: Coerce; effect?: Effect; size?: boolean; bump?: true }
   | ({ kind: "fn" } & FnSig)
   /**
    * The first argument must be a string literal naming one of `keys` (a param, a
@@ -74,6 +75,12 @@ export interface SlotDecl {
   space: string;
   /** Effect verbs this slot may not perform, e.g. writes during render. */
   forbid: EffectVerb[];
+  /**
+   * When present, the effects this slot's lambda may have, as patterns: `verb`, `verb Obj` or `verb Obj.member`,
+   * each matching its verb on that target or inside it. Any other effect (but `call`, which only marks a call) is
+   * L004; a read of a total this slot may bump is L017. Absent, `forbid` alone judges the slot.
+   */
+  may?: string[];
   /** Why `forbid` holds, for the diagnostic's tip. */
   forbidWhy?: string;
   /** Where a forbidden effect belongs instead, when the Dialect has such a place ("Move it to an onFrame or an event handler"); it leads the tip. */

@@ -23,7 +23,7 @@ function only(code, ...args) {
 }
 
 test("every lowering code has a test below", () => {
-  assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015", "L016", "L018"]);
+  assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015", "L016", "L017", "L018"]);
 });
 
 test("L001: a free identifier the environment does not declare", () => {
@@ -168,4 +168,18 @@ test("L018: a handle the language hands the lambda, used as a value (more in han
 test("L004's tip in the DMG still says where the effect belongs", () => {
   const { d } = only("L004", "(self) => { self.up = false; return \"up\"; }", "draw");
   assert.match(d.tip, /^Move it to an onFrame or an event handler: /);
+});
+
+test("L017: a total changed other than by a += or ++ statement; its tip writes both (more in effects.test.js)", async () => {
+  const { lowerLambda } = await import("../index.js");
+  /** @type {import("../environment.js").Environment} */
+  const env = {
+    name: "totals (test)", list: {}, queries: [], globals: { counters: { obj: "Counters" } },
+    objects: { Counters: { label: "the counters", members: { n: { kind: "value", t: "f64", bump: true, effect: "read Counters.n" } } } },
+    slot: () => ({ params: ["f64"], returns: "void", space: "particle", forbid: [], may: ["bump Counters"] }),
+  };
+  const r = lowerLambda(env, "(dt) => { counters.n = 0; }", { id: "update#0", kind: "update", on: "jet" });
+  const d = r.diagnostics.find((x) => x.code === "L017");
+  assert.ok(d);
+  assert.match(d.tip, /counters\.n \+= <number>; or counters\.n\+\+;/);
 });

@@ -17,14 +17,16 @@ import { expr, check, mismatch, bad, seq, binary, resolveMember, placeOf, identi
  * temporary, so reading and writing the place evaluate it once between them.
  * @param {Lowerer} L
  * @param {AST.MemberExpression} node
+ * A total (`bump: true`) is no place: it comes back as `{ total }`, for the caller to bump or refuse (L017).
  * @param {{ once?: boolean }} [opts]
- * @returns {{ place: Place, load: () => Expr, write: Effect } | null}
+ * @returns {{ place: Place, load: () => Expr, write: Effect, total?: undefined } | { total: Place } | null}
  */
 export function placeFor(L, node, opts = {}) {
   const r = resolveMember(L, node);
   if (!r) return null;
   const name = /** @type {AST.Identifier} */ (node.property).name;
   const d = r.decl;
+  if (d.kind === "value" && d.bump) return { total: placeOf(r, name) };
   if (d.kind === "value" && !d.store && r.owner === "vector") {
     L.error("L013", node, `'${name}' is a component of a vector value, which cannot be changed in place here.`, "Change a component of a let vector (let a = v; a.x = 1;), or build a new vector from the old one's components.");
     return null;
@@ -102,6 +104,12 @@ export function assign(L, node, wantValue) {
   if (part) return assignPart(L, node, wantValue, part);
   const p = placeFor(L, target, { once: op !== "=" });
   if (!p) return bad(node);
+  if (p.total) {
+    if (op !== "+=" || wantValue) return refuseTotal(L, node, target, op === "+=" ? "a bump used as a value" : `changed with '${op}'`);
+    const value = check(L, node.right, "f64", `a bump of ${L.src.slice(target.range[0], target.range[1])}`);
+    L.emit({ k: "bump", place: p.total, value, span }, [/** @type {Effect} */ (`bump ${p.total.owner}.${p.total.name}`)]);
+    return bad(node);
+  }
   const what = `${p.place.owner}.${p.place.name}`;
   let place = p.place;
   let v;
@@ -218,6 +226,11 @@ export function update(L, node, wantValue) {
   } else if (target.type === "MemberExpression") {
     const p = placeFor(L, target, { once: true });
     if (!p) return bad(node);
+    if (p.total) {
+      if (node.operator !== "++" || wantValue) return refuseTotal(L, node, target, node.operator === "++" ? "a bump used as a value" : `changed with '${node.operator}'`);
+      L.emit({ k: "bump", place: p.total, value: L.ex({ k: "num", v: 1, t: "f64", span }), span }, [/** @type {Effect} */ (`bump ${p.total.owner}.${p.total.name}`)]);
+      return bad(node);
+    }
     numeric(p.place.t);
     read = p.load;
     write = (v) => { L.emit({ k: "store", place: p.place, value: v, span }, [p.write]); };
@@ -234,4 +247,15 @@ export function update(L, node, wantValue) {
     write(opExpr(local()));
   }
   return local();
+}
+
+/**
+ * L017: a total changed other than by a `+=` or `++` statement.
+ * @param {Lowerer} L @param {AST.Node & { range: [number, number] }} node @param {AST.MemberExpression} target @param {string} why
+ * @returns {Expr}
+ */
+function refuseTotal(L, node, target, why) {
+  const written = L.src.slice(target.range[0], target.range[1]);
+  L.error("L017", node, `'${written}' is a total, ${why}.`, `A total changes only by a statement that adds to it: ${written} += <number>; or ${written}++;`);
+  return bad(node);
 }

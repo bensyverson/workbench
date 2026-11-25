@@ -253,12 +253,12 @@ function helperCall(L, node, name, args) {
   if (self && reachable(L.sigs, key).includes(self)) {
     L.error("L007", node, `${self === key ? name : self.replace(`${HELPER_OWNER}.`, "")} calls itself${key === self ? "" : ` through ${name}`}, so how long it runs cannot be bounded.`, "Replace the recursion with a counted for loop or a query.");
   }
-  // A call inside its own cycle is reported as recursion above, not again as a failure.
-  if (sig?.partial && !(self && reachable(L.sigs, key).includes(self))) {
-    L.error("L014", node, `The helper ${name} does not lower, so it, and anything that calls it, cannot be compiled.`, `Fix ${name}'s diagnostics first.`);
-  }
+  // A helper that does not lower reported why at the helper; the caller has no code to call, so it has no kernel,
+  // but one mistake is one diagnostic, so it reports nothing more (a call inside its own cycle is the L007 above).
+  if (sig?.partial) L.blockedBy.add(name);
   const vals = seq(L, args.map((a, i) => () => argument(L, a, i, sig, `argument ${i + 1} of ${name}`)));
   L.calls.push({ key, args: vals.map((v) => v.t), sites: args.map((a) => siteOf(L, a)) });
-  const effects = /** @type {Effect[]} */ ([`call ${name}`, ...(sig?.effects ?? [])]);
+  // A blocked helper's effects were judged at the helper; judging them again here would report its one mistake twice.
+  const effects = /** @type {Effect[]} */ ([`call ${name}`, ...(sig?.partial ? [] : sig?.effects ?? [])]);
   return L.ex({ k: "helper", name, args: vals, effects, t: sig?.returns ?? "unknown", span: spanOf(node) }, effects);
 }

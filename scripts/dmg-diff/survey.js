@@ -90,6 +90,8 @@ export function survey(dmg) {
       const errors = group.flatMap((e) => e.result.diagnostics.filter((d) => d.severity === "error")
         .map((d) => ({ code: d.code, message: d.message, text: slot.src.slice(d.range[0], d.range[1]).replace(/\s+/g, " ").slice(0, 60) })));
       const refs = topLevelRefs(slot.src, names);
+      // A lambda that calls a helper which does not lower has no error of its own (the helper reports it), and no kernel.
+      for (const b of new Set(group.flatMap((e) => e.result.blockedBy ?? []))) errors.push({ code: "blocked", message: `calls the helper ${b}, which does not lower`, text: b });
       return {
         preset: p.id, id: slot.id, kind: slot.kind,
         status: classify(errors, refs, hostHas),
