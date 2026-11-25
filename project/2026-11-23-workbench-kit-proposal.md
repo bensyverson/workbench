@@ -135,7 +135,7 @@ The whole IR has a JSON form that is diffable and readable by the agent.
 > **Corrected 2026-11-25 (M3):** the core gained three more things.
 > - A **nominal scalar** over f64 (`{ scalar: "date", of: "f64" }`, the data Dialect's date), which compares only with its own kind.
 > - For effects: a **`bump` statement**, a **total** place and a **`value` store rule**, so a per-instance lambda can add to a shared counter (particles).
-> - A slot's **`may`** list. It judges a lambda's effects against what the slot allows, which turns the Effects row's "recorded" into "checked per slot".
+> - A slot's **`may`** list: an allow list of effect patterns (`verb`, `verb Obj`, `verb Obj.member`), where M1's `forbid` was a deny list of verbs. Both refuse with L004.
 >
 > Entities, tables and queries are still not in the core (§5.3), and a data table's algebra (`groupBy`, `join`, `sort`) is not in the IR at all. See [the M3 findings](2026-11-25-m3-findings.md), H2.
 
@@ -590,7 +590,7 @@ These lose three assumptions the originals carried: a canvas, a frame loop, and 
 | H11 | Dialects can own their passes | A fresh agent writes a correct domain pass against the query and pass API from the documentation alone (added 2026-11-23) | It has to read kit source, or its passes pass the verifier but break the differential check |
 
 
-> **After M3 (2026-11-25):** H2 is supported for four Dialects. The core stayed neutral, effects gained a second user, and the IR carries only the data Dialect's row lambdas (7 of 21 table calls). H4 is not tested against DMG, but three Grammars generated with no hand-written builder. H5 holds for building a language: six blind agents on three tiers, with no kit source read and no builder hand-written. It does not hold for a sheet's full strictness, since three agents wrote parsers for rules the API cannot say. H11 is not tested. See [the M3 findings](2026-11-25-m3-findings.md).
+> **After M3 (2026-11-25):** H2 is supported for four Dialects. The core stayed neutral: no domain logic in it, and the DMG and fields Kernels and figures did not move, though one DMG diagnostic changed on purpose. Effects gained a second user, and the IR carries only the data Dialect's row lambdas (7 of 21 table calls). H4 is not tested against DMG, but three Grammars generated with no hand-written builder. H5 holds for building a language: six blind agents on three tiers, with no kit source read and no builder hand-written. It does not hold for a sheet's full strictness, since three agents wrote parsers for rules the API cannot say. H11 is not tested. See [the M3 findings](2026-11-25-m3-findings.md).
 
 ---
 
