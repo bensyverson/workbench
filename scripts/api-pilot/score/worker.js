@@ -2,7 +2,7 @@
 // definitions, which is candidate code (it may exit, loop, throw or write the result file itself), so score()
 // runs it out of process, and checks the result file this writes as its last act before using it.
 
-import { mkdtempSync, mkdirSync, cpSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, rmSync, existsSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
@@ -22,6 +22,8 @@ export async function scoreHere(handin, hidden, lang = LANG) {
   const work = mkdtempSync(join(tmpdir(), "api-pilot-score-"));
   try {
     for (const f of [defs.dialect, defs.grammar]) if (existsSync(join(handin, f))) cpSync(join(handin, f), join(work, f));
+    // The hand-in's own modules beside them, which its definitions may import (START.md: "your own files").
+    for (const e of readdirSync(handin, { withFileTypes: true })) if (e.isFile() && /\.m?js$/.test(e.name) && !existsSync(join(work, e.name))) cpSync(join(handin, e.name), join(work, e.name));
     mkdirSync(join(work, EXAMPLES_DIR));
     const programs = listPrograms(hidden).map((p) => ({ ...p, as: `${EXAMPLES_DIR}/${p.kind}-${p.file}` }));
     for (const p of programs) cpSync(p.path, join(work, p.as));

@@ -186,3 +186,24 @@ test("--lang names the definition files: the budget reference copied as particle
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a hand-in's own modules beside its definitions are copied too, so a definition may import one", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "score-own-"));
+  try {
+    const hidden = hiddenSet({ "a.js": GOOD }, { "r.js": BAD });
+    const handin = join(dir, "handin");
+    mkdirSync(handin);
+    const fs = await import("node:fs");
+    const dialect = fs.readFileSync(join(REFERENCE, "budget.dialect.js"), "utf8");
+    // The reference's dialect, with one import of the hand-in's own module and a use of it.
+    writeFileSync(join(handin, "budget.util.js"), "export const OWN = 1;\n");
+    writeFileSync(join(handin, "budget.dialect.js"), `import { OWN } from "./budget.util.js";\nif (OWN !== 1) throw new Error("own module");\n${dialect}`);
+    cpSync(join(REFERENCE, "budget.grammar.js"), join(handin, "budget.grammar.js"));
+    const r = await score(handin, hidden);
+    assert.deepEqual(r.definitions.codes, []);
+    assert.deepEqual([r.accept, r.reject], [{ pass: 1, of: 1 }, { pass: 1, of: 1 }]);
+    rmSync(hidden, { recursive: true, force: true });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
