@@ -23,11 +23,11 @@
 
 1. **Float bumps.** The reviser allowed `counters.name += <any number expression>`, deterministic because the host runs particles oldest first. A parallel target would sum f64s in another order, which is not bit-exact. The effects draft must say whether bumps are whole numbers only, or whether a target may reorder them.
 2. **Forces may not bump counters.** This keeps "a force writes `p.vel` only"; a two-way door.
-3. **The blind hidden-program update** (below) was running at handoff.
+3. **The blind hidden-program update** finished and is integrated (27 accept, 133 reject).
 
 ## In flight at handoff
 
-- **The blind hidden-program pass.** A `claude -p` in `/tmp/wb-3d093c96-hidden/` re-judges the 93 hidden programs against the settled sheet and adds cases for refusals 21–25 and counters; it writes `CHANGES.md` there. To integrate: read `CHANGES.md` and the README, `node --check` every file, copy `accept/`, `reject/`, `README.md` and `CHANGES.md` into `scripts/particles/hidden/`, commit, then mark `6VctPg`'s criteria and close it. If `/tmp` was cleared, rerun it from `scripts/particles/` with the prompt in this session's notes on `6VctPg` (the prompt: re-judge every file against the final sheet and settled.md, move or relabel flips, add 21–25 and counter cases, one mistake per reject, write CHANGES.md).
+Nothing. The blind hidden-program pass finished after the handoff was first written; it is integrated and `6VctPg` is closed.
 
 ## Review
 
@@ -39,7 +39,6 @@ Reviewed this session: `c189880`, `98a9b21`, `81a0eee`, `aa80fb3`, each by a fre
 
 ## Next
 
-1. Integrate the hidden-program pass and close `6VctPg`.
-2. `EZex6F`: draft per-slot effects. Its notes carry everything decided: intrinsic effect kinds, async as request values, host imports with an implementation per target (Bench or foreign JS), the form-skate precedent, counters and the float-bump question.
-3. `Tc0QRH` (dogfood, three tiers), `8vQJOw` (build, reference, review), then `3Cd9hb` (H5).
-4. Review the unreviewed commits above.
+1. `EZex6F`: draft per-slot effects. Its notes carry everything decided: intrinsic effect kinds, async as request values, host imports with an implementation per target (Bench or foreign JS), the form-skate precedent, counters and the float-bump question.
+2. `Tc0QRH` (dogfood, three tiers), `8vQJOw` (build, reference, review), then `3Cd9hb` (H5).
+3. Review the unreviewed commits above.
