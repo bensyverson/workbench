@@ -156,9 +156,9 @@ export const data = defineDialect({
     /** @type {Record<string, TypeDef>} */
     const members = {};
     for (const [n, p] of Object.entries(/** @type {Record<string, { value: unknown, kind?: string }>} */ (program.params ?? {}))) {
-      members[n] = typeof p.value === "number" ? "f64"
-        : typeof p.value === "boolean" ? "bool"
-        : p.kind === "date" ? "date" : "str";
+      // defineProperty, not assignment: a param named __proto__ must be an own member, not set a prototype.
+      const type = typeof p.value === "number" ? "f64" : typeof p.value === "boolean" ? "bool" : p.kind === "date" ? "date" : "str";
+      Object.defineProperty(members, n, { value: type, enumerable: true, writable: true, configurable: true });
     }
     return { objects: { Params: { members } } };
   },

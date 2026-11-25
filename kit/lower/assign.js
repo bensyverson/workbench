@@ -4,7 +4,7 @@
 // assignment or update) the target's old value, then the right-hand side.
 
 import { assignable, showType, vectorOf } from "../ir/types.js";
-import { components, componentOf, componentNames, isUntyped } from "./numeric.js";
+import { components, componentOf, componentNames, isUntyped, own } from "./numeric.js";
 import { expr, check, mismatch, bad, seq, binary, resolveMember, placeOf, identifier, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -63,7 +63,7 @@ function saved(L, e) {
  */
 function writableLocal(L, target) {
   const b = L.lookup(target.name);
-  const top = L.sigs.helpers?.[target.name];
+  const top = own(L.sigs.helpers, target.name);
   if (!b && top) { L.error("L013", target, `'${target.name}' is a top-level ${top.kind === "const" ? "constant" : "function"} of the program.`, L.environment.tips?.topLevel ?? "A top-level binding is fixed at run time; keep what changes in a let local, or in a member the slot may write."); return null; }
   if (!b && Object.hasOwn(L.environment.globals, target.name)) { L.error("L013", target, `'${target.name}' is a global of the language.`, "A global is read-only; keep what changes in a let local, or in a member the slot may write."); return null; }
   if (!b) { identifier(L, target); return null; }

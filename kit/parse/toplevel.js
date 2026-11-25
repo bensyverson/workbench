@@ -355,15 +355,17 @@ const NOT_METHOD = new Set(["if", "for", "while", "switch", "catch", "with", "fu
 function buildCodeNames(code) {
   const s = blank(code);
   const atTop = new Set(topLevelKeywords(s).map((k) => k.at));
-  /** @type {Array<{ at: number, names: string[] }>} */
+  /** @type {Array<{ at: number, names: string[], owner?: Extent }>} */
   const found = [];
+  /** Every function, arrow and method: the extent of its parameters and body. @type {Extent[]} */
+  const functions = [];
   /** @type {Extent[]} */
   const blocks = [];
   /** @type {Extent[]} */
   const arrows = [];
   /** @type {Map<number, Extent>} */
   const exportBlock = new Map();
-  const add = (/** @type {number} */ at, /** @type {string[]} */ names) => found.push({ at, names });
+  const add = (/** @type {number} */ at, /** @type {string[]} */ names, /** @type {Extent | undefined} */ owner = undefined) => found.push({ at, names, owner });
   const params = (/** @type {string} */ list) => splitTopLevel(list).flatMap(patternNames);
 
   for (const m of s.matchAll(DECL)) if (!atTop.has(m.index ?? 0)) add(m.index ?? 0, declaredNames(s, (m.index ?? 0) + m[0].length));
@@ -374,9 +376,11 @@ function buildCodeNames(code) {
   for (const m of s.matchAll(new RegExp(`${NOT_AFTER_NAME}function(?![\\p{ID_Continue}$])\\s*\\*?\\s*(${ID})?\\s*\\(`, "gu"))) {
     const at = m.index ?? 0, open = at + m[0].length - 1, close = matching(s, open);
     const brace = s.indexOf("{", close);
-    if (atTop.has(at)) continue; // a top-level helper: its parameters are not build-time code
-    add(at, [...(m[1] ? [m[1]] : []), ...params(s.slice(open + 1, close))]);
-    blocks.push({ from: at, to: brace < 0 ? s.length : matching(s, brace) });
+    const extent = { from: at, to: brace < 0 ? s.length : matching(s, brace) };
+    functions.push(extent);
+    if (atTop.has(at)) { add(at, params(s.slice(open + 1, close)), extent); continue; } // a top-level helper's parameters count only if it holds a nested function
+    add(at, [...(m[1] ? [m[1]] : []), ...params(s.slice(open + 1, close))], extent);
+    blocks.push(extent);
   }
   // methods: `name(params) {` that is not a statement head, a function or a call
   for (const m of s.matchAll(new RegExp(`${NOT_AFTER_NAME}(${ID})\\s*\\(`, "gu"))) {
@@ -385,8 +389,9 @@ function buildCodeNames(code) {
     const close = matching(s, open), brace = /^\s*\{/.exec(s.slice(close + 1));
     if (!brace) continue;
     const end = matching(s, close + brace[0].length);
-    add(at, params(s.slice(open + 1, close)));
+    add(at, params(s.slice(open + 1, close)), { from: at, to: end });
     blocks.push({ from: at, to: end });
+    functions.push({ from: at, to: end });
   }
   for (let i = s.indexOf("=>"); i >= 0; i = s.indexOf("=>", i + 2)) {
     let j = i - 1;
@@ -397,7 +402,7 @@ function buildCodeNames(code) {
     let k = i + 2;
     while (/\s/.test(s[k] ?? "")) k++;
     const to = s[k] === "{" ? matching(s, k) : expressionEnd(s, k);
-    if (from >= 0) { arrows.push({ from, to }); add(from, params(list)); if (s[k] === "{") exportBlock.set(from, { from: k, to }); }
+    if (from >= 0) { arrows.push({ from, to }); functions.push({ from, to }); add(from, params(list), { from, to }); if (s[k] === "{") exportBlock.set(from, { from: k, to }); }
   }
   // the export: a block body is build code; an expression body is lambdas and builder calls
   const ex = new RegExp(`${NOT_AFTER_NAME}export\\s+default(?![\\p{ID_Continue}$])\\s*`, "u").exec(s);
@@ -418,7 +423,16 @@ function buildCodeNames(code) {
   };
   /** @type {Set<string>} */
   const names = new Set();
-  for (const f of found) if (isBuild(f.at)) for (const n of f.names) names.add(n);
+  // a name bound in a function that holds another function is one a Runtime Lambda inside it can read, wherever
+  // the function is (a const arrow, an exported name, a build-time callback, an IIFE); the scan cannot tell a
+  // Runtime Lambda from a helper callback, so any nested function counts. A binder with none (a lambda's or a
+  // helper's own parameter) is harmless: nothing can close over it.
+  const holdsFunction = (/** @type {Extent} */ e) => functions.some((f) => f.from > e.from && f.to <= e.to);
+  const innermost = (/** @type {number} */ at) => functions.filter((f) => inside(f, at)).sort((a, b) => b.from - a.from)[0];
+  for (const f of found) {
+    const owner = f.owner ?? innermost(f.at);
+    if (isBuild(f.at) || !owner || holdsFunction(owner)) for (const n of f.names) names.add(n);
+  }
   return names;
 }
 

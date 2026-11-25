@@ -9,7 +9,7 @@ import { assign, update } from "./assign.js";
 import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
 import { nullCheck, nullCheckOf, nullFacts } from "./nullcheck.js";
 import { refuseHandle } from "./handles.js";
-import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip } from "./numeric.js";
+import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip, own } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Op, Place, Span } from "../ir/ir.js" */
@@ -149,7 +149,7 @@ export function identifier(L, node) {
     const t = L.narrowed.has(b.name) && typeof b.t === "object" && "opt" in b.t ? b.t.opt : b.t;
     return L.ex({ k: "local", name: b.name, t, span });
   }
-  const h = L.sigs.helpers?.[node.name];
+  const h = own(L.sigs.helpers, node.name);
   if (h?.kind === "fn") {
     L.error("L003", node, `'${node.name}' is a function here.`, `Call it: ${node.name}(…).`);
     return bad(node);
@@ -189,7 +189,7 @@ export function identifier(L, node) {
 function bakedItem(L, node) {
   const o = node.object;
   if (!L.environment.numberType || o.type !== "Identifier" || L.lookup(o.name)) return null;
-  const h = L.sigs.helpers?.[o.name];
+  const h = own(L.sigs.helpers, o.name);
   const value = h?.kind === "const" ? h.value : null;
   if (!value) return null;
   const p = node.property;
@@ -539,6 +539,9 @@ export function facts(L, node) {
   return { yes: [], no: [] };
 }
 
+/** The logical nodes that gave an L003, so a chain around one adds no second. @type {WeakSet<AST.Node>} */
+const refusedChains = new WeakSet();
+
 /**
  * `a && b` and `a || b`, short-circuiting. In a value, both sides must be bool.
  * @param {Lowerer} L
@@ -554,8 +557,10 @@ function logical(L, node, mode) {
   }
   /** @type {{ node: AST.Expression, e: Expr } | null} */
   let refused = null;
+  let covered = false; // an operand that is itself a refused chain link has already said it
   const side = (/** @type {AST.Expression} */ n) => {
     const e = mode === "test" ? test(L, n) : expr(L, n);
+    if (refusedChains.has(n)) covered = true;
     if (!refused && !assignable(e.t, "bool")) refused = { node: n, e };
     return e;
   };
@@ -564,6 +569,8 @@ function logical(L, node, mode) {
   const b = L.capture(() => side(node.right), node.operator === "&&" ? f.yes : f.no);
   if (refused) {
     // One mistake, one diagnostic: at the first non-bool operand, and the result is unknown so nothing cascades.
+    refusedChains.add(node);
+    if (covered) return bad(node); // one diagnostic per chain: `a && b && c` is two nodes, one mistake
     const r = /** @type {{ node: AST.Expression, e: Expr }} */ (refused);
     L.error("L003", r.node, `'${node.operator}' in a value needs bools on both sides, not ${describe(r.e.t)}.`, "Use a ternary, or compare explicitly (x !== 0).");
     return bad(node);

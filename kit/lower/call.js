@@ -6,7 +6,7 @@ import { didYouMean } from "./codes.js";
 import { query } from "./query.js";
 import { expr, check, mismatch, bad, seq, resolveOn, spanOf, computed } from "./expr.js";
 import { HELPER_OWNER } from "./codes.js";
-import { numericCall, settle, asScalar, scalarOf, numericBinding } from "./numeric.js";
+import { numericCall, settle, asScalar, scalarOf, numericBinding, own } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type, Expr, Effect } from "../ir/ir.js" */
@@ -27,8 +27,8 @@ export function call(L, node) {
     for (const a of args) if (a.type === "ArrowFunctionExpression") L.error("L005", a, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.environment.queries.join(", ")}.`);
   };
   if (callee.type === "Identifier") {
-    if (!L.lookup(callee.name) && L.sigs.helpers?.[callee.name]?.kind === "fn") { noCallbacks(); return helperCall(L, node, callee.name, args); }
-    if (!L.lookup(callee.name) && !L.sigs.helpers?.[callee.name]) {
+    if (!L.lookup(callee.name) && own(L.sigs.helpers, callee.name)?.kind === "fn") { noCallbacks(); return helperCall(L, node, callee.name, args); }
+    if (!L.lookup(callee.name) && !own(L.sigs.helpers, callee.name)) {
       const made = numericCall(L, node, callee.name, args);
       if (made) { noCallbacks(); return made; }
     }
@@ -143,11 +143,11 @@ function emitCall(L, node, r, name, args, effects, label) {
   const vals = seq(L, [() => r.recv, ...(payloadNode ? [() => expr(L, payloadNode)] : [])]);
   const payload = vals[1];
   const t = payload ? payload.t : { struct: {} };
-  const known = L.sigs.events[ev];
+  const known = own(L.sigs.events, ev);
   if (known && !assignable(t, known)) L.error("L014", payloadNode ?? node, `Event '${ev}' is sent here with ${showType(t)}, elsewhere with ${showType(known)}.`, `Send '${ev}' with the same payload fields and types everywhere.`);
   L.emits.push({ name: ev, t });
-  const own = /** @type {Effect[]} */ (effects.map((e) => e.replace("{key}", ev)));
-  return L.ex({ k: "call", fn: `${r.owner}.${name}`, recv: vals[0], args: payload ? [evExpr, payload] : [evExpr], effects: own, t: "void", span: spanOf(node) }, own);
+  const eff = /** @type {Effect[]} */ (effects.map((e) => e.replace("{key}", ev)));
+  return L.ex({ k: "call", fn: `${r.owner}.${name}`, recv: vals[0], args: payload ? [evExpr, payload] : [evExpr], effects: eff, t: "void", span: spanOf(node) }, eff);
 }
 
 /**

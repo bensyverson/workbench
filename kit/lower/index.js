@@ -10,6 +10,7 @@ import { joinCallSites } from "./callsites.js";
 import { HELPER_OWNER } from "./codes.js";
 import { verify } from "../ir/verify.js";
 import { showType, assignable } from "../ir/types.js";
+import { own } from "./numeric.js";
 
 export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
 
@@ -130,7 +131,7 @@ function bindParams(L, ast, decl) {
     /** @type {import("./lowerer.js").Binding["pending"]} */
     let pending;
     if (given === "payload") {
-      const known = L.sigs.events[L.slot.key ?? ""];
+      const known = own(L.sigs.events, L.slot.key ?? "");
       if (known) t = known;
       else pending = { code: "L014", message: `Nothing in this program emits '${L.slot.key}', so its payload's fields are unknown.`, tip: `Emit it with an object literal payload, as in w.emit("${L.slot.key}", { … }).` };
     } else if (given !== undefined) {
@@ -309,7 +310,7 @@ function infer(lambdas, results, decls) {
   /** @type {Record<string, CallSite[]>} */
   const callArgs = {};
   for (const r of results) {
-    for (const e of r.emits) if (!(e.name in sigs.events)) sigs.events[e.name] = e.t;
+    for (const e of r.emits) if (!Object.hasOwn(sigs.events, e.name)) sigs.events[e.name] = e.t;
   }
   // A call site counts only when the code it is in is reached from a runtime lambda, so an unreached helper decides nothing.
   const live = liveCalls(lambdas, results);

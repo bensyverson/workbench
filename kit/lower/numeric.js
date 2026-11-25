@@ -21,7 +21,7 @@ import { bad, spanOf, seq, check, expr, mismatch } from "./expr.js";
  * @param {string} name
  * @returns {T | undefined}
  */
-const own = (table, name) => (table && Object.hasOwn(table, name) ? table[name] : undefined);
+export const own = (table, name) => (table && Object.hasOwn(table, name) ? table[name] : undefined);
 
 const ARITH = /** @type {Record<string, Op>} */ ({ "+": "add", "-": "sub", "*": "mul", "/": "div", "%": "rem", "**": "pow" });
 const COMPARE = /** @type {Record<string, Op>} */ ({ "<": "lt", "<=": "le", ">": "gt", ">=": "ge" });
