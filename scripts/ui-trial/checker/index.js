@@ -111,7 +111,7 @@ export async function checkDir(dir, { lang }) {
     }
   }
   if (session.calls.length !== 1) {
-    add(names.ui, Math.max(1, src.indexOf("defineUI(") >= 0 ? lineAt(src, src.indexOf("defineUI(")) : 1), "C001", `${names.ui} calls defineUI ${session.calls.length} times; it calls it once`, `export const ${lang}UI = defineUI(${lang}, { state, … });`);
+    add(names.ui, Math.max(1, src.indexOf("defineUI(") >= 0 ? lineAt(src, src.indexOf("defineUI(")) : 1), "C001", `${names.ui} calls defineUI ${session.calls.length} times; it calls it once`, `export const ${lang}UI = defineUI(${lang}, { stage, tiles, … });`);
     return done();
   }
   const { builder, decl, refusal } = session.calls[0];

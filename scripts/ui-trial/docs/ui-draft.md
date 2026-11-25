@@ -178,7 +178,7 @@ export const orbitsUI = defineUI(orbits, {
       title: "Bodies",
       place: { splitLeft: "stage", size: 0.25 },
       body: [
-        { kind: "stat", label: "bodies", value: (s) => s.bodies.length, max: 64 },
+        { kind: "stat", label: "bodies", value: (s) => s.bodies.length, max: (s) => 64 },
         { kind: "table", label: "Bodies", rows: "bodies", columns: ["name", { label: "km/s", value: (row, s, $) => row.speed / 1000 }], limit: 20 },
       ],
     },
