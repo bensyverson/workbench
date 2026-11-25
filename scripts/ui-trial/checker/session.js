@@ -1,0 +1,25 @@
+// One check's state, shared by the module hooks, the defineUI stand-in and the checker. One check runs at a time.
+
+/** @import { UIDiagnostic } from "./codes.js" */
+
+export const session = {
+  /** The hand-in directory as a file URL ending in "/", or "" between checks. */
+  dirUrl: "",
+  /** Bumped per check, so a second check of one directory loads its files afresh. */
+  run: 0,
+  /** @type {Array<{ builder: unknown, decl: unknown }>} */
+  calls: [],
+  /** Imports the hooks refused: the importing file's URL and the specifier. @type {Array<{ parentURL: string, specifier: string }>} */
+  imports: [],
+  /** @type {UIDiagnostic[]} */
+  diagnostics: [],
+};
+
+/** Starts a check of the directory at `dirUrl`. @param {string} dirUrl */
+export function begin(dirUrl) {
+  session.dirUrl = dirUrl;
+  session.run++;
+  session.calls = [];
+  session.imports = [];
+  session.diagnostics = [];
+}
