@@ -75,3 +75,25 @@ test("score.js prints one line per program and exits 0 only when every program p
     assert.match(r.stdout, /reject\/r1\.js\s+FAIL/);
   } finally { rmSync(hidden, { recursive: true, force: true }); }
 });
+
+// Regressions from the review of 81a0eee: a run that scored nothing must not read as a pass.
+test("score.js exits 2 when the hidden dir is missing or lacks accept/ or reject/", () => {
+  const empty = mkdtempSync(join(tmpdir(), "api-pilot-hidden-"));
+  try {
+    for (const dir of [join(empty, "nope"), empty]) {
+      const r = spawnSync(process.execPath, [CLI, REFERENCE, dir], { encoding: "utf8" });
+      assert.equal(r.status, 2, `${dir}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /accept\/|reject\//);
+    }
+  } finally { rmSync(empty, { recursive: true, force: true }); }
+});
+
+test("score.js exits 1 when either kind has no programs", () => {
+  const hidden = hiddenSet({ "a1.js": GOOD }, {});
+  try {
+    const r = spawnSync(process.execPath, [CLI, REFERENCE, hidden], { encoding: "utf8" });
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /no reject programs/);
+  } finally { rmSync(hidden, { recursive: true, force: true }); }
+});
+
