@@ -74,6 +74,8 @@ export function defineDialect(def) {
   const scalars = {};
   /** @type {Record<string, Record<string, string>>} */
   const componentAliases = {};
+  /** @type {Record<string, "scalar">} */
+  const vectorMultiply = {};
   for (const [n, v] of Object.entries(def.types ?? {})) {
     // A nominal scalar is a type name only: unlike a vector, a lambda cannot call it to make one.
     if (kindOf(v) === "scalar") { scalars[n] = dialectScalar(n, "f64"); continue; }
@@ -81,6 +83,7 @@ export function defineDialect(def) {
     vectors[n] = dialectVector(n, /** @type {2 | 3 | 4} */ (vec.n), /** @type {"f32" | "f64"} */ (vec.elem));
     const aliases = /** @type {{ aliases?: Record<string, string> } | undefined} */ (vec.options)?.aliases;
     if (aliases) componentAliases[n] = { ...aliases };
+    if (/** @type {{ multiply?: string } | undefined} */ (vec.options)?.multiply === "scalar") vectorMultiply[n] = "scalar";
   }
   /** @type {Resolver} */
   const statics = { vectors, scalars };
@@ -114,7 +117,7 @@ export function defineDialect(def) {
     targets: /** @type {T.Dialect["targets"]} */ (targets),
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
     text: def.text,
-    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, program, states, spaces),
+    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces),
   });
   MADE.add(dialect);
   return dialect;
@@ -124,11 +127,12 @@ export function defineDialect(def) {
  * One Program's Environment.
  * @param {T.DialectDef} def @param {{ vectors: Record<string, VecType>, scalars: Record<string, ScalarType> }} named  the types declared in `types`
  * @param {Record<string, Record<string, string>>} componentAliases
+ * @param {Record<string, "scalar">} vectorMultiply  the vectors that multiply only by a scalar
  * @param {Record<string, any>} program @param {Map<string, unknown>} states
  * @param {SpaceModel} spaces  each space's instance object, or null when it is pure
  * @returns {Environment}
  */
-function environmentOf(def, { vectors, scalars }, componentAliases, program, states, spaces) {
+function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces) {
   /** @type {Record<string, ObjectDecl>} */
   const objects = {};
   /** @type {Resolver} */
@@ -149,6 +153,7 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
   };
   for (const [n, o] of Object.entries(def.objects ?? {})) {
     objects[n] = { label: o.label ?? n, members: Object.fromEntries(Object.entries(o.members ?? {}).map(([m, t]) => [m, resolveMember(t, r, `${n}.${m}`)])) };
+    if (o.rejected) objects[n].rejected = Object.fromEntries(Object.entries(o.rejected).map(([m, r]) => [m, { message: r.message, tip: r.tip ?? (r.fix ? `write ${r.fix}` : "") }]));
     if (o.call) objects[n].call = { ...intrinsicSig(/** @type {any} */ (o.call), r), effects: /** @type {import("../ir/ir.js").Effect[]} */ ([...(o.effects ?? [])]) };
   }
   /** @type {Record<string, Type>} */
@@ -184,6 +189,9 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
     globals,
     vectors,
     componentAliases,
+    ...(Object.keys(vectorMultiply).length ? { vectorMultiply } : {}),
+    ...(def.conditions ? { conditions: def.conditions } : {}),
+    ...(def.helpers?.check === "all" ? { checkAllHelpers: true } : {}),
     numberType: def.numberType,
     conversions: { ...(def.conversions ?? {}) },
     slot(ref) {
@@ -228,6 +236,7 @@ function convention(c, r, spaces) {
   return {
     params: c.params.map((p) => resolveType(p, r)), returns: c.returns === "infer" ? "infer" : resolveType(c.returns, r), space: c.space, forbid: [],
     may: [...(c.may ?? []), ...(instance ? [`read ${instance}`] : [])],
+    ...(c.body ? { body: c.body } : {}),
   };
 }
 
@@ -245,6 +254,7 @@ function checkConvention(c, def, objects, ref, added) {
   else {
     c.params.forEach((t, i) => checkType(t, scope, {}, ["slots", ref.kind, "params"], `slot convention '${ref.kind}' for ${ref.id}, param ${i + 1}`, out));
     checkType(c.returns, scope, { infer: true }, ["slots", ref.kind, "returns"], `slot convention '${ref.kind}' for ${ref.id}, returns`, out);
+    if (c.body !== undefined && c.body !== "block") out.push({ code: "D011", path: ["slots", ref.kind, "body"], message: `slot convention '${ref.kind}' for ${ref.id}: body must be "block", not ${JSON.stringify(c.body)}.`, tip: `body: "block" refuses an expression body` });
     if (typeof c.space !== "string" || !(c.space in def.spaces)) out.push({ code: "D005", path: ["slots", ref.kind, "space"], message: `slot convention '${ref.kind}' for ${ref.id} runs in an undeclared space.`, tip: `space: one of ${Object.keys(def.spaces).join(", ")}` });
     else out.push(...conventionProblems(c, `slot convention '${ref.kind}' for ${ref.id}`, ["slots", ref.kind], /** @type {Record<string, any>} */ (def), added));
   }

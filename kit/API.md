@@ -1,6 +1,6 @@
 # The Definition API
 
-You define a Domain Language with two calls from `kit/define`. `defineDialect` says what the language **means**: its types, the operations a lambda may call, and how each kind of lambda is called. `defineGrammar` says how a Program is **written**: the builder methods and their arguments. The kit generates the builder from it, with diagnostics. The functions passed into a Program (`(row) => row.price * 2`) are **Runtime Lambdas**. The kit never calls them: it reads their source, type-checks it against the Dialect, and compiles it.
+Two calls from `kit/define` define a Domain Language. `defineDialect` says what it **means**: its types, the operations a lambda may call, and how each kind of lambda is called. `defineGrammar` says how a Program is **written**: the builder methods and their arguments; the kit generates the builder, with diagnostics. The functions passed into a Program (`(row) => row.price * 2`) are **Runtime Lambdas**. The kit never calls them: it reads their source, type-checks it against the Dialect, and compiles it.
 
 Imports, all from `"kit/define"` (anything else is D011): `defineDialect defineGrammar vector scalar exact tolerance list opt struct union enumOf object name ref data lambda rest oneOf recordOf listOf didYouMean DefinitionError BuildError`.
 
@@ -48,10 +48,11 @@ export const myLang = defineDialect({
 ```
 
 - **Intrinsics.** `params`, `returns`, `ref` (required), `spell` per target (a string with `$0 $1 …`, or `{ call, prelude }`). Optional: `minArgs`, `rest`, `numeric: "number" | "vector"` (what a type variable may be), `componentwise: true`. At run time a vector is a plain array of its components (`[x, y]`): a spelling gets it whole, a `ref` gets its components spread (`length`'s ref is `Math.hypot`), or once per component when `componentwise`.
-- **Library entries and helpers are typed by their calls:** each parameter takes the one type every call passes (two types is L014), and nothing checks one nobody calls. A Library entry called with the wrong type is reported inside the entry, at your Dialect file; an operation that must check its arguments belongs in `intrinsics`.
+- **Library entries and helpers are typed by their calls:** each parameter takes the one type every call passes (two types is L014). A helper nobody calls is skipped unless `helpers: { check: "all" }`, which checks its effects, recursion and syntax, not what it does through its untyped parameters. A Library entry called with the wrong type is reported inside the entry, at your Dialect file; an operation that must check its arguments belongs in `intrinsics`.
+- **Strictness.** Optional: `conditions: "bool"` (a non-bool `if` or ternary test, or `! && ||` operand, is L003); `vector(2, "f64", { multiply: "scalar" })` (vector * vector is L003); a convention's `body: "block"` (an expression body is L012). An object's `rejected: { random: { message, fix } }` answers a use of that member with your message (L002). Always: a lambda or helper that returns a value must return on every path (L003; a `for` may finish, so a return inside one does not count).
 - **A size.** A member `{ value: "f64", size: true }` (say, a param with a small `max`, added by `environment`) promises it stays small, so it may bound a `for` loop.
 - **A slot convention** is `{ params, returns, space }` (`returns: "infer"` takes the body's type), or a function `(ref, program, state) => convention`, which lowering may call several times per lambda, so it must be a pure function of its arguments. `ref` is `{ id, kind, on, index, key }`: `on` the instance's name, `index` the call's position among the instance's calls (without `record: "calls"`, counted slot by slot in declaration order), `key` the declared name when the slot's first argument is a `name()` (a lambda's `recordOf` key wins). `program` is the whole record, `units` included; `state` is the construct's state just before this call. Return a string instead to refuse the lambda (B011, with your string as the reason).
-- **The text view.** `text(state)`: you decide what `state` is (say it in a comment), for example a rendered frame or a computed table. Print what a person would see, sized for a model's context.
+- **The text view.** `text(state)` prints what a person would see, sized for a model's context; you decide what `state` is (say it in a comment).
 
 ### Per-slot effects
 
@@ -77,7 +78,7 @@ helpers: { may: ["read Plant"] },   // the default: helpers only read instance o
 - **Effects** are `read Obj.m` (of a writable member or total), `write Obj.m`, `destroy Obj`, `rng`, `bump Obj.m`. A pattern covers what is inside it: `"write Plant"` allows `write Plant.height`. Reading a read-only member is no effect. A slot in an instance space may always read its own instance.
 - **Only instance spaces change anything.** A `write` or `destroy` of `Obj` belongs only in a slot of the space `{ instance: "Obj" }`, which takes one `Obj` parameter, once, and in the `effects` of `Obj`'s own verbs; nothing else in the Dialect may hold or return an `Obj` (D022). A pure space's slots and `helpers` list reads only (D021).
 - **A total is never read and bumped in one slot** (D021), so the order instances run in cannot show. In an f32 Dialect a total is still an f64: `totals.n += f64(p.x)`. `environment(program)` may add writable members and totals; they are checked when the Program is lowered.
-- **A helper's effects count at every call**, and a helper beyond `helpers.may` is one L004, at the helper. Intrinsics stay pure (`effects` on one is D021). The host (your runner) implements verbs, `rng()` and totals.
+- **A helper's effects count at every call**, and a helper beyond `helpers.may` is one L004, at the helper. Intrinsics are pure (`effects` on one is D021). Your runner implements verbs, `rng()` and totals.
 
 ## `defineGrammar`
 
@@ -96,7 +97,7 @@ export const program = defineGrammar(myLang, {
         title:  { kind: "decl", args: [data("string")], once: true, required: true },
       },
       rejected: { sql: { message: "SQL text is not an input language", fix: ".table(…).filter(…)" } },
-      check(record, ctx) { … },                  // the construct's own check, at .check()/.build()
+      check(record, ctx) { … },                  // the construct's own check, at .check()/.build(); the root's also sees `units`, each with its `keyword` ("const", "let", "function"), to refuse a top-level `let`
     },
     table: {
       parent: "program",                         // opened by calling .table(…) on the program's builder
@@ -122,11 +123,11 @@ export const program = defineGrammar(myLang, {
 });
 ```
 
-**Arguments:** `name(ns)` declares a name in namespace `ns`: a JavaScript identifier (`_x` and `h$t` pass, `9jet` and `a-b` are B004) and unique (B002), except the root's opening name, the Program's own, which is any non-empty string; a namespace spans the **whole Program**, unless `name(ns, { within: "account" })` makes it unique only within each `account` instance (the construct declaring it or an ancestor; a `state` construct's names stay Program-wide, so they cannot repeat). `ref(ns)` names a declared one, earlier or later (B003, did-you-mean), within the enclosing instance when `ns` has `within`; a `ref` outside every such instance is D011. `data(shape)` is a value of a shape (B004); `lambda(convention)` is a Runtime Lambda; `opt(spec)` (last only); `rest(spec)` (last only). An opening argument's spec takes `{ as: "key" }` last to name its record key; a slot's `as` names the slot's. **Shapes:** `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, plus `ref` and `lambda` anywhere inside. A number takes bounds, `data("number", { min: 1, max: 120, whole: true })`, also inside a shape (`{ opening: data("number", { min: 0 }) }`): outside them is B004. A number is finite: `Infinity` or `NaN` anywhere is B004.
+**Arguments:** `name(ns)` declares a name in namespace `ns`: a JavaScript identifier (`_x` passes; `9jet` and `a-b` are B004) and unique (B002), except the root's opening name, the Program's own, which is any non-empty string; a namespace spans the **whole Program**, unless `name(ns, { within: "account" })` makes it unique only within each `account` instance (the construct declaring it or an ancestor; a `state` construct's names stay Program-wide, so they cannot repeat). `ref(ns)` names a declared one, earlier or later (B003, did-you-mean), within the enclosing instance when `ns` has `within`; a `ref` outside every such instance is D011. `data(shape)` is a value of a shape (B004); `lambda(convention)` is a Runtime Lambda; `opt(spec)` (last only); `rest(spec)` (last only). An opening argument's spec takes `{ as: "key" }` last to name its record key; a slot's `as` names the slot's. **Shapes:** `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, plus `ref` and `lambda` anywhere inside. A number takes bounds, `data("number", { min: 1, max: 120, whole: true })`, also inside a shape (`{ opening: data("number", { min: 0 }) }`): outside them is B004. A number is finite: `Infinity` or `NaN` anywhere is B004.
 
 **Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. **Your checks** report with `ctx.error(code, message, { tip, arg, suggest, fix })`: your code is one letter of your own and three digits (not B C D L P S V), `arg` an argument's position or a path into it. `fix` is code to write instead, printed as `fix: write <fix>`; put advice in `tip`.
 
-**The record** (what `.build()` returns, and what `environment`, `init` and conventions see; checks see it before `.build()` adds the file's top-level helpers and constants to `units`): a construct's opening arguments under their `as`, else a `name(ns)` under `ns` (a bare `name()` under `name`); any other opening argument lands under `arg1`, `arg2` …, so give it an `as`. A decl slot whose first argument is a `name()` becomes an object by name under its `as`, else its slot name (`param` above, with `as: "params"`, gives `{ params: { topN: { value: 10 } } }`). Any other decl slot becomes a list of its calls' arguments (the bare arguments when `once`). Unit slots go under `units: [{ name, kind, src }]`, children are a list under the child's name (an empty list when there are none), and a `record: "calls"` construct keeps **only** `calls: [{ slot, args }]`, in order, instead of a key per slot. A lambda appears as its source text. The example Program below builds to:
+**The record** (what `.build()` returns, and what `environment`, `init` and conventions see; checks see it too, with `units` only in the root's): a construct's opening arguments under their `as`, else a `name(ns)` under `ns` (a bare `name()` under `name`); any other opening argument lands under `arg1`, `arg2` …, so give it an `as`. A decl slot whose first argument is a `name()` becomes an object by name under its `as`, else its slot name (`param` above, with `as: "params"`, gives `{ params: { topN: { value: 10 } } }`). Any other decl slot becomes a list of its calls' arguments (the bare arguments when `once`). Unit slots go under `units: [{ name, kind, src, keyword? }]`, children are a list under the child's name (an empty list when there are none), and a `record: "calls"` construct keeps **only** `calls: [{ slot, args }]`, in order, instead of a key per slot. A lambda appears as its source text. The example Program below builds to:
 
 ```js
 { name: "sales", params: { topN: { value: 10, min: 1, max: 50 } }, title: "Top sales",
@@ -153,24 +154,24 @@ export default ($) => program("sales")
     .limit($.topN);                              // $.topN at build time: the plain number 10
 ```
 
-The host calls `run(programFn, { values })`, which hands the function a `$` that answers each declared param and records the read. Build-time code (outside lambdas) may branch and loop on params, and a block body that returns the chain is fine; opening the root twice is B016, and returning anything but the chain once it is open is B017. Changing a param read at build time reruns the function.
+The host calls `run(programFn, { values })`, which hands the function a `$` that answers each declared param and records the read. Build-time code (outside lambdas) may branch and loop on params, and a block body may return the chain; opening the root twice is B016, returning anything else once it is open B017. Changing a param read at build time reruns the function.
 
 **The free-name rule.** A lambda sees only its own parameters and locals, the Dialect's globals, intrinsics and library, the Program's `.fn` and `.const` units, `$`, and the file's top-level `const` arrows and plain data. Nothing else is free, not even `Math` or `NaN` unless the Dialect declares it. **A handle** (a parameter or global of object type: `p`, `$`) is used only as `h.member`, `h.method(…)`, `h(…)` when callable, or passed whole as any call's argument; a callable one is only called. Anything else (`const q = p`) is L018. **The Runtime Subset:** `const`/`let` (destructuring too), numbers, strings, booleans, `null`, array and object literals, arithmetic (`**` too), comparisons, `&& || !`, bitwise operators, `if`, ternaries, `for…of` over a list, counted loops `for (let i = 0; i < n; i++)` (`n` a constant, a list's length or a size) and calls to the names above. No `while`, `new`, `this`, `async`, template literals, `?.`, spread or closures that escape.
 
 ## Pitfalls
 
-These cost earlier authors time. The rest, you can infer.
+These cost earlier authors time; infer the rest.
 
 1. **A child construct has every method of its parent** (calling one ends the child) and inherits its `rejected` names. So a child and its parent may not both declare a slot named `fn` (D010).
 2. **`init` reads other declarations from the record** by their record key: `program.source[opened.from]` above is the `source` slot's object by name. Another instance's final state is `stateOf(name)`, available to both `init` and `step` (`ctx.stateOf`).
 3. **State needs `record: "calls"` (D015 without it), and exists only at lowering.** `.check()` and slot checks never see it (`ctx.state` is undefined). Anything that depends on the state at a step belongs in `state.names`, a convention function or `step`'s `ctx.error`.
 4. **A slot's `check` runs at the call**, and `ctx.program` is the record so far: the instance being built is last in its list (`ctx.program.table.at(-1)`), with this call already in it. Exclude it when you look for duplicates.
-5. **`suggest` appends its own "Did you mean 'x'?"** to your message. Don't write one yourself.
-6. **A nominal scalar is not a constructor.** A lambda gets one through a parameter, a member or an intrinsic that returns it (`dayOf` above).
+5. **`suggest` appends its own "Did you mean 'x'?"**; don't write one.
+6. **A nominal scalar is not a constructor.** A lambda gets one from a parameter, member or intrinsic (`dayOf` above).
 7. **Params need both halves:** the Grammar's `params: { slot }` and the Dialect's `params: { object, name }`, plus a `$` global whose object `environment` fills.
 8. **A value from a param has one form:** `.limit($.topN)`. `.limit(() => $.topN)` is B004. Build-time code reads a param only after its `.param` call, and only by name (no `in`, spread or `Object.keys` on `$`: B015).
-9. **A lambda is checked only once its Program builds.** Fix the `B…` errors first. A lambda's type errors (`L…`) then show at its exact place.
-10. **A top-level helper must be an arrow its own `const` writes (or a top-level `function name(a) {…}`, the same thing), and a top-level constant must be plain data.** Intrinsics exist only inside lambdas, so `const START = dayOf(2026, 1, 1)` fails when the file loads. A helper made by another function (`const f = make(3)`) loses what it closes over and is refused (B012). A name declared only inside build-time code, or another lambda's parameter, is B013.
+9. **Lambdas are checked only once the Program builds.** Fix `B…` errors first; `L…` errors then show at their exact place.
+10. **A top-level helper must be an arrow its own `const` writes (or a top-level `function name(a) {…}`, the same thing), and a top-level constant must be plain data.** Intrinsics exist only inside lambdas: `const START = dayOf(2026, 1, 1)` fails when the file loads. A helper made by another function (`const f = make(3)`) is B012. A name declared only inside build-time code, another lambda's parameter, or both at the top level and inside build-time code, is B013 when a lambda reads it.
 11. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
 
 ## Codes you will meet
@@ -179,4 +180,4 @@ These cost earlier authors time. The rest, you can infer.
 
 ## Not built
 
-Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, and lambdas in a construct's opening arguments. If you need one, report it as a gap; don't invent API.
+Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, lambdas in a construct's opening arguments. Report a need for one as a gap; don't invent API.

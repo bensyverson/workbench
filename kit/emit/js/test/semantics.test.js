@@ -153,7 +153,7 @@ test("string concatenation keeps JavaScript's grouping", () => {
 
 test("returns: done, draw, and a void call returned from a void slot", () => {
   same("(w) => w.score > 0", "done", "World");
-  same("(w) => { if (w.score > 0) return true; }", "done", "World");
+  same("(w) => { if (w.score > 0) return true; return false; }", "done", "World");
   same("(self, w) => self.up ? \"up\" : null", "draw");
   same("(self, w) => { if (self.up) return \"up\"; }", "draw");
   same("(self, w) => { self.ttl = -1; return; }");

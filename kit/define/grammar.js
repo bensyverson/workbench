@@ -60,6 +60,12 @@ const VALUE_GLOBALS = /** @type {Record<string, string>} */ ({ Infinity: "a larg
 const diag = (code, message, tip, at, extra = {}) => ({ code, severity: "error", message, tip, loc: at.loc, range: [0, 0], file: at.file, ...extra });
 
 /**
+ * A unit with the keyword its declaration used, when the host said it.
+ * @param {{ name: string, kind: "fn" | "const", src: string }} unit @param {Record<string, "const" | "let" | "function">} [keywords]
+ */
+const keyed = (unit, keywords) => (keywords && Object.hasOwn(keywords, unit.name) ? { ...unit, keyword: keywords[unit.name] } : unit);
+
+/**
  * @param {T.Dialect} dialect @param {T.GrammarDef} def
  * @returns {((...args: unknown[]) => any) & { dialect: T.Dialect, grammar: T.GrammarDef, lower: (record: Record<string, any>) => import("./lower.js").Lowered }}
  */
@@ -88,8 +94,11 @@ export function defineGrammar(dialect, def) {
  */
 function checkOptions(o) {
   const x = /** @type {Record<string, unknown>} */ (o);
-  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError("build(options) and check(options) take { scope?, sources?, buildTime?, buildTimeBindings? }");
-  for (const k of Object.keys(x)) if (k !== "scope" && k !== "sources" && k !== "buildTime" && k !== "buildTimeBindings") throw new TypeError(`build(options): unknown key '${k}'; it takes { scope?, sources?, buildTime?, buildTimeBindings? }`);
+  const keys = "{ scope?, sources?, buildTime?, buildTimeBindings?, keywords?, shadowed? }";
+  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError(`build(options) and check(options) take ${keys}`);
+  for (const k of Object.keys(x)) if (!["scope", "sources", "buildTime", "buildTimeBindings", "keywords", "shadowed"].includes(k)) throw new TypeError(`build(options): unknown key '${k}'; it takes ${keys}`);
+  if (x.keywords !== undefined && (x.keywords === null || typeof x.keywords !== "object" || Array.isArray(x.keywords) || !Object.values(x.keywords).every((w) => w === "const" || w === "let" || w === "function"))) throw new TypeError("build({ keywords }): keywords is an object of each top-level binding's keyword, \"const\", \"let\" or \"function\", by name");
+  if (x.shadowed !== undefined && !(Array.isArray(x.shadowed) && x.shadowed.every((n) => typeof n === "string"))) throw new TypeError("build({ shadowed }): shadowed is a list of names");
   if (x.scope !== undefined && (x.scope === null || typeof x.scope !== "object" || Array.isArray(x.scope))) throw new TypeError("build({ scope }): scope is an object of the file's top-level bindings, by name");
   if (x.sources !== undefined && (x.sources === null || typeof x.sources !== "object" || Array.isArray(x.sources) || !Object.values(x.sources).every((s) => typeof s === "string"))) throw new TypeError("build({ sources }): sources is an object of each top-level declaration's initializer text, by name");
   if (x.buildTime !== undefined && !(Array.isArray(x.buildTime) && x.buildTime.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTime }): buildTime is a list of names");
@@ -362,8 +371,13 @@ class Program {
     this.diagnostics = [...saved];
     try {
       const record = this.record();
-      for (const inst of this.instances()) this.checkInstance(inst, record);
+      // The units come first so the root's check can read them; their diagnostics still follow the checks'.
+      const mark = this.diagnostics.length;
       const units = this.checkFreeNames(record, options);
+      const free = this.diagnostics.splice(mark);
+      const seen = units.length ? { ...record, units: [...units, .../** @type {unknown[]} */ (record.units ?? [])] } : record;
+      for (const inst of this.instances()) this.checkInstance(inst, record, inst === this.root ? seen : record);
+      this.diagnostics.push(...free);
       return { diagnostics: this.diagnostics, units };
     } finally { this.diagnostics = saved; }
   }
@@ -390,8 +404,11 @@ class Program {
     return out;
   }
 
-  /** @param {Instance} inst @param {Record<string, unknown>} record */
-  checkInstance(inst, record) {
+  /**
+   * @param {Instance} inst @param {Record<string, unknown>} record
+   * @param {Record<string, unknown>} [seen]  the record the construct's check is handed: the whole record, plus the units for the root
+   */
+  checkInstance(inst, record, seen = record) {
     const c = inst.construct;
     const what = `${c.name} '${instanceName(inst)}'`;
     const at = { file: inst.file, loc: inst.loc };
@@ -412,7 +429,7 @@ class Program {
         if (!known.includes(r.value)) this.diagnostics.push(diag("B003", `${what}${call.slot === "(opens)" ? "" : `, .${call.slot}`}: ${where(r.path)}: there is no ${r.ns} '${r.value}'${within}.${didYouMean(r.value, known)}`, known.length ? `name one of: ${known.join(", ")}` : `declare ${an(r.ns)} first${within}`, { file: call.file, loc: call.loc }));
       }
     }
-    if (typeof c.def.check === "function") c.def.check(recordOf(inst), this.context(at, [], record));
+    if (typeof c.def.check === "function") c.def.check(inst === this.root ? seen : recordOf(inst), this.context(at, [], seen));
   }
 
   /**
@@ -443,6 +460,20 @@ class Program {
     const resolved = new Map();
     // Resolved helpers join the list as it is walked, so their own free names resolve too.
     const sources = [...this.sources];
+    // helpers: { check: "all" } lowers every top-level function, reached or not.
+    if (scope && d.helpers?.check === "all") {
+      for (const [name, v] of Object.entries(scope)) {
+        if (typeof v !== "function" || allowed.has(name) || own.has(name)) continue;
+        const r = unitOf(name, v, options.sources && Object.hasOwn(options.sources, name) ? options.sources[name] : undefined);
+        if ("code" in r) {
+          resolved.set(name, null);
+          this.diagnostics.push(diag(r.code, `the top-level helper '${name}' is not a Runtime Lambda: ${r.reason}.`, r.tip, { file: root.file, loc: root.loc }));
+          continue;
+        }
+        resolved.set(name, keyed(r.unit, options.keywords));
+        if (r.ast) sources.push({ ast: r.ast, src: r.unit.src, what: `the top-level helper '${name}'`, at: { file: root.file, loc: root.loc } });
+      }
+    }
     for (const src of sources) {
       for (const { name, member, loc } of freeNames(src.ast)) {
         if (allowed.has(name) || resolved.has(name)) continue;
@@ -460,7 +491,13 @@ class Program {
             this.diagnostics.push(diag(r.code, `${src.what} reads the top-level '${name}', which a lambda cannot use: ${r.reason}. A lambda can read ${PLAIN}.`, r.tip, src.at, lambdaAt));
             continue;
           }
-          resolved.set(name, r.unit);
+          // Refused only once the binding itself is usable, so a mistake the binding has gets its own code alone.
+          if (options.shadowed?.includes(name)) {
+            resolved.set(name, null);
+            this.diagnostics.push(diag("B013", `${src.what} reads "${name}", but the file declares "${name}" at its top level and again inside build-time code: a lambda's text cannot say which one it means, and the kit would read the top-level one.`, `rename one of the two "${name}"s`, src.at, lambdaAt));
+            continue;
+          }
+          resolved.set(name, keyed(r.unit, options.keywords));
           if (r.ast) sources.push({ ast: r.ast, src: r.unit.src, what: `the top-level helper '${name}'`, at: src.at });
           continue;
         }

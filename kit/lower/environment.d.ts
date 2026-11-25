@@ -44,6 +44,8 @@ export interface ObjectDecl {
   /** How messages name it, e.g. `Mole` or `the world`. */
   label: string;
   members: Record<string, Member>;
+  /** Members a lambda may not use, by name, with the reason: L002 reads the message in place of "has no member". */
+  rejected?: Record<string, { message: string; tip: string }>;
   /** Present when the object itself is called, like the HUD's `at(col, row)`. */
   call?: FnSig;
 }
@@ -81,6 +83,8 @@ export interface SlotDecl {
    * L004; a read of a total this slot may bump is L017. Absent, `forbid` alone judges the slot.
    */
   may?: string[];
+  /** `"block"`: an expression body is L012. */
+  body?: "block";
   /** Why `forbid` holds, for the diagnostic's tip. */
   forbidWhy?: string;
   /** Where a forbidden effect belongs instead, when the Dialect has such a place ("Move it to an onFrame or an event handler"); it leads the tip. */
@@ -107,6 +111,12 @@ export interface Environment {
    * Lowering reads an alias as the component it names, so the IR only ever holds x, y, z and w.
    */
   componentAliases?: Record<string, Record<string, string>>;
+  /** The vector types that multiply only by a scalar (`vector(2, "f64", { multiply: "scalar" })`), by type name: vector * vector is L003. */
+  vectorMultiply?: Record<string, "scalar">;
+  /** True when every top-level helper is lowered, called or not (`helpers: { check: "all" }`): one nothing calls has no call site to type its parameters, which then stay unknown and quiet instead of L014. */
+  checkAllHelpers?: true;
+  /** `"bool"`: a condition must be a bool, so a number as an if or ternary test or a ! && || operand is L003. */
+  conditions?: "bool";
   /**
    * The type of a number literal where nothing else gives it one: a let's initializer, a helper's
    * argument, a ternary of literals, a for counter. Defaults to `f64`. A literal elsewhere takes the

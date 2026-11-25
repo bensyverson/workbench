@@ -36,7 +36,7 @@ import { BuildError, programOf } from "./grammar.js";
 /** The open run, while `programFn` runs. @type {Run | null} */
 let current = null;
 
-const RUN_KEYS = ["values", "scope", "sources", "buildTime", "buildTimeBindings"];
+const RUN_KEYS = ["values", "scope", "sources", "buildTime", "buildTimeBindings", "keywords", "shadowed"];
 
 /**
  * A Program opened its root: the first one in a run is the run's Program. A Program file builds one Program, so
@@ -228,6 +228,8 @@ export function run(programFn, options = {}) {
   if (options === null || typeof options !== "object" || Array.isArray(options)) throw new TypeError(`run(programFn, options): options are { ${RUN_KEYS.join(", ")} }`);
   for (const k of Object.keys(options)) if (!RUN_KEYS.includes(k)) throw new TypeError(`run(programFn, options): unknown key '${k}'; it takes { ${RUN_KEYS.join(", ")} }`);
   const { values = {}, ...build } = options;
+  // The Program's own function is not one of its helpers, though the file declares it at the top level.
+  if (build.scope && typeof build.scope === "object" && !Array.isArray(build.scope)) build.scope = Object.fromEntries(Object.entries(build.scope).filter(([, v]) => v !== programFn));
   if (values === null || typeof values !== "object" || Array.isArray(values)) throw new TypeError("run({ values }): values are the params' values, by name");
   if (current) throw new Error("run() does not nest: a Program's code may not call run");
   /** @type {Run} */

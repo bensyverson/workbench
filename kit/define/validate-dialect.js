@@ -10,8 +10,14 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "conditions"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
+/** What `conditions` may say: only bool values are conditions. */
+export const CONDITIONS = Object.freeze(["bool"]);
+/** What a vector's `multiply` may say: componentwise (the default), or only a vector times a scalar. */
+export const VECTOR_MULTIPLY = Object.freeze(["componentwise", "scalar"]);
+/** What a convention's `body` may say: a block, never an expression. */
+export const BODY = Object.freeze(["block"]);
 export const CONSTANT_CALLS = Object.freeze(["none", "pure"]);
 const DIALECT_REQUIRED = Object.freeze(["name", "numberType", "spaces", "targets", "slots"]);
 const INTRINSIC_KEYS = Object.freeze(["params", "returns", "numeric", "componentwise", "ref", "spell", "minArgs", "rest"]);
@@ -73,6 +79,22 @@ function checkParams(p, objects, out) {
 }
 
 /**
+ * An object's `rejected` list: members a lambda may not use, each with the reason. A name that is a real member
+ * would never be reached (D007).
+ * @param {string} n @param {Record<string, any>} v @param {Array<string | number>} path @param {Problem[]} out
+ */
+function checkRejected(n, v, path, out) {
+  const where = [...path, "rejected"];
+  if (!isPlainObject(v.rejected)) { out.push({ code: "D011", path: where, message: `object '${n}': rejected must be an object of members a lambda may not use.`, tip: `rejected: { random: { message: "no randomness here", fix: "rng()" } }` }); return; }
+  const members = isPlainObject(v.members) ? Object.keys(v.members) : [];
+  for (const [m, r] of Object.entries(v.rejected)) {
+    if (!isPlainObject(r) || typeof r.message !== "string" || r.message === "" || Object.keys(r).some((k) => k !== "message" && k !== "tip" && k !== "fix") || ("tip" in r && typeof r.tip !== "string") || ("fix" in r && typeof r.fix !== "string")) {
+      out.push({ code: "D011", path: [...where, m], message: `object '${n}': rejected.${m} must be { message, tip?, fix? }, each a string.`, tip: `${m}: { message: "why it is not offered", fix: "what to write instead" }` });
+    } else if (members.includes(m)) out.push({ code: "D007", path: [...where, m], message: `object '${n}' both declares and rejects '${m}'.`, tip: `remove it from members, or from rejected` });
+  }
+}
+
+/**
  * @param {unknown} def
  * @returns {Problem[]}
  */
@@ -96,6 +118,7 @@ export function validateDialect(def) {
       if ("calls" in def.constants && !CONSTANT_CALLS.includes(/** @type {any} */ (def.constants.calls))) out.push({ code: "D011", path: ["constants", "calls"], message: `constants.calls must be ${listed([...CONSTANT_CALLS])}, not ${describe(def.constants.calls)}.`, tip: `calls: "pure" lets a constant call a pure helper` });
     }
   }
+  if (def.conditions !== undefined && !CONDITIONS.includes(/** @type {any} */ (def.conditions))) out.push({ code: "D011", path: ["conditions"], message: `conditions must be ${listed([...CONDITIONS])}, not ${describe(def.conditions)}.`, tip: `conditions: "bool" makes a number as an if, ternary, ! && or || operand an error` });
   // Every Dialect has a text view: what a model reads of its screen and state (architecture synthesis §3.3).
   if (typeof def.text !== "function") out.push({ code: "D020", path: ["text"], message: def.text === undefined ? "a Dialect needs text(state), its text view: its screen and state as characters, sized for a model." : `text must be a function of the Dialect's state, not ${describe(def.text)}.`, tip: "text(state) { return `…`; }, where state is what your Dialect's host shows (fields: a frame; data: a table)" });
   if (def.environment !== undefined && typeof def.environment !== "function") out.push({ code: "D011", path: ["environment"], message: "environment must be a function of the program record.", tip: "environment(program) { return { objects, globals }; }" });
@@ -120,9 +143,12 @@ export function validateDialect(def) {
     if (v.elem !== "f32" && v.elem !== "f64") out.push({ code: "D002", path, message: `vector ${n}: its component type ${describe(v.elem)} must be "f32" or "f64".`, tip: `vector(2, "f32")` });
     if (v.options !== undefined) {
       const comps = ["x", "y", "z", "w"].slice(0, typeof v.n === "number" ? v.n : 4);
-      const a = isPlainObject(v.options) ? v.options.aliases : undefined;
-      if (!isPlainObject(v.options) || Object.keys(v.options).some((k) => k !== "aliases") || !(isPlainObject(a) && Object.values(a).every((c) => typeof c === "string" && comps.includes(c)))) {
-        out.push({ code: "D011", path, message: `vector ${n}: its options must be { aliases }, each alias naming one of its components (${comps.join(", ")}).`, tip: `vector(3, "f32", { aliases: { r: "x", g: "y", b: "z" } })` });
+      const o = isPlainObject(v.options) ? v.options : {};
+      const a = o.aliases;
+      if (!isPlainObject(v.options) || Object.keys(o).some((k) => k !== "aliases" && k !== "multiply") || (a !== undefined && !(isPlainObject(a) && Object.values(a).every((c) => typeof c === "string" && comps.includes(c))))) {
+        out.push({ code: "D011", path, message: `vector ${n}: its options must be { aliases, multiply }: each alias naming one of its components (${comps.join(", ")}).`, tip: `vector(3, "f32", { aliases: { r: "x", g: "y", b: "z" }, multiply: "scalar" })` });
+      } else if (o.multiply !== undefined && !VECTOR_MULTIPLY.includes(/** @type {any} */ (o.multiply))) {
+        out.push({ code: "D011", path, message: `vector ${n}: multiply must be ${listed([...VECTOR_MULTIPLY])}, not ${describe(o.multiply)}.`, tip: `vector(2, "f64", { multiply: "scalar" }) refuses vector * vector` });
       }
     }
   }
@@ -133,7 +159,8 @@ export function validateDialect(def) {
   for (const [n, v] of objects) {
     const path = ["objects", n];
     if (!isPlainObject(v)) { out.push({ code: "D011", path, message: `object '${n}' must be { label, members }.`, tip: `${n}: { label: "…", members: { … } }` }); continue; }
-    checkKeys(v, ["label", "members", "call", "effects"], [], path, `object '${n}'`, out);
+    checkKeys(v, ["label", "members", "call", "effects", "rejected"], [], path, `object '${n}'`, out);
+    if (v.rejected !== undefined) checkRejected(n, v, path, out);
     if (v.label !== undefined && typeof v.label !== "string") out.push({ code: "D011", path: [...path, "label"], message: `object '${n}': label must be a string.`, tip: `label: "the uniforms (u)"` });
     if (v.call !== undefined) {
       if (!isPlainObject(v.call)) out.push({ code: "D011", path: [...path, "call"], message: `object '${n}': call must be { params, returns }, the signature of calling the object.`, tip: `call: { params: [], returns: "f64" }` });
@@ -208,7 +235,8 @@ export function validateDialect(def) {
     if (KIT_CONVENTIONS.includes(n)) { out.push({ code: "D007", path, message: `slot convention '${n}' is one the kit makes${n === "method" ? " (lowering reads it as a program method)" : " for unit slots"}.`, tip: `rename the convention; .fn and .const units get their conventions from the kit` }); continue; }
     if (typeof v === "function") continue;
     if (!isPlainObject(v)) { out.push({ code: "D011", path, message: `slot convention '${n}' must be { params, returns, space } or a function (ref, program, state) => convention.`, tip: `${n}: { params: [], returns: "infer", space: "${spaceNames[0] ?? "…"}" }` }); continue; }
-    checkKeys(v, ["params", "returns", "space", "may"], ["params", "returns", "space"], path, `slot convention '${n}'`, out);
+    checkKeys(v, ["params", "returns", "space", "may", "body"], ["params", "returns", "space"], path, `slot convention '${n}'`, out);
+    if (v.body !== undefined && !BODY.includes(/** @type {any} */ (v.body))) out.push({ code: "D011", path: [...path, "body"], message: `slot convention '${n}': body must be ${listed([...BODY])}, not ${describe(v.body)}.`, tip: `body: "block" refuses an expression body, (x) => …` });
     if (v.params !== undefined && !Array.isArray(v.params)) out.push({ code: "D011", path: [...path, "params"], message: `slot convention '${n}': params must be a list of types.`, tip: `params: ["vec2"]` });
     else if (Array.isArray(v.params)) v.params.forEach((t, i) => checkType(t, scope, {}, [...path, "params"], `slot convention '${n}', param ${i + 1}`, out));
     if (v.returns !== undefined) checkType(v.returns, scope, { infer: true }, [...path, "returns"], `slot convention '${n}', returns`, out);

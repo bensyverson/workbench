@@ -301,12 +301,14 @@ function returnStatement(L, node) {
 }
 
 /**
- * The inferred return type of a method: the join of its returns, and void if it can fall off the end.
+ * The inferred return type of a method: the join of its returns, and void if it can fall off the end (unless that
+ * was already reported as a missing return, which would only add a second diagnostic at each call).
  * @param {Lowerer} L
  * @param {Stmt[]} body
+ * @param {boolean} [reported]  the end of the body was refused as a missing return
  * @returns {Type}
  */
-export function inferredReturn(L, body) {
-  const all = terminates(body) ? L.returns : [...L.returns, /** @type {Type} */ ("void")];
+export function inferredReturn(L, body, reported = false) {
+  const all = terminates(body) || reported ? L.returns : [...L.returns, /** @type {Type} */ ("void")];
   return all.reduce((a, b) => join(a, b));
 }

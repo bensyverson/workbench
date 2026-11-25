@@ -6,7 +6,7 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames, buildTimeBindings, topLevelBindings, topLevelFunctions, ScanError, blank } from "../../../kit/parse/toplevel.js";
+import { buildTimeNames, buildTimeBindings, buildTimeShadows, topLevelBindings, topLevelFunctions, ScanError, blank } from "../../../kit/parse/toplevel.js";
 import { LOAD } from "./codes.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */
@@ -148,7 +148,8 @@ export function moduleScope(file, mod) {
   // A function declaration's text vouches only while the binding still holds the function the declaration made.
   const captured = /** @type {Record<string, unknown>} */ (typeof mod.__defineTrialFunctions === "function" ? mod.__defineTrialFunctions() : {});
   for (const f of topLevelFunctions(text)) if (!Object.hasOwn(captured, f.name) || /** @type {Record<string, unknown>} */ (scope)[f.name] !== captured[f.name]) delete sources[f.name];
-  return { scope, sources, buildTime: buildTimeNames(text), buildTimeBindings: buildTimeBindings(text) };
+  const keywords = Object.fromEntries([...topLevelBindings(text).map((b) => [b.name, b.keyword]), ...topLevelFunctions(text).map((f) => [f.name, "function"])]);
+  return { scope, sources, buildTime: buildTimeNames(text), buildTimeBindings: buildTimeBindings(text), keywords, shadowed: buildTimeShadows(text) };
 }
 
 /**

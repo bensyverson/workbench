@@ -114,9 +114,10 @@ export function validateEffects(d) {
 
   if ("helpers" in d) {
     const h = d.helpers;
-    if (!isPlainObject(h)) out.push({ code: "D021", path: ["helpers"], message: "helpers must be { may: [ … ] }.", tip: `helpers: { may: ["read ${instancesOf(spaces)[0] ?? "Obj"}"] }` });
+    if (!isPlainObject(h)) out.push({ code: "D021", path: ["helpers"], message: "helpers must be { may: [ … ], check? }.", tip: `helpers: { may: ["read ${instancesOf(spaces)[0] ?? "Obj"}"] }` });
     else {
-      for (const k of Object.keys(h)) if (k !== "may") out.push({ code: "D021", path: ["helpers", k], message: `helpers takes only may, not '${k}'.${didYouMean(k, ["may"])}`, tip: `helpers: { may: ["read …"] }` });
+      for (const k of Object.keys(h)) if (k !== "may" && k !== "check") out.push({ code: "D021", path: ["helpers", k], message: `helpers takes only may and check, not '${k}'.${didYouMean(k, ["may", "check"])}`, tip: `helpers: { may: ["read …"], check: "all" }` });
+      if ("check" in h && h.check !== "all" && h.check !== "called") out.push({ code: "D011", path: ["helpers", "check"], message: `helpers.check must be "all" or "called", not ${JSON.stringify(h.check)}.`, tip: `check: "all" lowers every top-level function, called or not; "called" (the default) only those a lambda reaches` });
       if ("may" in h) out.push(...checkMay(h.may, { who: "helpers", instance: null, helpers: true, path: ["helpers", "may"] }, model, { defer }));
     }
   }

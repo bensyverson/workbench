@@ -6,8 +6,10 @@ export const BUILTIN_FIELDS = ["pos", "vel", "age", "life", "size", "kill"];
 export const particlesDialect = defineDialect({
   name: "particles",
   numberType: "f64",
+  // Sheet: every condition is a boolean; vectors multiply by a number only.
+  conditions: "bool",
   types: {
-    vec2: vector(2, "f64"),
+    vec2: vector(2, "f64", { multiply: "scalar" }),
   },
   spaces: {
     // rate runs once per emitter per tick and changes nothing.
@@ -27,6 +29,7 @@ export const particlesDialect = defineDialect({
         kill: { fn: { params: [], returns: "void" }, effects: ["destroy Particle"] },
         // environment(program) adds one { value: "f64", write: true } per .field
       },
+      rejected: { collide: { message: "particles never see each other in this language", tip: "keep what a particle needs in its own fields; there is no collision" } },
     },
     Rng: { label: "spawn's random stream (rng)", call: { params: [], returns: "f64" }, effects: ["rng"] },
     // environment(program) adds one { value: "f64", bump: true } per .counter
@@ -45,6 +48,7 @@ export const particlesDialect = defineDialect({
         cos: { fn: { params: ["f64"], returns: "f64" } },
         PI: "f64",
       },
+      rejected: { random: { message: "Math.random is not reproducible; the seeded stream is spawn's rng", fix: "rng() inside a spawn lambda" } },
     },
   },
   globals: { $: "Params", counters: "Counters", Math: "Math" },
@@ -61,17 +65,18 @@ export const particlesDialect = defineDialect({
   slots: {
     rate: { params: ["f64", "f64"], returns: "f64", space: "emitter", may: ["read Counters"] },
     spawn: {
-      params: ["Particle", "Rng", "f64"], returns: "void", space: "particle",
+      params: ["Particle", "Rng", "f64"], returns: "void", space: "particle", body: "block",
       may: ["write Particle", "rng", "bump Counters"],
     },
-    force: { params: ["Particle", "f64"], returns: "void", space: "particle", may: ["write Particle.vel"] },
+    force: { params: ["Particle", "f64"], returns: "void", space: "particle", body: "block", may: ["write Particle.vel"] },
     update: {
-      params: ["Particle", "f64"], returns: "void", space: "particle",
+      params: ["Particle", "f64"], returns: "void", space: "particle", body: "block",
       may: ["write Particle", "destroy Particle", "bump Counters"],
     },
   },
-  // Helpers are pure: they may read the particle they are passed, and nothing that changes otherwise.
-  helpers: { may: ["read Particle"] },
+  // Helpers are pure: they may read the particle they are passed, and nothing that changes otherwise. Every one is
+  // checked, called or not (the sheet says so); what an uncalled one does through a parameter cannot be seen.
+  helpers: { may: ["read Particle"], check: "all" },
   params: { object: "Params", name: "$" },
   environment(program) {
     const params = {};

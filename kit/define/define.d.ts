@@ -50,7 +50,7 @@ export type LibraryDef = { fn: string } | { const: string };
  * A slot convention as declared: static, or a function of where the lambda sits. `may` lists the effects its lambda
  * may have, as patterns (`"write Plant"`, `"bump Totals"`, `"rng"`, `"read Totals.n"`); absent, none.
  */
-export interface ConventionDef { params: TypeDef[]; returns: TypeDef | "infer"; space: string; may?: string[] }
+export interface ConventionDef { params: TypeDef[]; returns: TypeDef | "infer"; space: string; may?: string[]; /** `"block"`: an expression body is an L error. */ body?: "block" }
 export type ConventionFn = (ref: DefineSlotRef, program: Record<string, unknown>, state: unknown) => ConventionDef | string;
 
 /** What a slot convention function receives: the core SlotRef plus the call's position. */
@@ -82,6 +82,8 @@ export interface ObjectDef {
   members?: Record<string, unknown>;
   call?: { params: TypeDef[]; returns: TypeDef; minArgs?: number; rest?: TypeDef };
   effects?: string[];
+  /** Members a lambda may not use, each with why: a lambda that does gets the message instead of "has no member" (L002). A name here may not also be a member (D007). */
+  rejected?: Record<string, { message: string; tip?: string; fix?: string }>;
 }
 
 export interface DialectDef {
@@ -101,13 +103,18 @@ export interface DialectDef {
   /** What a constant may call: `"pure"` lets it call a pure helper; `"none"`, the default, forbids every call. */
   constants?: { calls: ConstantCalls };
   environment?: (program: Record<string, any>) => EnvironmentAddition;
+  /** `"bool"`: a condition (an if or ternary test, an operand of ! && ||) must be a bool; a number there is an L error. Absent, any value is truthy. */
+  conditions?: "bool";
   /** What a helper may do: reads only. Absent, a read of each instance space's object. */
-  helpers?: { may: string[] };
+  helpers?: { may?: string[]; check?: HelperCheck };
   /** The text view: the Dialect's screen and state as characters, sized for a model. What `state` is, the Dialect says. Required (D020). */
   text: (state: any) => string;
   /** The object a lambda reads the Program's params through, the name it reads it by, and the members known only at run time, which build-time code may not read (B014). */
   params?: { object: string; name: string; runtime?: string[] };
 }
+
+/** Which top-level helpers lowering checks: `"called"` (the default) those a lambda reaches, `"all"` every function, reached or not (their parameters then stay untyped, so what they do through one is not checked). */
+export type HelperCheck = "called" | "all";
 
 /** What a Dialect's constants may call. Stores and emits stay forbidden either way. */
 export type ConstantCalls = "none" | "pure";
@@ -181,6 +188,10 @@ export interface BuildOptions {
   buildTime?: string[];
   /** The subset of `buildTime` the file binds as a `const`/`let`/`var`, `catch` or loop variable (`buildTimeBindings(text)`): such a name is a build-time local even when another lambda also has a parameter of it, so B013 keeps its build-time wording. Absent, a name that is another lambda's parameter is told so. */
   buildTimeBindings?: string[];
+  /** The keyword each top-level binding is declared with (`topLevelBindings` gives `const` and `let`, `topLevelFunctions` `function`), copied onto the units as `keyword`, so a Dialect's root `check` can refuse a top-level `let`. Absent, a unit has no `keyword`. */
+  keywords?: Record<string, "const" | "let" | "function">;
+  /** The names the file declares at its top level and again below it (`buildTimeShadows(text)`); a lambda that reads one is B013, since its text cannot say which it means. */
+  shadowed?: string[];
 }
 
 /** What a slot's or construct's `check` receives besides the call or record. */

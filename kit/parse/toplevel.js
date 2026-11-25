@@ -301,17 +301,40 @@ const NAME = new RegExp(`${NOT_AFTER_NAME}${ID}`, "gu");
  * @returns {string[]}
  */
 export function buildTimeNames(code) {
+  const top = new Set(topLevelNames(code));
+  return [...belowTopLevel(code)].filter((n) => !top.has(n));
+}
+
+/**
+ * The names a file declares at its top level and again below it (a loop's `k` beside a top-level `k`, a function
+ * inside the export that shares a top-level function's name). A lambda's text cannot say which one it reads, and the
+ * kit resolves it to the top-level one, so the host passes these and a lambda that reads one is refused. Like
+ * `buildTimeNames`, it errs toward listing.
+ * @param {string} code
+ * @returns {string[]}
+ */
+export function buildTimeShadows(code) {
+  const top = new Set(topLevelNames(code));
+  return [...belowTopLevel(code)].filter((n) => top.has(n));
+}
+
+/**
+ * Every name declared below the top level (a top-level declaration's own name is not one, but its parameters are).
+ * @param {string} code
+ * @returns {Set<string>}
+ */
+function belowTopLevel(code) {
   const s = blank(code);
   /** @type {Set<string>} */
   const names = new Set();
   const params = (/** @type {string} */ list) => { for (const part of splitTopLevel(list)) for (const n of patternNames(part)) names.add(n); };
-  for (const m of s.matchAll(DECL)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) names.add(n);
-  for (const m of s.matchAll(FUNCTION)) { if (m[1]) names.add(m[1]); params(m[2]); }
+  const atTop = new Set(topLevelKeywords(s).map((k) => k.at));
+  for (const m of s.matchAll(DECL)) if (!atTop.has(m.index ?? 0)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) names.add(n);
+  for (const m of s.matchAll(FUNCTION)) { if (m[1] && !atTop.has(m.index ?? 0)) names.add(m[1]); params(m[2]); }
   for (const m of s.matchAll(/\(([^()]*)\)\s*=>/g)) params(m[1]);
   for (const m of s.matchAll(ARROW_PARAM)) names.add(m[1]);
   for (const m of s.matchAll(CATCH)) params(m[1]);
-  const top = new Set(topLevelNames(code));
-  return [...names].filter((n) => !top.has(n));
+  return names;
 }
 
 /**

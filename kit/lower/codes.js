@@ -5,7 +5,7 @@
 export const LOWER_CODES = Object.freeze({
   L001: "A free identifier the environment does not declare, or a name read inside its own declaration",
   L002: "An unknown member",
-  L003: "A type mismatch",
+  L003: "A type mismatch, a non-bool condition where the Dialect wants a bool, vector * vector where it multiplies by a scalar only, or a missing return",
   L004: "An effect the slot does not allow",
   L005: "A callback that is not an argument to a declared query",
   L006: "A query callback with an effect, or that assigns a local",
@@ -14,7 +14,7 @@ export const LOWER_CODES = Object.freeze({
   L009: "A dynamic property name",
   L010: "More parameters than the slot passes",
   L011: "A name argument that must be a literal, or that names nothing declared",
-  L012: "A subset construct lowering does not handle yet",
+  L012: "A subset construct lowering does not handle yet, or an expression body where the convention wants a block",
   L013: "A store to a read-only place",
   L014: "A signature lowering cannot infer, that call sites disagree on, or whose effects are unknown",
   L015: "The wrong number of arguments",

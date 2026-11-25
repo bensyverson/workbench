@@ -46,6 +46,10 @@ export const particles = defineGrammar(particlesDialect, {
         update: { kind: "decl", args: [lambda("update")], once: true },
       },
       check(record, ctx) {
+        // The sheet: lambdas read top-level constants, not a top-level let (the host says each binding's keyword).
+        for (const u of record.units ?? []) {
+          if (u.keyword === "let") ctx.error("R009", `the top-level '${u.name}' is a let, which a lambda may not read`, { tip: `write const ${u.name} = …` });
+        }
         const emitters = record.emitter ?? [];
         if (emitters.length === 0) ctx.error("R004", "the Program has no emitter", { tip: 'add .emitter("jet", { x, y, maxRate }) with .rate and .spawn' });
         // Two emitters with one name are the kit's B002: an opening name() declares into the "emitter" namespace.

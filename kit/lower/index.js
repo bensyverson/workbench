@@ -3,13 +3,13 @@
 
 import { parseLambda, checkSubset } from "../parse/index.js";
 import { Lowerer, dedupe } from "./lowerer.js";
-import { statements, statement, effect, inferredReturn } from "./stmt.js";
+import { statements, statement, effect, inferredReturn, terminates } from "./stmt.js";
 import { check } from "./expr.js";
 import { reachable } from "./call.js";
 import { joinCallSites } from "./callsites.js";
 import { HELPER_OWNER } from "./codes.js";
 import { verify } from "../ir/verify.js";
-import { showType } from "../ir/types.js";
+import { showType, assignable } from "../ir/types.js";
 
 export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
 
@@ -28,6 +28,7 @@ export const switches = { verify: false };
  * @typedef {object} LowerResult
  * @property {boolean} ok
  * @property {Kernel | null} kernel  Null when any diagnostic is an error, or when it calls a helper that does not lower.
+ * @property {true} [untyped]  A helper nothing calls, under `checkAllHelpers`: its parameters have no type, so what it does through one is not checked and it has no kernel, with no diagnostic of its own for that.
  * @property {string[]} [blockedBy]  The helpers it calls that do not lower: its own diagnostics are clean, but it has no kernel, since the helper's code would not exist (the helper's diagnostics say why).
  * @property {Diagnostic[]} diagnostics  Parser, subset and lowering diagnostics, in source order.
  * @property {Array<{ name: string, t: Type }>} emits  Event payloads this lambda sends.
@@ -81,10 +82,12 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
   const L = new Lowerer(environment, src, slot, decl, sigs, ast);
   const params = bindParams(L, ast, decl);
   const body = L.capture(() => lowerBody(L, ast, decl)).stmts;
-  const returns = decl.returns === "infer" ? inferredReturn(L, body) : decl.returns;
+  const open = endsOpen(L, ast, decl, body);
+  const returns = decl.returns === "infer" ? inferredReturn(L, body, open) : decl.returns;
+  const untyped = environment.checkAllHelpers === true && slot.kind === "helper" && params.some((p) => p.t === "unknown");
   const effects = dedupe(collectEffects(body));
   /** @type {Kernel | null} */
-  const made = L.failed ? null : {
+  const made = L.failed || untyped ? null : {
     ir: "kernel", name: slot.id, slot: slot.kind, space: decl.space,
     params, returns, locals: L.locals.filter((l) => l.kind !== "param"), body, effects, src, span: [ast.range[0], ast.range[1]],
   };
@@ -98,7 +101,7 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
   const blocked = L.blockedBy.size > 0;
   const kernel = L.failed || blocked ? null : made;
   const diagnostics = [...subset, ...L.diagnostics].sort((a, b) => a.range[0] - b.range[0]);
-  return { ok: !L.failed && !blocked, kernel, diagnostics, ...(blocked ? { blockedBy: [...L.blockedBy] } : {}), emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t), arity: Math.max(0, ast.params.length - decl.params.length) };
+  return { ok: !L.failed && !blocked, kernel, diagnostics, ...(blocked ? { blockedBy: [...L.blockedBy] } : {}), ...(untyped && !L.failed ? { untyped: /** @type {const} */ (true) } : {}), emits: L.emits, calls: L.calls, returns, effects, params: params.map((p) => p.t), arity: Math.max(0, ast.params.length - decl.params.length) };
 }
 
 /**
@@ -117,6 +120,8 @@ function bindParams(L, ast, decl) {
     const given = decl.params[i];
     if (given === undefined && !decl.inferParams) {
       const names = decl.params.map(paramName);
+      // Declared as unknown, so its uses report nothing more: one mistake, one diagnostic.
+      L.declare(p.name, "unknown", "param");
       L.error("L010", p, `A ${L.slot.kind} passes ${decl.params.length} parameter${decl.params.length === 1 ? "" : "s"}; '${p.name}' gets nothing.`, `This slot passes (${names.join(", ")}); drop '${p.name}'.`);
       return;
     }
@@ -133,7 +138,7 @@ function bindParams(L, ast, decl) {
     } else {
       const inferred = method?.params[i - decl.params.length];
       if (inferred) t = inferred;
-      else pending = { code: "L014", message: `The type of '${p.name}' cannot be inferred: no call to ${L.slot.on}.${L.slot.key} passes it.`, tip: "Call the method somewhere in the program with this argument, or drop the parameter." };
+      else if (!(L.environment.checkAllHelpers && L.slot.kind === "helper")) pending = { code: "L014", message: `The type of '${p.name}' cannot be inferred: no call to ${L.slot.on}.${L.slot.key} passes it.`, tip: "Call the method somewhere in the program with this argument, or drop the parameter." };
     }
     const name = L.declare(p.name, t, "param", { pending });
     out.push({ name, t, kind: "param" });
@@ -148,11 +153,30 @@ function bindParams(L, ast, decl) {
  */
 function lowerBody(L, ast, decl) {
   if (ast.body.type === "BlockStatement") { statements(L, ast.body.body); return; }
+  if (decl.body === "block") L.error("L012", ast.body, `A ${L.slot.kind} takes a block body, not an expression.`, "Write it with braces: (…) => { … }, with a return where it gives a value.");
   const body = /** @type {Expression} */ (ast.body);
   const span = /** @type {[number, number]} */ ([body.range[0], body.range[1]]);
   if (decl.returns === "void") { effect(L, body); return; }
   if (decl.returns === "infer") { statement(L, { type: "ReturnStatement", argument: body, loc: body.loc, range: body.range }); return; }
   L.emit({ k: "return", value: check(L, body, decl.returns, `a ${L.slot.kind}'s result`), span });
+}
+
+/**
+ * Whether a lambda that must give a value can reach its end without one (L003, once, at its closing brace). A `for`
+ * may finish without running its body, so a return inside one does not count. A slot that returns nothing, or may
+ * return nothing (an optional type), is not held to it. A helper's type is inferred, so it is held once some path
+ * returns a value; a method keeps its inferred optional type (a path with no return makes it `opt`), which DMG relies on.
+ * @param {Lowerer} L @param {ArrowFunctionExpression} ast @param {SlotDecl} decl @param {Stmt[]} body
+ * @returns {boolean}  whether the check reported
+ */
+function endsOpen(L, ast, decl, body) {
+  if (ast.body.type !== "BlockStatement" || terminates(body)) return false;
+  const gives = decl.returns === "infer" ? L.slot.kind === "helper" && L.returns.some((t) => t !== "void") : decl.returns !== "void" && !assignable("null", decl.returns);
+  if (!gives) return false;
+  const end = ast.body.range[1];
+  const what = decl.returns === "infer" ? "returns a value on some paths" : `must return ${showType(/** @type {Type} */ (decl.returns))}`;
+  L.error("L003", [end - 1, end], `This ${L.slot.kind === "helper" ? `helper (${L.slot.key})` : L.slot.kind} ${what}, but can reach its end without a return.`, "Return on every path: add a final return, or an else branch that returns; a return inside a for loop does not count.");
+  return true;
 }
 
 /**

@@ -342,6 +342,11 @@ export function resolveOn(L, recv, name, node) {
   }
   const decl = members?.[name];
   if (!decl) {
+    const no = owner ? L.environment.objects[owner]?.rejected?.[name] : undefined;
+    if (no && Object.hasOwn(L.environment.objects[owner].rejected ?? {}, name)) {
+      L.error("L002", node.property, `${label} does not offer '${name}': ${no.message}`, no.tip);
+      return null;
+    }
     const names = Object.keys(members ?? {});
     const tip = (didYouMean(name, names).trim() || "") + (names.length ? ` Members: ${names.join(", ")}.` : ` ${label} has no members.`);
     L.error("L002", node.property, `${label} has no member '${name}'.`, tip.trim());
@@ -492,6 +497,11 @@ export function test(L, node) {
   const e = expr(L, node);
   if (e.t === "bool" || e.t === "unknown") return e;
   if (scalarTest(L, node, e.t)) return bad(node);
+  if (L.environment.conditions === "bool") {
+    const text = L.src.slice(node.range[0], node.range[1]);
+    L.error("L003", node, `${describe(e.t)} is not a condition: this Dialect takes only a bool there.`, typeof e.t === "object" && "vec" in e.t ? `Test a component: ${text}.x !== 0.` : `Compare it: ${text} !== 0, ${text} > 0, or whatever you mean.`);
+    return bad(node);
+  }
   if (typeof e.t === "object" && "vec" in e.t) L.error("L003", node, "A vector is always true as a condition.", `Test a component instead: if (${L.src.slice(node.range[0], node.range[1])}.x !== 0).`);
   const op =typeof e.t === "object" && "opt" in e.t && isEntity(e.t.opt) ? "present" : "truthy";
   return L.ex({ k: "op", op, args: [e], t: "bool", span: e.span });

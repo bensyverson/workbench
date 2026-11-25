@@ -214,6 +214,10 @@ export function typedBinary(L, operator, a, b, node) {
   if (!va && !vb) return made(A);
   if (op === "rem" || op === "pow") return fail(`'${operator}' is not defined on vectors.`, "Apply it to each component, or use the dialect's function for it.");
   if (va && vb) {
+    if (sameType(A, B) && op === "mul" && L.environment.vectorMultiply?.[/** @type {string} */ (va.name)] === "scalar") {
+      const [x, y] = [text(L, a), text(L, b)];
+      return fail(`'*' multiplies a ${showType(A)} by a scalar, not by another ${showType(B)}.`, `Multiply by a component: ${x} * ${y}.x, or build the vector from products: ${ctor(L, va)}(${COMPONENTS.slice(0, va.vec).map((c) => `${x}.${c} * ${y}.${c}`).join(", ")}).`);
+    }
     if (sameType(A, B)) return made(A);
     const same = va.vec === vb.vec && va.of === vb.of ? `, though both are ${va.vec} ${va.of}s` : "";
     const simple = /^[\w.]+$/.test(text(L, b));
