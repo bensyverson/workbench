@@ -174,6 +174,8 @@ export interface BuildOptions {
   scope?: Record<string, unknown>;
   sources?: Record<string, string>;
   buildTime?: string[];
+  /** The subset of `buildTime` the file binds as a `const`/`let`/`var`, `catch` or loop variable (`buildTimeBindings(text)`): such a name is a build-time local even when another lambda also has a parameter of it, so B013 keeps its build-time wording. Absent, a name that is another lambda's parameter is told so. */
+  buildTimeBindings?: string[];
 }
 
 /** What a slot's or construct's `check` receives besides the call or record. */

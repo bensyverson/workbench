@@ -5,7 +5,7 @@
 import { registerHooks } from "node:module";
 import { session } from "./session.js";
 import { lineAt } from "./locate.js";
-import { topLevelNames } from "../../../kit/parse/toplevel.js";
+import { topLevelNames, topLevelFunctions, ScanError } from "../../../kit/parse/toplevel.js";
 import { IDENT } from "../../../kit/parse/blank.js";
 import { EXAMPLES_DIR } from "./examples.js";
 
@@ -60,6 +60,9 @@ const RESERVED = new Set(["default", "enum", "await", "yield", "let", "static", 
 /** The export the checker appends to each example: a function returning the file's top-level bindings. */
 export const SCOPE_EXPORT = "__defineTrialScope";
 
+/** The export that returns each top-level function declaration's value as it was before any module code ran. */
+export const FUNCTIONS_EXPORT = "__defineTrialFunctions";
+
 /**
  * An example's text with an epilogue that hands its top-level bindings to the checker (the module scope a
  * Program's lambdas resolve their free names against). The epilogue comes last, so every line keeps its number.
@@ -72,5 +75,14 @@ export function withScope(text) {
   let out = "__scope";
   while (names.includes(out)) out += "_";
   const reads = names.map((n) => `try { ${out}.${n} = ${n}; } catch {}`).join(" ");
-  return `${text}\n;export function ${SCOPE_EXPORT}() { const ${out} = {}; ${reads} return ${out}; }\n`;
+  // A function declaration is initialized before any module code runs and is reassignable, so its text vouches for
+  // nothing; its value captured on line 1 (no newline, so every line keeps its number) is what the scope is held to.
+  /** @type {string[]} */
+  let fns = [];
+  try { fns = topLevelFunctions(text).map((f) => f.name).filter((n) => IDENT.test(n) && !RESERVED.has(n)); } catch (e) { if (!(e instanceof ScanError)) throw e; }
+  let cap = "__fns";
+  while (names.includes(cap)) cap += "_";
+  const head = fns.length ? `const ${cap} = { ${[...new Set(fns)].map((n) => `${n}: ${n}`).join(", ")} };` : "";
+  const tail = `export function ${FUNCTIONS_EXPORT}() { return ${fns.length ? cap : "{}"}; }`;
+  return `${head}${text}\n;export function ${SCOPE_EXPORT}() { const ${out} = {}; ${reads} return ${out}; }\n${tail}\n`;
 }

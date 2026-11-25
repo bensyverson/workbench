@@ -86,11 +86,12 @@ export function defineGrammar(dialect, def) {
  */
 function checkOptions(o) {
   const x = /** @type {Record<string, unknown>} */ (o);
-  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError("build(options) and check(options) take { scope?, sources?, buildTime? }");
-  for (const k of Object.keys(x)) if (k !== "scope" && k !== "sources" && k !== "buildTime") throw new TypeError(`build(options): unknown key '${k}'; it takes { scope?, sources?, buildTime? }`);
+  if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError("build(options) and check(options) take { scope?, sources?, buildTime?, buildTimeBindings? }");
+  for (const k of Object.keys(x)) if (k !== "scope" && k !== "sources" && k !== "buildTime" && k !== "buildTimeBindings") throw new TypeError(`build(options): unknown key '${k}'; it takes { scope?, sources?, buildTime?, buildTimeBindings? }`);
   if (x.scope !== undefined && (x.scope === null || typeof x.scope !== "object" || Array.isArray(x.scope))) throw new TypeError("build({ scope }): scope is an object of the file's top-level bindings, by name");
   if (x.sources !== undefined && (x.sources === null || typeof x.sources !== "object" || Array.isArray(x.sources) || !Object.values(x.sources).every((s) => typeof s === "string"))) throw new TypeError("build({ sources }): sources is an object of each top-level declaration's initializer text, by name");
   if (x.buildTime !== undefined && !(Array.isArray(x.buildTime) && x.buildTime.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTime }): buildTime is a list of names");
+  if (x.buildTimeBindings !== undefined && !(Array.isArray(x.buildTimeBindings) && x.buildTimeBindings.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTimeBindings }): buildTimeBindings is a list of names");
 }
 
 /** @typedef {{ dialect: T.Dialect, def: Record<string, any>, constructs: Record<string, Construct>, root: Construct, scoped: Map<string, string> }} Compiled */
@@ -427,6 +428,7 @@ class Program {
     } catch { /* a hook that cannot run on a refused record adds nothing */ }
     const scope = options.scope;
     const buildTime = new Set(options.buildTime ?? []);
+    const bindings = new Set(options.buildTimeBindings ?? []);
     const root = /** @type {Instance} */ (this.root);
     const own = this.ownNames();
     if (scope) for (const n of Object.keys(scope)) {
@@ -460,7 +462,7 @@ class Program {
           if (r.ast) sources.push({ ast: r.ast, src: r.unit.src, what: `the top-level helper '${name}'`, at: src.at });
           continue;
         }
-        if (buildTime.has(name) && sources.some((o) => o.ast !== src.ast && paramNames(o.ast).includes(name))) {
+        if (buildTime.has(name) && !bindings.has(name) && sources.some((o) => o.ast !== src.ast && paramNames(o.ast).includes(name))) {
           this.diagnostics.push(diag("B013", `${src.what} reads "${name}": "${name}" is a parameter of another lambda, not a name this lambda can see.`, `pass it in as an argument (or a parameter of this lambda), or move this use into the lambda whose parameter it is`, src.at, lambdaAt));
           continue;
         }

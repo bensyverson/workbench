@@ -34,3 +34,37 @@ test("a function-declaration helper checks clean through checkDir; one reassigne
   const bad = await withHelper("function scaled(v) { return v * 2; }\nscaled = (v) => v * 3;");
   assert.ok(bad.diagnostics.some((d) => d.code === "B012"), JSON.stringify(bad.diagnostics.map((d) => d.code)));
 });
+
+test("a function declaration reassigned to a closure with the same text is refused: identity, not text, vouches", async () => {
+  const mk = "function mk(k) { return function scaled(v) { return v * k; }; }";
+  for (const tail of ["scaled = mk(3);", "function init() { scaled = mk(3); }\ninit();"]) {
+    const r = await withHelper(`const k = 1;\nfunction scaled(v) { return v * k; }\n${mk}\n${tail}`);
+    assert.ok(r.diagnostics.some((d) => d.code === "B012"), tail);
+  }
+  const ok = await withHelper("const k = 1;\nfunction scaled(v) { return v * k; }");
+  assert.deepEqual(ok.diagnostics.filter((d) => d.severity === "error"), []);
+});
+
+test("a lowering error inside a function-declaration helper is placed at its line, as an arrow's is", async () => {
+  const pad = "// one\n// two\n// three\n";
+  const fn = await withHelper(`${pad}function scaled(v) {\n  return v.nope;\n}`);
+  const arrow = await withHelper(`${pad}const scaled = (v) => {\n  return v.nope;\n};`);
+  const line = (r) => r.diagnostics.filter((d) => d.severity === "error" && /helper 'scaled'/.test(d.message)).map((d) => d.line);
+  assert.deepEqual(line(arrow), [5]);
+  assert.deepEqual(line(fn), [5]);
+});
+
+test("B013 keeps its build-time wording when the name is also a build-time binding of the file, not only another lambda's parameter", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "define-trial-"));
+  try {
+    cpSync(VALID, dir, { recursive: true });
+    const path = join(dir, "examples", "01.js");
+    const src = readFileSync(path, "utf8")
+      .replace('export default ($) => program("glow")', 'export default ($) => {\nconst d = 0.5;\nreturn program("glow")')
+      .replace("(c, u) => c.pulse * 0.5", "(c, u) => c.pulse * d") + "\n}\n";
+    writeFileSync(path, src);
+    const ds = (await checkDir(dir)).diagnostics.filter((d) => d.code === "B013");
+    assert.equal(ds.length, 1);
+    assert.match(ds[0].message, /build-time code/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

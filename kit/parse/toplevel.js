@@ -315,6 +315,23 @@ export function buildTimeNames(code) {
 }
 
 /**
+ * The part of `buildTimeNames` the file binds as a `const`, `let` or `var` or a `catch` parameter below its top
+ * level, with no parameters or function names: what a lambda may have read as a build-time local although
+ * another lambda has a parameter of the same name.
+ * @param {string} code
+ * @returns {string[]}
+ */
+export function buildTimeBindings(code) {
+  const s = blank(code);
+  /** @type {Set<string>} */
+  const names = new Set();
+  for (const m of s.matchAll(DECL)) for (const n of declaredNames(s, (m.index ?? 0) + m[0].length)) names.add(n);
+  for (const m of s.matchAll(CATCH)) for (const part of splitTopLevel(m[1])) for (const n of patternNames(part)) names.add(n);
+  const top = new Set(topLevelNames(code));
+  return [...names].filter((n) => !top.has(n));
+}
+
+/**
  * Which of `names` the lambda source `src` refers to, in the order `names` lists them.
  * Property names (`self.cell`), object keys (`{ cell: 1 }`), text in strings and comments, and
  * names the lambda itself declares (parameters, let/const/var, loop variables) do not count.

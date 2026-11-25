@@ -219,7 +219,7 @@ function effectListProblems(who, list, path, model, out, options) {
     if (!VERBS.includes(p.verb)) { out.push({ code: "D021", path, message: `${who}: '${p.verb}' in ${JSON.stringify(e)} is not an effect verb.${didYouMean(p.verb, [...VERBS])}`, tip: `one of ${VERBS.join(", ")}` }); continue; }
     if (p.verb === "rng") { if (p.object !== undefined) bad(`"${e}": rng takes no object.`, `write "rng"`); continue; }
     if (p.object === undefined) { if (p.verb !== "read") bad(`"${e}" names no object; a ${p.verb} names what it changes.`, `write "${p.verb} ${options.owner ?? "Obj"}"`); continue; }
-    if (!(p.object in model)) { bad(`"${e}" names '${p.object}', which is not one of the Dialect's objects.${didYouMean(p.object, Object.keys(model))}`, `name one of ${quoted(Object.keys(model))}`); continue; }
+    if (!Object.hasOwn(model, p.object)) { bad(`"${e}" names '${p.object}', which is not one of the Dialect's objects.${didYouMean(p.object, Object.keys(model))}`, `name one of ${quoted(Object.keys(model))}`); continue; }
     if ((p.verb === "write" || p.verb === "destroy") && p.object !== options.owner) {
       bad(`"${e}" changes ${p.object}, and only a verb that is ${p.object}'s own member may write or destroy it, so a lambda changes only the ${p.object} it is handed.`, `remove it, and declare the change as a verb of ${p.object}: objects.${p.object}.members.<name> = { fn: { params: [], returns: "void" }, effects: ["${e}"] }`, "D022");
       continue;
@@ -278,7 +278,7 @@ export function checkMay(may, where, model, { defer = false, perProgram = false 
     if (!where.helpers && instance === null && p.verb !== "read") { bad(`"${text}" is not a read, and a slot in a pure space may list only reads${p.verb === "bump" ? ": a bump is allowed only in an instance space" : ""}.`, `remove it, or run the slot in an instance space, { instance: "Obj" }`); continue; }
     if (p.verb === "rng") { if (p.object !== undefined) bad(`"${text}": rng takes no object.`, `write "rng"`); else parsed.push({ ...p, text }); continue; }
     if (p.object === undefined) { if (p.verb === "read") parsed.push({ ...p, text }); else bad(`"${text}" names no object; a ${p.verb} names what it changes.`, `write "${p.verb} ${instance ?? "Obj"}"`); continue; }
-    if (!(p.object in model)) { bad(`"${text}" names '${p.object}', which is not one of the Dialect's objects.${didYouMean(p.object, Object.keys(model))}`, `name one of ${quoted(Object.keys(model))}`); continue; }
+    if (!Object.hasOwn(model, p.object)) { bad(`"${text}" names '${p.object}', which is not one of the Dialect's objects.${didYouMean(p.object, Object.keys(model))}`, `name one of ${quoted(Object.keys(model))}`); continue; }
     if ((p.verb === "write" || p.verb === "destroy") && p.object !== instance) {
       bad(`"${text}": a ${p.verb} of ${p.object} may appear only in a slot whose space's instance is ${p.object}${instance ? `, and this slot's is ${instance}` : ""}.`, instance ? `write "${p.verb} ${instance}…", or move the slot to a space { instance: "${p.object}" }` : `move the slot to a space { instance: "${p.object}" }`, "D022");
       continue;

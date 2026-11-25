@@ -6,7 +6,7 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames, topLevelBindings, topLevelFunctions, ScanError, blank } from "../../../kit/parse/toplevel.js";
+import { buildTimeNames, buildTimeBindings, topLevelBindings, topLevelFunctions, ScanError, blank } from "../../../kit/parse/toplevel.js";
 import { LOAD } from "./codes.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */
@@ -144,7 +144,11 @@ export function moduleScope(file, mod) {
     session.add({ file, line: e.line, code: LOAD, severity: "error", message: `${file} could not be read: ${e.message}. This is the checker's misreading, not a rule the file broke.`, fix: "report it with the file; meanwhile, move the code the scan misread (a regex literal is the usual cause) into a function of its own, or rename one of the two" });
     return null;
   }
-  return { scope: typeof get === "function" ? get() : {}, sources, buildTime: buildTimeNames(text) };
+  const scope = typeof get === "function" ? get() : {};
+  // A function declaration's text vouches only while the binding still holds the function the declaration made.
+  const captured = /** @type {Record<string, unknown>} */ (typeof mod.__defineTrialFunctions === "function" ? mod.__defineTrialFunctions() : {});
+  for (const f of topLevelFunctions(text)) if (!Object.hasOwn(captured, f.name) || /** @type {Record<string, unknown>} */ (scope)[f.name] !== captured[f.name]) delete sources[f.name];
+  return { scope, sources, buildTime: buildTimeNames(text), buildTimeBindings: buildTimeBindings(text) };
 }
 
 /**
@@ -239,7 +243,7 @@ function reportInUnit(d, file) {
     return;
   }
   // a top-level binding the builder resolved into a unit
-  const top = call ? null : new RegExp(`^(?:export\\s+)?(?:const|let|var)\\s+${name.replace(/[$]/g, "\\$")}\\s*=`, "m").exec(text);
+  const top = call ? null : new RegExp(`^(?:export\\s+)?(?:(?:const|let|var)\\s+${name.replace(/[$]/g, "\\$")}\\s*=|function\\s+${name.replace(/[$]/g, "\\$")}\\s*\\()`, "m").exec(text);
   const at = call ?? top;
   add(d, file, at ? lineAt(text, at.index) + (d.loc?.start.line ?? 1) - 1 : 1, `the helper '${name}': ${d.message}`);
 }

@@ -101,3 +101,18 @@ test("B013 for another lambda's parameter says so, once; the build-time case kee
   assert.match(both[0].tip, /pass it in|move the use/);
   assert.doesNotMatch(both[0].message, /build-time code/);
 });
+
+test("an effect or a may naming a prototype property is D021, not an object", async () => {
+  const { defineDialect } = await import("../index.js");
+  const { gardenDef } = await import("../fixtures/garden-dialect.js");
+  for (const eff of ["bump toString", "read constructor"]) {
+    const def = gardenDef();
+    def.objects.Rng.effects = ["rng", eff];
+    assert.throws(() => defineDialect(def), (e) => e.diagnostics.some((d) => d.code === "D021"), eff);
+  }
+  for (const may of ["bump toString", "read constructor"]) {
+    const def = gardenDef();
+    def.slots.rain.may = ["read Totals", may];
+    assert.throws(() => defineDialect(def), (e) => e.diagnostics.some((d) => d.code === "D021"), may);
+  }
+});

@@ -36,7 +36,7 @@ import { BuildError, programOf } from "./grammar.js";
 /** The open run, while `programFn` runs. @type {Run | null} */
 let current = null;
 
-const RUN_KEYS = ["values", "scope", "sources", "buildTime"];
+const RUN_KEYS = ["values", "scope", "sources", "buildTime", "buildTimeBindings"];
 
 /**
  * A Program opened its root: the first one in a run is the run's Program. A Program file builds one Program, so
