@@ -130,3 +130,15 @@ Program-level UI (the data Dream Code's `.view(…)`), buttons and form controls
 > 7. **A readout against a maximum.** A `stat` with `max?` (shown as "value / max", red past it) would make "live against the cap" one readout; today it is two stats (two of six agents named it).
 > 8. **Named derived values.** A `derive: { live: (s) => s.particles.length }` usable as a path, and traced like a number in state. It saves repetition and puts the most-watched number in `traces`.
 > 9. **Whose state a cross-package annotation reads.** A lambda in maze's `annotate["particles.params"]` sees maze's `s` and `$` under today's convention, which is rarely wanted; and `defineUI` cannot check another package's paths without its declaration. This belongs with the seam work (`hjdIRt`).
+
+> **Ruled (Ben, 2026-11-25), on all nine:**
+>
+> 1. **The state's shape moves to the Dialect.** It is the run's output, which `text(state)` reads, and headless runs, `runs`, traces, the text view and M4's seams need it with no UI loaded. `text(state)` is checked against it; the UI refers to paths in it.
+> 2. **Buttons stay as drafted.** The Dialect declares only the object of booleans its lambdas read (`Pad`); roles, labels and the key mapping are UI.
+> 3. **Program-level UI is deferred** until a workbench needs it (data-tools would be first); see the backlog.
+> 4. **`defineUI` goes in `kit/define`.**
+> 5. **`runs` stays in the language; its host waits on clocks** (`f2dMku`).
+> 6. **`U` is reserved** for the UI's codes; api-pilot's reference grammar renames its `U001`.
+> 7. **`stat` takes `max?`:** shown as "value / max" or a bar, red past it. A value against a limit recurs: DMG's Budget view, the compiler workbench's `.compareTo`, Blueprint's checks.
+> 8. **No derived values:** with the state in the Dialect, a number such as `live` is part of the state, and traced like any other.
+> 9. **Deferred to the seam work** (`hjdIRt`).
