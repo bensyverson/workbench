@@ -38,6 +38,8 @@ Re-judging all 18 accept and 75 reject files from the earlier draft against the 
 
 **Out of H5's scope (Ben, 2026-11-25):** r21b, r21c, r21s, r21u, r21l and r21n stay in the set but are not scored in the H5 run. Each needs a Runtime Subset narrower than the kit's (no `==`, strings, `**`, arrays, or shadowed global names), which no Dialect can declare ([trial 4](../../../project/2026-11-25-definition-api-trial-4.md); backlog, "narrowing the Runtime Subset"). r22l (a lambda given through a variable) is also beyond the API for now.
 
+**Expected misses (2026-11-25):** r06d and r08b kill or write through an uncalled helper's parameter, whose type nothing gives, so the API cannot refuse them and the reference misses both. Since the H5 brief changed (agents report what the API cannot say instead of building it), a hand-in that follows the brief misses them too. They stay scored. Report a miss of either as expected, not as a fault of the hand-in.
+
 Every reject file is a valid base Program with one change. The base is r02.js minus its one added line. The base for r23–r25d, r22r and r24h also declares `.counter("burnedOut")` and bumps it in update (`counters.burnedOut++`); that counter base is itself valid.
 
 - r01.js — 1: block-body rate assigns its parameter `live` (`{ live = 0; return 30; }`). Changed: RISKY dropped, because block-body rate is now allowed and "Which" sends any non-local assignment in a rate to 1, not 2.

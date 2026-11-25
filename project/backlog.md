@@ -110,7 +110,7 @@ A Dialect declaration that makes the shared Runtime Subset narrower (no `==`, no
 
 > **2026-11-25:** the H5 run hit it again (agents C, E, F; the seven excluded rejects); still parked (Ben, decision `MpZZsU`).
 
-> **2026-11-25, the [H5 rerun](2026-11-25-h5-rerun.md):** this is now the main reason agents write their own parsers. A, B, C and D enforced it, three of them with a tokenizer or parser of 320–560 lines, and E and F named it. It is Ben's call in the rerun's "For Ben".
+> **2026-11-25, the [H5 rerun](2026-11-25-h5-rerun.md):** this is now the main reason agents write their own parsers. A, B, C and D enforced it, three of them with a tokenizer or parser of 320–560 lines, and E and F named it. It is Ben's call in the rerun's "For Ben". **Ruled the same day:** still parked; the H5 brief now tells agents to report such a refusal instead of building it.
 
 ## 2026-11-25: machine-checked guarantees in Lean, for the kit and for whole Programs
 

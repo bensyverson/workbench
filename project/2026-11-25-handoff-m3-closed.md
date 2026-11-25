@@ -42,6 +42,8 @@
 
 ## For Ben's eyes
 
+> **Ruled (Ben, 2026-11-25):** change the brief, not the kit or the sheet. An agent now reports a refusal the API cannot express, instead of building it ([brief.md](../scripts/particles/h5/brief.md)). r06d and r08b are expected misses ([hidden/README.md](../scripts/particles/hidden/README.md)). No third H5 run: the verdict stands, and the next fresh-agent run will test the brief. This settles items 1 and 2.
+
 1. **The parked rules now drive the hand-written parsers** (rerun findings, "For Ben"). Either build a Dialect `syntax` deny list with reserved local names and inline-only lambdas, or strike those rules from the particles sheet as out of H5's scope. Either needs room in START.md + API.md, which are at 7,994 of 8,000 tokens.
 2. **Uncalled helpers' parameter types** (hidden r06d, r08b): accept them as known misses, or let a helper declare its parameter types. Four rerun agents caught them only with their own parsers.
 3. **Carried from last session:**
