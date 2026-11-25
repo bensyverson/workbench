@@ -100,6 +100,11 @@ test("U001: a required key missing (state; a tile's title)", async () => {
 test("U001: a component's unknown key", async () => {
   only(await check("maze", [['{ kind: "stat", label: "score", value: "score" }', '{ kind: "stat", label: "score", value: "score", color: "red" }']]), "U001");
 });
+test("U001: runs given ticks, not seconds (the unknown key and the missing one)", async () => {
+  const r = await check("particles", [["seconds: 5", "ticks: 150"]]);
+  assert.deepEqual(codes(r), ["U001", "U001"]);
+  assert.match(r.diagnostics.map((d) => d.message + d.fix).join(" "), /ticks[\s\S]*seconds/);
+});
 
 // U002
 test("U002: a kind that does not exist", async () => {
@@ -237,14 +242,15 @@ test("U011: a tile id that is a generated view's id", async () => {
 // U012
 test("U012: a number out of range or not whole", async () => {
   only(await check("particles", [["steps: 9", "steps: 1"]]), "U012");
-  only(await check("particles", [["ticks: 150", "ticks: 1.5"]]), "U012");
+  only(await check("particles", [["seconds: 5", "seconds: 0"]]), "U012");
+  only(await check("particles", [["seconds: 5", "seconds: 3601"]]), "U012");
   only(await check("particles", [["window: 10", "window: 0"]]), "U012");
   only(await check("particles", [["from: 0, to: 400", "from: 400, to: 0"]]), "U012");
 });
 test("U012: a label that is not a string, an empty body, and a bad columns entry", async () => {
   only(await check("maze", [['label: "score", value: "score"', 'label: 3, value: "score"']]), "U012");
   only(await check("particles", [['columns: ["name", "live",', 'columns: [3, "live",']]), "U012");
-  only(await check("particles", [['{ kind: "text", value: "Live particles after five seconds, by **rate**." },\n        { kind: "runs", label: "live by rate", param: "rate", from: 0, to: 400, steps: 9, ticks: 150, y: (s) => s.particles.length },', ""]]), "U012");
+  only(await check("particles", [['{ kind: "text", value: "Live particles after five seconds, by **rate**." },\n        { kind: "runs", label: "live by rate", param: "rate", from: 0, to: 400, steps: 9, seconds: 5, y: (s) => s.particles.length },', ""]]), "U012");
 });
 
 // U013

@@ -31,7 +31,7 @@ export const particlesUI = defineUI(particles, {
       place: { tabWith: "health" },
       body: [
         { kind: "text", value: "Live particles after five seconds, by **rate**." },
-        { kind: "runs", label: "live by rate", param: "rate", from: 0, to: 400, steps: 9, ticks: 150, y: (s) => s.particles.length },
+        { kind: "runs", label: "live by rate", param: "rate", from: 0, to: 400, steps: 9, seconds: 5, y: (s) => s.particles.length },
       ],
     },
   },

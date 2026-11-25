@@ -37,3 +37,10 @@ What it does not do: run a host, load an element module (it only checks the file
 ## Running the trial
 
 Per the leaf: one Opus, one Sonnet and one Haiku agent, each `run.sh <fresh dir under /private/tmp> <model>`. Afterwards copy each directory (hand-in, `REPORT.md`, `log.jsonl`, `transcript.jsonl`) to `runs/<date>/agent-x/`, and record per agent the model, its difficulty score, what it guessed, its gaps, and how much its output needed changing to comply. `scripts/particles/h5/summarize.js` reads the directories as they are, with one caveat: `check.sh` logs one line per package, so its `checkerRuns` counts packages checked (two per `check.sh`) and `firstClean` is the first clean package, not the first clean pair; read `lang` in `log.jsonl` for those. The findings go in a dated doc under `project/`, then the design changes, then the build (a separate leaf).
+
+## Records
+
+- `runs/2026-11-25-first/` (agents a–c): the first round, on a draft whose worked example was the particles answer.
+- `runs/2026-11-25-rerun/` (agents d–f): the rerun, after the first round's changes (`runs.seconds`, the element's update order and size) and with every example moved to `orbits`.
+
+Findings: [project/2026-11-25-ui-trial-findings.md](../../project/2026-11-25-ui-trial-findings.md). After the rerun the draft took four more wording fixes (`Math.abs` in the example, `stage` always present, `:host { display: block }`, strings in lambdas), which no agent has run against yet.

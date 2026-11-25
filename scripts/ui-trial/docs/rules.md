@@ -60,7 +60,7 @@ Each rule names the codes that enforce it. Run the checker as often as you like 
 | U009 | an `emits` event that is not `pick`, `select` or `param`, or `emits` without an `element` |
 | U010 | `inputs` whose `object` is not a Dialect object, whose buttons are not exactly its members or not each `"bool"`, or with an unknown or repeated `role` |
 | U011 | a tile id that is not an identifier or is a generated view's id |
-| U012 | a value of the wrong form: a `label`, `title`, `unit`, `note` or button `label` that is not a string; `limit`, `steps` or `ticks` out of range or not whole; a `window` of 0 or less; `from` not below `to`; a `columns` entry that is neither a key nor `{ label, value }`; an empty `body`, `items` or `columns` |
+| U012 | a value of the wrong form: a `label`, `title`, `unit`, `note` or button `label` that is not a string; `limit` or `steps` out of range or not whole; a `window` or `seconds` of 0 or less, or `seconds` over 3600; `from` not below `to`; a `columns` entry that is neither a key nor `{ label, value }`; an empty `body`, `items` or `columns` |
 | U013 | `defineUI` given something other than the package's Grammar builder, or a Dialect without `text(state)` |
 
 ### The checker's own

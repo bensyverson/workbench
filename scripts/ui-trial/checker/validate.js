@@ -24,7 +24,7 @@ export const KINDS = {
   check: { req: ["label", "expect"] },
   table: { req: ["label", "rows", "columns"], opt: ["limit"] },
   plot: { req: ["label", "y", "window"] },
-  runs: { req: ["label", "param", "from", "to", "steps", "ticks", "y"] },
+  runs: { req: ["label", "param", "from", "to", "steps", "seconds", "y"] },
   text: { req: ["value"] },
   row: { req: ["items"], layout: true },
   col: { req: ["items"], layout: true },
@@ -270,7 +270,7 @@ export function validate(decl, env) {
     if ("window" in c) number(c.window, k("window"), 0, Infinity, { open: true });
     if ("limit" in c) number(c.limit, k("limit"), 1, 1000, { whole: true });
     if ("steps" in c) number(c.steps, k("steps"), 2, 50, { whole: true });
-    if ("ticks" in c) number(c.ticks, k("ticks"), 1, 100000, { whole: true });
+    if ("seconds" in c) number(c.seconds, k("seconds"), 0, 3600, { open: true });
     if ("param" in c && (typeof c.param !== "string" || !IDENT.test(c.param))) add("U012", k("param"), `param is ${str(c.param)}; it takes a param's name`, 'write param: "rate"');
     if (c.kind === "runs") {
       if ("from" in c) number(c.from, k("from"), -Infinity, Infinity);

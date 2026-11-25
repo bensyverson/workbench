@@ -49,7 +49,7 @@ A value is a **path** or a **lambda**. A lambda is a Runtime Lambda in Bench, in
 | `check` | Blueprint's `checks: [{ name, expect }]` | pass or fail, live |
 | `table` | `ui.table(rows).columns(…)` | one row per item of a list in state |
 | `plot` | Blueprint's `plots:` | a number over the last `window` seconds |
-| `runs` | `ui.task` plus `ui.chart` (`regalloc-lab/ui/spill-curve.js`), Skate's Experiments | a chart of fresh headless runs across one param |
+| `runs` | `ui.task` plus `ui.chart` (`regalloc-lab/ui/spill-curve.js`), Skate's Experiments | a chart of fresh headless runs across one param, each `seconds` long at the Program's own tick; `$` in its `y` is that run's params; a Program without the param shows an empty chart |
 | `text` | `ui.text` | Markdown, or a lambda's string |
 | `row`, `col` | `ui.row`, `ui.col` | layout |
 
@@ -78,7 +78,9 @@ inputs: { object: "Pad", buttons: { left: { role: "dpad.left" }, …, a: { role:
 
 ## The stage contract
 
-- **In:** `state` (the declared shape), `params` (`{ name: value }`), `text` (the text view's string).
+- **In:** `state` (the declared shape), `params` (`{ name: value }`), `text` (the text view's string), set once per tick with `state` last, so an element draws on `state`. The host may set them before the module defines the tag. The element fills the box the host gives the view.
+
+> **Changed after the trial (2026-11-25):** `runs` took `ticks`, which no UI can turn into run time because it cannot read the Program's tick; all three agents reported it. It now takes `seconds`. The property order, early properties and sizing were added because each agent had to guess them. See [the trial findings](2026-11-25-ui-trial-findings.md).
 - **Out:** `wb-pick`, `wb-select`, `wb-param`, as declared in `emits`.
 - **Required:** `text(state)`. With no `stage`, a host that runs no custom element, or a text-only agent, the stage is the text view.
 
@@ -122,3 +124,9 @@ Program-level UI (the data Dream Code's `.view(…)`), buttons and form controls
 4. **One import or two?** The draft adds `defineUI` to `kit/define`. A separate `kit/ui` would keep the Definition API's import list as it is.
 5. **Is `runs` in scope now?** It presumes a host that runs fresh headless copies for N ticks, which waits on clocks (`f2dMku`). Keep it in the draft (it was on the decision's list as "charts of runs") or defer it?
 6. **Reserve `U`.** Building this means adding `U` to the letters a Dialect's own checks may not use (kit/API.md); `api-pilot`'s reference grammar already uses `U001` for its own check.
+
+> **After the trial (2026-11-25):** the [findings](2026-11-25-ui-trial-findings.md) do not settle 1 or 2 (agents follow whatever the draft says), and add three:
+>
+> 7. **A readout against a maximum.** A `stat` with `max?` (shown as "value / max", red past it) would make "live against the cap" one readout; today it is two stats (two of six agents named it).
+> 8. **Named derived values.** A `derive: { live: (s) => s.particles.length }` usable as a path, and traced like a number in state. It saves repetition and puts the most-watched number in `traces`.
+> 9. **Whose state a cross-package annotation reads.** A lambda in maze's `annotate["particles.params"]` sees maze's `s` and `$` under today's convention, which is rarely wanted; and `defineUI` cannot check another package's paths without its declaration. This belongs with the seam work (`hjdIRt`).

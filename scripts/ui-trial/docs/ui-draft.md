@@ -9,12 +9,12 @@ A package (a Dialect, its Grammar and its UI) runs in a Workbench: a page with a
 ```js
 // <lang>.ui.js
 import { defineUI, listOf } from "kit/define";
-import { particles } from "./particles.grammar.js";   // your package's own Grammar builder
+import { orbits } from "./orbits.grammar.js";   // your package's own Grammar builder
 
-export const particlesUI = defineUI(particles, { state, stage, inputs, tiles, annotate });
+export const orbitsUI = defineUI(orbits, { state, stage, inputs, tiles, annotate });
 ```
 
-`defineUI(builder, decl)`: `builder` is what your `defineGrammar` returned. Its Dialect's `name` is the **package name** (`particles`). Only `state` is required.
+`defineUI(builder, decl)`: `builder` is what your `defineGrammar` returned. Its Dialect's `name` is the **package name** (`orbits`). Only `state` is required.
 
 ## Generated views (you do not write these)
 
@@ -22,7 +22,7 @@ Each has an id. You place tiles beside them and annotate some of them; you canno
 
 | Id | What | Derived from |
 |---|---|---|
-| `stage` | the run, drawn | your `stage` element, else the text view |
+| `stage` | the run, drawn; always present, so always a `place` target | your `stage` element, else the text view's string |
 | `text` | the run as characters | the Dialect's `text(state)` (required) |
 | `params` | a control per param, with reset; an edit is written back into the Program's source | the Program's params |
 | `traces` | a time series per number in `state` (not inside a list) | `state` |
@@ -43,12 +43,12 @@ The host computes the run's state after each tick and hands the same value to `t
 state: {
   t: "number",
   bounds: { width: "number", height: "number" },
-  particles: listOf({ x: "number", y: "number" }),
-  emitters: listOf({ name: "string", live: "number" }),
+  bodies: listOf({ name: "string", x: "number", y: "number", speed: "number" }),
+  energy: "number",
 }
 ```
 
-A **path** names a part of it as a string: `"t"`, `"bounds.width"`, `"emitters"`. A path stops at a list (`"emitters"`); inside a list, a table's columns name the row's keys.
+A **path** names a part of it as a string: `"t"`, `"bounds.width"`, `"bodies"`. A path stops at a list (`"bodies"`); inside a list, a table's columns name the row's keys.
 
 ## Values: a path or a lambda
 
@@ -59,18 +59,21 @@ Wherever a component takes a value, give a path or a lambda. A **lambda** is a R
 | `value`, `y`, `expect`, `badIf`, `tone`, `badge` | `(s, $) => …`: `s` the state, `$` the params | per key, below |
 | a table column's `value` | `(row, s, $) => …`: `row` one item of the table's list | a number or string |
 
-A list's length is `s.particles.length`. `$.name` reads a param; a package does not know which params a Program declares, so a lambda that reads `$.rate` shows nothing for a Program without `rate`.
+A list's length is `s.bodies.length`. `$.name` reads a param; a package does not know which params a Program declares, so a lambda that reads `$.mass` shows nothing for a Program without `mass`.
+
+Where the components table below says a key takes "a number", "a boolean" or "a string", give a path to one or a lambda that gives one. A lambda computes numbers and booleans; the only strings it gives are literals (`"hot"`) or a string read from the state. It cannot join or format strings.
 
 ## `stage`: the contract
 
 ```js
-stage: { element: "particles-field", module: "./particles-field.js", emits: ["pick"] }
+stage: { element: "orbits-sky", module: "./orbits-sky.js", emits: ["select"] }
 ```
 
-- **In:** the host sets the element's properties `state` (the declared state), `params` (`{ name: value }`) and `text` (the text view's string), after every tick.
+- **In:** the host sets the element's properties `state` (the declared state), `params` (`{ name: value }`) and `text` (the text view's string) after every tick, `state` last (`params`, `text`, `state`). Draw when `state` is set. The host may set them before your module has defined the tag, so read any already set when the element upgrades.
+- **Size:** the element fills the box the host lays out for the view; the host sets no size. A custom element is inline by default, so give it `:host { display: block }` in its own shadow root. Watch your own box (a `ResizeObserver`) if you draw to it.
 - **Out:** the element dispatches `CustomEvent`s with `bubbles: true, composed: true`, only those named in `emits`:
   - `wb-pick`, `detail: { x, y }`: a point, in state coordinates;
-  - `wb-select`, `detail: { path, index }`: an item of a list in state (`{ path: "emitters", index: 2 }`);
+  - `wb-select`, `detail: { path, index }`: an item of a list in state (`{ path: "bodies", index: 2 }`);
   - `wb-param`, `detail: { name, value }`: a param edit (the host clamps and writes it back).
 - **Required:** the text view. With no `stage`, or on a host that runs no custom elements, the stage is `text(state)`.
 - The element draws; it never handles keys for inputs (below) and never calls `focus()`.
@@ -79,7 +82,7 @@ stage: { element: "particles-field", module: "./particles-field.js", emits: ["pi
 
 Any component (below) and the stage may name a custom element that draws it instead. The component's own form is always the **fallback**: a host that runs no custom elements, or before the module loads, shows the plain form.
 
-- `element`: a custom element tag `<package>-<name>`, lowercase, with a hyphen (`particles-field`). `customElements` is one global registry, so the package name is the prefix. `wb-` is the host's.
+- `element`: a custom element tag `<package>-<name>`, lowercase, with a hyphen (`orbits-sky`). `customElements` is one global registry, so the package name is the prefix. `wb-` is the host's.
 - `module`: `"./<file>.js"`, one of your package's files, an ES module that calls `customElements.define` for that tag (and imports nothing).
 - `emits`: as for the stage.
 - A component's element gets, besides `state`, `params` and `text`, the property `value`: what the component resolved to (a stat's number, a table's rows, a plot's points).
@@ -107,8 +110,8 @@ inputs: {
 
 ```js
 tiles: {
-  health: { title: "Health", place: { splitRight: "stage", size: 0.35 }, body: [ /* components */ ] },
-  sweep:  { title: "Rate sweep", place: { tabWith: "health" }, body: [ … ] },
+  bodies:  { title: "Bodies", place: { splitLeft: "stage", size: 0.25 }, body: [ /* components */ ] },
+  drift:   { title: "Energy", place: { splitBelow: "bodies" }, body: [ … ] },
 }
 ```
 
@@ -126,7 +129,7 @@ Each is an object with a `kind`. `label` is a string.
 | `check` | `label`, `expect` (a boolean) | pass or fail, live |
 | `table` | `label`, `rows` (a path to a list), `columns`, `limit?` (whole, 1 to 1000) | one row per item; `columns` lists row keys (`"name"`) or `{ label, value: (row, s, $) => … }` |
 | `plot` | `label`, `y` (a number), `window` (seconds, more than 0) | `y` over the last `window` seconds of the run |
-| `runs` | `label`, `param` (a param's name), `from`, `to`, `steps` (whole, 2 to 50), `ticks` (whole, 1 to 100000), `y` (a number) | a chart of runs: `steps` fresh runs with `param` spread evenly from `from` to `to` (`from < to`), each run `ticks` ticks, `y` read from its last state |
+| `runs` | `label`, `param` (a param's name), `from`, `to`, `steps` (whole, 2 to 50), `seconds` (more than 0, at most 3600), `y` (a number) | a chart of runs: `steps` fresh runs with `param` spread evenly from `from` to `to` (`from < to`, both ends included, each value clamped to the param's range as an edit is), each run `seconds` of run time at the Program's own tick, `y` read from its last state. Inside `y`, `$` is that run's params, with `param` at its swept value. A Program without `param` shows an empty chart. |
 | `text` | `value` (a Markdown string, or a lambda giving a string) | text |
 | `row`, `col` | `items` (a list of components) | layout |
 
@@ -134,8 +137,8 @@ Each is an object with a `kind`. `label` is a string.
 
 ```js
 annotate: {
-  traces: { t: { note: "seconds since start" } },
-  params: { rate: { badge: (s, $) => ($.rate > 300 ? "hot" : null) }, "*": { tone: "dim" } },
+  traces: { energy: { note: "kinetic plus potential", tone: "warn" } },
+  params: { mass: { badge: (s, $) => ($.mass < 1 ? "light" : null) }, "*": { tone: "dim" } },
 }
 ```
 
@@ -144,36 +147,42 @@ annotate: {
 
 ## Two packages in one page
 
-Each package's views and tiles are named by the package: `particles.stage`, `particles.health`. Inside your own UI a bare id is your own. Another package's view is named in full (`fields.stage`) in a `place` or an `annotate` key. (This trial's page holds one package, so a qualified id is an error here.)
+Each package's views and tiles are named by the package: `orbits.stage`, `orbits.bodies`. Inside your own UI a bare id is your own. Another package's view is named in full (`fields.stage`) in a `place` or an `annotate` key. (This trial's page holds one package, so a qualified id is an error here.)
 
-## A worked example: particles
+## A worked example: orbits
+
+A package that is not in your task: bodies circling a sun, with a `mass` param on the sun. Its Dialect gives `Math` as a global, so its lambdas may call `Math.abs`; yours may call only what your Dialect gives.
 
 ```js
 import { defineUI, listOf } from "kit/define";
-import { particles } from "./particles.grammar.js";
+import { orbits } from "./orbits.grammar.js";
 
-export const particlesUI = defineUI(particles, {
+export const orbitsUI = defineUI(orbits, {
   state: {
     t: "number",
-    maxParticles: "number",
-    bounds: { width: "number", height: "number" },
-    particles: listOf({ x: "number", y: "number" }),
-    emitters: listOf({ name: "string", live: "number" }),
-    counters: listOf({ name: "string", value: "number" }),
+    energy: "number",
+    startEnergy: "number",
+    bodies: listOf({ name: "string", x: "number", y: "number", speed: "number" }),
   },
-  stage: { element: "particles-field", module: "./particles-field.js", emits: ["pick"] },
+  stage: { element: "orbits-sky", module: "./orbits-sky.js", emits: ["select"] },
   tiles: {
-    health: {
-      title: "Health",
-      place: { splitRight: "stage", size: 0.3 },
+    bodies: {
+      title: "Bodies",
+      place: { splitLeft: "stage", size: 0.25 },
       body: [
-        { kind: "row", items: [
-          { kind: "stat", label: "live", value: (s) => s.particles.length, badIf: (s) => s.particles.length >= s.maxParticles },
-          { kind: "stat", label: "time", value: "t", unit: "s" },
+        { kind: "stat", label: "bodies", value: (s) => s.bodies.length },
+        { kind: "table", label: "Bodies", rows: "bodies", columns: ["name", { label: "km/s", value: (row, s, $) => row.speed / 1000 }], limit: 20 },
+      ],
+    },
+    drift: {
+      title: "Energy",
+      place: { splitBelow: "bodies" },
+      body: [
+        { kind: "col", items: [
+          { kind: "stat", label: "drift", value: (s) => s.energy - s.startEnergy, badIf: (s) => Math.abs(s.energy - s.startEnergy) > 1 },
+          { kind: "check", label: "energy kept", expect: (s) => Math.abs(s.energy - s.startEnergy) <= 1 },
         ] },
-        { kind: "check", label: "under the cap", expect: (s) => s.particles.length < s.maxParticles },
-        { kind: "table", label: "Emitters", rows: "emitters", columns: ["name", "live"] },
-        { kind: "plot", label: "live", y: (s) => s.particles.length, window: 10 },
+        { kind: "plot", label: "energy", y: "energy", window: 60 },
       ],
     },
   },
@@ -183,12 +192,13 @@ export const particlesUI = defineUI(particles, {
 ## Pitfalls
 
 1. **The state is a contract with the host.** It must match what `text(state)` reads (say it in the Dialect's comment); the checker cannot see the host.
-2. **A path stops at a list.** `"emitters.live"` is U005: a table over `"emitters"` with the column `"live"` is how you show it.
-3. **A lambda gets the whole state**, not a part: `(s) => s.particles.length`, never `(particles) => particles.length`.
+2. **A path stops at a list.** `"bodies.speed"` is U005: a table over `"bodies"` with the column `"speed"` is how you show it.
+3. **A lambda gets the whole state**, not a part: `(s) => s.bodies.length`, never `(bodies) => bodies.length`.
 4. **Lambdas are pure.** `s.t = 0` or a `$` write is U007; a view never changes the run. A param edit is the `params` view's job, or a `wb-param` event.
 5. **The fallback is the component.** An `element` sits on a component (or the stage), never alone; the component's keys are still required.
 6. **Inputs are not key handlers.** Declare buttons; the host maps keys, the on-screen pad and a gamepad to them.
-7. **The checker cannot type a lambda's result** (it checks paths' types, purity, arity and what a lambda reads from `s`); the kit will.
+7. **`text` is two things.** The generated view `text` (`place: { tabWith: "text" }`) and the component kind `text` (`{ kind: "text", value: … }`) share a word and nothing else.
+8. **The checker cannot type a lambda's result** (it checks paths' types, purity, arity and what a lambda reads from `s`); the kit will.
 
 ## Codes
 
