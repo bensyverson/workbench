@@ -169,3 +169,7 @@ For a reader who has seen only the earlier sheet. "Now allowed" turns a reject i
 ## 2026-11-25: the Program's own name (after the H5 run)
 
 > **Settled after the H5 run ([project/2026-11-25-h5-run.md](../../../project/2026-11-25-h5-run.md)):** the naming rule ("a letter, then letters, digits or `_`") binds the names its bullet lists, params, fields, counters, forces and emitters, and not the Program's own name in `particles(name)`, which is any string. The hidden accepts a05, a11, a20, a22, a24, a25 and a27 name their Programs with hyphens (`"late-force"`); two of six H5 agents read the rule as binding the Program's name too and refused them. The sheet now says so in its Names bullet. No hidden verdict changes.
+
+## 2026-11-25: helper parameter types and refusal 11's example (Ben, after the H5 run)
+
+> **Ruled (Ben, 2026-11-25, decision `MpZZsU`; [project/2026-11-25-h5-run.md](../../../project/2026-11-25-h5-run.md)):** a helper parameter has one type, the same at every call; a helper called with a number in one place and a vector in another is 12. This replaces "checked for each set of argument types it is called with", which no implementation here met. Hidden accept a28 is now reject r12n. Refusal 11's example is now `(p) => p.size * 2`: "Which number" ranks `(p) => p.kill()` as 9 (item 38 above), so item 23's "R11" holds for an expression body only when no earlier number applies. No other verdict changes.

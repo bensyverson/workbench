@@ -33,7 +33,6 @@ Re-judging all 18 accept and 75 reject files from the earlier draft against the 
 - a25.js — `forces: []` (no force acts) beside an emitter with no list and one listing forces in reverse order. Added.
 - a26.js — range ends and call order: `tick(1)`, `maxParticles(10000)`, bounds width 4096 with fractional height 1.5, an emitter at (4096, 1.5), maxRate 1000000; param values at min and at max; emitters before `.param`, `.bounds`, `.force`, `.update`; an emitter named `gravity` beside a force `gravity`, an emitter named `t`; a rate reading params declared after it. Added.
 - a27.js — `rng` forms: spawn's second parameter named `r`, called in an `if`, in a fixed loop, as a helper argument, stored as a number in a `const`; a `let` copy of `p.vel` with `v.x = 0`. Added.
-- a28.js — helpers `scale` (expression body) and `doubled` (block body, a `const` local) each called with a number in one place and a vector in another; every call is well typed, and each set of argument types gets its own check. Added.
 
 ## reject/ (each must fail; first line names refusal number)
 
@@ -91,6 +90,7 @@ Every reject file is a valid base Program with one change. The base is r02.js mi
 - r12k.js — 12: `p.vel * vec2(1, 0.5)`, a vector times a vector, in a force. Added.
 - r12l.js — 12: `p.vel = 2 / p.vel`, a number divided by a vector, in update (12 over 10). Added.
 - r12m.js — 12: block-body helper `pick` returns `1` on one path and `vec2(0, 0)` on the other (called from update). Added.
+- r12n.js — 12: helpers `scale` and `doubled` each called with a number in one place and a vector in another. Changed: was accept a28; the sheet now gives a helper parameter one type at every call (Ben, 2026-11-25, after the H5 run).
 - r13.js — 13: `maxParticles(250.5)`.
 - r13b.js — 13: `maxParticles(0)`.
 - r13c.js — 13: `maxParticles(10001)`.

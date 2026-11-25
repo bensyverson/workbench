@@ -1,4 +1,4 @@
-// ACCEPT: helpers called with a number in one place and a vector in another, each call well typed (checked once per set of argument types)
+// REJECT 12: helpers called with a number in one place and a vector in another (a helper parameter has one type; was accept a28, flipped by the sheet change of 2026-11-25)
 import { particles } from "../particles.grammar.js";
 
 const scale = (x, k) => x * k;

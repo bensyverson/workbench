@@ -135,3 +135,8 @@ Added for rules dream-code.md states that no file covered. Every reject file is 
 | File | Covers | Why |
 |---|---|---|
 | a28.js | helpers called with a number in one place and a vector in another, each call well typed | Inside ▸ Helpers: "checked for each set of argument types it is called with" |
+
+
+## 2026-11-25: a28 flips to reject r12n (sheet change)
+
+Ben ruled after the H5 run ([project/2026-11-25-h5-run.md](../../../project/2026-11-25-h5-run.md), decision MpZZsU) that a helper parameter has one type, the same at every call, as the kit already does; the sheet's "checked for each set of argument types" is gone and refusal 12 names the case. `accept/a28.js` is now `reject/r12n.js`, otherwise unchanged. Refusal 11's example is now `(p) => p.size * 2`, since "Which number" ranks `(p) => p.kill()` as 9; no hidden program used it.
