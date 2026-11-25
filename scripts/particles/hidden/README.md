@@ -33,12 +33,13 @@ Re-judging all 18 accept and 75 reject files from the earlier draft against the 
 - a25.js — `forces: []` (no force acts) beside an emitter with no list and one listing forces in reverse order. Added.
 - a26.js — range ends and call order: `tick(1)`, `maxParticles(10000)`, bounds width 4096 with fractional height 1.5, an emitter at (4096, 1.5), maxRate 1000000; param values at min and at max; emitters before `.param`, `.bounds`, `.force`, `.update`; an emitter named `gravity` beside a force `gravity`, an emitter named `t`; a rate reading params declared after it. Added.
 - a27.js — `rng` forms: spawn's second parameter named `r`, called in an `if`, in a fixed loop, as a helper argument, stored as a number in a `const`; a `let` copy of `p.vel` with `v.x = 0`. Added.
+- a28.js — helpers `scale` (expression body) and `doubled` (block body, a `const` local) each called with a number in one place and a vector in another; every call is well typed, and each set of argument types gets its own check. Added.
 
 ## reject/ (each must fail; first line names refusal number)
 
 **Out of H5's scope (Ben, 2026-11-25):** r21b, r21c, r21s, r21u, r21l and r21n stay in the set but are not scored in the H5 run. Each needs a Runtime Subset narrower than the kit's (no `==`, strings, `**`, arrays, or shadowed global names), which no Dialect can declare ([trial 4](../../../project/2026-11-25-definition-api-trial-4.md); backlog, "narrowing the Runtime Subset"). r22l (a lambda given through a variable) is also beyond the API for now.
 
-Every reject file is a valid base Program with one change. The base is r02.js minus its one added line. The base for r23–r25d and r22r also declares `.counter("burnedOut")` and bumps it in update (`counters.burnedOut++`); that counter base is itself valid.
+Every reject file is a valid base Program with one change. The base is r02.js minus its one added line. The base for r23–r25d, r22r and r24h also declares `.counter("burnedOut")` and bumps it in update (`counters.burnedOut++`); that counter base is itself valid.
 
 - r01.js — 1: block-body rate assigns its parameter `live` (`{ live = 0; return 30; }`). Changed: RISKY dropped, because block-body rate is now allowed and "Which" sends any non-local assignment in a rate to 1, not 2.
 - r02.js — 2: update writes `$.wind = 0`.
@@ -55,12 +56,15 @@ Every reject file is a valid base Program with one change. The base is r02.js mi
 - r06.js — 6: spawn calls `p.kill()`.
 - r06b.js — 6: a force calls `p.kill()`.
 - r06c.js — 6: block-body top-level helper `die` calls `p.kill()` (called only from update). Changed: RISKY dropped, because helpers may have block bodies and R6 names "a helper (even one only `update` calls)".
+- r06d.js — 6: helper `finish` that nothing calls calls `p.kill()` (uncalled helpers are still checked). Added.
 - r07.js — 7: rate calls `rng()` (the name means nothing outside spawn).
 - r07b.js — 7: a force calls `rng()`.
 - r07c.js — 7: update calls `rng()`.
 - r07d.js — 7: helper `jitter` calls `rng()` (called from spawn).
 - r07e.js — 7: spawn passes `rng` itself to a helper as an argument (7 over 21 by "Which").
 - r08.js — 8: block-body helper `cool` writes `p.heat` (called from update).
+- r08b.js — 8: helper `chill` that nothing calls writes `p.heat = 0` (still checked). Added.
+- r08c.js — 8: helper `countdown` that nothing else calls calls itself directly (still checked). Added.
 - r09.js — 9: update reads `p.speed`.
 - r09b.js — 9: spawn writes `p.helth`.
 - r09c.js — 9: `.field("pos", …)`.
@@ -72,11 +76,21 @@ Every reject file is a valid base Program with one change. The base is r02.js mi
 - r11b.js — 11: spawn ends with `return 1;`.
 - r11c.js — 11: update ends with `return p.heat;`.
 - r11d.js — 11: rate gives `vec2(30, 30)`.
+- r11e.js — 11: block-body rate `{ if (live < 100) { return 30; } }` misses a `return` when the `if` fails. Added.
+- r11f.js — 11: update has an expression body, `(p, dt) => p.heat - dt` (not `p.kill()`, which 9 would outrank). Added.
 - r12.js — 12: `p.pos + 1` in spawn.
 - r12b.js — 12: `p.vel === vec2(0, 0)` in update.
 - r12c.js — 12: `if (p.vel)` in update.
 - r12d.js — 12: `p.vel ? 2 : 1` ternary condition in spawn.
 - r12e.js — 12: `p.vel - 1` in a force.
+- r12f.js — 12: `if (p.heat)`, a number as an `if` condition, in update. Added.
+- r12g.js — 12: `p.heat ? 2 : 1`, a number as a ternary condition, in spawn. Added.
+- r12h.js — 12: `!p.heat`, a number as the operand of `!`, in update. Added.
+- r12i.js — 12: `p.heat > 0.5 && p.size`, a number as an operand of `&&`, in update. Added.
+- r12j.js — 12: `p.size || p.heat < 0.5`, a number as an operand of `||`, in update. Added.
+- r12k.js — 12: `p.vel * vec2(1, 0.5)`, a vector times a vector, in a force. Added.
+- r12l.js — 12: `p.vel = 2 / p.vel`, a number divided by a vector, in update (12 over 10). Added.
+- r12m.js — 12: block-body helper `pick` returns `1` on one path and `vec2(0, 0)` on the other (called from update). Added.
 - r13.js — 13: `maxParticles(250.5)`.
 - r13b.js — 13: `maxParticles(0)`.
 - r13c.js — 13: `maxParticles(10001)`.
@@ -168,6 +182,7 @@ Every reject file is a valid base Program with one change. The base is r02.js mi
 - r24e.js — 24: a force bumps a counter. Added.
 - r24f.js — 24: helper `worn` reads a counter (called from update). Added.
 - r24g.js — 24: helper `tally` bumps a counter (called from update; 24, not 8). Added.
+- r24h.js — 24: helper `tally` that nothing calls reads a counter (still checked). Added.
 - r25.js — 25: update bumps `counters.burntOut`; only `burnedOut` is declared. Added.
 - r25b.js — 25: rate reads `counters["burnedOut"]` (25 over 21). Added.
 - r25c.js — 25: rate stores `const c = counters`. Added.

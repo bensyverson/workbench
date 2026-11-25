@@ -106,3 +106,32 @@ All are the base Program with one mistake. r23–r25d and r22r use the base plus
 | a25.js | `forces: []` | change 28 |
 | a26.js | range ends, fractional bounds, system calls after emitters, cross-kind names, an emitter named `t` | changes 29–31 (extra; not in the request's list) |
 | a27.js | `rng` renamed and called in `if`, loop and argument; a `let` copy of a vector field | change 19 and Inside ▸ Values (extra) |
+
+## 2026-11-25: rules the set missed
+
+Added for rules dream-code.md states that no file covered. Every reject file is the base Program with one mistake; r24h uses the counter base. None is RISKY.
+
+### Added: reject/
+
+| File | Refusal | Case of that refusal it covers |
+|---|---|---|
+| r12f.js | 12 | a number as an `if` condition |
+| r12g.js | 12 | a number as a ternary condition |
+| r12h.js | 12 | a number as the operand of `!` |
+| r12i.js | 12 | a number as an operand of `&&` |
+| r12j.js | 12 | a number as an operand of `\|\|` |
+| r12k.js | 12 | a vector times a vector |
+| r12l.js | 12 | a number divided by a vector (12 over 10) |
+| r12m.js | 12 | a helper whose paths return different types |
+| r11e.js | 11 | a block-body rate missing a `return` on one path |
+| r11f.js | 11 | an update with an expression body |
+| r08b.js | 8 | an uncalled helper writing a particle field |
+| r08c.js | 8 | an uncalled helper calling itself |
+| r06d.js | 6 | an uncalled helper calling `p.kill()` |
+| r24h.js | 24 | an uncalled helper reading a counter |
+
+### Added: accept/
+
+| File | Covers | Why |
+|---|---|---|
+| a28.js | helpers called with a number in one place and a vector in another, each call well typed | Inside ▸ Helpers: "checked for each set of argument types it is called with" |

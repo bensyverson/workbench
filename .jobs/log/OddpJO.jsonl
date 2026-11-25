@@ -892,3 +892,8 @@
 {"v":1,"rep":"OddpJO","seq":892,"ts":1795622477167,"actor":"claude","type":"blocked","task":"WkDS5a","data":{"blocked_id":"WkDS5a","blocker_id":"p5NKGd"}}
 {"v":1,"rep":"OddpJO","seq":893,"ts":1795622477185,"actor":"claude","type":"blocked","task":"WkDS5a","data":{"blocked_id":"WkDS5a","blocker_id":"JWdGeK"}}
 {"v":1,"rep":"OddpJO","seq":894,"ts":1795622477201,"actor":"claude","type":"blocked","task":"cqIENy","data":{"blocked_id":"cqIENy","blocker_id":"WkDS5a"}}
+{"v":1,"rep":"OddpJO","seq":895,"ts":1795622499974,"actor":"claude","type":"criterion_state","task":"3Cd9hb","data":{"label":"The runs are recorded with tokens read, iterations, files opened and errors by kind","state":"passed","prior":"pending","short_id":"MxL"}}
+{"v":1,"rep":"OddpJO","seq":896,"ts":1795622499990,"actor":"claude","type":"criterion_state","task":"3Cd9hb","data":{"label":"H5 and H11 each have a verdict, with the evidence","state":"passed","prior":"pending","short_id":"QFm"}}
+{"v":1,"rep":"OddpJO","seq":897,"ts":1795622499995,"actor":"claude","type":"done","task":"3Cd9hb","data":{"note":"Run recorded and verdicts given in fab8aa9: project/2026-11-25-h5-run.md. Rerun after design changes is WkDS5a.","cascade":false,"was_status":"claimed","was_claimed_by":"claude","was_expires_at":1795632262}}
+{"v":1,"rep":"OddpJO","seq":898,"ts":1795622499996,"actor":"claude","type":"unblocked","task":"cqIENy","data":{"blocked_id":"cqIENy","blocker_id":"3Cd9hb","reason":"blocker_done"}}
+{"v":1,"rep":"OddpJO","seq":899,"ts":1795622557800,"actor":"h5-docs","type":"claimed","task":"p5NKGd","data":{"duration":"3h","expires_at":1795633357}}
