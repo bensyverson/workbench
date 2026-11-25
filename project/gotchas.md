@@ -41,3 +41,7 @@ In a worktree agent (leaf bqYGEM), a `node -e` edit script holding template lite
 ## 2026-11-25: under `npm test` a V… error drops the kernel, so a test and the CLI can disagree
 
 `npm test` preloads `kit/test/verify-lowering.js`, which turns on `switches.verify`: every kernel goes through the IR verifier, and a V… diagnostic counts as an error, so `result.kernel` is null. The CLI runs with it off. A checker that builds unusual IR on purpose (leaf HDwkdF's `--effects` shim stores a vector with an `f64` rule, V002) saw kernels in a probe and none in its tests. Turn `switches.verify` off around such lowering, say so, and restore it.
+
+## 2026-11-25: a blind `claude -p` run cannot write under `~/.claude`
+
+The Manuel summary run was started in the job's scratch dir (`~/.claude/jobs/<id>/tmp/…`); the harness treats every path under `~/.claude` as sensitive and refused both its Write tool and a shell heredoc there, so it saved to `/private/tmp/summary-draft/` instead and said so. Start a blind run from a fresh folder under `/private/tmp/` named with the job id (parallel jobs share `/tmp`), and copy what it writes somewhere durable afterwards.
