@@ -46,7 +46,8 @@
 
 1. **The parked rules now drive the hand-written parsers** (rerun findings, "For Ben"). Either build a Dialect `syntax` deny list with reserved local names and inline-only lambdas, or strike those rules from the particles sheet as out of H5's scope. Either needs room in START.md + API.md, which are at 7,994 of 8,000 tokens.
 2. **Uncalled helpers' parameter types** (hidden r06d, r08b): accept them as known misses, or let a helper declare its parameter types. Four rerun agents caught them only with their own parsers.
-3. **Carried from last session:**
+3. **Settled the same day:** the M4 UI decision is recorded in [project/2026-11-25-m4-ui-decision.md](2026-11-25-m4-ui-decision.md) (`CwuGpd` closed); the UI DSL draft and its dogfood trial are leaf `vp27OC`. The token budget is still open.
+4. **Carried from last session (now settled except the budget):**
    - record the M4 UI decision on `CwuGpd` (criterion 5gd; the four points are in [the last handoff](2026-11-25-handoff-h5-run.md));
    - the token budget.
 
@@ -70,6 +71,6 @@
 ## Next
 
 1. Ben's decisions above. If he chooses to build the parked rules, that is a design leaf, then dogfood, then a third H5 run.
-2. **M4 Composition** (`SPPLaM`): `CwuGpd` (the UI decision) first, then `Uld5D0` (packages); `hjdIRt`, `f2dMku` and `HKNInI` are unblocked design leaves.
+2. **M4 Composition** (`SPPLaM`): `vp27OC` (draft and dogfood the UI DSL) and `Uld5D0` (packages, now unblocked); `hjdIRt`, `f2dMku` and `HKNInI` are unblocked design leaves.
 3. Issues `kRYm3Y` and `JYmuWM` (the shadow scan; Sonnet-sized, red tests from `local/rev-kit3-probes/shadow-rule.probe.js`). `JYmuWM`'s narrow fix needs to know which arrows are Runtime Lambdas, which the builder knows and the scan does not.
 4. Review `ce4ff4f` and `4a9111e` with the next batch.
