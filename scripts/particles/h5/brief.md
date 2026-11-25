@@ -4,13 +4,15 @@
 
 > **Changed 2026-11-25, after the [H5 rerun](../../../project/2026-11-25-h5-rerun.md) (Ben):** a refusal the API cannot express is now reported, not built. The first run and the rerun used the earlier text, which told agents to follow the sheet exactly, including its refusals, with no such paragraph (`git show cb8ed40:scripts/particles/h5/brief.md`), and three rerun agents wrote parsers of 320–560 lines to enforce what the API cannot say.
 
-*`run.sh` sets the directory up (`START.md`, `API.md`, `dream-code.md` and `check.sh`) and starts the agent with this text; see [README.md](README.md).*
+> **Changed 2026-11-25, leaf `O2lYL4`:** START.md and API.md were trimmed to what is not obvious, and the detail moved to topic pages in [kit/docs/](../../../kit/docs/), which `run.sh` copies into the directory as `docs/`. The text below now lets the agent read those pages too. The first run and the rerun had only START.md and API.md.
+
+*`run.sh` sets the directory up (`START.md`, `API.md`, `docs/`, `dream-code.md` and `check.sh`) and starts the agent with this text; see [README.md](README.md).*
 
 ---
 
-You are taking part in a test of a language kit's documentation. Work only in `<DIR>`. It holds four files: `START.md`, `API.md`, `dream-code.md` and `check.sh`.
+You are taking part in a test of a language kit's documentation. Work only in `<DIR>`. It holds `START.md`, `API.md`, the topic pages in `docs/`, `dream-code.md` and `check.sh`.
 
-Read `START.md`, `API.md` and `dream-code.md`, and nothing else: do not open any other file on this machine outside `<DIR>`, and do not search the web. If you find you cannot go on without reading something else, stop and say so in your report instead; that is a finding, not a failure.
+Read `START.md`, `API.md`, `dream-code.md` and the pages in `docs/`, and nothing else: do not open any other file on this machine outside `<DIR>`, and do not search the web. If you find you cannot go on without reading something else, stop and say so in your report instead; that is a finding, not a failure.
 
 The task: implement the particles language that `dream-code.md` describes, with the API that `API.md` describes. Hand in, in `<DIR>`:
 - `particles.dialect.js` and `particles.grammar.js`. The grammar file must export the builder as `particles`, since Programs import `{ particles } from "../particles.grammar.js"`.

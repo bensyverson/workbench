@@ -15,6 +15,8 @@ esac
 if [ -e "$DIR" ]; then echo "run.sh: $DIR exists; give a fresh directory" >&2; exit 2; fi
 mkdir -p "$DIR"
 cp "$REPO/kit/START.md" "$REPO/kit/API.md" "$DIR/"
+mkdir "$DIR/docs"
+cp "$REPO"/kit/docs/*.md "$DIR/docs/"
 cp "$REPO/scripts/particles/docs/dream-code.md" "$DIR/dream-code.md"
 cat > "$DIR/check.sh" <<EOF
 #!/bin/sh

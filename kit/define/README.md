@@ -1,6 +1,6 @@
 # kit/define: the Definition API
 
-Declares a Domain Language as data and generates the rest. `defineDialect` says what the language **means** (types, objects, intrinsics with each target's spelling and a reference implementation, the Library, Iteration Spaces, targets, slot conventions); `defineGrammar` says how a Program is **written** (constructs and their slots), and the kit generates the builder, its diagnostics, the record it returns and the lowering of every Runtime Lambda. The spec is [the draft](../../scripts/define-trial/docs/api-draft.md); this page says what is built and where the build departs from it. No Node built-ins.
+Declares a Domain Language as data and generates the rest. `defineDialect` says what the language **means** (types, objects, intrinsics with each target's spelling and a reference implementation, the Library, Iteration Spaces, targets, slot conventions); `defineGrammar` says how a Program is **written** (constructs and their slots), and the kit generates the builder, its diagnostics, the record it returns and the lowering of every Runtime Lambda. The spec is [the draft](../../scripts/define-trial/docs/api-draft.md); this page says what is built and where the build departs from it. No Node built-ins. An agent building a language reads [START.md](../START.md), [API.md](../API.md) and the topic pages in [kit/docs/](../docs/) instead; keep them in step with this page when the API changes.
 
 ```js
 import { defineDialect, defineGrammar, vector, exact, name, data, lambda } from "./kit/define/index.js";
