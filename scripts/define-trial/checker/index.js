@@ -11,10 +11,10 @@ import * as kit from "../../../kit/define/index.js";
 import { didYouMean } from "../../../kit/lower/codes.js";
 import { session, candidateFrame } from "./session.js";
 import { installHooks, DEFINE_SPECIFIER } from "./hooks.js";
-import { checkExport, runProgram, reportBuild, reportThrown, moduleScope, EXAMPLES_DIR } from "./examples.js";
-import { LOAD } from "./codes.js";
+import { checkExport, runProgram, reportBuild, reportThrown, moduleScope, declaredRefusal, EXAMPLES_DIR } from "./examples.js";
+import { LOAD, REFUSED } from "./codes.js";
 
-export { CHECK_CODES, RETIRED_CODES, LOAD } from "./codes.js";
+export { CHECK_CODES, RETIRED_CODES, LOAD, EFFECTS_CODES, REFUSED } from "./codes.js";
 export { EXAMPLES_DIR } from "./examples.js";
 /** @typedef {import("./codes.js").CheckDiagnostic} CheckDiagnostic */
 
@@ -52,18 +52,18 @@ let queue = Promise.resolve();
 /**
  * Checks one candidate directory. Checks run one at a time (the candidate's kit/define reports to one session).
  * @param {string} dir
- * @param {{ lang?: string }} [options]  `lang` names the definition files (definitionFiles)
+ * @param {{ lang?: string, effects?: boolean }} [options]  `lang` names the definition files (definitionFiles); `effects` runs the per-slot effects draft (docs/api-effects.md, checker/effects/)
  * @returns {Promise<CheckResult>}
  */
-export function checkDir(dir, { lang = "data" } = {}) {
+export function checkDir(dir, { lang = "data", effects = false } = {}) {
   const files = definitionFiles(lang);
-  const run = queue.then(() => { defs = files; return checkNow(resolve(dir), lang); });
+  const run = queue.then(() => { defs = files; return checkNow(resolve(dir), lang, effects); });
   queue = run.then(() => undefined, () => undefined);
   return run;
 }
 
-/** @param {string} dir @param {string} lang @returns {Promise<CheckResult>} */
-async function checkNow(dir, lang) {
+/** @param {string} dir @param {string} lang @param {boolean} effects @returns {Promise<CheckResult>} */
+async function checkNow(dir, lang, effects) {
   const { dialect: DIALECT_FILE, grammar: GRAMMAR_FILE } = defs;
   if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CheckTargetError(`${dir} is not a directory; give the directory that holds ${DIALECT_FILE}, ${GRAMMAR_FILE} and ${EXAMPLES_DIR}/`);
   for (const f of [DIALECT_FILE, GRAMMAR_FILE]) if (!existsSync(join(dir, f))) throw new CheckTargetError(`${join(dir, f)} does not exist; the check needs ${DIALECT_FILE} and ${GRAMMAR_FILE}`);
@@ -76,7 +76,7 @@ async function checkNow(dir, lang) {
   installHooks();
   // Node names modules by their real path (macOS's /var is /private/var), and so do stack frames.
   const dirUrl = pathToFileURL(realpathSync(dir)).href.replace(/\/?$/, "/");
-  session.reset(dirUrl, sources);
+  session.reset(dirUrl, sources, effects);
   if (examples.length === 0) session.add({ file: EXAMPLES_DIR, line: 1, code: "C007", severity: "error", message: `there is no ${EXAMPLES_DIR}/*.js; the hand-in needs one file per Dream Code example.`, fix: `write ${EXAMPLES_DIR}/01.js … ${EXAMPLES_DIR}/10.js, each a Program or a // REFUSED: file (rules.md R6)` });
   /** @param {string} f */
   const load = (f) => import(`${dirUrl}${f.split("/").map(encodeURIComponent).join("/")}?run=${session.run}`);
@@ -100,6 +100,7 @@ async function checkNow(dir, lang) {
   // Examples import the grammar; while it is refused or does not load, each would only repeat its error.
   if (definitionsLoaded && !session.refused && session.grammar) {
     for (const f of examples) {
+      const before = session.diagnostics.length;
       /** @type {Record<string, unknown> | null} */
       let mod = null;
       try {
@@ -107,16 +108,33 @@ async function checkNow(dir, lang) {
       } catch (e) {
         reportLoadError(e, f);
       }
-      if (!mod) continue;
-      const programFn = checkExport(f, mod.default);
-      const scope = programFn && moduleScope(f, mod);
+      const programFn = mod && checkExport(f, mod.default);
+      const scope = mod && programFn && moduleScope(f, mod);
       if (programFn && scope) runProgram(f, programFn, session.grammar, scope);
+      if (session.effects && declaredRefusal(f) !== null) settleRefusal(f, before, programFn !== null);
     }
   }
 
   const rank = (/** @type {string} */ f) => (order.includes(f) ? order.indexOf(f) : order.length);
   const diagnostics = [...session.diagnostics].sort((a, b) => rank(a.file) - rank(b.file) || a.line - b.line);
   return { ok: !diagnostics.some((d) => d.severity === "error"), diagnostics, files: sources };
+}
+
+/**
+ * --effects: an example marked `// REFUSED: <code>` must fail. What it failed with since `before` is folded into one
+ * info line beside its declared code (no gating on the match); if it failed with nothing, that is C008.
+ * @param {string} file @param {number} before  the diagnostics' count before the example ran @param {boolean} hasProgram
+ */
+function settleRefusal(file, before, hasProgram) {
+  const declared = declaredRefusal(file);
+  const fresh = session.diagnostics.splice(before);
+  const failed = fresh.filter((d) => d.severity === "error");
+  if (failed.length === 0) {
+    session.add({ file, line: 1, code: "C008", severity: "error", message: `${file} is marked // REFUSED: ${declared}, but ${hasProgram ? "its Program builds and lowers clean" : "it exports no Program, so nothing was refused"}.`, fix: hasProgram ? "a refusal is a valid Program with one mistake the language refuses: put the mistake back, or make the language refuse it" : "export the Program with its one mistake, export default ($) => particles(…)…, after the // REFUSED: line" });
+    return;
+  }
+  const given = failed.map((d) => `${d.code} (${d.file}:${d.line}: ${d.message})`).join("; ");
+  session.add({ file, line: 1, code: REFUSED, severity: "info", message: `declared ${declared}; the checker gave ${given}`, fix: "nothing: a refusal must fail, and it did; whether the codes match the one declared is read by hand" });
 }
 
 /**

@@ -18,7 +18,7 @@
 - **Reads of state are effects too, and gated.** The IR records `read Owner.name` for a place something can change. The sheet needs this: rate reads counters, update must not. In an instance space the instance's own members are readable without listing (they are its own); anything else that changes (a total) must be in `may`. Read-only places (uniforms, `p.age`) record no read, so fields and data are untouched.
 - **A total cannot be read and bumped in one slot (D021).** That is what makes the order the host runs instances in invisible to every lambda, which is the whole point of rule 2; the sheet's "every rate reads the counters as they stood when the tick began" then follows from the host bumping during the tick and the rate reading a snapshot. The kit does not need to know about ticks.
 - **Bumps only `+=` and `++`.** `-= x` is `+= -x`; refusing it costs the author nothing and matches the sheet (R23). `=` would make order visible.
-- **Helpers are read-only by default**, with `helpers: { may: [...] }` to narrow the reads. A helper's effects count at every call (lowering already adds a callee's effects to the caller's), but the sheet wants a kill in a helper refused even when only update calls it (R6), and a counter read in a helper refused even from a rate (R24). Read-only by default gives R6; `helpers: { may: ["read Particle"] }` gives R24.
+- **Helpers read only instance objects by default**, with `helpers: { may: [...] }` to widen the reads. (Corrected 2026-11-25 after the shim build: the first draft's default was any read, `["read"]`, which let a helper read a total unless the Dialect remembered to narrow it.) A helper's effects count at every call (lowering already adds a callee's effects to the caller's), but the sheet wants a kill in a helper refused even when only update calls it (R6), and a counter read in a helper refused even from a rate (R24). Reads of instances only, by default, gives both R6 and R24.
 - **Intrinsics stay pure in this draft** (`effects` on one is D021). An effectful intrinsic has no honest `ref`: `rng` needs the host's seeded stream, a sound needs a speaker. Those become host imports (below), not built here. Particles needs none: its `rng` is a slot parameter, an object the host hands in, as DMG's `w.rng` is.
 - **The float-bump question (handoff, "For Ben's eyes" 1): answered by the target's compare mode.** A total is added in the reference interpreter's order (the space's run order). A target compared `exact()` must keep that order; a target compared within `tolerance()` may reorder. That reuses the existing per-target `compare` instead of inventing an integer type or a whole-number check the kit cannot make statically (`counters.x += p.size`). The sheet's "`+=` any number expression" stands. Two-way door: if a parallel target ever needs exact reordering, add a `bump: "whole"` that the host checks at run time.
 - **The fourth shared-state category (a per-key ordered log, the outbox): parked.** The app-DSL probe found it is a property of the host's outbox, not of any lambda, so it needs no slot rule ([app-DSL probe](2026-11-24-app-dsl-probe.md), "What this means for per-slot effects"). It would arrive as `emit`, with the host owning the log.
@@ -30,7 +30,7 @@ Carries, unchanged:
 
 - The effect kinds: `EffectVerb` already holds `read`, `write`, `rng`, `destroy`, `spawn`, `emit`, `call` and the DMG-only ones ([`kit/ir/ir.d.ts`](../kit/ir/ir.d.ts)). Every statement records its effects and the kernel sums them; V007 and V008 check that.
 - A verb as a method with effects: DMG's `self.destroy()` is `fn([], VOID, ["destroy Mole"])`, exactly the shape `p.kill()` needs.
-- A callable object: `ObjectDecl.call` (the HUD's `at(c, r)`) with an `FnSig`, which carries `effects`, so `rng()` on an `Rng` object needs nothing new in the Environment.
+- A callable object: `ObjectDecl.call` (the HUD's `at(c, r)`) with an `FnSig`, which carries `effects`, so `rng()` on an `Rng` object needs nothing new in the Environment. The Definition API, though, has no `call` on an object yet: the packet adds it.
 - A callee's effects counted at the call (helpers and methods), and L004 for a slot-forbidden effect with a tip.
 
 Lacks:
@@ -77,7 +77,6 @@ export const particlesDialect = defineDialect({
     force:  { params: ["Particle", "f64"], returns: "void", space: "particle", may: ["write Particle.vel"] },
     update: { params: ["Particle", "f64"], returns: "void", space: "particle", may: ["write Particle", "destroy Particle", "bump Counters"] },
   },
-  helpers: { may: ["read Particle"] },
   params: { object: "Params", name: "$" },
   environment(program) {
     const field = Object.fromEntries(Object.keys(program.field ?? {}).map((n) => [n, { value: "f64", write: true }]));

@@ -12,7 +12,7 @@ import { checkDir, CheckTargetError, DIALECT_FILE, GRAMMAR_FILE, EXAMPLES_DIR, d
 export const EXIT = Object.freeze({ ok: 0, violations: 1, usage: 2, target: 4 });
 
 const SELF = relative(process.cwd(), fileURLToPath(import.meta.url)) || "check.js";
-const PRIMER = `usage: node ${SELF} <dir> [--json] [--lang <name>]
+const PRIMER = `usage: node ${SELF} <dir> [--json] [--lang <name>] [--effects]
 
 Checks a Definition API trial hand-in against docs/rules.md: loads <dir>/${DIALECT_FILE}, <dir>/${GRAMMAR_FILE}
 and <dir>/${EXAMPLES_DIR}/*.js with the real kit/define, builds each example's Program, a function of its
@@ -23,7 +23,11 @@ D… codes are about the definition files, B… about a Program (the builder, co
 L…, P… and S… about a lambda's body (lowering), C… the checker's own rules; rules.md lists them all.
 Exit 0: no violations. 1: violations. 2: bad invocation. 4: <dir> or a definition file is missing.
 --json prints the result as one JSON object instead.
---lang <name> checks <dir>/<name>.dialect.js and <name>.grammar.js instead (default: data).`;
+--lang <name> checks <dir>/<name>.dialect.js and <name>.grammar.js instead (default: data).
+--effects checks the per-slot effects draft (docs/api-effects.md, rules in docs/rules-effects.md): its
+  declarations (D012, D021, D022), every lambda's effects against its slot's may (L004) and totals (L017);
+  an example whose first line is // REFUSED: <code> must fail (C008 if it checks clean), and what it failed
+  with is printed beside its declared code.`;
 
 /**
  * The text the author reads.
@@ -43,7 +47,8 @@ export function format(r, dirArg) {
 async function main(argv) {
   if (argv.includes("--help") || argv.includes("-h")) { console.log(PRIMER); return EXIT.ok; }
   const json = argv.includes("--json");
-  let rest = argv.filter((a) => a !== "--json");
+  const effects = argv.includes("--effects");
+  let rest = argv.filter((a) => a !== "--json" && a !== "--effects");
   let lang = "data";
   const at = rest.indexOf("--lang");
   if (at >= 0) {
@@ -58,7 +63,7 @@ async function main(argv) {
   const entry = { time: new Date().toISOString(), dir: resolve(dirArg) };
   let code;
   try {
-    const r = await checkDir(dirArg, { lang });
+    const r = await checkDir(dirArg, { lang, effects });
     console.log(json ? JSON.stringify(r) : format(r, dirArg));
     Object.assign(entry, { ok: r.ok, loadError: null, diagnostics: r.diagnostics, files: r.files });
     code = r.ok ? EXIT.ok : EXIT.violations;

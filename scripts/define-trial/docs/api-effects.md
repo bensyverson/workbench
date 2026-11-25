@@ -58,9 +58,10 @@ globals: { totals: "Totals" },
 ```
 
 - **`write: true`** on a value member makes it writable. A write replaces the whole member: `pl.height = 2`, `pl.height += dt`, and for a vector `p.vel = vec2(0, p.vel.y)` (a component write such as `p.vel.x = 0` is refused, L013). A write to a member without `write: true` is L013, as before.
-- **`effects: [...]`** on a `fn` member (a verb), or beside an object's `call` (an object a lambda calls, like `rng()`), lists what calling it does. Each effect must be one the slot's `may` allows. A verb returns `void`; call it as a statement.
-- **`bump: true`** on an `f64` value member makes it a **total**. A lambda changes it only with the statement `obj.member += <number>` or `obj.member++` (L017 for `=`, `-=`, `--`, or a bump used as a value: `x = totals.hits++`). No slot may both read and bump one total (D021), so whatever order the host runs instances in, no lambda sees another's bump.
-- `write` and `bump` together, or either on a member that is not a `value`, is D021.
+- **`call: { params, returns }`** on an object (new on this page; `api-draft.md`'s objects have only `label` and `members`) makes the object itself callable, as `rng()` is.
+- **`effects: [...]`** on a `fn` member (a verb), or beside an object's `call`, lists what calling it does. Each effect must be one the slot's `may` allows. A verb returns `void`; call it as a statement.
+- **`bump: true`** on an `f64` value member makes it a **total**. A lambda changes it only with the statement `obj.member += <number>` or `obj.member++` (L017 for `=`, `-=`, `--`, a bump used as a value, `x = totals.hits++`, or a read of it in a slot that may bump it). No slot may both read and bump one total (D021; a bare `"read"` beside `"bump Totals"` counts), so whatever order the host runs instances in, no lambda sees another's bump.
+- `write` and `bump` together, or either on a member that is not a `value`, or `bump` on a value that is not `f64`, is D021.
 
 Who implements a verb, `rng()` and the totals: **the host**, the program that runs your Programs. These objects are values the host hands each lambda; `p.kill()` asks the host to remove `p`, and the host decides when. The kit records each call's effects, refuses the ones a slot may not have, and the reference interpreter calls the host's objects.
 
@@ -76,15 +77,15 @@ slots: {
 ```
 
 - `may` is a list of effect patterns; absent, it is `[]`. Every effect a lambda has, its own or through a helper it calls, must match one (L004, whose message names the effect and the slot, and whose tip lists the slot's `may`).
-- A pattern with an unknown verb, an object or member that does not exist, a `bump` of a member that is not a total, a `write` of one that is not writable, or a `read` and `bump` of one total in one slot is D021. A `write` or `destroy` outside an instance space of that object is D022. A `bump` is allowed only in an instance space (D021): a pure space changes nothing.
+- A `write`, `destroy` or `bump` pattern must name its object (`"write"` alone is D021). A pattern with an unknown verb, an object or member that does not exist, a `bump` of a member that is not a total, a `write` of one that is not writable, or a `read` and `bump` of one total in one slot is D021. A `write` or `destroy` outside an instance space of that object is D022. A `bump` is allowed only in an instance space (D021): a pure space changes nothing.
 - A convention function returns `may` like any other key, so it may depend on the Program or on where the lambda sits.
 
 ## Helpers
 
-A helper's effects count at every call, as if its body were written there. By default a helper may only read (`may: ["read"]`), so a verb, a write, `rng()` or a bump inside a helper is L004 at the helper, even when every caller could do it. A Dialect may narrow this:
+A helper's effects count at every call, as if its body were written there. By default a helper may read only the members of instance objects (here, `may: ["read Plant"]`: the only plant it can be given is its caller's), so a verb, a write, `rng()`, a bump, or a read of a total inside a helper is L004 at the helper, even when every caller could do it. A Dialect may widen the reads:
 
 ```js
-helpers: { may: ["read Plant"] },   // a helper may read a plant passed to it, and nothing else that changes (not a total)
+helpers: { may: ["read Plant", "read Totals"] },   // helpers may also read the totals (only callers that may read them can call such a helper)
 ```
 
 `helpers` takes only `may`, and only reads (D021).
@@ -105,9 +106,9 @@ A lambda that spawns a new instance (instances come from the host or from the Pr
 
 | Code | Refused when |
 |---|---|
-| D012 | a space with neither `pure: true` nor `instance`, or with both (widened) |
-| D021 | a malformed effect declaration: an unknown verb, object or member in `may`; a non-read in a pure space's slot or in `helpers`; a `bump` outside an instance space, or of a member that is not a total; a `write` of a member that is not writable; one slot that may both read and bump a total; `write` and `bump` on one member, or on a member that is not a `value`; `effects` on an intrinsic |
+| D012 | a space with neither `pure: true` nor `instance`, or with both, or whose `instance` names no object (widened) |
+| D021 | a malformed effect declaration: an unknown verb, object or member in `may`; a `write`, `destroy` or `bump` with no object; a non-read in a pure space's slot or in `helpers`; a `bump` outside an instance space, or of a member that is not a total; a `write` of a member that is not writable; one slot that may both read and bump a total; `write` and `bump` on one member, or on a member that is not a `value`; `bump` on a non-`f64`; `effects` on an intrinsic |
 | D022 | an instance that could reach a lambda another way, or a change to an object outside its instance space: a member, method result, global, list item, struct field or intrinsic result of the instance's type; a slot outside the instance space that takes one; a slot in it that takes none or two; `write` or `destroy` of an object in a slot whose space's instance is not that object |
 | L004 | an effect the slot's `may` does not allow, the lambda's own or through a helper (widened from "a verb the slot forbids") |
 | L013 | a write to a member without `write: true`, or to part of a vector member (as before, for a place that is not writable) |
-| L017 | a total changed other than by the statement `+= <number>` or `++`, or a bump used as a value |
+| L017 | a total changed other than by the statement `+= <number>` or `++`, a bump used as a value, or a total read in a slot that may bump it |

@@ -37,3 +37,7 @@ The architecture consult's blind pass (leaf `Cy9u98`) was told not to read `proj
 ## 2026-11-24: an inline script with backticks may be refused as a removal
 
 In a worktree agent (leaf bqYGEM), a `node -e` edit script holding template literals was refused by the harness's removal check ("can't be sure it read this command the way the shell will"), and a command combining `cd` with `$PWD` was refused as too complex to verify. Write such a script to a file under `local/` (gitignored) and run it with absolute paths. If it rewrites text with `String.prototype.replace`, pass the replacement as a function: a replacement string holding `` $` `` (any doc that quotes `$` in backticks) splices in the text before the match.
+
+## 2026-11-25: under `npm test` a V… error drops the kernel, so a test and the CLI can disagree
+
+`npm test` preloads `kit/test/verify-lowering.js`, which turns on `switches.verify`: every kernel goes through the IR verifier, and a V… diagnostic counts as an error, so `result.kernel` is null. The CLI runs with it off. A checker that builds unusual IR on purpose (leaf HDwkdF's `--effects` shim stores a vector with an `f64` rule, V002) saw kernels in a probe and none in its tests. Turn `switches.verify` off around such lowering, say so, and restore it.

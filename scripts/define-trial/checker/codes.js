@@ -32,3 +32,14 @@ export const LOAD = "LOAD";
  * @property {string} fix  What to write instead.
  * @property {string} [tip]  The kit's advice, when it also gave a fix; printed on its own line after it.
  */
+
+/** The checker's own codes in --effects mode (rules-effects.md), on top of CHECK_CODES. */
+export const EFFECTS_CODES = Object.freeze({
+  C008: "An example marked // REFUSED: <code> that checks clean: its Program builds and lowers with no error, or it has no Program to refuse (--effects)",
+});
+
+/**
+ * In --effects mode, what an example marked // REFUSED: <code> failed with, beside the code it declared: an
+ * info line, not a violation (the match is read by hand).
+ */
+export const REFUSED = "REFUSED";

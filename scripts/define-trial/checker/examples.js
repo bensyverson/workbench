@@ -15,6 +15,15 @@ export const EXAMPLES_DIR = "examples";
 const REFUSED = /^\/\/ REFUSED: \S/;
 
 /**
+ * The code an example's first line declares, `// REFUSED: <code>`, or null when it is not marked refused.
+ * @param {string} file
+ */
+export function declaredRefusal(file) {
+  const m = /^\/\/ REFUSED: ([^\s(,;:.]+)/.exec((session.sources[file] ?? "").split("\n")[0].trimEnd());
+  return m ? m[1] : null;
+}
+
+/**
  * A diagnostic as kit/define gives it: a builder's (at the call) or a lowering's (inside a lambda, or a unit).
  * @typedef {{ code: string, severity: string, message: string, tip?: string, fix?: string, file?: string, loc?: { start: { line: number } }, ref?: { id: string, kind: string }, unit?: string }} KitDiagnostic
  */
@@ -172,16 +181,18 @@ export function runProgram(file, programFn, grammar, options = {}) {
   }
   reportBuild(built.diagnostics, file);
   if (!built.record) return;
-  /** @type {{ diagnostics: KitDiagnostic[], lambdas: Array<{ ref: { id: string }, src: string }> }} */
+  /** @type {{ diagnostics: KitDiagnostic[], lambdas: Array<{ ref: { id: string }, src: string }>, problems?: any[] }} */
   let lowered;
   try {
-    lowered = grammar.lower(built.record);
+    // --effects: against the patched Environment, with the draft's checks (checker/effects/)
+    lowered = session.effectsLower ? session.effectsLower(built.record) : grammar.lower(built.record);
   } catch (e) {
     // A convention function's result is checked as a static convention is, and refused the same way.
     if (e instanceof kit.DefinitionError && session.dialectSite) { session.report(session.dialectSite, e.diagnostics, ` (when ${file} was lowered)`); return; }
     reportThrown(e, file, "when its Program was lowered");
     return;
   }
+  if (lowered.problems?.length && session.dialectSite) session.report(session.dialectSite, lowered.problems, ` (when ${file} was lowered)`);
   for (const d of lowered.diagnostics) {
     if (d.code.startsWith("B") || !d.ref && !d.unit) reportBuild([d], file);
     else if (d.ref) reportInLambda(d, file, lowered.lambdas);
