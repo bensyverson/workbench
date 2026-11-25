@@ -1,0 +1,491 @@
+<title>Workbench UI Probe</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+  --bg: #f6f7f8; --panel: #ffffff; --fg: #1b1e22; --muted: #5d6670; --line: #d9dde2;
+  --ok: #1f7a46; --fail: #b3261e; --wait: #8a6d00; --accent: #2a5bd7;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15171a; --panel: #1d2024; --fg: #e6e8eb; --muted: #9aa3ad; --line: #2e3339;
+  --ok: #5cc98a; --fail: #ff8a80; --wait: #e0c050; --accent: #8fb0ff; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #15171a; --panel: #1d2024; --fg: #e6e8eb; --muted: #9aa3ad; --line: #2e3339;
+  --ok: #5cc98a; --fail: #ff8a80; --wait: #e0c050; --accent: #8fb0ff; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px; }
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-size: 20px; margin: 0; text-wrap: balance; }
+h2 { font-size: 15px; margin: 0 0 6px; }
+p { margin: 0; color: var(--muted); max-width: 65ch; line-height: 1.5; }
+button { font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); cursor: pointer; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+.table { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+td.k { font-family: var(--mono); white-space: nowrap; }
+td.v { font-family: var(--mono); word-break: break-word; min-width: 0; }
+.ok { color: var(--ok); } .fail { color: var(--fail); } .wait { color: var(--wait); }
+.stage { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+#lab { position: absolute; left: -9999px; top: 0; width: 300px; } /* off-screen, still rendered, so layout checks work */
+/* outer style reaching into a shadow root through ::part */
+wb-part-el::part(label) { color: rgb(1, 2, 3); }
+</style>
+
+<main>
+  <h1>Workbench UI Probe</h1>
+  <p>Tests whether a UI built from a small DSL, with Web Components as an optional upgrade, can run in a Claude artifact. The automatic checks run when the page loads. The yellow rows under "Real input" need you to use the control below. Results are saved to this artifact's database.</p>
+  <div class="panel">
+    <h2>Real input (do this once)</h2>
+    <p>1. Click the pad below once, so it has focus. 2. Hold the Right arrow key for about a second, then release. 3. Press and hold the pad with the mouse or a finger, drag well outside it, and release.</p>
+    <div class="stage">
+      <wb-dpad id="pad"></wb-dpad>
+      <span class="status" id="padlog">no input yet</span>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>The reactive-cell DSL, running</h2>
+    <pre id="dslsrc" class="status" style="margin:0;white-space:pre-wrap"></pre>
+    <div class="stage" id="dslstage"></div>
+  </div>
+  <div class="status" id="status">Running…</div>
+  <div class="table"><table>
+    <thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <div id="lab" aria-hidden="true"></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  const results = {};
+  const rowsEl = document.getElementById("rows");
+  const statusEl = document.getElementById("status");
+  const lab = document.getElementById("lab");
+  let db = null;
+
+  function render() {
+    rowsEl.textContent = "";
+    for (const [k, r] of Object.entries(results)) {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td"); a.className = "k"; a.textContent = k;
+      const b = document.createElement("td"); b.className = r.ok === true ? "ok" : r.ok === false ? "fail" : "wait";
+      b.textContent = r.ok === true ? "yes" : r.ok === false ? "no" : "…";
+      const c = document.createElement("td"); c.className = "v"; c.textContent = r.detail ?? "";
+      tr.append(a, b, c); rowsEl.append(tr);
+    }
+  }
+  let persistTimer = null;
+  function persist() {
+    if (!db) return;
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      db.doc("uiprobe/results").set({ at: new Date().toISOString(), ua: navigator.userAgent, results })
+        .then(() => { statusEl.textContent = "Saved to the artifact database at " + new Date().toLocaleTimeString(); })
+        .catch((e) => { statusEl.textContent = "Could not save results: " + (e && (e.code || e.message)); });
+    }, 400);
+  }
+  function record(key, ok, detail) {
+    results[key] = { ok, detail: detail == null ? "" : String(detail).slice(0, 400) };
+    render(); persist();
+  }
+  const errText = (e) => (e && ((e.name ? e.name + ": " : "") + (e.message || e))) || "error";
+  async function check(key, fn) {
+    try { record(key, true, await fn()); } catch (e) { record(key, false, errText(e)); }
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + " timed out after " + ms + " ms")), ms))]);
+  const assert = (c, msg) => { if (!c) throw new Error(msg); };
+  const html = (s) => { const t = document.createElement("template"); t.innerHTML = s.trim(); return t.content.firstElementChild; };
+  const visible = (el) => el.getClientRects().length > 0 && el.getBoundingClientRect().height > 0;
+
+  // ---- the on-screen D-pad, a custom element (check 5), defined first so manual input works at once ----
+  // Properties in (`enabled`), events out (`wb-dir`). The surface is one host-level pointer target with
+  // pointer capture, so a drag that leaves the pad still reports to it.
+  const manual = (key, detail) => { if (!results[key] || results[key].ok !== true) record(key, true, detail); };
+  let padLogEl = null;
+  class WbDpad extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      const r = this.attachShadow({ mode: "open", delegatesFocus: false });
+      r.innerHTML = '<style>:host{display:inline-block;width:120px;height:120px;border:2px solid #888;border-radius:50%;touch-action:none;user-select:none;position:relative;background:#8883}' +
+        ':host(:focus-visible){outline:3px solid #2a5bd7}.dot{position:absolute;width:24px;height:24px;border-radius:50%;background:#2a5bd7;left:48px;top:48px;transition:transform .05s}</style><div class="dot" part="dot"></div>';
+      if (!this.hasAttribute("tabindex")) this.tabIndex = 0;
+      this.addEventListener("focus", () => manual("manual.focus", "host received focus; document.activeElement is host: " + (document.activeElement === this)));
+      this.addEventListener("keydown", (e) => {
+        if (!e.key.startsWith("Arrow")) return;
+        e.preventDefault();
+        if (e.repeat) manual("manual.keyRepeat", "keydown with repeat=true seen (" + e.key + ")"); else manual("manual.keydown", "keydown " + e.key);
+        this.#emit(e.key.slice(5).toLowerCase());
+      });
+      this.addEventListener("keyup", (e) => { if (e.key.startsWith("Arrow")) manual("manual.keyup", "keyup " + e.key); });
+      this.addEventListener("pointerdown", (e) => {
+        if (e.pointerType) manual("manual.pointerdown", "pointerType " + e.pointerType);
+        try { this.setPointerCapture(e.pointerId); manual("manual.setPointerCapture", "hasPointerCapture: " + this.hasPointerCapture(e.pointerId)); }
+        catch (err) { record("manual.setPointerCapture", false, errText(err)); }
+        this.#aim(e);
+      });
+      this.addEventListener("pointermove", (e) => {
+        if (!this.hasPointerCapture?.(e.pointerId)) return;
+        const b = this.getBoundingClientRect();
+        if (e.clientX < b.left - 20 || e.clientX > b.right + 20 || e.clientY < b.top - 20 || e.clientY > b.bottom + 20) manual("manual.captureOutside", "pointermove reached the pad while the pointer was outside it");
+        this.#aim(e);
+      });
+      this.addEventListener("pointerup", (e) => { manual("manual.pointerup", "pointerup, capture released: " + !this.hasPointerCapture(e.pointerId)); this.#dot(0, 0); });
+      this.addEventListener("pointercancel", () => this.#dot(0, 0));
+    }
+    #dot(x, y) { const d = this.shadowRoot.querySelector(".dot"); d.style.transform = "translate(" + x + "px," + y + "px)"; }
+    #aim(e) {
+      const b = this.getBoundingClientRect();
+      const dx = e.clientX - (b.left + b.width / 2), dy = e.clientY - (b.top + b.height / 2);
+      const m = Math.hypot(dx, dy) || 1, k = Math.min(40, m) / m;
+      this.#dot(dx * k, dy * k);
+      this.#emit(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    }
+    #emit(dir) {
+      this.dispatchEvent(new CustomEvent("wb-dir", { detail: { dir }, bubbles: true, composed: true }));
+      if (!padLogEl) padLogEl = document.getElementById("padlog");
+      padLogEl.textContent = "last direction: " + dir;
+    }
+  }
+  customElements.define("wb-dpad", WbDpad);
+
+  // ---- 1. custom elements ----
+  async function t1() {
+    await check("ce.define", () => {
+      class A extends HTMLElement {}
+      customElements.define("wb-t1-basic", A);
+      const el = document.createElement("wb-t1-basic");
+      assert(el instanceof A, "createElement did not produce the class");
+      assert(customElements.get("wb-t1-basic") === A, "get() mismatch");
+      return "autonomous element defined and constructed";
+    });
+    await check("ce.lifecycle", async () => {
+      const log = [];
+      class L extends HTMLElement {
+        static observedAttributes = ["a"];
+        connectedCallback() { log.push("connected"); }
+        disconnectedCallback() { log.push("disconnected"); }
+        attributeChangedCallback(n, o, v) { log.push("attr:" + n + ":" + o + ">" + v); }
+      }
+      customElements.define("wb-t1-life", L);
+      const el = document.createElement("wb-t1-life");
+      el.setAttribute("a", "1"); lab.append(el); el.setAttribute("a", "2"); el.remove();
+      const want = "attr:a:null>1,connected,attr:a:1>2,disconnected";
+      assert(log.join() === want, "got " + log.join() + " want " + want);
+      return log.join(" ");
+    });
+    await check("ce.upgradeExistingMarkup", async () => {
+      const host = html('<div><wb-t1-up a="x">inner</wb-t1-up></div>'); lab.append(host);
+      const seen = [];
+      customElements.define("wb-t1-up", class extends HTMLElement { static observedAttributes = ["a"]; attributeChangedCallback(n, o, v) { seen.push(v); } connectedCallback() { seen.push("c"); } });
+      host.remove();
+      assert(seen.join() === "x,c", "got " + seen.join());
+      return "parsed-before-define element upgraded: attributeChanged then connected";
+    });
+  }
+
+  // ---- 2. shadow DOM ----
+  async function t2() {
+    await check("shadow.attach", () => {
+      const el = document.createElement("div"); const r = el.attachShadow({ mode: "open" }); r.innerHTML = "<p>x</p>";
+      assert(el.shadowRoot === r && r.querySelector("p"), "open shadow root not reachable");
+      return "attachShadow open";
+    });
+    await check("shadow.slot", () => {
+      const el = html('<div><span>in</span></div>'); const r = el.attachShadow({ mode: "open" }); r.innerHTML = '<slot></slot>';
+      lab.append(el);
+      const n = r.querySelector("slot").assignedNodes();
+      const ok = n.length === 1 && n[0].textContent === "in"; el.remove();
+      assert(ok, "assignedNodes " + n.length); return "slot projects light children";
+    });
+    await check("shadow.adoptedStyleSheets", () => {
+      const sheet = new CSSStyleSheet(); sheet.replaceSync("p{color:rgb(9,8,7)}");
+      const el = document.createElement("div"); const r = el.attachShadow({ mode: "open" }); r.innerHTML = "<p>x</p>";
+      r.adoptedStyleSheets = [sheet]; lab.append(el);
+      const c = getComputedStyle(r.querySelector("p")).color; el.remove();
+      assert(c === "rgb(9, 8, 7)", "computed " + c); return "constructable stylesheet applied: " + c;
+    });
+    await check("shadow.part", () => {
+      customElements.define("wb-part-el", class extends HTMLElement { connectedCallback() { this.attachShadow({ mode: "open" }).innerHTML = '<span part="label">x</span>'; } });
+      const el = document.createElement("wb-part-el"); lab.append(el);
+      const c = getComputedStyle(el.shadowRoot.querySelector("span")).color; el.remove();
+      assert(c === "rgb(1, 2, 3)", "computed " + c); return "::part(label) from the page stylesheet reached the shadow: " + c;
+    });
+    await check("shadow.cssVarsInherit", () => {
+      const el = document.createElement("div"); el.style.setProperty("--wb-x", "7px");
+      const r = el.attachShadow({ mode: "open" }); r.innerHTML = '<p style="margin-left:var(--wb-x)">x</p>'; lab.append(el);
+      const m = getComputedStyle(r.querySelector("p")).marginLeft; el.remove();
+      assert(m === "7px", "margin-left " + m); return "page custom properties cross the boundary (theme tokens): " + m;
+    });
+  }
+
+  // ---- 3. fallback then upgrade ----
+  async function t3() {
+    // The DSL emits <wb-late><span class=fb>fallback</span></wb-late>. A definition that attaches a shadow root with
+    // no <slot> hides the light-DOM fallback by itself; an element never defined leaves the fallback showing.
+    const late = html('<div><wb-late id="late"><span class="fb">fallback</span></wb-late><wb-never id="never"><span class="fb">fallback</span></wb-never></div>');
+    lab.append(late);
+    const lateEl = late.querySelector("#late"), neverEl = late.querySelector("#never");
+    const fb = (e) => e.querySelector(".fb");
+    await check("upgrade.fallbackFirst", () => {
+      assert(lateEl.matches(":not(:defined)"), ":not(:defined) did not match before define");
+      assert(visible(fb(lateEl)), "fallback not rendered before define");
+      return "undefined element matches :not(:defined) and its fallback child is rendered";
+    });
+    const whenP = customElements.whenDefined("wb-late");
+    await sleep(300);
+    customElements.define("wb-late", class extends HTMLElement {
+      connectedCallback() { const r = this.attachShadow({ mode: "open" }); r.innerHTML = '<b class="up">upgraded</b>'; }
+    });
+    await check("upgrade.afterDelay", async () => {
+      await withTimeout(whenP, 2000, "whenDefined");
+      assert(lateEl.matches(":defined"), ":defined not matching after define");
+      assert(lateEl.shadowRoot && lateEl.shadowRoot.querySelector(".up"), "no shadow content");
+      assert(!visible(fb(lateEl)), "fallback still rendered after upgrade");
+      return "whenDefined resolved, element upgraded in place, light-DOM fallback no longer rendered (no slot)";
+    });
+    await check("upgrade.neverDefined", async () => {
+      await sleep(100);
+      assert(customElements.get("wb-never") === undefined, "unexpectedly defined");
+      assert(neverEl.matches(":not(:defined)") && visible(fb(neverEl)), "fallback gone");
+      return "fallback still visible; element stays :not(:defined)";
+    });
+    await check("upgrade.cssFallbackSelector", () => {
+      const st = document.createElement("style"); st.textContent = "wb-pseudo:not(:defined) .fb{color:rgb(5,5,5)} wb-pseudo:defined .fb{color:rgb(6,6,6)}";
+      document.head.append(st);
+      const el = html('<wb-pseudo><span class="fb">f</span></wb-pseudo>'); lab.append(el);
+      const before = getComputedStyle(el.querySelector(".fb")).color;
+      customElements.define("wb-pseudo", class extends HTMLElement {});
+      const after = getComputedStyle(el.querySelector(".fb")).color; el.remove(); st.remove();
+      assert(before === "rgb(5, 5, 5)" && after === "rgb(6, 6, 6)", before + " -> " + after);
+      return "styling by :not(:defined)/:defined flips on define: " + before + " -> " + after;
+    });
+    late.remove();
+  }
+
+  // ---- 4. definitions from a sibling module and a blob: module ----
+  async function t4() {
+    await check("module.siblingDefinesElement", async () => {
+      await withTimeout(import("./wb-sibling.js"), 5000, "import");
+      const el = document.createElement("wb-sibling-el"); el.setAttribute("label", "a"); lab.append(el);
+      const t = el.shadowRoot.querySelector("b").textContent; el.setAttribute("label", "b");
+      const t2 = el.shadowRoot.querySelector("b").textContent; el.remove();
+      assert(t === "sibling:a" && t2 === "sibling:b", t + " / " + t2);
+      return "sibling ES module defined an element with shadow DOM and attributeChangedCallback";
+    });
+    await check("module.blobDefinesElement", async () => {
+      const src = 'customElements.define("wb-blob-el", class extends HTMLElement { connectedCallback(){ this.textContent = "blob-ok"; } }); export const tag = "wb-blob-el";';
+      const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+      const m = await withTimeout(import(url), 5000, "blob import");
+      const el = document.createElement(m.tag); lab.append(el); const t = el.textContent; el.remove();
+      assert(t === "blob-ok", "text " + t); return "blob: module defined an element";
+    });
+    await check("module.blobUpgradesExistingMarkup", async () => {
+      const el = html('<wb-blob2-el>fallback</wb-blob2-el>'); lab.append(el);
+      const src = 'customElements.define("wb-blob2-el", class extends HTMLElement { connectedCallback(){ this.setAttribute("up","1"); } });';
+      await withTimeout(import(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))), 5000, "blob import");
+      const up = el.getAttribute("up"); el.remove();
+      assert(up === "1", "not upgraded"); return "late blob: definition upgraded markup already in the page";
+    });
+    await check("module.dynamicDefineViaNewFunction", () => {
+      // The DSL compiler's likely route when it emits a component definition as text.
+      new Function('customElements.define("wb-nf-el", class extends HTMLElement{})')();
+      assert(customElements.get("wb-nf-el"), "not defined"); return "element defined from new Function text";
+    });
+  }
+
+  // ---- 5. input (automatic part; the real-input rows are filled by the pad above) ----
+  async function t5() {
+    const wait = (k, d) => { if (!results[k]) record(k, null, d); };
+    wait("manual.focus", "waiting: click the pad");
+    wait("manual.keydown", "waiting: press an arrow key on the focused pad");
+    wait("manual.keyRepeat", "waiting: hold an arrow key about a second");
+    wait("manual.keyup", "waiting");
+    wait("manual.pointerdown", "waiting: press the pad");
+    wait("manual.setPointerCapture", "waiting");
+    wait("manual.captureOutside", "waiting: drag outside the pad while pressed");
+    wait("manual.pointerup", "waiting");
+    await check("input.gamepadApi", () => {
+      assert(typeof navigator.getGamepads === "function", "navigator.getGamepads missing");
+      const pads = navigator.getGamepads(); return "getGamepads() ok, " + pads.length + " slots, connected: " + [...pads].filter(Boolean).length;
+    });
+    await check("input.pointerEventApi", () => { assert(typeof PointerEvent === "function", "no PointerEvent"); return "PointerEvent exists; maxTouchPoints " + navigator.maxTouchPoints; });
+    await check("input.syntheticPadEvents", () => {
+      // Synthetic events prove delivery to a custom element and its shadow content, not real device behavior.
+      const pad = document.createElement("wb-dpad"); lab.append(pad);
+      const dirs = []; pad.addEventListener("wb-dir", (e) => dirs.push(e.detail.dir));
+      pad.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", repeat: true, bubbles: true }));
+      pad.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", repeat: false, bubbles: true }));
+      pad.remove(); // detached: do not let the synthetic keydowns count as real input
+      assert(dirs.join() === "up,left", "got " + dirs.join()); return "synthetic KeyboardEvents(repeat) reached the element: " + dirs.join();
+    });
+    await check("input.focusApi", () => {
+      const pad = document.createElement("wb-dpad"); lab.append(pad); pad.focus({ preventScroll: true });
+      const ok = document.activeElement === pad; const ti = pad.tabIndex; pad.remove();
+      assert(ok, "activeElement is not the pad (tabIndex " + ti + ")"); return "host with tabindex takes focus programmatically; tabIndex " + ti;
+    });
+    await check("input.syntheticSetPointerCaptureRejectsFakeId", () => {
+      const pad = document.createElement("wb-dpad"); lab.append(pad);
+      let msg; try { pad.setPointerCapture(12345); msg = "no throw"; } catch (e) { msg = e.name; } pad.remove();
+      return "API present; fake pointerId gives: " + msg + " (expected NotFoundError)";
+    });
+  }
+
+  // ---- 6. a tiny reactive-cell UI DSL compiled with new Function ----
+  const DSL = [
+    "cell count = 30",
+    "cell radius = 120 / count + 2",
+    "param count 5 80 Dots",
+    "view dots count radius",
+  ].join("\n");
+
+  // The DSL host: parse lines, emit JS source per cell and per view, compile each with new Function, wire to DOM.
+  function compileDsl(text, mount) {
+    const cells = new Map(), order = [], views = [], sources = [];
+    const subs = [];
+    for (const [i, line] of text.split("\n").entries()) {
+      const w = line.trim().split(/\s+/); if (!w[0]) continue;
+      const at = "line " + (i + 1) + ": ";
+      if (w[0] === "cell") {
+        const name = w[1]; const expr = line.slice(line.indexOf("=") + 1).trim();
+        const deps = [...cells.keys()];
+        const src = "return (" + expr + ");";
+        sources.push("cell " + name + " <- function(" + deps.join(",") + ") { " + src + " }");
+        let fn; try { fn = new Function(...deps, src); } catch (e) { throw new Error(at + errText(e)); }
+        const isConst = /^-?\d+(\.\d+)?$/.test(expr);
+        cells.set(name, { value: isConst ? Number(expr) : undefined, fn, deps, constant: isConst }); order.push(name);
+      } else if (w[0] === "param") {
+        const c = cells.get(w[1]); if (!c) throw new Error(at + "unknown cell " + w[1]);
+        const slider = document.createElement("wb-slider");
+        slider.setAttribute("label", w.slice(4).join(" ")); slider.setAttribute("min", w[2]); slider.setAttribute("max", w[3]);
+        slider.value = c.value;
+        slider.addEventListener("wb-change", (e) => { c.value = e.detail.value; recompute(); });
+        mount.append(slider); sources.push("param " + w[1] + " -> <wb-slider min=" + w[2] + " max=" + w[3] + ">");
+      } else if (w[0] === "view") {
+        const args = w.slice(2); const canvas = document.createElement("canvas"); canvas.width = 240; canvas.height = 240;
+        const body = 'const g=ctx; g.clearRect(0,0,240,240); let n=0; for(let i=0;i<' + args[0] + ';i++){const a=i*2.399963;const d=Math.sqrt(i/' + args[0] + ')*100;' +
+          'g.beginPath();g.arc(120+Math.cos(a)*d,120+Math.sin(a)*d,Math.min(' + args[1] + ',12),0,6.2832);g.fill();n++;} return n;';
+        sources.push("view draw(ctx," + args.join(",") + ") { " + body.slice(0, 60) + "… }");
+        const fn = new Function("ctx", ...args, body); const ctx = canvas.getContext("2d"); ctx.fillStyle = "#2a5bd7";
+        views.push({ args, fn, ctx, canvas, last: 0 }); mount.append(canvas);
+      } else throw new Error(at + "unknown form " + w[0]);
+    }
+    function recompute() {
+      for (const name of order) { const c = cells.get(name); if (!c.constant) c.value = c.fn(...c.deps.map((d) => cells.get(d).value)); }
+      for (const v of views) v.last = v.fn(v.ctx, ...v.args.map((a) => cells.get(a).value));
+    }
+    recompute();
+    return { cells, views, sources, recompute, mount };
+  }
+
+  async function t6() {
+    // wb-slider: the custom element inside the DSL. Properties in (`value`), events out (`wb-change`), with a plain
+    // <input type=range> as the light-DOM fallback the DSL always emits for a low-end host.
+    customElements.define("wb-slider", class extends HTMLElement {
+      static observedAttributes = ["min", "max", "label"];
+      #v = 0;
+      get value() { return this.#v; }
+      set value(v) { this.#v = Number(v); this.#sync(); }
+      connectedCallback() {
+        if (this.shadowRoot) return;
+        const r = this.attachShadow({ mode: "open" });
+        r.innerHTML = '<label part="label"></label> <input type="range"> <output part="out"></output>';
+        r.querySelector("input").addEventListener("input", (e) => { this.#v = Number(e.target.value); this.#sync(false); this.dispatchEvent(new CustomEvent("wb-change", { detail: { value: this.#v }, bubbles: true, composed: true })); });
+        this.#sync();
+      }
+      attributeChangedCallback() { this.#sync(); }
+      #sync(setInput = true) {
+        const r = this.shadowRoot; if (!r) return;
+        const i = r.querySelector("input"); i.min = this.getAttribute("min") ?? 0; i.max = this.getAttribute("max") ?? 100;
+        if (setInput) i.value = this.#v;
+        r.querySelector("label").textContent = this.getAttribute("label") ?? ""; r.querySelector("output").textContent = String(this.#v);
+      }
+    });
+    const stage = document.getElementById("dslstage");
+    document.getElementById("dslsrc").textContent = DSL;
+    let prog;
+    await check("dsl.compile", () => {
+      prog = compileDsl(DSL, stage);
+      assert(prog.views[0].last === 30, "initial draw count " + prog.views[0].last);
+      return "compiled with new Function; " + prog.sources.length + " forms; first draw " + prog.views[0].last + " dots, radius " + prog.cells.get("radius").value;
+    });
+    await check("dsl.sliderDrivesCanvas", () => {
+      const s = stage.querySelector("wb-slider"); const inp = s.shadowRoot.querySelector("input");
+      inp.value = "50"; inp.dispatchEvent(new Event("input", { bubbles: true }));
+      assert(prog.cells.get("count").value === 50, "count " + prog.cells.get("count").value);
+      assert(prog.cells.get("radius").value === 120 / 50 + 2, "derived cell " + prog.cells.get("radius").value);
+      assert(prog.views[0].last === 50, "canvas redrew " + prog.views[0].last);
+      const px = prog.views[0].ctx.getImageData(0, 0, 240, 240).data; let on = 0; for (let i = 3; i < px.length; i += 4) if (px[i]) on++;
+      assert(on > 0, "canvas blank");
+      return "slider input -> cell count=50 -> derived radius=" + prog.cells.get("radius").value + " -> canvas redrawn, " + on + " lit pixels";
+    });
+    await check("dsl.fallbackWithoutDefinition", () => {
+      // Same DSL output, but wb-slider-less host: the compiler emits plain elements when no definition is present.
+      const fakeTag = "wb-slider-absent"; const el = document.createElement(fakeTag); el.append(Object.assign(document.createElement("input"), { type: "range" }));
+      lab.append(el); const ok = !customElements.get(fakeTag) && visible(el.querySelector("input")); el.remove();
+      assert(ok, "fallback input not rendered"); return "undefined component tag leaves its plain <input type=range> child rendered";
+    });
+    await check("dsl.errorSpan", () => {
+      let msg = ""; try { compileDsl("cell a = 1 +* 2", document.createElement("div")); } catch (e) { msg = e.message; }
+      assert(/^line 1: /.test(msg), "message was: " + msg); return "syntax error reported with the DSL line: " + msg;
+    });
+  }
+
+  // ---- 7. properties in, events out ----
+  async function t7() {
+    customElements.define("wb-prop-el", class extends HTMLElement {
+      #state; get state() { return this.#state; }
+      set state(v) { this.#state = v; this.#paint(); }
+      connectedCallback() {
+        // Properties set before the definition shadow the prototype accessor; re-apply them (the "lazy property" pattern).
+        if (Object.prototype.hasOwnProperty.call(this, "state")) { const v = this.state; delete this.state; this.state = v; }
+        const r = this.shadowRoot ?? this.attachShadow({ mode: "open" });
+        r.innerHTML = '<button part="b">pick</button><span></span>'; r.querySelector("button").addEventListener("click", () => this.dispatchEvent(new CustomEvent("wb-pick", { detail: { id: this.#state?.items?.[0] ?? null }, bubbles: true, composed: true })));
+        this.#paint();
+      }
+      #paint() { const s = this.shadowRoot?.querySelector("span"); if (s) s.textContent = JSON.stringify(this.#state ?? null); }
+    });
+    await check("contract.propertyIn", () => {
+      const el = document.createElement("wb-prop-el"); lab.append(el);
+      const state = { items: ["a", "b"], n: 2 }; el.state = state;
+      const shown = el.shadowRoot.querySelector("span").textContent; const same = el.state === state; el.remove();
+      assert(same && shown === JSON.stringify(state), "shown " + shown + ", same object " + same);
+      return "object property round-trips by identity and renders: " + shown;
+    });
+    await check("contract.eventOut", () => {
+      const wrap = document.createElement("div"); const el = document.createElement("wb-prop-el"); wrap.append(el); lab.append(wrap);
+      el.state = { items: ["z"] };
+      const got = []; wrap.addEventListener("wb-pick", (e) => got.push(e.detail.id));
+      el.shadowRoot.querySelector("button").click(); wrap.remove();
+      assert(got.join() === "z", "got " + got.join()); return "click inside the shadow root surfaced as CustomEvent on an ancestor (composed): detail.id=" + got[0];
+    });
+    await check("contract.propertyBeforeUpgrade", () => {
+      const el = html('<wb-prop-late></wb-prop-late>'); el.state = { items: ["early"] }; lab.append(el);
+      const wasOwn = Object.prototype.hasOwnProperty.call(el, "state");
+      customElements.define("wb-prop-late", class extends customElements.get("wb-prop-el") {});
+      const shown = el.shadowRoot?.querySelector("span")?.textContent; el.remove();
+      assert(wasOwn && shown === '{"items":["early"]}', "ownProp " + wasOwn + ", shown " + shown);
+      return "state assigned before the definition loaded was re-applied on upgrade";
+    });
+  }
+
+  async function runAuto() {
+    record("env.userAgent", true, navigator.userAgent);
+    record("env.origin", true, location.origin);
+    record("env.customElements", typeof customElements !== "undefined", typeof customElements);
+    const claude = window.claude;
+    if (claude && claude.use) { try { db = await claude.use("db"); } catch (e) { db = null; } }
+    record("env.db", !!db, db ? "db capability present" : "no db: results stay on this page");
+    for (const t of [t1, t2, t3, t4, t6, t7, t5]) { try { await t(); } catch (e) { record("harness." + t.name, false, errText(e)); } }
+    statusEl.textContent = db ? "Automatic checks done. Saving to the artifact database…" : "Automatic checks done. No database here.";
+    persist();
+  }
+  runAuto();
+})();
+</script>
