@@ -66,7 +66,7 @@ export function checkDir(dir, { lang = "data" } = {}) {
 async function checkNow(dir, lang) {
   const { dialect: DIALECT_FILE, grammar: GRAMMAR_FILE } = defs;
   if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new CheckTargetError(`${dir} is not a directory; give the directory that holds ${DIALECT_FILE}, ${GRAMMAR_FILE} and ${EXAMPLES_DIR}/`);
-  for (const f of [DIALECT_FILE, GRAMMAR_FILE]) if (!existsSync(join(dir, f))) throw new CheckTargetError(`${join(dir, f)} does not exist; rules.md's hand-in needs ${DIALECT_FILE} and ${GRAMMAR_FILE}`);
+  for (const f of [DIALECT_FILE, GRAMMAR_FILE]) if (!existsSync(join(dir, f))) throw new CheckTargetError(`${join(dir, f)} does not exist; the check needs ${DIALECT_FILE} and ${GRAMMAR_FILE}`);
   const exDir = join(dir, EXAMPLES_DIR);
   const examples = existsSync(exDir) ? readdirSync(exDir).filter((f) => f.endsWith(".js")).sort().map((f) => `${EXAMPLES_DIR}/${f}`) : [];
   const order = [DIALECT_FILE, GRAMMAR_FILE, ...examples];

@@ -30,4 +30,5 @@ export const LOAD = "LOAD";
  * @property {"error" | "warning" | "info"} severity  As the kit gave it; the checker's own are errors.
  * @property {string} message
  * @property {string} fix  What to write instead.
+ * @property {string} [tip]  The kit's advice, when it also gave a fix; printed on its own line after it.
  */

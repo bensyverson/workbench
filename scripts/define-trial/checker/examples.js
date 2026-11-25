@@ -270,7 +270,10 @@ export function reportThrown(e, file, when) {
 function add(d, file, line, message) {
   /** @type {CheckDiagnostic["severity"]} */
   const severity = d.severity === "warning" || d.severity === "info" ? d.severity : "error";
-  session.add({ file, line, code: d.code, severity, message, fix: d.tip || (d.fix ? `write ${d.fix}` : FIXES[d.code[0]] ?? "see api-draft.md") });
+  // The kit makes a tip of `write <fix>` when a check gives only a fix, so a tip that says as much is not repeated.
+  const fix = d.fix ? `write ${d.fix}` : d.tip || (FIXES[d.code[0]] ?? "see api-draft.md");
+  const tip = d.fix && d.tip && d.tip !== fix ? d.tip : undefined;
+  session.add({ file, line, code: d.code, severity, message, fix, ...(tip ? { tip } : {}) });
 }
 
 /** A fix line for a diagnostic the kit gave without a tip, by its code's letter. */

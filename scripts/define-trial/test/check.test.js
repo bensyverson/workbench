@@ -321,3 +321,38 @@ test("the CLI exits 0 on the passing fixture, 2 on a bad invocation, 4 on a miss
   assert.equal(gone.status, 4);
   assert.match(gone.stdout + gone.stderr, /data\.dialect\.js/);
 });
+
+test("a check that gives a tip and a fix prints the fix on the fix line and the tip on its own line", async () => {
+  const dir = fixture([
+    { file: GRAMMAR, from: `{ arg: 1, tip: "lower the value or raise max" }`, to: `{ arg: 1, tip: "lower the value or raise max", fix: "{ value: 8 }" }` },
+    { file: EX1, from: "{ value: 2, min: 0, max: 8 }", to: "{ value: 9, min: 0, max: 8 }" },
+  ]);
+  try {
+    const r = await checkDir(dir);
+    const d = r.diagnostics.find((x) => x.code === "T001");
+    assert.ok(d, show(r.diagnostics));
+    assert.equal(d.fix, "write { value: 8 }");
+    assert.equal(d.tip, "lower the value or raise max");
+    const out = spawnSync(process.execPath, [CLI, dir], { encoding: "utf8" }).stdout;
+    assert.match(out, /\n {2}fix: write \{ value: 8 \}\n {2}tip: lower the value or raise max\n/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a missing definition file for --lang budget names budget's files without attributing them to rules.md", async () => {
+  const dir = fixture([]);
+  try {
+    await assert.rejects(checkDir(dir, { lang: "budget" }), (/** @type {any} */ e) => {
+      assert.match(e.message, /budget\.dialect\.js does not exist; the check needs budget\.dialect\.js and budget\.grammar\.js/);
+      assert.doesNotMatch(e.message, /rules\.md/);
+      return true;
+    });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a check that gives only a tip still prints it as the fix, with no tip line", async () => {
+  const r = await checkEdited([{ file: EX1, from: "{ value: 2, min: 0, max: 8 }", to: "{ value: 9, min: 0, max: 8 }" }]);
+  const d = r.diagnostics.find((x) => x.code === "T001");
+  assert.ok(d, show(r.diagnostics));
+  assert.equal(d.fix, "lower the value or raise max");
+  assert.equal(d.tip, undefined);
+});

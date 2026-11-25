@@ -32,7 +32,7 @@ Exit 0: no violations. 1: violations. 2: bad invocation. 4: <dir> or a definitio
  */
 export function format(r, dirArg) {
   const out = [];
-  for (const d of r.diagnostics) out.push(`${join(dirArg, d.file)}:${d.line}: ${d.code} ${d.message}`, `  fix: ${d.fix}`);
+  for (const d of r.diagnostics) out.push(`${join(dirArg, d.file)}:${d.line}: ${d.code} ${d.message}`, `  fix: ${d.fix}`, ...(d.tip ? [`  tip: ${d.tip}`] : []));
   const examples = Object.keys(r.files).filter((f) => f.startsWith(`${EXAMPLES_DIR}/`)).length;
   const errors = r.diagnostics.filter((d) => d.severity === "error").length;
   out.push(r.ok ? `${dirArg}: no violations (the definitions and ${examples} example${examples === 1 ? "" : "s"} checked)` : `${dirArg}: ${errors} violation${errors === 1 ? "" : "s"}`);

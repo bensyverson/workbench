@@ -9,6 +9,7 @@ import { reachable } from "./call.js";
 import { joinCallSites } from "./callsites.js";
 import { HELPER_OWNER } from "./codes.js";
 import { verify } from "../ir/verify.js";
+import { showType } from "../ir/types.js";
 
 export { LOWER_CODES, HELPER_OWNER } from "./codes.js";
 
@@ -21,7 +22,7 @@ export const switches = { verify: false };
 
 /** @import { Diagnostic, ArrowFunctionExpression, Expression } from "../parse/ast.js" */
 /** @import { Kernel, Type, Effect, Stmt, Local } from "../ir/ir.js" */
-/** @import { Environment, SlotRef, SlotDecl, Signatures, HelperDecl, HelperSource, CallSite } from "./environment.js" */
+/** @import { Environment, SlotRef, SlotDecl, SlotParam, Signatures, HelperDecl, HelperSource, CallSite } from "./environment.js" */
 
 /**
  * @typedef {object} LowerResult
@@ -44,6 +45,19 @@ const noSignatures = (helpers = {}) => ({ events: {}, methods: {}, helpers });
 
 /** The short names slot parameters go by, for messages. */
 const PARAM_NAMES = /** @type {Record<string, string>} */ ({ World: "w", At: "at" });
+
+/**
+ * How a slot parameter reads in a signature: an object by the short name its label ends in, else a known
+ * short name, else its lowercased name; anything else by its type.
+ * @param {SlotParam} g
+ */
+function paramName(g) {
+  if (g === "payload") return "data";
+  if (typeof g === "string") return g;
+  if ("ref" in g) return "self";
+  if ("obj" in g) return /\((\w+)\)$/.exec(g.obj)?.[1] ?? PARAM_NAMES[g.obj] ?? g.obj.toLowerCase();
+  return showType(g);
+}
 
 /**
  * Lowers one lambda, given its source and the slot it fills.
@@ -100,7 +114,7 @@ function bindParams(L, ast, decl) {
     if (p.type !== "Identifier") { L.error("L012", p, "A destructured parameter is not lowered yet.", "Take the parameter whole and read its fields."); return; }
     const given = decl.params[i];
     if (given === undefined && !decl.inferParams) {
-      const names = decl.params.map((g) => (g === "payload" ? "data" : typeof g === "object" && "ref" in g ? "self" : typeof g === "object" && "obj" in g ? PARAM_NAMES[g.obj] ?? g.obj.toLowerCase() : "x"));
+      const names = decl.params.map(paramName);
       L.error("L010", p, `A ${L.slot.kind} passes ${decl.params.length} parameter${decl.params.length === 1 ? "" : "s"}; '${p.name}' gets nothing.`, `This slot passes (${names.join(", ")}); drop '${p.name}'.`);
       return;
     }
