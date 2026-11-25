@@ -7,9 +7,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { score, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, NOT_REFUSALS } from "./score/index.js";
 
 const HIDDEN = join(dirname(fileURLToPath(import.meta.url)), "hidden");
-const USAGE = `usage: node scripts/api-pilot/score.js <hand-in dir> [<hidden dir>] [--timeout <seconds>]
+const USAGE = `usage: node scripts/api-pilot/score.js <hand-in dir> [<hidden dir>] [--lang <name>] [--timeout <seconds>]
 
-Runs the hand-in's budget.dialect.js and budget.grammar.js over every hidden program (default: ${HIDDEN}).
+Runs the hand-in's <lang>.dialect.js and <lang>.grammar.js (--lang, default budget) over every hidden program (default: ${HIDDEN}).
 An accept program passes with no error in its file; a reject program passes with at least one that is not
 ${NOT_REFUSALS.join(", ")} (the candidate's own code failing), and a "warning:" line says when none is a code its header
 declares; the tally counts those too, as "(n/m with a declared code)", but they do not change pass or the exit code.
@@ -22,6 +22,13 @@ or a hidden dir without accept/ and reject/.`;
 async function main(argv) {
   if (argv.includes("--help") || argv.includes("-h")) { console.log(USAGE); return 0; }
   let timeoutMs = DEFAULT_TIMEOUT_MS;
+  let lang;
+  const l = argv.indexOf("--lang");
+  if (l >= 0) {
+    lang = argv[l + 1];
+    if (!lang || !/^[a-z][a-z0-9-]*$/.test(lang)) { console.error(USAGE); return 2; }
+    argv = argv.filter((_, i) => i !== l && i !== l + 1);
+  }
   const t = argv.indexOf("--timeout");
   if (t >= 0) {
     const secs = Number(argv[t + 1]);
@@ -33,7 +40,7 @@ async function main(argv) {
   const hidden = argv[1] ?? HIDDEN;
   const missing = ["accept", "reject"].filter((k) => !existsSync(join(hidden, k)));
   if (missing.length) { console.error(`${hidden} has no ${missing.map((k) => `${k}/`).join(" or ")}`); return 2; }
-  const r = await score(argv[0], hidden, { timeoutMs });
+  const r = await score(argv[0], hidden, { timeoutMs, ...(lang ? { lang } : {}) });
   if (!r.definitions.ok) console.log(`definitions: FAIL ${r.definitions.codes.join(",")}`);
   for (const x of r.results) console.log(`${`${x.kind}/${x.file}`.padEnd(18)} ${x.pass ? "pass" : "FAIL"}${x.codes.length ? `  ${x.codes.join(",")}` : ""}`);
   for (const w of r.warnings) console.log(`warning: ${w}`);

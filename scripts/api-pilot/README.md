@@ -19,6 +19,7 @@ The pilot of START.md and API.md (M3, leaf `qwgSOL`): fresh agents, given only t
 ```sh
 node scripts/api-pilot/score.js <hand-in dir>                 # the hand-in's budget.*.js over hidden/
 node scripts/api-pilot/score.js <hand-in dir> <hidden dir>    # over another set
+node scripts/api-pilot/score.js <hand-in dir> <hidden dir> --lang particles   # another language's <lang>.dialect.js and <lang>.grammar.js
 node scripts/define-trial/check.js <hand-in dir> --lang budget   # the hand-in's own examples
 node scripts/api-pilot/count-tokens.js kit/START.md kit/API.md   # the documents' size in tokens
 ```

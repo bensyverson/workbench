@@ -31,10 +31,11 @@ const WORKER = join(dirname(fileURLToPath(import.meta.url)), "worker.js");
 /**
  * Scores the hand-in in `handin` against the hidden programs in `hidden` (its `accept/` and `reject/`).
  * @param {string} handin @param {string} hidden
- * @param {{ timeoutMs?: number }} [options]  timeoutMs above 0 and at most MAX_TIMEOUT_MS, else a RangeError
+ * @param {{ timeoutMs?: number, lang?: string }} [options]  timeoutMs above 0 and at most MAX_TIMEOUT_MS, else a RangeError;
+ *   lang names the definition files, `<lang>.dialect.js` and `<lang>.grammar.js` (default: the pilot's, budget)
  * @returns {Promise<Score>}
  */
-export async function score(handin, hidden, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function score(handin, hidden, { timeoutMs = DEFAULT_TIMEOUT_MS, lang = LANG } = {}) {
   if (!(timeoutMs > 0 && timeoutMs <= MAX_TIMEOUT_MS)) throw new RangeError(`timeoutMs must be above 0 and at most ${MAX_TIMEOUT_MS}, not ${timeoutMs}`);
   const programs = listPrograms(hidden);
   const dir = mkdtempSync(join(tmpdir(), "api-pilot-result-"));
@@ -42,7 +43,7 @@ export async function score(handin, hidden, { timeoutMs = DEFAULT_TIMEOUT_MS } =
   try {
     let stderr = "";
     const { code, signal, timedOut } = await new Promise((resolve) => {
-      const child = spawn(process.execPath, [WORKER, handin, hidden, out], { stdio: ["ignore", "ignore", "pipe"] });
+      const child = spawn(process.execPath, [WORKER, handin, hidden, out, lang], { stdio: ["ignore", "ignore", "pipe"] });
       child.stderr.setEncoding("utf8");
       child.stderr.on("data", (/** @type {string} */ s) => { stderr = (stderr + s).slice(-STDERR_KEEP); });
       const timer = setTimeout(() => { child.kill("SIGKILL"); resolve({ code: null, signal: "SIGKILL", timedOut: true }); }, timeoutMs);

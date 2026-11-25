@@ -14,11 +14,11 @@ import { LANG, listPrograms, expectedCodes, summarize } from "./programs.js";
 
 /**
  * Checks every hidden program against the hand-in's definitions, in this process.
- * @param {string} handin @param {string} hidden
+ * @param {string} handin @param {string} hidden @param {string} [lang]  names the definition files (default: the pilot's)
  * @returns {Promise<Score>}
  */
-export async function scoreHere(handin, hidden) {
-  const defs = definitionFiles(LANG);
+export async function scoreHere(handin, hidden, lang = LANG) {
+  const defs = definitionFiles(lang);
   const work = mkdtempSync(join(tmpdir(), "api-pilot-score-"));
   try {
     for (const f of [defs.dialect, defs.grammar]) if (existsSync(join(handin, f))) cpSync(join(handin, f), join(work, f));
@@ -28,7 +28,7 @@ export async function scoreHere(handin, hidden) {
     /** @type {Diagnostic[]} */
     let diagnostics;
     try {
-      diagnostics = (await checkDir(work, { lang: LANG })).diagnostics;
+      diagnostics = (await checkDir(work, { lang })).diagnostics;
     } catch (e) {
       // a missing definition file: the checker cannot start
       diagnostics = [{ file: defs.dialect, code: "LOAD", severity: "error", message: String(e) }];
@@ -57,6 +57,6 @@ function owner(d, programFiles) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [handin, hidden, out] = process.argv.slice(2);
-  writeFileSync(out, JSON.stringify(await scoreHere(handin, hidden)));
+  const [handin, hidden, out, lang] = process.argv.slice(2);
+  writeFileSync(out, JSON.stringify(await scoreHere(handin, hidden, lang)));
 }

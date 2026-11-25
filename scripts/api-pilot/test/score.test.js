@@ -164,3 +164,25 @@ test("the reference gets the declared code from every hidden reject program, wit
   assert.ok(r.results.filter((x) => x.kind === "reject").every((x) => x.expected.length > 0));
 });
 
+
+// Leaf 8vQJOw: the particles reference is scored with the same scorer, so the language is a choice.
+test("--lang names the definition files: the budget reference copied as particles.*.js scores under --lang particles", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "score-lang-"));
+  try {
+    const hidden = join(dir, "hidden");
+    for (const k of ["accept", "reject"]) mkdirSync(join(hidden, k), { recursive: true });
+    writeFileSync(join(hidden, "accept", "a.js"), GOOD.replaceAll("budget.grammar.js", "particles.grammar.js"));
+    writeFileSync(join(hidden, "reject", "r.js"), BAD.replaceAll("budget.grammar.js", "particles.grammar.js"));
+    const handin = join(dir, "handin");
+    mkdirSync(handin);
+    cpSync(join(REFERENCE, "budget.dialect.js"), join(handin, "particles.dialect.js"));
+    writeFileSync(join(handin, "particles.grammar.js"), (await import("node:fs")).readFileSync(join(REFERENCE, "budget.grammar.js"), "utf8").replaceAll("./budget.dialect.js", "./particles.dialect.js"));
+    const r = await score(handin, hidden, { lang: "particles" });
+    assert.deepEqual(r.definitions.codes, []);
+    assert.deepEqual([r.accept, r.reject], [{ pass: 1, of: 1 }, { pass: 1, of: 1 }]);
+    const cli = spawnSync(process.execPath, [CLI, handin, hidden, "--lang", "particles"], { encoding: "utf8" });
+    assert.equal(cli.status, 0, cli.stdout + cli.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
