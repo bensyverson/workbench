@@ -5,7 +5,7 @@ The kit's terms, as ruled on 2026-11-23 ([nomenclature decision](../project/2026
 ## The languages
 
 - **Domain Language**: the language a Workbench's Programs are written in, such as the DMG Language. It is a fluent JavaScript chain (`Game("whack").attr(…).timer(…).build()`) with Lambdas in its slots. One per Workbench.
-- **Runtime Subset**: the restricted JavaScript inside Runtime Lambdas. There is one Runtime Subset, shared by every Domain Language, and each Dialect may narrow it. Lambdas in it are lowered to Kernels.
+- **Runtime Subset**, or **Bench** (Ben, 2026-11-24): the restricted JavaScript inside Runtime Lambdas. There is one Runtime Subset, shared by every Domain Language, and each Dialect may narrow it. Lambdas in it are lowered to Kernels.
 - **Definition API**: the kit's builders for writing a Language Definition: `Dialect(…)`, `.type`, `.intrinsic`, `.target`, `.check`, `.construct`, and so on. It is the same for every Workbench. Nobody writes Programs in it, only definitions.
 
 ## Defining a Domain Language

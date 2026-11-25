@@ -36,6 +36,7 @@ Review baseline: 2026-11-23T15:00:00-06:00
 - [scripts/api-pilot/README.md](scripts/api-pilot/README.md) — the START.md / API.md pilot: the budget-planner sheet, hidden accept and reject programs, the reference and the scorer
 - [scripts/define-trial/README.md](scripts/define-trial/README.md) — the Definition API dogfood trial: the draft API, the strict rules and the checker's codes
 - [scripts/compose-trial/README.md](scripts/compose-trial/README.md) — the composition paper trial: the draft composition model, the cave / tiles / glow references, the rules and the checker's codes
+- [scripts/particles/README.md](scripts/particles/README.md) — the particles domain for per-slot effects and the H5 run: the Dream Code sheet, its settled open questions and the blind hidden programs
 
 ## Local rulings
 

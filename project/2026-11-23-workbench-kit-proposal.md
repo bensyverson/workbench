@@ -412,6 +412,8 @@ Code calls `reveal(address)`. The skin decides what revealing means: switch a ta
 
 The graph stops being a destination and becomes a view of the analyses: effect edges with conflicts marked, folded constants, dead nodes with reasons, cost per kernel where the dialect supplies costs, and a three-way link between source lines, IR and emitted code. Editing the graph directly is not a goal.
 
+> **Corrected 2026-11-24.** Until this date no document defined a conflict. The design had two modes, a sequential host where any effect goes (DMG) and parallel targets that refuse every effect (GLSL), and nothing in between. The first definition comes from the [particles plan](2026-11-24-particles-effects-plan.md) and the [app-DSL probe](2026-11-24-app-dsl-probe.md). Lambdas stay pure, or write only the instance they are handed and emit verbs. Shared state belongs to the host. A per-instance kernel may touch shared state only through commutative bumps, and code that runs once may write freely. A conflict is two writes to one place from a per-instance space, unless both are bumps. Host implementations are Bench modules (the Runtime Subset) or declared foreign modules (Ben, 2026-11-24; leaf `EZex6F`).
+
 ---
 
 ## 10. The textbook
