@@ -43,6 +43,11 @@ export function checkLambda(fn, ctx) {
     out.push({ line: 1, message: `the lambda takes ${params.length} parameters; its convention is ${conv}`, fix: `take at most ${ctx.params.length}: ${conv}` });
     return out;
   }
+  const pattern = params.find((p) => p.type !== "Identifier");
+  if (pattern) {
+    out.push({ line: pattern.loc.start.line, message: `a lambda parameter is the whole ${ctx.params[params.indexOf(pattern)]}, written as one name; a destructuring pattern is not allowed`, fix: `name the parameter (${conv}) and read a member as ${ctx.params[params.indexOf(pattern)]}.member` });
+    return out;
+  }
   /** Parameter name → its position. @type {Map<string, number>} */
   const paramIndex = new Map();
   params.forEach((p, i) => { if (p.type === "Identifier") paramIndex.set(p.name, i); });

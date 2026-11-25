@@ -42,6 +42,10 @@ export function validateState(state, scope) {
  * @param {unknown} t @param {Array<string | number>} path @param {Problem[]} out
  */
 function walkTags(t, path, out) {
+  if (t === "void" || t === "null") {
+    out.push({ code: "D023", path, message: `'${t}' is not a state type: a run's state holds values, and ${t} holds none.`, tip: t === "null" ? "write opt(type) for a value that may be absent" : "leave the member out, or give it a type such as \"f64\"" });
+    return;
+  }
   const h = tagged(t);
   if (!h) return;
   switch (h[TAG]) {

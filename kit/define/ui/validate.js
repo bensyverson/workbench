@@ -56,7 +56,12 @@ const MODULE_RE = /^\.\/(?!.*\.\.)[\w./-]+\.js$/;
 
 /** @param {unknown} v @returns {v is Record<string, any>} */
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-const str = (/** @type {unknown} */ v) => JSON.stringify(v) ?? String(v);
+/** A value as it is written in a message; total, whatever the author passed (a BigInt, a cycle, an object with no toString). */
+function str(/** @type {unknown} */ v) {
+  try { return JSON.stringify(v) ?? String(v); } catch {
+    try { return String(v); } catch { return typeof v; }
+  }
+}
 
 /**
  * @param {unknown} decl @param {Env} env @returns {Problem[]}
@@ -76,7 +81,7 @@ export function validate(decl, env) {
       const mean = didYouMean(k, allowed);
       const m = mean.match(/'(.+)'/);
       if (m) meant.add(m[1]);
-      add("U001", [...at, k], `${what} has no key '${k}'.${mean}`, m ? `write ${m[1]}` : `use one of: ${allowed.join(", ")}`);
+      add("U001", [...at, k], `${what} has no key '${k}'.${mean}`, m ? (Object.hasOwn(o, m[1]) ? `remove '${k}': '${m[1]}' is already there` : `write ${m[1]}`) : `use one of: ${allowed.join(", ")}`);
     }
     for (const k of required) if (!(k in o) && !meant.has(k)) add("U001", at, `${what} needs '${k}'`, `add ${k}: …`);
   }
