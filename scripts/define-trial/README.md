@@ -7,6 +7,7 @@ The dogfood trials of the Definition API (M3): fresh agents get only the API doc
 | Path | What |
 |---|---|
 | `docs/api-draft.md` | the Definition API as built, with the fields Dialect written in it as the worked example (trial 2's packet; trial 1's is at commit `e44ff1e`) |
+| `docs/api-effects.md` | the per-slot effects addition to `api-draft.md` (draft, not built): instance spaces, `may`, writable members, verbs, totals, and codes D021, D022, L017; the design and its reasons are in [the effects draft](../../project/2026-11-25-per-slot-effects-draft.md) |
 | `docs/rules.md` | the task, the hand-in, the rules R1–R9 and every code the checker prints |
 | `trial-2-briefs.md` | trial 2: the agents and models, how to set up their directories, the exact brief, and how to record the runs |
 | `check.js` | the checker the rules name (`check`): a thin CLI over `checker/` |
