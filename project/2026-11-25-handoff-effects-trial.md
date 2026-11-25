@@ -21,11 +21,11 @@
 
 1. **L018 also refuses comparing handles** (`other !== self`). Harmless to effects and a common game idiom; no DMG preset does it today. A two-way door: relax it when a Program needs it.
 2. **The effects draft's remaining questions** (design doc, "For Ben's eyes"): host imports as a separate `imports` key (recommended) or effectful intrinsics; not needed for particles or H5.
-3. **Manuel**: the consult's verdict is that our direction holds; read informed.md's short list.
+3. **Manuel**: the consult's verdict is that our direction holds, and the informed pass agrees; its five items are under "In flight".
 
 ## In flight at handoff
 
-- The informed pass on the Manuel consult (`project/2026-11-25-manuel-ir-workbench/informed.md`), if not yet integrated when you read this: check the file exists and commit it.
+Nothing. The informed pass landed after this was first written. Its short list for Ben, smallest first ([informed.md](2026-11-25-manuel-ir-workbench/informed.md), section 5): (1) correct the proposal's and synthesis's "agrees with a reference" to "on the recorded grids and param sets", about 15 minutes; (2) two Composition design lines, a package pin is a content digest and a content key is per unit, fixed before anything is stored; (3) a layering test that nothing under `kit/` outside `kit/dialects/` imports a Dialect, with five allow-listed files until `dLBHp7`; (4) two checks inside `8vQJOw`: reference particles forward and shuffled give one final state, and both-throw cases compare which error; (5) eight GLSL spellings (`fract`, `min`, `max`, `sqrt`, `atan2`, `vmul`, `vdiv`, `vneg`) never meet a GPU: one prerelease harness case that calls them all, 1–2 hours.
 
 ## Review
 
