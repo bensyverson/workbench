@@ -304,4 +304,13 @@ export interface UI {
   readonly inputs?: Readonly<Record<string, unknown>>;
   readonly tiles: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly annotate: Readonly<Record<string, unknown>>;
+  /**
+   * Lowers every UI lambda through kit/lower against one Program's record (what `run` or `.build()` gives): an
+   * implied pure space (any effect is L004), `s` the Dialect's state Type, `$` its params object as
+   * environment(program) fills it, a column's `row` the item Type of its table's list, and each key's result Type
+   * (badIf, expect: bool; value, max, y: a number; a stat's or column's value: a number or str; a text's value: str;
+   * badge: str or null; tone: one of the tones or null). Kernels by id (`tiles.live.body[0].badIf`,
+   * `annotate.params.rate.badge`); each diagnostic carries the `id`, `path`, `tile` (null in annotate) and `key` it came from.
+   */
+  lower(record: Record<string, any>): import("./ui/lower.js").UILowered;
 }

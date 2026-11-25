@@ -139,6 +139,8 @@ export const orbitsUI = defineUI(orbits, {     // orbits: what defineGrammar ret
 
 The UI reads the **run's state your Dialect's `state` declares** (above): a path is `"bounds.width"` and stops at a list; a lambda is `(s, $) => …` (a table column's `(row, s, $) => …`). A UI has no `state` key (`U001`), and a Dialect with no `state` is `U013`. The refusals are `U` codes with a fix, collected in one `DefinitionError`; the full list is `UI_CODES` in [define/codes.js](define/codes.js), and the keys and rules are in [define/README.md](define/README.md#defineui).
 
+`defineUI` checks the lambdas without a Program; `orbitsUI.lower(record)` types them against one (the record `run` or `.build()` gives), as your Grammar's `lower` does a Program's lambdas. `$` has the params that Program declares (so `$.mass` is `L002` in a Program without `mass`), and each key's result must be its type: `badIf` and `expect` a bool; `max` and `y` a number; a stat's or column's `value` a number or string; a text's `value` a string; `badge` a string or `null`; `tone` one of `"good" "warn" "bad" "dim"` or `null`. A lambda may have no effect (`L004`). It returns `kernels` by id (`tiles.bodies.body[0].value`) and `diagnostics`, each an `L` code carrying the `id`, `tile` and `key` of its lambda.
+
 ## A Program
 
 ```js

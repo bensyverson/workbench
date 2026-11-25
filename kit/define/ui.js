@@ -1,9 +1,11 @@
 // defineUI: the UI that rides with a package's Dialect and Grammar (stage, inputs, tiles, annotations), checked like a
 // Dialect: one DefinitionError holding every U problem. The checks are in ui/validate.js; this reads the Dialect
-// (its declared run's state, objects, globals) and builds the frozen UI value.
+// (its declared run's state, objects, globals) and builds the frozen UI value, whose lower(record) types its lambdas
+// against one Program (ui/lower.js).
 
 import { refuse, isDialect } from "./dialect.js";
 import { validate as validateUI } from "./ui/validate.js";
+import { lowerUI } from "./ui/lower.js";
 import { isPlainObject, kindOf as tagKind } from "./tags.js";
 
 /** @import * as T from "./define.js" */
@@ -58,6 +60,8 @@ export function defineUI(builder, decl, options = {}) {
     ...(d.stage !== undefined ? { stage: freezeDeep(d.stage) } : {}),
     ...(d.inputs !== undefined ? { inputs: freezeDeep(d.inputs) } : {}),
     tiles: freezeDeep(d.tiles ?? {}), annotate: freezeDeep(d.annotate ?? {}),
+    /** Lowers every UI lambda against one Program's record: see ui/lower.js. @param {Record<string, any>} record */
+    lower: (record) => lowerUI(/** @type {T.UI} */ (ui), record),
   });
   MADE.add(ui);
   return /** @type {T.UI} */ (ui);
