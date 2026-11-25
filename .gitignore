@@ -29,3 +29,6 @@ scripts/**/out/
 
 # Not ignored on purpose: built wrapper HTML. The repo ships prebuilt
 # wrappers for agents to fetch (see project/2026-11-23-delivery-decisions.md).
+
+# local tool state
+.timetattle-project.json
