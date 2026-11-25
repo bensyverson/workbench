@@ -164,13 +164,13 @@ function environmentOf(def, { vectors, scalars }, componentAliases, program, sta
   for (const [n, o] of Object.entries(added.objects ?? {})) {
     const into = (objects[n] ??= { label: o.label ?? n, members: {} });
     for (const [m, t] of Object.entries(o.members ?? {})) {
-      if (Object.hasOwn(into.members, m)) throw new Error(`environment(program) declares ${n}.${m} twice: it is already a member of ${n}`);
+      if (Object.hasOwn(into.members, m)) refuse("environment(program)", [{ code: "D007", path: ["environment"], message: `environment(program) declares ${n}.${m} twice: it is already a member of ${n}.`, tip: `add only members ${n} does not declare, or drop ${m} from ${n}'s members` }]);
       // defineProperty, not assignment: a member named __proto__ must be an own member, not a prototype.
       Object.defineProperty(into.members, m, { value: resolveMember(t, r, `${n}.${m}`), enumerable: true, writable: true, configurable: true });
     }
   }
   for (const [n, t] of Object.entries(added.globals ?? {})) {
-    if (Object.hasOwn(globals, n)) throw new Error(`environment(program) declares the global '${n}' twice`);
+    if (Object.hasOwn(globals, n)) refuse("environment(program)", [{ code: "D007", path: ["environment"], message: `environment(program) declares the global '${n}' twice: the Dialect already has it.`, tip: `give the global another name: the Dialect already declares '${n}'` }]);
     globals[n] = resolveType(t, r);
   }
   /** @type {Map<string, SlotDecl>} */

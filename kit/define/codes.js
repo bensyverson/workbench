@@ -13,7 +13,7 @@ export const DEFINE_CODES = Object.freeze({
   D004: "An intrinsic without ref, params or returns",
   D005: "A slot convention whose space is not declared",
   D006: "A target whose accepts names an undeclared space",
-  D007: "A name declared twice across intrinsics, globals, library, objects and vectors, a type named like a built-in or a type variable, or a convention named for a kit-made one",
+  D007: "A name declared twice across intrinsics, globals, library, objects and vectors (or a member or global that environment(program) adds twice), a type named like a built-in or a type variable, or a convention named for a kit-made one",
   D008: "A compare mode other than exact() or tolerance(figure) with a positive figure",
   D009: "A lambda(convention) that names no slot convention",
   D010: "A child construct with a method of its parent's name, a parent or root that is not a construct, or a method the kit makes",

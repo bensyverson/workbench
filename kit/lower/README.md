@@ -50,13 +50,13 @@ const { results, sigs, helpers } = lowerProgram(environment, lambdas, helperSour
 | L004 | An effect the slot forbids, such as a write in `draw` or `hud`; the tip is the slot's `forbidWhy`, led by its `forbidMove` when the Dialect has a place the effect belongs (the DMG: an onFrame or an event handler). Or an effect outside the slot's `may`, its tip listing `may` (see Per-slot effects) |
 | L005 | A callback that is not the argument of a declared query |
 | L006 | A query callback with an effect, or that assigns a local |
-| L007 | A loop whose bound cannot be checked: its counter does not start at an integer or a param, its bound is not a constant, a param, a list's length or a declared size, or the body changes the counter; or a step other than one (the tip suggests counting the iterations and computing the value inside the loop); or a recursive method or helper |
+| L007 | A loop whose bound cannot be checked: its counter does not start at an integer or a param, its bound is not a constant, a param, a list's length or a declared size, or the body changes the counter; or a step other than one (the tip suggests counting the iterations and computing the value inside the loop); or a recursive method or helper. The loop tips are the Environment's `tips.loopBound` and `tips.size` (the DMG's name `w.param("n")`), else neutral ones; a Definition API Dialect has none, so its authors are told how to declare a size (`{ value: "f64", size: true }`) |
 | L008 | A possibly-empty value used without a check |
 | L009 | A dynamic property name on anything but a list (`self[k]`) |
 | L010 | More parameters than the slot passes |
 | L011 | A name argument (param, pool, sound, event) that is not a literal, or names nothing declared |
 | L012 | A subset construct lowering does not handle yet (an empty array literal or one with a hole, a `for…of` binding that is not `const`, storing into a list element) |
-| L013 | A store to a read-only place: a baked constant, a built-in, a `const`, a global of the Dialect (`$ = 1`, which lowered clean and vanished until 2026-11-25) |
+| L013 | A store to a read-only place: a baked constant, a built-in, a `const`, a global of the Dialect (`$ = 1`, which lowered clean and vanished until 2026-11-25). The tip is the Environment's `tips.readOnly` (the DMG's speaks of ROM constants and `.attr`), else a neutral one |
 | L014 | A signature lowering cannot infer (no call site, no emit site), emit sites that disagree, call sites that disagree on a parameter's type, a call from an effect-checked position to a method whose effects are unknown, or a read of a constant that does not lower. A call to a helper that does not lower is no diagnostic (see Top-level helpers) |
 | L015 | The wrong number of arguments |
 | L016 | A number literal no number type can hold: not finite (`1e999`), or past f32's finite range where it is an f32 |

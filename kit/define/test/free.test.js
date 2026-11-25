@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { field } from "../../dialects/fields/index.js";
 import { parseLambda } from "../../parse/index.js";
 import { freeNames } from "../free.js";
+import { defineDialect, defineGrammar, exact, name, lambda } from "../index.js";
 
 const codes = (/** @type {string} */ src) => field("c").pixel(src).check().map((/** @type {any} */ d) => d.code);
 const free = (/** @type {string} */ src) => { const r = parseLambda(src); assert.ok(r.ok, `${src}: ${JSON.stringify(r.diagnostics?.[0])}`); return freeNames(r.ast).map((x) => x.name); };
@@ -58,4 +59,32 @@ test("B008 for a global with no bare intrinsic says it is not in the language", 
 
 test("B008 for an ordinary free name keeps its tip", () => {
   assert.match(tipOf("(uv, u) => color(zzz, 0, 0)").message, /zzz/);
+});
+
+// H5 (2026-11-25): `Infinity` in a lambda was told "make it a parameter and read $.Infinity" (a param is finite)
+// and to define it at the top level (shadowing a JavaScript global). A reserved global gets its own tip.
+
+const withParams = defineGrammar(defineDialect({
+  name: "tiny", numberType: "f64", text: () => "", spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
+  objects: { Params: { label: "the params ($)", members: {} } }, globals: { $: "Params" },
+  slots: { k: { params: ["f64"], returns: "f64", space: "s" } },
+}), { root: "p", constructs: { p: { opens: [name()], slots: { k: { kind: "decl", args: [lambda("k")] } } } } });
+
+/** @param {string} src */
+const b008 = (src) => /** @type {any} */ (withParams("x").k(src).check({ scope: {} }).find((/** @type {any} */ d) => d.code === "B008"));
+
+for (const g of ["Infinity", "NaN", "undefined"]) {
+  test(`B008 for the JavaScript global ${g} offers no $.${g} and no top-level ${g}`, () => {
+    const d = b008(`(x) => x > 0 ? x : ${g}`);
+    assert.ok(d);
+    assert.match(d.message, new RegExp(g));
+    assert.doesNotMatch(d.tip, /\$\.|top level/);
+    assert.match(d.tip, /tiny/);
+  });
+}
+
+test("B008 for an ordinary free name still offers $ and the top level", () => {
+  const d = b008("(x) => x * zzz");
+  assert.match(d.tip, /\$\.zzz/);
+  assert.match(d.tip, /top level/);
 });

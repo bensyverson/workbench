@@ -168,6 +168,15 @@ test("a total declared by environment(program) is checked: a bump of a member th
   assert.match(d.message, /when examples\/01\.js was lowered/);
 });
 
+test("environment(program) adding a member the Dialect already declares is D007 at the Dialect, not a C005 crash", async () => {
+  const r = await checkEdited([{ file: DIALECT, from: "Params: { members: params } } };", to: "Params: { members: params }, Plant: { members: { height: \"f64\" } } } };" }]);
+  const d = r.diagnostics.find((x) => x.code === "D007");
+  assert.ok(d, show(r.diagnostics));
+  assert.equal(d.file, DIALECT);
+  assert.match(d.message, /Plant\.height twice/);
+  assert.ok(!r.diagnostics.some((x) => x.code === "C005"), show(r.diagnostics));
+});
+
 test("a refusal that fails for another reason than declared still passes; the codes it failed with are printed beside", async () => {
   const r = await checkEdited([{ file: R01, from: "    pl.height = 1;\n", to: "    pl.age = 1;\n" }]);
   assert.equal(show(errors(r.diagnostics)), "");

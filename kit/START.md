@@ -2,7 +2,7 @@
 
 The Workbench Kit turns a small domain language into a workbench: people (and models) write Programs in it, and the kit type-checks every Program and compiles it to run in the browser. You build a language by writing **two files of plain data**. The kit generates everything else: the builder people call, its error messages, the type checker for their lambdas.
 
-Read this page, then [API.md](API.md). Together they are everything you need. Don't read the kit's source: if you have to, that is a gap in these two pages, and worth reporting.
+Read this page, then [API.md](API.md). They aim to be all you need, and may fall short. Don't read the kit's source: if you have to, that is a gap in these two pages, and worth reporting.
 
 ## What you write
 

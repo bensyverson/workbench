@@ -55,8 +55,13 @@ export type ConventionFn = (ref: DefineSlotRef, program: Record<string, unknown>
 
 /** What a slot convention function receives: the core SlotRef plus the call's position. */
 export interface DefineSlotRef extends SlotRef {
-  /** The call's position among its construct instance's calls, from 0, counting every slot. */
+  /**
+   * The call's position among its construct instance's calls, from 0, counting every slot. Without `record: "calls"`
+   * the record keeps no order across slots, so the calls are counted slot by slot in declaration order.
+   */
   index?: number;
+  /** The lambda's key inside a `recordOf`; else the declared name when the slot's first argument is a `name()`. */
+  key?: string;
 }
 
 /** What `environment(program)` returns: objects (members merge into declared ones) and globals. */

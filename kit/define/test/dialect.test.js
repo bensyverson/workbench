@@ -135,6 +135,21 @@ test("a convention may be a function of (ref, program, state); a string refuses 
   assert.equal(env.slot({ id: "t.row#1", kind: "row", on: "t", key: "no" }), "not this one");
 });
 
+// H5 (2026-11-25): the duplicate threw a plain Error, which a host can only report as a crash (the checker's C005).
+test("environment(program) declaring a member or a global twice is a DefinitionError with D007, naming it", () => {
+  const def = base();
+  def.environment = () => ({ objects: { U: { members: { t: "f32" } } } });
+  assert.throws(() => defineDialect(/** @type {any} */ (def)).environment({ name: "p" }), (/** @type {any} */ e) => {
+    assert.ok(e instanceof DefinitionError, String(e));
+    assert.deepEqual(e.diagnostics.map((/** @type {any} */ d) => d.code), ["D007"]);
+    assert.match(e.diagnostics[0].message, /U\.t/);
+    assert.deepEqual(e.diagnostics[0].path, ["environment"]);
+    return true;
+  });
+  def.environment = () => ({ globals: { sin: "f32" } });
+  assert.throws(() => defineDialect(/** @type {any} */ (def)).environment({ name: "p" }), (/** @type {any} */ e) => e instanceof DefinitionError && e.diagnostics[0].code === "D007" && /sin/.test(e.diagnostics[0].message));
+});
+
 test("the environment hook merges members; a name it declares twice is refused", () => {
   const def = base();
   def.environment = () => ({ objects: { U: { members: { t: "f32" } } } });

@@ -32,7 +32,7 @@ export function placeFor(L, node, opts = {}) {
     return null;
   }
   if (d.kind !== "value" || !d.store) {
-    L.error("L013", node, `'${name}' is read-only at run time.`, "Baked values are ROM constants and built-ins like frame belong to the runtime; declare an .attr to change it.");
+    L.error("L013", node, `'${name}' is read-only at run time.`, L.environment.tips?.readOnly ?? "Compute the new value in a local (let v = …) and use that; only a member its Dialect declares writable can be changed.");
     return null;
   }
   const recv = opts.once ? saved(L, r.recv) : r.recv;

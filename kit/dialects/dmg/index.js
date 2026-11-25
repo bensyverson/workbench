@@ -18,6 +18,13 @@ const BUTTONS = ["up", "down", "left", "right", "A", "B", "start", "select", "a"
 const ALL_EFFECTS = /** @type {EffectVerb[]} */ (["read", "input", "hud", "call", "write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
 const STATE_CHANGES = /** @type {EffectVerb[]} */ (["write", "rng", "emit", "sfx", "toast", "spawn", "destroy", "end", "log"]);
 
+/** Lowering's tips in DMG's words: baked ROM values, `.attr`, `w.param`. */
+const DMG_TIPS = Object.freeze({
+  readOnly: "Baked values are ROM constants and built-ins like frame belong to the runtime; declare an .attr to change it.",
+  loopBound: "Count with for (let i = 0; i < n; i++), starting from an integer or a param, where n is a constant, a param such as w.param(\"n\"), or a list's length, and leave i alone in the body.",
+  size: "Bound the loop by a constant, a list's length, or a member its Dialect declares a size (such as a param with a small max).",
+});
+
 const F64 = /** @type {Type} */ ("f64");
 const BOOL = /** @type {Type} */ ("bool");
 const VOID = /** @type {Type} */ ("void");
@@ -225,6 +232,7 @@ export function dmgEnvironment(d) {
     list: { length: value(F64) },
     queries: ["filter", "find", "some", "every", "reduce"],
     globals: { Math: { obj: "Math" } },
+    tips: DMG_TIPS,
     slot: (ref) => slotOf(ref, d, drawResult),
   };
 }

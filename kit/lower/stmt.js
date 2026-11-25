@@ -178,7 +178,7 @@ function ifStatement(L, testNode, consequent, alternate, span) {
  * @param {AST.ForStatement} node
  */
 function forStatement(L, node) {
-  const tip = "Count with for (let i = 0; i < n; i++), starting from an integer or a param, where n is a constant, a param such as w.param(\"n\"), or a list's length, and leave i alone in the body.";
+  const tip = L.environment.tips?.loopBound ?? "Count with for (let i = 0; i < n; i++), starting from an integer, where n is a constant, a list's length or a member its Dialect declares a size, and leave i alone in the body.";
   const init = node.init;
   const d = init?.type === "VariableDeclaration" && init.kind === "let" && init.declarations.length === 1 ? init.declarations[0] : null;
   const i = d && d.id.type === "Identifier" && d.init ? d.id.name : null;
@@ -210,7 +210,7 @@ function forStatement(L, node) {
       if (b?.k === "load") {
         // A read-only member (a Definition API param such as $.n) could hold any number unless its Dialect declares it a size.
         const written = L.src.slice(boundNode.range[0], boundNode.range[1]);
-        L.error("L007", boundNode, `'${written}' is not declared a size, so it could hold any number and the loop might not end.`, "Bound the loop by a constant, a list's length, or a member its Dialect declares a size (such as a param with a small max).");
+        L.error("L007", boundNode, `'${written}' is not declared a size, so it could hold any number and the loop might not end.`, L.environment.tips?.size ?? "Bound the loop by a constant or a list's length. A member bounds it only when its Dialect declares it a size, { value: \"f64\", size: true }, such as a param with a small max.");
       } else L.error("L007", boundNode, "This loop's bound is not a constant, a param or a declared size.", tip);
       return;
     }

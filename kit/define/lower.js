@@ -178,6 +178,8 @@ export function lowerRecord(g, record) {
       const s = inst.construct.def.slots?.[call.slot];
       if (!s || s.kind !== "decl") continue;
       const found = rematch(s.args, call.args).lambdas;
+      // A slot that declares a name tells its convention which entry it lowers by that name; a recordOf key wins.
+      const declared = kindOf(s.args[0]) === "name" && typeof call.args[0] === "string" ? call.args[0] : undefined;
       // Lambdas that share a recordOf key (or have none) are told apart by their place among them, `[n]`;
       // a lambda alone under its key has no place. `[n]` is not `.n`, which a key "0" could spell.
       /** @param {string | undefined} key */
@@ -186,7 +188,7 @@ export function lowerRecord(g, record) {
         const peers = group(l.key);
         const place = peers.length > 1 ? `[${peers.indexOf(l)}]` : "";
         const id = unique(`${tags.get(inst)}.${call.slot}${call.once ? "" : `#${call.index}`}${l.key !== undefined ? `.${l.key}` : ""}${place}`);
-        return { inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}), ref: /** @type {T.DefineSlotRef} */ ({ id, kind: l.convention, on: inst.name, index: call.index, ...(l.key !== undefined ? { key: l.key } : {}) }) };
+        return { inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}), ref: /** @type {T.DefineSlotRef} */ ({ id, kind: l.convention, on: inst.name, index: call.index, ...((l.key ?? declared) !== undefined ? { key: l.key ?? declared } : {}) }) };
       });
       byCall.set(call, here);
       lambdas.push(...here);

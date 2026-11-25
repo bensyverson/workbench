@@ -116,8 +116,19 @@ export interface Environment {
   numberType?: "f32" | "f64";
   /** The calls that convert between f64 and f32, by the name a lambda calls, with the type each gives: `{ f32: "f32" }`. */
   conversions?: Record<string, "f32" | "f64">;
+  /** Tips in the Dialect's own words where the fix depends on its domain; each absent one is lowering's neutral tip. */
+  tips?: EnvironmentTips;
   /** The calling convention of a slot, or a message saying why there is none. */
   slot(ref: SlotRef): SlotDecl | string;
+}
+
+export interface EnvironmentTips {
+  /** L013, a store to a read-only member: how to change such a value in this Dialect. */
+  readOnly?: string;
+  /** L007, a loop whose shape cannot be checked: what a counted loop and its bound look like here. */
+  loopBound?: string;
+  /** L007, a loop bounded by a read-only member that is not a size: what may bound a loop here. */
+  size?: string;
 }
 
 /** What lowering inferred across a whole program: event payloads and method signatures. */

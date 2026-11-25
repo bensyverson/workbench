@@ -72,7 +72,7 @@ export const session = {
    */
   report(site, problems, suffix = "") {
     const src = this.sources[site.file] ?? "";
-    for (const p of problems) this.add({ file: site.file, line: locate(src, site.line, p.path), code: p.code, severity: "error", message: `${p.message}${suffix}`, fix: p.tip || "see the definition's rules in api-draft.md" });
+    for (const p of problems) this.add({ file: site.file, line: locate(src, site.line, p.path), code: p.code, severity: "error", message: `${p.message}${suffix}`, fix: p.tip || "the definition breaks one of the API's rules; the message names it" });
   },
 
   /**

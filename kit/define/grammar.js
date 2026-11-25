@@ -50,6 +50,8 @@ const STATES = "\0state";
 /** JavaScript globals a lambda author may reach for; B008's tip for one differs from a Program name's. */
 const JS_GLOBALS = new Set(["Math", "Number", "JSON", "console", "Object", "Array", "String", "Boolean", "Date", "BigInt", "Symbol", "Reflect", "Intl", "globalThis", "window", "document", "process"]);
 const IDENT = /^[A-Za-z_$][\w$]*$/;
+/** JavaScript's value globals, which a lambda may not read unless its Dialect declares them, and what to use instead. */
+const VALUE_GLOBALS = /** @type {Record<string, string>} */ ({ Infinity: "a large finite number (a top-level constant such as const BIG = 1e9)", NaN: "a finite number", undefined: "a value of the type expected" });
 
 /**
  * @param {string} code @param {string} message @param {string} tip @param {{ file: string, loc: Loc }} at @param {Partial<T.BuildDiagnostic>} [extra]
@@ -150,7 +152,7 @@ class Program {
     const inst = { construct: c, opened, parent, children: [], calls: [], loc: at.loc, file: at.file };
     this.report(f.errors.filter((e) => !this.knockOn(e, inst, "")), c.name, at);
     let named = true;
-    specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") named = this.declare(/** @type {T.NameTag} */ (s), inst, made[i], at, true) && named; });
+    specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") named = this.declare(/** @type {T.NameTag} */ (s), inst, made[i], at, parent === null) && named; });
     // a name its namespace refused already is one mistake: the state namespace would only say it again
     if (c.def.state && named) this.declareState(c, instanceName(inst), at);
     /** @type {Call} */
@@ -171,7 +173,7 @@ class Program {
    * @param {T.NameTag | null} spec  null for a unit
    * @param {Instance} inst  the instance the call is on (or the one being opened)
    * @param {string} value @param {{ file: string, loc: Loc }} at
-   * @param {boolean} [label]  an opening name, which lambdas never read, so any non-empty string (`domain-warp`)
+   * @param {boolean} [label]  the root's opening name, the Program's own name, so any non-empty string (`domain-warp`)
    */
   declare(spec, inst, value, at, label = false) {
     const ns = spec === null ? UNITS : typeof spec.ns === "string" ? spec.ns : inst.construct.name;
@@ -468,6 +470,11 @@ class Program {
         }
         if (buildTime.has(name)) {
           this.diagnostics.push(diag("B013", `${src.what} reads "${name}", which this file declares only inside build-time code, not at its top level: a lambda sees only its own names, the ${d.name} Dialect's, the Program's and the file's top-level bindings.`, `move it to the top level (const ${name} = …), or write its value into the lambda's text: \`(…) => … \${${name}} …\``, src.at, lambdaAt));
+          continue;
+        }
+        // A JavaScript value global is no name to declare: a param is finite, and a top-level one would shadow it.
+        if (Object.hasOwn(VALUE_GLOBALS, name)) {
+          this.diagnostics.push(diag("B008", `${src.what} reads "${name}", which it cannot see: only its text is compiled.`, `${name} is not in the ${d.name} language: use ${VALUE_GLOBALS[name]} instead`, src.at, lambdaAt));
           continue;
         }
         const ways = [scope ? "define it at the top level of the file" : null, constSlot ? `declare it on the Program, .${constSlot}("${name}", "…")` : null, d.globals && "$" in d.globals ? `make it a parameter and read $.${name}` : null].filter(Boolean);

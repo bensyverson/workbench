@@ -159,7 +159,7 @@ function reportLoadError(e, file) {
   let where = candidateFrame(`${err.stack ?? ""}`) ?? (err instanceof SyntaxError ? syntaxErrorSite() : null) ?? { file, line: 1 };
   const missing = /The requested module '([^']+)' does not provide an export named '([^']+)'/.exec(err.message);
   if (missing && missing[1] === DEFINE_SPECIFIER) {
-    session.add({ file: where.file, line: where.line, code: "D011", severity: "error", message: `${DEFINE_SPECIFIER} has no export '${missing[2]}'.${didYouMean(missing[2], EXPORTS)}`, fix: `import only what api-draft.md names: ${EXPORTS.join(", ")}` });
+    session.add({ file: where.file, line: where.line, code: "D011", severity: "error", message: `${DEFINE_SPECIFIER} has no export '${missing[2]}'.${didYouMean(missing[2], EXPORTS)}`, fix: `import only what kit/define exports: ${EXPORTS.join(", ")}` });
     return;
   }
   const isExample = file.startsWith(`${EXAMPLES_DIR}/`);

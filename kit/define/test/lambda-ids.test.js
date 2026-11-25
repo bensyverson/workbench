@@ -103,17 +103,19 @@ test("two instances whose name() is renamed with as: ids named by their names", 
   assert.deepEqual(ids(r), ["one.k", "two.k"]);
 });
 
-test("a name that would make another instance's id still gets a distinct one", () => {
+// A child's opening name is an identifier (H5, 2026-11-25), so a name spelled like a numbered id (`a~2`) is now
+// refused where it used to be built and pushed the next instance to `a~3`; one name in two constructs still numbers.
+test("a name spelled like another instance's id is refused; one name in two constructs gets distinct ids", () => {
   const g = defineGrammar(tiny(conv), { root: "p", constructs: {
     p: { opens: [name()] },
     t: { parent: "p", opens: [name()], slots: { k: { kind: "decl", args: [lambda("k")], once: true } } },
     u: { parent: "p", opens: [name()], slots: { k: { kind: "decl", args: [lambda("k")], once: true } } },
   } });
+  assert.deepEqual(g("x").t("a~2").k("() => 1").check().map((/** @type {any} */ d) => d.code), ["B004"]);
   const b = g("x");
-  b.t("a~2").k("() => 1");
   b.t("a").k("() => 2");
   b.u("a").k("() => 3");
-  assert.deepEqual(ids(g.lower(b.build())), ["a~2.k", "a.k", "a~3.k"]);
+  assert.deepEqual(ids(g.lower(b.build())), ["a.k", "a~2.k"]);
 });
 
 test("stateful instances keep the B002 rule, keyed by name", () => {

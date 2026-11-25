@@ -360,3 +360,23 @@ test("a check that gives only a tip still prints it as the fix, with no tip line
   assert.equal(d.fix, "lower the value or raise max");
   assert.equal(d.tip, undefined);
 });
+
+// H5 (2026-11-25): agents read START.md and API.md, not api-draft.md, so no fallback line may send them there.
+test("a check that gives neither tip nor fix prints a true fix line that names no document the reader may lack", async () => {
+  const r = await checkEdited([
+    { file: GRAMMAR, from: `{ arg: 1, tip: "lower the value or raise max" }`, to: `{ arg: 1 }` },
+    { file: EX1, from: "{ value: 2, min: 0, max: 8 }", to: "{ value: 9, min: 0, max: 8 }" },
+  ]);
+  const d = r.diagnostics.find((x) => x.code === "T001");
+  assert.ok(d, show(r.diagnostics));
+  assert.doesNotMatch(d.fix, /api-draft|\.md/);
+  assert.match(d.fix, /no fix/);
+});
+
+test("an import kit/define does not export names the exports without naming api-draft.md", async () => {
+  const r = await checkEdited([{ file: DIALECT, from: "exact, tolerance, enumOf, object }", to: "exact, tolerance, enumOf, object, vectr }" }]);
+  const d = r.diagnostics.find((x) => x.code === "D011");
+  assert.ok(d, show(r.diagnostics));
+  assert.doesNotMatch(d.fix, /api-draft/);
+  assert.match(d.fix, /defineDialect/);
+});
