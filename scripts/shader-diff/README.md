@@ -22,4 +22,4 @@ node scripts/shader-diff/cli.js renderer          # what WebGL reports: vendor, 
 
 ## Tests
 
-`test/shader-diff.test.js` (fast): the CLI's verbs and exit codes with `--no-glsl`, and the report's wording. `prerelease/glsl.prerelease.js` (run it with `npm run test:prerelease`; about a minute): the recorded cases at full size with GLSL within tolerance, the stress case (held to its stated override), and the fault run in both backends; it skips with a message where sleepy is absent.
+`test/shader-diff.test.js` (fast): the CLI's verbs and exit codes with `--no-glsl`, and the report's wording. `prerelease/glsl.prerelease.js` (run it with `npm run test:prerelease`; about a minute): the recorded cases at full size with GLSL within tolerance, the coverage case (every intrinsic, GLSL within the target figure), the stress case (held to its stated override), and the fault run in both backends; it skips with a message where sleepy is absent.

@@ -2,6 +2,7 @@
 
 import { swirl, bulge } from "../dialects/fields/programs/uv-remaps.js";
 import { domainWarp } from "../dialects/fields/programs/domain-warp.js";
+import { coverage } from "../dialects/fields/programs/coverage.js";
 
 /** @import { FieldProgram } from "../dialects/fields/decls.js" */
 
@@ -98,6 +99,23 @@ export function standardCases(scale = 1) {
   const sz = (/** @type {number} */ n) => Math.max(4, Math.round(n * scale));
   const w = sz(132);
   return [...remapCases(sz(150)), warpCase(w, Math.max(4, Math.round((w * 300) / 440)))];
+}
+
+/**
+ * `coverage`: every intrinsic and call-style operator of the fields Dialect over one grid, three param sets. Not a
+ * standard case (the recorded grids and the planted faults stay as they were); the fast suite and the prerelease GLSL
+ * run both add it. Its inputs keep every call inside the domain where GLSL and JavaScript agree.
+ * @param {number} [scale]
+ * @returns {Case}
+ */
+export function coverageCase(scale = 1) {
+  const width = Math.max(4, Math.round(64 * scale)), height = Math.max(4, Math.round(48 * scale));
+  const base = defaults(coverage, width / height);
+  return { name: "coverage", program: coverage, width, height, sets: [
+    { label: "defaults", values: base },
+    { label: "k 5.5, shift -0.7, t 2", values: { ...base, k: 5.5, shift: -0.7, t: 2 } },
+    { label: "k 1.2, shift 0.9, t 0.5", values: { ...base, k: 1.2, shift: 0.9, t: 0.5 } },
+  ] };
 }
 
 /** @type {Override} */

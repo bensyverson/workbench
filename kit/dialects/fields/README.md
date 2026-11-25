@@ -24,7 +24,7 @@ const { kernel, diagnostics } = lowerField(program);   // kernel is null when an
 - `library.js`: Library functions written in the Runtime Subset (`pmod`, `vnoise`, `fbm`).
 - `calls.js`: `vadd`, `vsub`, `vmul`, `vdiv`, `vscale`, `vneg`, the operators as intrinsics for H3's call style ([the comparison](../../../project/2026-11-23-h3-styles-comparison.md)); `programs/*-calls.js` are the sketches written with them.
 - `grammar.js`: the `defineGrammar` call; `field(name)` is the builder it generates. An unknown method throws `B001` at once; every other refusal (`B002` a name taken, a Library name included; `B004` a param of the wrong shape; `B005` no pixel; `B006` two; `B007` a lambda that is not an arrow function or does not parse; `B008` a name the lambda cannot see; `F001` a value outside its range, `F002` a param named `t` or `aspect`, `F003` a param named like a helper or a Library entry) is collected with its call site and thrown by `.build()`. `program.js`: `lowerField`, the grammar's `lower` read back as `{ environment, kernel, diagnostics, helpers, pixel }`.
-- `programs/`: the two H3 sketches. `decls.d.ts`: the shapes (`FieldProgram`, `ParamDecl`, `Intrinsic`). `test/golden/hand-built.json`: what the hand-written builder this replaced built, which `test/grammar.test.js` holds the generated one to.
+- `programs/`: the two H3 sketches (each also in call style), and `coverage.js`, which calls every intrinsic and call-style operator inside the domain where GLSL and JavaScript agree, for the harness. `decls.d.ts`: the shapes (`FieldProgram`, `ParamDecl`, `Intrinsic`). `test/golden/hand-built.json`: what the hand-written builder this replaced built, which `test/grammar.test.js` holds the generated one to.
 
 ## The language
 

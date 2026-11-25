@@ -22,7 +22,7 @@ r.glslVsInterp.at;                             // { kernel, line, text, jsLine, 
 
 | File | What it holds |
 |---|---|
-| `cases.js` | the recorded grids and param sets: `standardCases(scale)`, `stressCase()`, `pixelUv` (the sampling convention) |
+| `cases.js` | the recorded grids and param sets: `standardCases(scale)`, `stressCase()`, `coverageCase(scale)` (every intrinsic and call-style operator, in `programs/coverage.js` of the fields Dialect; not a standard case, so the recorded grids and fault counts are unchanged), `pixelUv` (the sampling convention) |
 | `pipeline.js` | `prepare(program, plant?)`: lowering, the three evaluators, and a planted fault; `uniformValues` (a choice is a name for the host and an option index for the shader) |
 | `evaluate.js`, `compare.js`, `locate.js` | a pixel function over a grid; the worst difference of two sets of buffers; the `return` that made a pixel, found again in the author's lambda and in both line maps |
 | `run.js` | `runCase`, and its parts (`referencePixels`, `compareJs`, `compareGlsl`, `shaderJob`); the `Render` type |
@@ -49,4 +49,4 @@ The GLSL target declares `compare: { kind: "tolerance", figure: 1e-3 }` in `FIEL
 
 ## Tests
 
-`test/`: the pairs' arithmetic (`compare.test.js`), the pipeline, the sampling convention and `locate` (`pipeline.test.js`), the fault mutators (`faults.test.js`), and the fast half of the harness (`agree.test.js`: all three sketches over every param set at a small grid, JS exactly; the JS half of the planted-fault run). The GLSL half is in [scripts/shader-diff/prerelease](../../scripts/shader-diff/prerelease/glsl.prerelease.js), because it needs `sleepy` and takes about a minute.
+`test/`: the pairs' arithmetic (`compare.test.js`), the pipeline, the sampling convention and `locate` (`pipeline.test.js`), the fault mutators (`faults.test.js`), and the fast half of the harness (`agree.test.js`: all three sketches over every param set at a small grid, JS exactly; the JS half of the planted-fault run; and the coverage case, which must call every name in `INTRINSICS`, JS exactly). The GLSL half is in [scripts/shader-diff/prerelease](../../scripts/shader-diff/prerelease/glsl.prerelease.js), because it needs `sleepy` and takes about a minute.

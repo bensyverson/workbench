@@ -2,7 +2,8 @@
 // every recorded param set at a small grid; and the JS half of the planted-fault run. GLSL is in prerelease/.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { standardCases, runCase, runFaults, tally, FAULTS } from "../index.js";
+import { standardCases, coverageCase, runCase, runFaults, tally, FAULTS } from "../index.js";
+import { INTRINSICS } from "../../dialects/fields/index.js";
 
 test("JS and the interpreter agree bit for bit on every sketch and param set", async (t) => {
   for (const c of standardCases(0.2)) {
@@ -28,4 +29,14 @@ test("every planted JS fault is caught, except the ones with a recorded reason",
 
 test("a fault with an escape reason names a target it applies to", () => {
   for (const f of FAULTS) for (const target of Object.keys(f.escapes ?? {})) assert.ok(f.targets.includes(/** @type {"js" | "glsl"} */ (target)), `${f.id} claims an escape on ${target}`);
+});
+
+test("the coverage case calls every intrinsic of the Dialect, and JS and the interpreter agree on it bit for bit", async (t) => {
+  const c = coverageCase(0.3);
+  const missing = Object.keys(INTRINSICS).filter((name) => !new RegExp(`\\b${name}\\(`).test(c.program.pixel));
+  assert.deepEqual(missing, [], "an intrinsic no sketch of the coverage case calls would never reach a GPU");
+  const r = await runCase(c);
+  assert.equal(r.jsVsInterp.exact, true, `worst ${r.jsVsInterp.worst.diff} at ${r.jsVsInterp.worst.pixel}, ${JSON.stringify(r.jsVsInterp.at)}`);
+  assert.ok(Number.isFinite(r.jsVsInterp.worst.diff));
+  t.diagnostic(`${c.name}: ${c.width}x${c.height}, ${c.sets.length} sets, ${r.jsVsInterp.components} components identical`);
 });
