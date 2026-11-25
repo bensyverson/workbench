@@ -28,6 +28,14 @@
   - The data Dialect dropped a `__proto__` param.
   - **Rescore:** every particles hand-in (both runs), the reference and the pilot reference score as before.
 
+## Later the same session (Ben around)
+
+- **The H5 brief** now says a refusal the API cannot express is reported, not built (`f4c16cb`). No third full H5 run was needed.
+- **The AGENTS.md doc list** is pruned to six lines (`a344c9c`).
+- **The M4 UI decision** is recorded in [project/2026-11-25-m4-ui-decision.md](2026-11-25-m4-ui-decision.md) (`CwuGpd` closed).
+- **START.md + API.md trimmed** from 7,994 to 5,592 tokens, with nine topic pages in `kit/docs/` (`ca97be4`, leaf `O2lYL4`). A three-agent check (2 Sonnet, 1 Haiku) on the trimmed docs and new brief: all three match the reference exactly (27/27, 139/141), with no parser and difficulty 2, 2, 3 ([project/2026-11-25-h5-trimmed-docs.md](2026-11-25-h5-trimmed-docs.md)).
+- **The UI DSL draft and its trial packet** (`b8210fa`, leaf `vp27OC`): [project/2026-11-25-ui-dsl-draft.md](2026-11-25-ui-dsl-draft.md), `scripts/ui-trial/`. The trial has not run. Not independently reviewed: the trial checker (`scripts/ui-trial/checker/`) and the trim (doc-only, integrator-read).
+
 ## Calls made without Ben (two-way doors)
 
 - **Ran the two kit issues during the rerun**, but merged them only after scoring, so the agents' kit stayed fixed at `ffb0109`.
@@ -71,6 +79,7 @@
 ## Next
 
 1. Ben's decisions above. If he chooses to build the parked rules, that is a design leaf, then dogfood, then a third H5 run.
-2. **M4 Composition** (`SPPLaM`): `vp27OC` (draft and dogfood the UI DSL) and `Uld5D0` (packages, now unblocked); `hjdIRt`, `f2dMku` and `HKNInI` are unblocked design leaves.
+2. **The UI DSL trial** (`vp27OC`): run `scripts/ui-trial/run.sh` with 2 Sonnet and 1 Haiku (Ben prefers three agents), score it with `scripts/ui-trial/check.js`, write the findings, then put the draft's six open questions (draft doc, end) to Ben. Ben leaned toward running the trial before answering them.
+3. **M4 Composition** (`SPPLaM`): `vp27OC` done first and `Uld5D0` (packages, now unblocked); `hjdIRt`, `f2dMku` and `HKNInI` are unblocked design leaves.
 3. Issues `kRYm3Y` and `JYmuWM` (the shadow scan; Sonnet-sized, red tests from `local/rev-kit3-probes/shadow-rule.probe.js`). `JYmuWM`'s narrow fix needs to know which arrows are Runtime Lambdas, which the builder knows and the scan does not.
 4. Review `ce4ff4f` and `4a9111e` with the next batch.
