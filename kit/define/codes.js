@@ -48,7 +48,7 @@ export const BUILD_CODES = Object.freeze({
 });
 
 /** A word with its indefinite article, for a message: `an account`, `a flow`. @param {string} w */
-export const an = (w) => `${(/^[aeiou]/i.test(w) && !/^(uni|us[aeu]|uti|eu|one|once|ubiq)/i.test(w)) || /^(hour|honest|honor|heir)/i.test(w) ? "an" : "a"} ${w}`;
+export const an = (w) => `${(/^[aeiou]/i.test(w) && !/^(uni(?![nm])|us[aeu]|uti|eu|one|once|ubiq)/i.test(w)) || /^(hour|honest|honor|heir)/i.test(w) ? "an" : "a"} ${w}`;
 
 /** Letters a Dialect's own check codes may not start with. */
 export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "L", "P", "S", "V"]);

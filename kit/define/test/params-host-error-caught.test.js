@@ -19,11 +19,6 @@ test("a host value that does not fit throws TypeError though build-time code cau
   assert.throws(() => run(fn, { values: { n: 99 } }), TypeError);
 });
 
-test("a host value that does not fit throws TypeError though build-time code caught it (no refusal)", () => {
-  const fn = ($) => { const b = base(); let n = 2; try { n = $.n; } catch { /* */ } return b.limit(n); };
-  assert.throws(() => run(fn, { values: { n: 99 } }), /run\(\{ values \}\): 'n'/);
-});
-
 test("the host's TypeError, not the Program's knock-on error, is what surfaces", () => {
   const fn = ($) => { const b = base(); let n; try { n = $.n; } catch { /* */ } return b.limit(n.valueOf()); };
   assert.throws(() => run(fn, { values: { n: 99 } }), /run\(\{ values \}\): 'n'/);

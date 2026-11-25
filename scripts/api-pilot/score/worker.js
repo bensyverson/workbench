@@ -1,6 +1,6 @@
 // The scorer's worker process: `node worker.js <hand-in dir> <hidden dir> <result file>`. It loads the hand-in's
-// definitions, which is candidate code (it may exit, loop or throw), so score() runs it out of process and
-// believes only the result file this writes as its last act.
+// definitions, which is candidate code (it may exit, loop, throw or write the result file itself), so score()
+// runs it out of process, and checks the result file this writes as its last act before using it.
 
 import { mkdtempSync, mkdirSync, cpSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import { checkDir, definitionFiles, EXAMPLES_DIR } from "../../define-trial/chec
 import { LANG, listPrograms, expectedCodes, summarize } from "./programs.js";
 
 /** @typedef {import("./programs.js").Score} Score */
+/** @typedef {{ file: string, code: string, severity: string, message: string }} Diagnostic */
 
 /**
  * Checks every hidden program against the hand-in's definitions, in this process.
@@ -24,26 +25,35 @@ export async function scoreHere(handin, hidden) {
     mkdirSync(join(work, EXAMPLES_DIR));
     const programs = listPrograms(hidden).map((p) => ({ ...p, as: `${EXAMPLES_DIR}/${p.kind}-${p.file}` }));
     for (const p of programs) cpSync(p.path, join(work, p.as));
-    /** @type {Array<{ file: string, code: string, severity: string }>} */
+    /** @type {Diagnostic[]} */
     let diagnostics;
     try {
       diagnostics = (await checkDir(work, { lang: LANG })).diagnostics;
     } catch (e) {
       // a missing definition file: the checker cannot start
-      diagnostics = [{ file: defs.dialect, code: "LOAD", severity: "error", message: String(e) }].map((d) => ({ ...d }));
+      diagnostics = [{ file: defs.dialect, code: "LOAD", severity: "error", message: String(e) }];
     }
-    const errors = diagnostics.filter((d) => d.severity === "error");
+    const errors = diagnostics.filter((d) => d.severity === "error").map((d) => ({ ...d, file: owner(d, programs.map((p) => p.as)) }));
     const defErrors = errors.filter((d) => d.file === defs.dialect || d.file === defs.grammar);
-    const ok = defErrors.length === 0;
-    const results = programs.map(({ kind, file, path, as }) => {
-      const codes = errors.filter((d) => d.file === as).map((d) => d.code);
-      const expected = kind === "reject" ? expectedCodes(path) : [];
-      return { kind, file, codes, expected, pass: ok && (kind === "accept" ? codes.length === 0 : codes.length > 0) };
-    });
-    return summarize({ ok, codes: defErrors.map((d) => d.code) }, results);
+    return summarize({ codes: defErrors.map((d) => d.code) }, programs.map(({ kind, file, path, as }) => ({
+      kind, file,
+      codes: errors.filter((d) => d.file === as).map((d) => d.code),
+      expected: kind === "reject" ? expectedCodes(path) : [],
+    })));
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+/**
+ * The file an error belongs to. The checker files a C005 (the definitions threw) at the definition line that
+ * threw, but one program reached it, and its message opens with that program's file: the crash fails that
+ * program, not the definitions and so every program.
+ * @param {Diagnostic} d @param {string[]} programFiles
+ */
+function owner(d, programFiles) {
+  if (d.code !== "C005") return d.file;
+  return programFiles.find((f) => d.message.startsWith(`${f}: `)) ?? d.file;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
