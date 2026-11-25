@@ -11,32 +11,11 @@ Review baseline: 2026-11-23T15:00:00-06:00
 ## Documentation
 
 - [README.md](README.md) — what the kit is, how to install it, and a runnable Quick Start
-- [project/](project/) — dated plans, findings and decisions. The last milestone's verdict is [the M3 findings](project/2026-11-25-m3-findings.md); M4's plan lives in the tracker (`SPPLaM`); the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md)
-- [kit/glossary.md](kit/glossary.md) — the kit's terms (Dream Code, Language Definition, Dialect, Grammar, Environment, Kernel, IR, LIR …), capitalized when used as terms
-- [kit/parse/README.md](kit/parse/README.md) — the subset parser: API, diagnostic codes, fixits
-- [kit/ir/README.md](kit/ir/README.md) — the core IR: kernels, types, effects, spans, the JSON form and the listing
-- [kit/query/README.md](kit/query/README.md) — read-only queries over Kernels: who writes a place, what a region reads (helpers looked through), reachable helpers, purity
-- [kit/lower/README.md](kit/lower/README.md) — lowering to IR: dialect descriptions, the DMG dialect, program inference, diagnostic codes
-- [kit/dialects/fields/README.md](kit/dialects/fields/README.md) — the fields Dialect: typed vectors and operators, intrinsics with each target's spelling, the Library, the `field` Grammar and the two H3 sketches
-- [kit/dialects/data/README.md](kit/dialects/data/README.md) — the data Dialect: typed tables from a schema, the date scalar and dateOf, row/group/calc conventions typed from construct state, the T codes, and how much of it the IR carries
-- [kit/START.md](kit/START.md) and [kit/API.md](kit/API.md) — the documentation for an agent building a language with the kit: orientation and the loop, then the Definition API as signatures, one worked example and the pitfalls
-- [kit/define/README.md](kit/define/README.md) — the Definition API: `defineDialect` (a Dialect as data → Environment, intrinsic table, Library), `defineGrammar` (the generated builder, its B codes and record) and lowering a record with construct state
-- [kit/interp/README.md](kit/interp/README.md) — the reference interpreter: what a Kernel means, with f32, vectors, store rules and a per-node hook
-- [kit/emit/js/README.md](kit/emit/js/README.md) — the JavaScript backend: IR kernels to slot-compatible functions, with a line map
-- [kit/lir/README.md](kit/lir/README.md) — the first LIR stage: a Kernel with no f64, explicit conversions and bound intrinsics, its verifier and diagnostic codes
-- [kit/emit/glsl/README.md](kit/emit/glsl/README.md) — the GLSL ES 3.00 backend: fragment shaders from pixel Kernels, uniforms, the `uv` convention, the line map, capability refusals
-- [kit/debugger/README.md](kit/debugger/README.md) — the pixel debugger: one pixel stepped through its Kernel node by node, and the preview page that shows it beside the GPU's value
-- [kit/harness/README.md](kit/harness/README.md) — the comparison harness: a fields Program through the interpreter, the emitted JS and the emitted GLSL, with the GLSL tolerance and planted faults
-- [scripts/dmg-oracle/README.md](scripts/dmg-oracle/README.md) — the headless DMG harness: traces, lambda swapping, the lambda inventory
-- [scripts/dmg-lower/README.md](scripts/dmg-lower/README.md) — the M1 pipeline over one preset: declarations, dialect, lowering, IR goldens
-- [scripts/dmg-diff/README.md](scripts/dmg-diff/README.md) — the lowering survey over all presets, the differential run over 04–07, and planted-fault sensitivity
-- [scripts/h3-trial/README.md](scripts/h3-trial/README.md) — the H3 trial kit: documentation packets in two styles, three sketch tasks, the checking tool and the log classifier
-- [scripts/um-survey/README.md](scripts/um-survey/README.md) — the Uncommon Math sketch survey: kinds, subset fit and operations of the book's 113 sketches
-- [scripts/shader-diff/README.md](scripts/shader-diff/README.md) — the harness from Node: `check`, `stress` and `faults`, with GLSL run through `sleepy`
-- [scripts/api-pilot/README.md](scripts/api-pilot/README.md) — the START.md / API.md pilot: the budget-planner sheet, hidden accept and reject programs, the reference and the scorer
-- [scripts/define-trial/README.md](scripts/define-trial/README.md) — the Definition API dogfood trial: the draft API, the strict rules and the checker's codes
-- [scripts/compose-trial/README.md](scripts/compose-trial/README.md) — the composition paper trial: the draft composition model, the cave / tiles / glow references, the rules and the checker's codes
-- [scripts/particles/README.md](scripts/particles/README.md) — the particles domain for per-slot effects and the H5 run: the Dream Code sheet, its settled open questions and the blind hidden programs
+- [project/](project/) — dated plans, findings and decisions; the binding rulings are in [delivery decisions](project/2026-11-23-delivery-decisions.md). Live plans are in `job`
+- [kit/glossary.md](kit/glossary.md) — the kit's terms, capitalized when used as terms
+- [kit/START.md](kit/START.md) and [kit/API.md](kit/API.md) — the documentation for an agent building a language with the kit
+- `kit/<module>/README.md` — each module documents its API, invariants and diagnostic codes: parse, ir, lower, query, define, interp, lir, emit/js, emit/glsl, harness, debugger, and the Dialects under `kit/dialects/`
+- `scripts/<tool>/README.md` — each analysis and trial tool documents its usage and records
 
 ## Local rulings
 
