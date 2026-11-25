@@ -81,3 +81,15 @@ A child construct has every method of its parent, so a `fn` or `const` slot on b
 ## 2026-11-24: a convention whose return names a member of the construct's state
 
 A lambda that returns a string meant to name a column (`.y(() => $.metric)`) type-checks as `str`, so a nonsense column is accepted (trial 3's agents A and B). A convention could return `ref(<state namespace>)`, an enum built from the state's names, and lowering would check each returned literal (and a param's options) against it. Parked because no shipped Dialect needs a run-time-chosen column, and it needs string enums in the core types. Un-park when a Grammar ships a run-time column choice or a chart slot ([trial 3](2026-11-24-definition-api-trial-3.md), finding 3).
+
+## 2026-11-24: a ref that may not name its own instance
+
+A slot `ref` that refuses the instance it sits in (a transfer from account `a` to account `a`), or `ctx.instance` in a slot check so an author can refuse it. One of three agents in the [API pilot](2026-11-24-api-pilot.md) asked (agent A, gap 4); a slot check can already find the instance as `ctx.program.<construct>.at(-1)` (API.md pitfall 6). Parked because one agent asked and a workaround exists. Un-park if the stateful fresh-agent run (`3Cd9hb`) or a later trial asks for it again.
+
+## 2026-11-24: a default value for an optional slot
+
+A `default` on a `once` slot, so the record carries the value when the slot is not called (the budget sheet's horizon defaults to 12). One of three agents in the [API pilot](2026-11-24-api-pilot.md) asked (agent C, gap 5); `environment` or `init` can fill a missing value today. Parked because one agent asked and the workaround is one line. Un-park if the stateful fresh-agent run (`3Cd9hb`) or a later trial asks for it again.
+
+## 2026-11-24: may a cave's `.carve` read another part's output?
+
+The composition checker's open question: `scripts/compose-trial/docs/cave.md` says the cave re-runs when its `.seed()` lambda reads another part's output (`game.out`), but does not say whether `.carve` may. Parked by Ben (2026-11-24) because no composition rerun is scheduled. Un-park when one is, and settle it before it runs ([composition trial](2026-11-24-composition-trial.md)).
