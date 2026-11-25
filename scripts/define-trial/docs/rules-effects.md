@@ -88,7 +88,7 @@ A D021 or D022 that depends on the Program (a member `environment(program)` adds
 | B001 | a method the construct does not have (thrown at the call, with a "did you mean") |
 | B002 | a `name()` already declared in its namespace, or a second construct instance with state under a name another has |
 | B003 | a `ref()` that names nothing; for a state namespace, nothing at that step |
-| B004 | a value that does not fit its shape, or a name that is not an identifier; a param whose declared `value` does not fit its own declaration (not finite, outside `min..max`, not one of `options`) |
+| B004 | a value that does not fit its shape, or a name that is not an identifier; a param whose declared `value` does not fit its own declaration (not finite, outside `min..max`, not one of `options`); a number that is not finite (`Infinity`, `NaN`) anywhere in a value |
 | B005 | a construct missing a `required` slot |
 | B006 | a second call to a `once` slot |
 | B007 | a lambda that is not an arrow function or its source text, or does not parse |
@@ -100,22 +100,25 @@ A D021 or D022 that depends on the Program (a member `environment(program)` adds
 | B013 | a free name your file declares only inside build-time code (a loop variable, a function's local), not at its top level |
 | B014 | a member of the params that exists only while the Program runs (fields' `u.t`), read by build-time code |
 | B015 | the params read by build-time code other than by name (`"topN" in $`, a spread, `Object.keys($)`, `JSON.stringify($)`, a rest pattern) |
+| B016 | the Program's code opens the root a second time in one run (a Program file builds one Program) |
+| B017 | the Program's code opens the root but returns something other than its builder chain (`{ program: chain }`, what `.build()` returns, nothing) |
 
 ### Lambdas (`L…`, `P…`, `S…`): each lambda's and helper's body, when lowered
 
-A lambda's body is type-checked by lowering, whose codes start with `L` (an unknown member, a type mismatch …), `P` (does not parse) or `S` (outside the Runtime Subset); each is printed at its line inside the lambda, with the lambda's id, or at a helper's line. Three of them are about effects:
+A lambda's body is type-checked by lowering, whose codes start with `L` (an unknown member, a type mismatch …), `P` (does not parse) or `S` (outside the Runtime Subset); each is printed at its line inside the lambda, with the lambda's id, or at a helper's line. Three of them are about effects, and one about handles:
 
 | Code | Refused when |
 |---|---|
 | L004 | an effect the slot's `may` does not allow, the lambda's own or through a helper it calls; or a helper's own effect beyond `helpers.may`, at the helper. With no `helpers`, a helper may read only the members of each instance space's object (`may: ["read <each instance object>"]`): a total read in a helper is L004 unless `helpers.may` lists it, e.g. `helpers: { may: ["read Particle", "read Counters"] }`. The message names the effect and the slot; the fix lists the slot's `may` (widened from "a verb the slot forbids") |
 | L013 | a write to a member without `write: true`, or to part of a vector member (`p.vel.x = 0`) |
+| L018 | a handle (a parameter or global of object type: `p`, `rng`, `$`, `counters`) used other than as `h.member`, `h.method(…)`, `h(…)` when callable, or passed whole as an argument of a call (a helper, a method, an intrinsic): `const q = p`, `[p]`, `return p`; a callable one is only called, never passed (`pick(rng)`) |
 | L017 | a total changed other than by the statement `x.m += <number>` or `x.m++` (`=`, `-=`, `--`, a bump used as a value), or a total read in a slot that may bump it (new) |
 
 ### The checker's own (`C…`)
 
 | Code | Refused when |
 |---|---|
-| C001 | an example file that does not export its Program as a function of the params, `($) => particles(…)…`; or exports a function that does not take exactly one parameter (one with a default, `($ = {}) => …`, counts; a rest parameter does not), the chain itself, or what `.build()` returns; or cannot be loaded |
+| C001 | an example file that does not export its Program as a function of the params, `($) => particles(…)…`; or exports a function that does not take exactly one parameter (one with a default, `($ = {}) => …`, counts; a rest parameter does not), the chain itself, or what `.build()` returns; or whose function opens no Program and returns no chain (one that opens its Program and returns something else is B017); or cannot be loaded |
 | C005 | a function in your definitions (`environment`, a convention function, a check, `init`, `step`) threw while an example was checked; printed at the line that threw |
 | C007 | there are no example files |
 | C008 | a file marked `// REFUSED: <code>` that checks clean: its Program builds and lowers with no error, or it exports no Program, so nothing was refused |

@@ -81,7 +81,7 @@ test("a compound assignment or update evaluates its receiver once", () => {
   assert.equal(draws(same("(self, w) => { w.board.at(w.rng.int(4)).ttl--; }").log), 1);
   same("(self, w) => { const n = w.board.at(w.rng.int(4)).ttl++; w.score = n; }");
   same("(self, w) => { w.score = ++w.board.at(w.rng.int(4)).ttl; }");
-  same("(self, w) => { (w.rng.chance(0.5) ? self : w.board.at(1)).ttl -= 1; }");
+  same("(self, w) => { (w.rng.chance(0.5) ? w.board.at(0) : w.board.at(1)).ttl -= 1; }");
   same("(self, w) => { w.board.at(w.rng.int(4)).ttl = 9; }");
 });
 

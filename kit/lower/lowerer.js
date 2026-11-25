@@ -2,6 +2,7 @@
 // sink that expressions spill into, narrowing facts, effects, and diagnostics.
 
 import { LineTable } from "../parse/lexer.js";
+import { handleRoles } from "./handles.js";
 
 /** @import { Diagnostic, Node, ArrowFunctionExpression } from "../parse/ast.js" */
 /** @import { Type, Expr, Stmt, Local, Effect, EffectVerb, Span } from "../ir/ir.js" */
@@ -68,6 +69,8 @@ export class Lowerer {
     /** Names the lambda itself declares; a callback parameter with one of these is renamed. */
     this.reserved = new Set();
     scanNames(ast, this.taken, this.reserved, true);
+    /** Where each identifier stands, for the handle rule (L018). */
+    this.handleRoles = handleRoles(ast);
   }
 
   /**

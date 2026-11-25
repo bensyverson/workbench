@@ -139,7 +139,7 @@ class Program {
    */
   open(c, parent, args, at) {
     if (parent) noteCall(this, `${c.name} ${JSON.stringify(typeof args[0] === "string" ? args[0] : c.name)}`);
-    else noteRoot(this);
+    else noteRoot(this, typeof args[0] === "string" ? `${c.name} '${args[0]}'` : c.name, at);
     const specs = /** @type {T.Tagged[]} */ (c.def.opens ?? []);
     const { args: made, found: f } = matchArgs(specs, args);
     /** @type {Record<string, unknown>} */
@@ -147,7 +147,7 @@ class Program {
     specs.forEach((s, i) => { if (i < made.length) opened[openKey(s, i)] = made[i]; });
     /** @type {Instance} */
     const inst = { construct: c, opened, parent, children: [], calls: [], loc: at.loc, file: at.file };
-    this.report(f.errors, c.name, at);
+    this.report(f.errors.filter((e) => !this.knockOn(e, inst, "")), c.name, at);
     let named = true;
     specs.forEach((s, i) => { if (s[TAG] === "name" && typeof made[i] === "string") named = this.declare(/** @type {T.NameTag} */ (s), inst, made[i], at, true) && named; });
     // a name its namespace refused already is one mistake: the state namespace would only say it again
@@ -222,6 +222,19 @@ class Program {
     else set.add(value);
   }
 
+  /**
+   * Whether a shape's B004 for a number that is not finite is said better elsewhere, so one mistake is one
+   * diagnostic: a param's declared value is held to its declaration below, which names the param; and a value
+   * that is a refused declared value (`$` answers it) is that refusal's knock-on.
+   * @param {Found["errors"][number]} e @param {Instance} inst @param {string} slot
+   */
+  knockOn(e, inst, slot) {
+    if (!e.finite) return false;
+    const param = inst === this.root && slot === this.paramSlot();
+    if (param && e.path.length === 2 && e.path[0] === 1 && e.path[1] === "value") return true;
+    return [...this.declared().values()].some((d) => d !== null && typeof d === "object" && Object.is(/** @type {{ value?: unknown }} */ (d).value, e.value));
+  }
+
   /** The params declared so far, by name: each declaration, its `value` the default (for run). */
   declared() {
     const slot = this.paramSlot();
@@ -291,6 +304,7 @@ class Program {
     } else {
       const specs = /** @type {T.Tagged[]} */ (s.args);
       const m = matchArgs(specs, args);
+      m.found.errors = m.found.errors.filter((e) => !this.knockOn(e, inst, slot));
       for (const e of m.found.errors) Object.assign(e, valueNotLambda(e, args, slot));
       this.report(m.found.errors, `${what}, .${slot}`, at);
       if (inst === this.root && slot === this.paramSlot() && typeof args[0] === "string" && PROBES.has(args[0]) && !OBJECT_PROBES.includes(args[0])) {

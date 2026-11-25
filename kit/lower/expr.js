@@ -8,6 +8,7 @@ import { call, reachable } from "./call.js";
 import { assign, update } from "./assign.js";
 import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
 import { nullCheck, nullCheckOf, nullFacts } from "./nullcheck.js";
+import { refuseHandle } from "./handles.js";
 import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -142,6 +143,7 @@ export function identifier(L, node) {
       return bad(node);
     }
     if (b.pending) { L.error(b.pending.code, node, b.pending.message, b.pending.tip); return L.ex({ k: "local", name: b.name, t: "unknown", span }); }
+    if (b.kind === "param" && refuseHandle(L, node, b.t, "param")) return bad(node);
     const t = L.narrowed.has(b.name) && typeof b.t === "object" && "opt" in b.t ? b.t.opt : b.t;
     return L.ex({ k: "local", name: b.name, t, span });
   }
@@ -162,7 +164,7 @@ export function identifier(L, node) {
     return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
   }
   const g = L.environment.globals[node.name];
-  if (g) return L.ex({ k: "global", name: node.name, t: g, span });
+  if (g) return refuseHandle(L, node, g, "global") ? bad(node) : L.ex({ k: "global", name: node.name, t: g, span });
   if (isNumericName(L, node.name)) {
     L.error("L003", node, `'${node.name}' is a function here.`, `Call it: ${node.name}(…).`);
     return bad(node);

@@ -137,7 +137,8 @@ test("a host's mistake throws: a value for an undeclared param or of the wrong t
   assert.throws(() => run(query, { values: { topN: "ten" } }), /topN/);
   assert.throws(() => run(query, { wat: 1 }), TypeError);
   assert.throws(() => run(program("q")), TypeError);
-  assert.throws(() => run(($) => program("q").build()), /builder/);
+  // a function that opened its root and returns what .build() gives is the author's B017 since 2026-11-25 (run-shape.test.js), not a host mistake
+  assert.deepEqual(run(($) => program("q").build()).diagnostics.map((d) => d.code), ["B017"]);
   assert.throws(() => run(($) => 3), /builder/);
 });
 

@@ -10,7 +10,7 @@ import { an } from "./codes.js";
 
 /**
  * @typedef {object} Found
- * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt, severity?: "warning", tip?: string }>} errors  errors, and warnings that do not refuse the call
+ * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt, severity?: "warning", tip?: string, finite?: true, value?: number }>} errors  errors, and warnings that do not refuse the call; `finite` marks a number that is not finite (`value`), which still fits its shape's type
  * @property {Array<{ ns: string, value: string, path: Array<string | number> }>} refs
  * @property {Array<{ convention: string, src: string, ast: ArrowFunctionExpression, path: Array<string | number>, key?: string }>} lambdas
  */
@@ -25,6 +25,9 @@ export const found = () => ({ errors: [], refs: [], lambdas: [] });
 
 /** What refuses the value: the errors that are not warnings. @param {Found} o */
 export const refusals = (o) => o.errors.filter((e) => e.severity !== "warning");
+
+/** Whether a value fits a `oneOf` branch's form: nothing refuses it but a number that is not finite. @param {Found} o */
+const fitsType = (o) => refusals(o).every((e) => e.finite);
 
 /**
  * A Runtime Lambda's source: a string as is, an arrow function's text; B007 otherwise or when it does not parse.
@@ -59,6 +62,14 @@ export function constSource(v) {
   return r.ok ? { src: v, ast: r.ast } : { error: `the constant does not parse: ${r.diagnostics[0]?.code} ${r.diagnostics[0]?.message}` };
 }
 
+/**
+ * B004 for Infinity, -Infinity or NaN where a number stands. It carries the value, so a call that receives a
+ * param's refused declared value can be told from one that writes its own.
+ * @param {number} v @param {Array<string | number>} path
+ * @returns {Found["errors"][number]}
+ */
+const nonFinite = (v, path) => ({ code: "B004", path, message: `${where(path)}: ${v} is not a finite number, and a record holds finite numbers only`, finite: true, value: v });
+
 /** @param {Array<string | number>} path */
 export const where = (path) => path.map((p, i) => (typeof p === "number" ? `${i === 0 ? "argument" : "item"} ${p + 1}` : `key '${p}'`)).join(", ");
 
@@ -86,7 +97,7 @@ function describeShape(shape) {
  * @param {unknown[]} alts @param {{ o: Found, value: unknown }} hit @param {Array<string | number>} path @param {string} [key]
  */
 function recordPicksOther(alts, hit, path, key) {
-  const fits = alts.map((alt) => { const o = found(); matchShape(alt, hit.value, path, o, key); return o; }).filter((o) => refusals(o).length === 0);
+  const fits = alts.map((alt) => { const o = found(); matchShape(alt, hit.value, path, o, key); return o; }).filter(fitsType);
   const best = fits.reduce((/** @type {Found | undefined} */ b, o) => (!b || o.lambdas.length > b.lambdas.length ? o : b), undefined);
   const places = (/** @type {Found} */ o) => JSON.stringify(o.lambdas.map((l) => l.path));
   return best !== undefined && places(best) !== places(hit.o);
@@ -102,7 +113,10 @@ export function matchShape(shape, v, path, out, key) {
   if (typeof shape === "string") {
     const ok = shape === "number" ? typeof v === "number" : shape === "string" ? typeof v === "string" : shape === "boolean" ? typeof v === "boolean"
       : Array.isArray(v) && v.every((x) => typeof x === (shape === "string[]" ? "string" : "number"));
-    return ok ? (Array.isArray(v) ? [...v] : v) : fail(`expected ${shape === "string[]" ? "a list of strings" : shape === "number[]" ? "a list of numbers" : `a ${shape}`}, got ${describe(v)}`);
+    if (!ok) return fail(`expected ${shape === "string[]" ? "a list of strings" : shape === "number[]" ? "a list of numbers" : `a ${shape}`}, got ${describe(v)}`);
+    // A record holds finite numbers only: no target, nor the IR's JSON form, can hold Infinity or NaN.
+    (Array.isArray(v) ? v.map((x, i) => [x, [...path, i]]) : [[v, path]]).forEach(([x, at]) => { if (typeof x === "number" && !Number.isFinite(x)) out.errors.push(nonFinite(x, at)); });
+    return Array.isArray(v) ? [...v] : v;
   }
   if (isPlainObject(shape)) {
     if (!isPlainObject(v) || typeof v === "function") return fail(`expected an object, got ${describe(v)}`);
@@ -122,8 +136,9 @@ export function matchShape(shape, v, path, out, key) {
       const tries = s.of.map((alt) => { const o = found(); return { o, value: matchShape(alt, v, path, o, key) }; });
       // The record keeps a lambda as text, which a "string" branch also takes, so a call and a later re-match
       // of its record must agree: among the branches that fit, the one holding the most lambdas wins (the
-      // first on a tie). At any depth, text that parses as an arrow function is then the lambda.
-      const fits = tries.filter((t) => refusals(t.o).length === 0);
+      // first on a tie). At any depth, text that parses as an arrow function is then the lambda. A number
+      // that is not finite still picks the number's branch, whose B004 then says what is wrong with it.
+      const fits = tries.filter((t) => fitsType(t.o));
       const hit = fits.reduce((/** @type {(typeof fits)[number] | undefined} */ best, t) => (!best || t.o.lambdas.length > best.o.lambdas.length ? t : best), undefined);
       if (hit && hit.o.lambdas.length && recordPicksOther(s.of, hit, path, key)) {
         return fail(`once its lambdas are text, as the record keeps them, it fits another of its forms with lambdas in other places, which the record would be read as; pass every lambda of it as a function, or as text, so the call and its record agree`);
@@ -164,7 +179,6 @@ export function matchShape(shape, v, path, out, key) {
       const made = matchShape(/** @type {T.DataTag} */ (s).shape, v, path, out, key);
       const o = /** @type {Record<string, unknown> | undefined} */ (/** @type {T.DataTag} */ (s).opts);
       if (refusals(out).length > before || typeof v !== "number" || !o) return made;
-      if ((typeof o.min === "number" || typeof o.max === "number") && !Number.isFinite(v)) return fail(`${v} is not finite, and a number with a min or max must be`);
       if (typeof o.min === "number" && !(v >= o.min)) return fail(`${v} is below its min, ${o.min}`);
       if (typeof o.max === "number" && !(v <= o.max)) return fail(`${v} is above its max, ${o.max}`);
       if (o.whole === true && !Number.isInteger(v)) return fail(`${v} is not a whole number (whole: true)`);

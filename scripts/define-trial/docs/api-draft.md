@@ -404,7 +404,7 @@ The generated builder reports with the kit's diagnostic: `{ code, severity, mess
 | B001 | a method the construct does not have, with a "did you mean" |
 | B002 | a `name()` already declared in its namespace, or a second construct instance with state under a name another one has |
 | B003 | a `ref()` that names nothing, with a "did you mean" |
-| B004 | a value that does not fit its shape, naming the part that does not; a param whose declared `value` does not fit its own declaration (not finite, outside `min..max`, not one of `options`) |
+| B004 | a value that does not fit its shape, naming the part that does not; a param whose declared `value` does not fit its own declaration (not finite, outside `min..max`, not one of `options`); a number that is not finite (`Infinity`, `NaN`) anywhere in a value |
 | B005 | `.build()` on a construct missing a `required` slot |
 | B006 | a second call to a `once` slot |
 | B007 | a lambda that is not an arrow function or its source text, or does not parse |
@@ -416,6 +416,8 @@ The generated builder reports with the kit's diagnostic: `{ code, severity, mess
 | B013 | a free name the file declares only inside build-time code, not at its top level |
 | B014 | a member of the params that exists only while the Program runs (fields' `u.t`), read by build-time code |
 | B015 | the params read by build-time code other than by name: `in`, a spread, `Object.keys`, `JSON.stringify`, a rest pattern |
+| B016 | the Program's code opens the root a second time in one run (a Program file builds one Program) |
+| B017 | the Program's code opens the root but returns something other than its builder chain (`{ program: chain }`, what `.build()` returns, nothing) |
 
 ### Refusing what the language does not do
 

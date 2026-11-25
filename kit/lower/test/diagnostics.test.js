@@ -23,7 +23,7 @@ function only(code, ...args) {
 }
 
 test("every lowering code has a test below", () => {
-  assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015", "L016"]);
+  assert.deepEqual(Object.keys(LOWER_CODES), ["L001", "L002", "L003", "L004", "L005", "L006", "L007", "L008", "L009", "L010", "L011", "L012", "L013", "L014", "L015", "L016", "L018"]);
 });
 
 test("L001: a free identifier the environment does not declare", () => {
@@ -156,6 +156,13 @@ test("L016: a number literal that is not finite, which no number type or the IR'
   assert.match(d.tip, /finite/);
   assert.equal(only("L016", "(self) => { if (self.ttl < -1e400) self.up = false; }").text, "1e400");
   assert.deepEqual(codes(lower("(self) => { self.ttl = 1.7e308; }")), [], "the largest finite doubles still lower");
+});
+
+test("L018: a handle the language hands the lambda, used as a value (more in handles.test.js)", () => {
+  const { d, text } = only("L018", "(self, w) => { const me = self; me.up = true; }");
+  assert.equal(text, "self");
+  assert.match(d.message, /'self' is a handle/);
+  assert.match(d.tip, /self\.member/);
 });
 
 test("L004's tip in the DMG still says where the effect belongs", () => {

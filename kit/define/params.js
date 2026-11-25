@@ -30,7 +30,7 @@ import { BuildError, programOf } from "./grammar.js";
  * made (each is thrown into build-time code and also kept here, so code that catches one does not make the run
  * succeed) and the host's bad value, if one was read (`hostError`: kept for the same reason, and it outranks every refusal). `early` holds reads made before the Program opened of a name some Dialect knows only at run time:
  * whether such a read is B014 or B003 depends on the Program's Dialect, so it is decided when the Program opens.
- * @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, closed: boolean, refusals: T.BuildDiagnostic[], hostError: Error | null, early: Array<{ prop: string, diagnostic: T.BuildDiagnostic }> }} Run
+ * @typedef {{ values: Record<string, unknown>, reads: Read[], pending: Array<Omit<Read, "by">>, program: RunProgram | null, label: string, site: { file: string, loc: Loc } | null, closed: boolean, refusals: T.BuildDiagnostic[], hostError: Error | null, early: Array<{ prop: string, diagnostic: T.BuildDiagnostic }> }} Run
  */
 
 /** The open run, while `programFn` runs. @type {Run | null} */
@@ -39,13 +39,21 @@ let current = null;
 const RUN_KEYS = ["values", "scope", "sources", "buildTime"];
 
 /**
- * A Program opened its root: the first one in a run is the run's Program.
- * @param {RunProgram} program
+ * A Program opened its root: the first one in a run is the run's Program. A Program file builds one Program, so
+ * a second opening in the same run is B016, kept on the run (whichever of the two the code returns).
+ * @param {RunProgram} program @param {string} label  how a message names it: `particles 'spare'`
+ * @param {{ file: string, loc: Loc }} site  the opening call, where B017 points
  */
-export function noteRoot(program) {
-  if (!current || current.program) return;
-  current.program = program;
-  settleEarly(current);
+export function noteRoot(program, label, site) {
+  if (!current) return;
+  if (!current.program) {
+    current.program = program;
+    current.label = label;
+    current.site = site;
+    settleEarly(current);
+    return;
+  }
+  current.refusals.push(refusal("B016", `the Program's code opens a second Program, ${label}, after ${current.label}: a Program file builds one Program, so it opens its root once`, "build one Program and return its chain; delete the other, or move it to a file of its own"));
 }
 
 /**
@@ -223,7 +231,7 @@ export function run(programFn, options = {}) {
   if (values === null || typeof values !== "object" || Array.isArray(values)) throw new TypeError("run({ values }): values are the params' values, by name");
   if (current) throw new Error("run() does not nest: a Program's code may not call run");
   /** @type {Run} */
-  const ctx = { values, reads: [], pending: [], program: null, closed: false, refusals: [], hostError: null, early: [] };
+  const ctx = { values, reads: [], pending: [], program: null, label: "", site: null, closed: false, refusals: [], hostError: null, early: [] };
   current = ctx;
   /** @type {unknown} */
   let out;
@@ -258,6 +266,11 @@ export function run(programFn, options = {}) {
   // build-time code caught a refusal and went on: the run still fails with it
   if (ctx.refusals.length) return stopped(ctx.refusals);
   const program = programOf(out);
+  // The code opened its root and returned something else: the Program author's mistake, at the opening.
+  if ((!program || program !== ctx.program) && ctx.program && ctx.site) {
+    const what = out === undefined ? "nothing" : out === null || typeof out !== "object" ? `${typeof out === "string" ? JSON.stringify(out) : String(out)}` : Array.isArray(out) ? "an array" : "an object";
+    return stopped([{ code: "B017", severity: "error", message: `the Program's code opens ${ctx.label} but returns ${what}, not its builder chain`, tip: "return the chain itself, export default ($) => program(…)…, without .build() and not wrapped in an object", loc: ctx.site.loc, range: [0, 0], file: ctx.site.file }]);
+  }
   if (!program || program !== ctx.program) throw new TypeError(`run(programFn): programFn($) must return the Program's builder chain (without .build()), not ${out === null || typeof out !== "object" ? String(out) : "an object"}`);
   for (const r of ctx.pending) ctx.reads.push({ ...r, by: null });
   const declared = program.declared();

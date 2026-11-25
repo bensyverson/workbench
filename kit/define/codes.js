@@ -45,6 +45,8 @@ export const BUILD_CODES = Object.freeze({
   B013: "A free name the file declares only inside build-time code, not at its top level",
   B014: "A member of the params known only at run time (fields' u.t), read by build-time code",
   B015: "The params read by build-time code other than by name ($.name): with in, a spread, Object.keys, JSON.stringify or a rest pattern",
+  B016: "A Program's code that opens its root more than once in one run (a Program file builds one Program)",
+  B017: "A Program's code that opens its root but returns something other than that builder chain ({ program: chain }, what .build() returns, nothing)",
 });
 
 /** A word with its indefinite article, for a message: `an account`, `a flow`. @param {string} w */
