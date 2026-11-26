@@ -17,6 +17,7 @@ export const COMPOSE_CODES = Object.freeze({
   S203: "An enum the consumer does not accept",
   S204: "A list longer than the consumer's max",
   S205: "A rename that names a field the producer's record lacks or the consumer's does not take (with a did-you-mean), maps two fields to one, or renames into a field the producer already has; or a rename on a wire that carries no record",
+  S206: "A warning, not an error: a wire drops a producer field the consumer does not take and fills a consumer field with its default, and the two fields' seams are compatible, so a rename was probably meant (the fix names it)",
   S251: "Tagged on both sides, no frame path",
   S252: "Tagged on one side only",
   S253: "Two frame paths disagree (names both, and the edges on each)",

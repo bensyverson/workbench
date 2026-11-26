@@ -29,7 +29,7 @@ export default ($) => {
 | `.wire(out, in, options?)` | an output handle to an input handle. `rename: { producerField: "consumerField" }` renames record fields, as data; `delay: true` makes the consumer read the previous instant's snapshot, which breaks a cycle. A rename reaches the records of an Event, of a record value and of a `list<{ … }, n>` value |
 | `.show(part)` | the part whose stage the page shows; one |
 | `.check(options?)` | every diagnostic at once: the S codes below, and a part's own (B, L, D) prefixed `part '<name>' (<dialect>): ` |
-| `.build(options?)` | the composed record, or throws `ComposeError` (its `diagnostics`, and a message printed as below) |
+| `.build(options?)` | the composed record, or throws `ComposeError` (its `diagnostics`, and a message printed as below) when any diagnostic is an error; a warning (S206) does not stop a build |
 | `.plan(options?)` | each checked wire as text: `level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +[16, 48]` |
 | `formatDiagnostic(d, base?)` | a diagnostic as the draft prints it (below); `base` drops the glue's folder from the file |
 | `scanGlue(text, packages, path?)` | a glue's text, from its syntax tree: its imports by kit/package's `scanImports` (`"kit/compose"`, `"kit/define"` and the package names only, no dynamic import; K007 otherwise), and S301 at the line of any test or comparison of a handle (by shape; see the S301 notes) |
@@ -81,6 +81,7 @@ workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the field 'at' i
 | S203 | an enum the consumer does not accept |
 | S204 | a list longer than the consumer's max |
 | S205 | a rename naming a field either side lacks (with a did-you-mean), two fields into one, into a field the producer has, or on a wire with no record (an Event, a record, or a list of records) |
+| S206 | a warning (`severity: "warning"`), not an error: a wire drops a producer field the consumer does not take and fills a consumer field with its default, and the two fields' seams are compatible, so a rename was probably meant; the fix names `rename: { <dropped>: "<filled>" }` (ignore it when the default is intended) |
 | S251 | tagged on both sides, no frame path (the fix suggests `.frame`, says frames of different dims cannot join, or, when one side is the kit's `s`, that `s` relates to no package frame) |
 | S252 | tagged on one side only |
 | S253 | two frame paths disagree (both, with their edges) |

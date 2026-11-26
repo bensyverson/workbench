@@ -161,7 +161,7 @@ export function declareSeams(def) {
           continue;
         }
         const bad = fits(s.fields[k], v);
-        if (bad) add("D028", where, `${what}: the default of the field '${field}' (= ${printValue(v)}) does not fit ${printSeam(s.fields[k])}: ${bad}`, `${k}: ${printSeam(s.fields[k])} = ${sampleDefault(s.fields[k])}`);
+        if (bad) add("D028", where, `${what}: the default of the field '${field}' (= ${printValue(v)}) does not fit ${printSeam(s.fields[k])}: ${bad}`, s.fields[k].kind === "record" ? `a record-typed field takes no default: remove = ${printValue(v)}` : `${k}: ${printSeam(s.fields[k])} = ${sampleDefault(s.fields[k])}`);
       }
       for (const [k, v] of Object.entries(s.fields)) walk(v, path ? `${path}.${k}` : k);
     };

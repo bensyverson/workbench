@@ -95,6 +95,16 @@ test("an init whose state lacks a declared field does not fit (N002), and one wi
   assert.deepEqual(r2.diagnostics.map((/** @type {any} */ d) => d.code), ["N003"]);
 });
 
+test("a state that has a stray field and also misfits reports both, as N003", () => {
+  const kit = swarmKit();
+  const both = defineRuntime(kit.grammar, { clock: () => ({ tick: 1 / 4 }), init: () => ({ t: "bad", items: [{ x: 0, heat: 1, spare: 2 }] }), step: (/** @type {any} */ s) => s });
+  const r = createRun(oneSwarm({ ...kit, runtime: both }, (b) => b.field("heat", { value: 1, grow: 0 })), { runtimes: [both] });
+  assert.deepEqual(r.diagnostics.map((/** @type {any} */ d) => d.code), ["N003"]);
+  const m = r.diagnostics[0].message;
+  assert.match(m, /spare/);
+  assert.match(m, /\bt\b/, m);
+});
+
 test("the content key and replay change when a declared field changes", () => {
   const kit = swarmKit();
   const a = oneSwarm(kit, (b) => b.field("heat", { value: 1, grow: 2 }));

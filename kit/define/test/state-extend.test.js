@@ -93,6 +93,15 @@ test("D023: two extensible structs, one inside a union, or the option anywhere b
   assert.throws(empty, (e) => codesOf(e).includes("D023"), "an empty struct that is not extensible is still refused");
 });
 
+test("D023: a Program-declared field is not extensible, however deep", () => {
+  const d = /** @type {any} */ (defineDialect(/** @type {any} */ (decl({ environment: () => ({ state: { h: struct({ a: "f64" }, { extensible: true }) } }) }))));
+  assert.throws(() => d.stateTypeFor({}), (e) => codesOf(e).includes("D023") && /extensible/.test(String(/** @type {any} */ (e).message)));
+  const deep = /** @type {any} */ (defineDialect(/** @type {any} */ (decl({ environment: () => ({ state: { h: list(struct({ a: "f64" }, { extensible: true }), 4) } }) }))));
+  assert.throws(() => deep.stateTypeFor({}), (e) => codesOf(e).includes("D023"));
+  const plain = /** @type {any} */ (defineDialect(/** @type {any} */ (decl({ environment: () => ({ state: { h: struct({ a: "f64" }) } }) }))));
+  assert.deepEqual(Object.keys(plain.stateFields({})), ["h"], "a plain struct is still fine");
+});
+
 test("D011: extensible outside the run's state", () => {
   const f = () => defineDialect(/** @type {any} */ (decl({ slots: { k: { params: [struct({ x: "f64" }, { extensible: true })], returns: "f64", space: "s" } } })));
   assert.throws(f, (e) => codesOf(e).includes("D011") && /extensible.*only in the run's state/.test(String(/** @type {any} */ (e).message)));

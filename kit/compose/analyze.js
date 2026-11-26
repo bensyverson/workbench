@@ -8,7 +8,7 @@ import { lowerRecord } from "../define/lower.js";
 import { instanceName } from "../define/record.js";
 import { didYouMean } from "../define/codes.js";
 import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
-import { compareSeams, printValue, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
+import { compareSeams, printValue, printSeam, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
 import { applyRename, undelayedLoops } from "./wires.js";
 import { queueProblems } from "./queues.js";
 
@@ -32,7 +32,7 @@ export function analyze(name, start, calls, options) {
   /** @type {ComposeDiagnostic[]} */
   const out = [];
   /** @param {At} at @param {string} code @param {string} message @param {string} fix @param {{ from?: Side, to?: Side }} [sides] */
-  const add = (at, code, message, fix, sides = {}) => out.push({ code, severity: "error", message, file: at.file, loc: at.loc, ...sides, fix });
+  const add = (at, code, message, fix, sides = {}, severity = /** @type {"error" | "warning"} */ ("error")) => out.push({ code, severity, message, file: at.file, loc: at.loc, ...sides, fix });
   if (typeof name !== "string" || !/^[a-z][a-z0-9-]*$/.test(name)) add(start, "S102", `compose(${showValue(name)}): a composition's name is the workbench's, lowercase letters, digits and -`, 'compose("coin-bursts")');
   const versionOf = (/** @type {any} */ dialect) => options.packages?.find((p) => p.dialect === dialect || p.name === dialect.name)?.version;
 
@@ -195,6 +195,9 @@ export function analyze(name, start, calls, options) {
     wire.fill = cmp.filled;
     if (cmp.problems.length) wire.ok = false;
     for (const p of cmp.problems) add(at, p.code, `${text}: ${p.message}`, fixFor(p.code, po.seamText, pi.seamText), sides);
+    for (const m of maskedRenames(renamed.seam, pi.seam, cmp)) {
+      add(at, "S206", `${text}: the wire drops ${m.from}, which the input does not take, and fills ${m.to} (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) with its default; ${m.from} is the same kind of field`, `if ${m.from} was meant to feed ${m.to}, rename it: .wire(${handleText(ho)}, ${handleText(hi)}, { rename: { ${m.from}: "${m.to}" } }); if the default is intended, ignore this`, sides, "warning");
+    }
     for (const leaf of cmp.tagged) {
       const fromId = node(pa, leaf.from), toId = node(pb, leaf.to);
       const path = graph.path(fromId, toId);
@@ -297,6 +300,29 @@ function wireOptions(o) {
   const r = x.rename;
   if (r !== undefined && (r === null || typeof r !== "object" || Array.isArray(r) || !Object.values(r).every((v) => typeof v === "string"))) return `rename is { producerField: "consumerField" }, not ${describe(r)}`;
   return { rename: /** @type {Record<string, string>} */ ({ ...(r ?? {}) }), delay: x.delay === true };
+}
+
+/**
+ * Each producer field a wire drops that could stand in for a consumer field the wire fills with a default: the
+ * seams compare clean field to field, so the glue likely forgot a rename. Top-level record fields only, which is
+ * where a default can be.
+ * @param {any} from @param {any} to @param {{ dropped: string[], filled: Record<string, unknown> }} cmp
+ * @returns {Array<{ from: string, to: string, type: string }>}
+ */
+function maskedRenames(from, to, cmp) {
+  const rec = (/** @type {any} */ s) => (s.kind === "event" ? s.of : s);
+  const a = rec(from), b = rec(to);
+  if (a.kind !== "record" || b.kind !== "record") return [];
+  /** @type {Array<{ from: string, to: string, type: string }>} */
+  const found = [];
+  for (const d of cmp.dropped) {
+    if (!Object.hasOwn(a.fields, d)) continue;
+    for (const f of Object.keys(cmp.filled)) {
+      if (Object.hasOwn(a.fields, f) || !Object.hasOwn(b.fields, f)) continue;
+      if (compareSeams(a.fields[d], b.fields[f]).problems.length === 0) found.push({ from: d, to: f, type: printSeam(b.fields[f]) });
+    }
+  }
+  return found;
 }
 
 /** Where a part's own diagnostic points: its file and line when it has one, else the .part call. @param {any} d @param {At} at @returns {At} */

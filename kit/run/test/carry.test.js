@@ -32,6 +32,23 @@ test("a point1 is a plain number: it converts by scale and offset (100 C is 212 
 test("a wire's fill gives a record each defaulted field it lacks, after the conversions, and never overrides one it has", () => {
   const w = { ...wire({ convert: [{ field: "at", kind: "point", scale: [2, 2], offset: [0, 0] }] }), fill: { speed: 40, push: [0, 1] } };
   assert.deepEqual(carry({ at: [1, 1] }, w), { at: [2, 2], speed: 40, push: [0, 1] }, "the default is the consumer's, so it is not converted");
-  assert.deepEqual(carry({ at: [1, 1], speed: 3 }, w), { at: [2, 2], speed: 3, push: [0, 1] });
   assert.deepEqual(carry({ at: [1, 1] }, wire({})), { at: [1, 1] }, "a wire with no fill adds nothing");
+});
+
+test("a planned fill always wins: an undeclared field a runtime pushes under that name is replaced, never passed through", () => {
+  const w = { ...wire({}), fill: { speed: 40 } };
+  assert.deepEqual(carry({ n: 1, speed: "not-a-number" }, w), { n: 1, speed: 40 });
+});
+
+test("each carried record gets its own copy of a filled list or record, so freezing one never freezes the shared default", () => {
+  const shared = [1, 2], rec = { x: { y: 1 } };
+  const w = { ...wire({}), fill: { l: shared, r: rec } };
+  const a = /** @type {any} */ (carry({ n: 1 }, w)), b = /** @type {any} */ (carry({ n: 2 }, w));
+  assert.notEqual(a.l, shared);
+  assert.notEqual(a.l, b.l);
+  assert.notEqual(a.r.x, rec.x);
+  assert.deepEqual(a, { n: 1, l: [1, 2], r: { x: { y: 1 } } });
+  Object.freeze(a.l);
+  assert.equal(Object.isFrozen(shared), false);
+  assert.equal(Object.isFrozen(b.l), false);
 });

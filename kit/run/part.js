@@ -104,7 +104,11 @@ function stateProblem(p, s, what) {
   const bad = p.runtime.dialect.checkState?.(s, p.record) ?? [];
   if (!bad.length) return null;
   const outside = bad.filter((/** @type {{ outside?: true }} */ m) => m.outside);
-  if (outside.length) return { code: "N003", message: `part '${p.name}' (${p.dialect}): ${what} a state that kept memory outside its state: ${stateErrorMessage(p.dialect, outside)}` };
+  if (outside.length) {
+    const misfits = bad.filter((/** @type {{ outside?: true }} */ m) => !m.outside);
+    const also = misfits.length ? `\n  and it does not fit otherwise: ${stateErrorMessage(p.dialect, misfits)}` : "";
+    return { code: "N003", message: `part '${p.name}' (${p.dialect}): ${what} a state that kept memory outside its state: ${stateErrorMessage(p.dialect, outside)}${also}` };
+  }
   return { code: "N002", message: `part '${p.name}': ${what} a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
 }
 

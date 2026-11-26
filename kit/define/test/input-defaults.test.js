@@ -43,3 +43,13 @@ test("D028: a default anywhere but a top-level field of an Event input's record"
   assert.deepEqual(codes(refused(particlesDecl, (d) => { d.ports.in.burst.seam = "Event<{ at: point2@px, m: { a: f64 = 1 } }>"; })), ["D028"], "a nested record");
   assert.deepEqual(codes(refused(particlesDecl, (d) => { d.ports.in.radius = { seam: "{ r: f64 = 1 }", default: { r: 1 } }; })), ["D028"], "a value input");
 });
+
+test("D028: a record-typed field takes no default, and the tip says so instead of offering a literal the seam grammar cannot read", () => {
+  const ds = refused(particlesDecl, (d) => { d.ports.in.burst.seam = "Event<{ at: point2@px, a: { x: f64 } = 1 }>"; });
+  assert.deepEqual(codes(ds), ["D028"]);
+  assert.match(ds[0].tip, /record-typed field takes no default/);
+  assert.doesNotMatch(ds[0].tip, /\{ x: 0 \}/);
+  // a scalar still gets a sample that fits
+  const sc = refused(particlesDecl, (d) => { d.ports.in.burst.seam = "Event<{ at: point2@px, a: str = 1 }>"; });
+  assert.match(sc[0].tip, /a: str = ""/);
+});

@@ -55,7 +55,8 @@ function dropAt(v, path) {
 /**
  * One value or record carried across a wire: renamed, dropped, converted, then filled: each field the producer's
  * record lacks and the consumer declares a default for gets that default (already in the consumer's frame, so after
- * the conversions). The wire never computes a value.
+ * the conversions), in a copy per record. The plan decided statically that the producer's seam lacks the field, so
+ * the default replaces whatever a runtime pushed under that name. The wire never computes a value.
  * @param {unknown} v @param {{ rename: Record<string, string>, dropped: string[], convert: Conversion[], fill?: Record<string, unknown> }} wire
  * @returns {unknown}
  */
@@ -66,8 +67,9 @@ export function carry(v, wire) {
   for (const c of wire.convert) out = convertAt(out, segments(c.field), c);
   if (wire.fill && out !== null && typeof out === "object" && !Array.isArray(out)) {
     const o = /** @type {Record<string, unknown>} */ (out);
-    const missing = Object.entries(wire.fill).filter(([k]) => !Object.hasOwn(o, k));
-    if (missing.length) out = { ...o, ...Object.fromEntries(missing) };
+    const entries = Object.entries(wire.fill);
+    // a copy per record: the defaults are the Dialect's parsed seam values, and a consumer may freeze what it is handed
+    if (entries.length) out = { ...o, ...Object.fromEntries(entries.map(([k, d]) => [k, structuredClone(d)])) };
   }
   return out;
 }

@@ -16,7 +16,7 @@ import { formatDiagnostic } from "./format.js";
  */
 /**
  * One diagnostic of a composition: at the glue's line (or a part's own, for a part's diagnostic), with the sides.
- * @typedef {{ code: string, severity: "error", message: string, file: string, loc: Loc, from?: Side, to?: Side, fix: string }} ComposeDiagnostic
+ * @typedef {{ code: string, severity: "error" | "warning", message: string, file: string, loc: Loc, from?: Side, to?: Side, fix: string }} ComposeDiagnostic
  */
 /** @typedef {{ field: string, kind: "point" | "vector" | "quantity", rate?: true, from: string, to: string, scale: number[], offset: number[] }} Conversion */
 /**
@@ -71,10 +71,10 @@ export function compose(name) {
     show: (part) => push({ kind: "show", value: part }),
     /** Every S diagnostic, and the parts' own. @param {ComposeOptions} [o] @returns {ComposeDiagnostic[]} */
     check: (o) => run(o).diagnostics,
-    /** The composed record; throws ComposeError with every diagnostic when there are any. @param {ComposeOptions} [o] @returns {Composed} */
+    /** The composed record; throws ComposeError with every diagnostic (warnings included) when any is an error. @param {ComposeOptions} [o] @returns {Composed} */
     build: (o) => {
       const a = run(o);
-      if (a.diagnostics.length) throw new ComposeError(a.diagnostics);
+      if (a.diagnostics.some((d) => d.severity === "error")) throw new ComposeError(a.diagnostics);
       return a.record;
     },
     /** Each checked wire and its conversions, as text: `level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +16`. @param {ComposeOptions} [o] */

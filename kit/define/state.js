@@ -12,9 +12,10 @@ const TIP = `state: { score: "f64", player: struct({ x: "f64", y: "f64" }), bodi
 
 /**
  * Every D023 for a Dialect's `state`. Members are types, never objects (a run's state is data).
- * @param {unknown} state @param {TypeScope} scope @returns {Problem[]}
+ * `own: false` judges a Program's added fields, none of which may be extensible (a state has one extensible struct).
+ * @param {unknown} state @param {TypeScope} scope @param {{ own?: boolean }} [opts] @returns {Problem[]}
  */
-export function validateState(state, scope) {
+export function validateState(state, scope, { own: dialectOwn = true } = {}) {
   /** @type {Problem[]} */
   const out = [];
   if (!isPlainObject(state)) return [{ code: "D023", path: ["state"], message: `state must be an object of the run's members, not ${describe(state)}.`, tip: TIP }];
@@ -36,7 +37,8 @@ export function validateState(state, scope) {
     checkType(t, noObjects, { openList: true, extensible: true }, path, `state member '${k}'`, found);
     out.push(...found.map((p) => ({ ...p, code: "D023" })));
   }
-  if (marks.length > 1) out.push({ code: "D023", path: marks[1], message: `state marks more than one extensible struct (${marks.map((m) => m.slice(1).join(".")).join(", ")}); a Dialect marks one extensible struct, where a Program's declarations add their fields.`, tip: "keep { extensible: true } on the one struct a Program's own data belongs in" });
+  if (!dialectOwn) for (const m of marks) out.push({ code: "D023", path: m, message: "a field a Program declares is not extensible: a state has one extensible struct, the Dialect's, and the Program's fields go in it.", tip: "remove { extensible: true } from the Program's field type" });
+  else if (marks.length > 1) out.push({ code: "D023", path: marks[1], message: `state marks more than one extensible struct (${marks.map((m) => m.slice(1).join(".")).join(", ")}); a Dialect marks one extensible struct, where a Program's declarations add their fields.`, tip: "keep { extensible: true } on the one struct a Program's own data belongs in" });
   return out;
 }
 

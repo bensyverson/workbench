@@ -168,6 +168,25 @@ test("S115: a cycle of wires names the loop; a delay on either wire breaks it; g
   assert.deepEqual(loop({ delay: true }).build().wires.map((/** @type {any} */ w) => w.delay), [true, false]);
 });
 
+test("S206: a wire that drops a producer field and fills a compatible consumer field warns, naming the rename; it is a warning, so build still succeeds", () => {
+  const o = ev("Event<{ n: f64, velocity: f64 }>"), i = ev("Event<{ n: f64, vel: f64 = 0 }>");
+  const ds = check(pair(o, i));
+  assert.deepEqual(codes(ds), ["S206"]);
+  assert.equal(ds[0].severity, "warning");
+  assert.match(ds[0].message, /velocity/);
+  assert.match(ds[0].message, /vel/);
+  assert.match(ds[0].fix, /rename: \{ velocity: "vel" \}/);
+  twoSides(formatDiagnostic(ds[0]));
+  assert.deepEqual(pair(o, i).build().wires[0].fill, { vel: 0 }, "the default may be intended: build does not throw");
+  // an explicit rename wins and fills nothing, so it does not warn
+  assert.deepEqual(check(pair(o, i, { opts: { rename: { velocity: "vel" } } })), []);
+  // a dropped field of another kind than the filled one is no likely rename; nor is a fill with nothing dropped
+  assert.deepEqual(codes(check(pair(ev("Event<{ n: f64, velocity: str }>"), i))), []);
+  assert.deepEqual(codes(check(pair(ev("Event<{ n: f64 }>"), i))), []);
+  // a real error still throws, with the warning listed beside it
+  assert.deepEqual(codes(check(pair(ev("Event<{ velocity: f64 }>"), ev("Event<{ n: f64, vel: f64 = 0 }>")))), ["S202", "S206"]);
+});
+
 test("S251: tagged on both sides and no frame path, with the draft's fix", () => {
   const ds = printed(pair(ev("Event<{ at: point2@px }>"), ev("Event<{ at: point2@px }>")));
   assert.equal(ds.length, 1);

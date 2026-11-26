@@ -183,7 +183,7 @@ function programStateOf(def, statics, stateType) {
     if (names.length && !target) out.push({ code: "D023", path: at, message: `environment(program) adds ${names.join(", ")} to the run's state, and the ${def.name} Dialect marks no state struct extensible.`, tip: "mark the struct a Program's own data goes in: struct({ <fields> }, { extensible: true })" });
     if (names.length && target) {
       const scope = { types: new Set(Object.keys(def.types ?? {})), objects: new Set() };
-      out.push(...validateState(fields, scope).map((p) => ({ ...p, path: ["environment", ...p.path] })));
+      out.push(...validateState(fields, scope, { own: false }).map((p) => ({ ...p, path: ["environment", ...p.path] })));
       for (const n of names) {
         if (Object.hasOwn(/** @type {any} */ (target).struct, n)) out.push({ code: "D007", path: [...at, n], message: `environment(program) adds the state field '${n}', which the extensible struct already declares.`, tip: `give the Program's field another name: the Dialect declares '${n}'` });
       }
