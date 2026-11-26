@@ -112,6 +112,16 @@ test("D030: a malformed frame or edges, and a frame named like the kit's s", () 
   assert.deepEqual(maze((d) => { d.ports.out.t = { seam: "f64@s", from: "t", note: "seconds since the start" }; }), [], "every package may name the kit's s");
 });
 
+test("D030: an edges key inside a frame says edges is a Dialect key beside frames", () => {
+  const d = maze((x) => { x.frames.cell.edges = [{ from: "cell", to: "px", scale: 16, offset: 8 }]; });
+  assert.deepEqual(codes(d), ["D030"]);
+  assert.match(d[0].message, /edges is a Dialect key, beside frames/);
+  assert.match(d[0].tip ?? "", /edges\(record\)/);
+  const other = maze((x) => { x.frames.cell.dimz = 2; });
+  assert.deepEqual(codes(other), ["D030"], "any other stray key still gets the plain refusal");
+  assert.doesNotMatch(other[0].message, /Dialect key/);
+});
+
 test("D032: an Event input's record: { name, slots }", () => {
   assert.deepEqual(codes(particles((d) => { d.ports.in.burst.record = "ev"; })), ["D032"]);
   const slot = particles((d) => { d.ports.in.burst.record.slots = ["spwan"]; });

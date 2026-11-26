@@ -14,7 +14,7 @@ import { MANIFEST_PATH } from "../../../kit/package/index.js";
 import { checkPackageDir } from "../../pkg-trial/checker/index.js";
 import { buildOptions } from "../../pkg-trial/checker/scope.js";
 import { loadPackageDir, loadCompose } from "./load.js";
-import { catching, steerToCoin, probeFor, sampleOf, startRun, PAD } from "./runs.js";
+import { catching, silencing, steerToCoin, probeFor, sampleOf, startRun, PAD } from "./runs.js";
 
 /** @typedef {import("./load.js").Found} Found */
 /** @typedef {{ diagnostics: Found[], plan: string[], notes: string[] }} LegResult */
@@ -165,6 +165,14 @@ async function runMazeExamples(loaded, importModule, packages, runtimeFile, foun
 const near = (state, p, r) => (state?.particles ?? []).filter((/** @type {any} */ q) => Math.hypot(q.x - p[0], q.y - (p[1] ?? 0)) <= r).length;
 
 /**
+ * The particles a record made, near `p` within `r`: the run's state against the state of the same run at the same
+ * instant with the record never delivered. A particle that only moved there (a marker following the record) adds
+ * nothing to the total, so it is not counted; born particles raise both the total and the count near `p`.
+ * @param {any} state @param {any} baseline @param {number[]} p @param {number} r
+ */
+export const bornNear = (state, baseline, p, r) => Math.max(0, Math.min(near(state, p, r) - near(baseline, p, r), (state?.particles?.length ?? 0) - (baseline?.particles?.length ?? 0)));
+
+/**
  * Each particles example run alone, and with a probe part that sends one record to each Event input.
  * @param {any} loaded @param {(path: string) => Promise<any>} importModule @param {any[]} packages @param {string} runtimeFile @param {Found[]} found @param {string[]} notes
  */
@@ -206,8 +214,8 @@ async function runParticlesExamples(loaded, importModule, packages, runtimeFile,
         const i = withProbe.run.step();
         if (!i) break;
         if (!i.stepped.includes(part) || withProbe.run.seconds < PROBE_AT - 1e-9) continue;
-        const n = near(withProbe.run.state(part), point, radius), base = near(without.get(i.T), point, radius);
-        if (n > base) hit = { T: num(withProbe.run.seconds), n: n - base };
+        const n = bornNear(withProbe.run.state(part), without.get(i.T), point, radius);
+        if (n > 0) hit = { T: num(withProbe.run.seconds), n };
       }
       found.push(...runFindings(withProbe.run.diagnostics, () => runtimeFile, `${path}, with a probe record on ${input.name}: `));
       if (hit) { burst = true; notes.push(`${path}: a ${input.name} record at ${pointText(point)} at T = ${num(PROBE_AT)}: ${hit.n} particles within ${num(radius)} of it at T = ${hit.T}`); }
@@ -245,9 +253,16 @@ async function checkComposeLeg(dir) {
   const running = [spy.runtime, byName.particles.runtime];
   const packages = r.loaded.map((p) => ({ name: p.name, content: p.content }));
   const run = createRun(composed, { runtimes: running, packages });
-  /** @type {Array<{ T: number, state: any }>} */
+  // the same composition with the maze's Events swallowed: what the particles do when no pickup is ever delivered
+  const quietRuntimes = [silencing(byName.maze.runtime), byName.particles.runtime];
+  const quiet = createRun(composed, { runtimes: quietRuntimes, packages });
+  /** @type {Map<string, any>} */
+  const quietStates = new Map();
+  const quietWatch = (/** @type {any} */ i) => { if (i.stepped.includes(fx.name)) quietStates.set(i.T, quiet.state(fx.name)); };
+  steerToCoin(quiet, mz.name, mz.record.grid, REACH.compose, quietWatch);
+  /** @type {Array<{ T: number, K: string, state: any }>} */
   const fxStates = [];
-  const watch = (/** @type {any} */ i) => { if (i.stepped.includes(fx.name)) { fxStates.push({ T: run.seconds, state: run.state(fx.name) }); if (fxStates.length > 4) fxStates.shift(); } };
+  const watch = (/** @type {any} */ i) => { if (i.stepped.includes(fx.name)) { fxStates.push({ T: run.seconds, K: i.T, state: run.state(fx.name) }); if (fxStates.length > 4) fxStates.shift(); } };
   const got = steerToCoin(run, mz.name, mz.record.grid, REACH.compose, watch);
   if ("why" in got) {
     found.push({ file: "workbench.js", line: 1, code: "G012", message: `the checker held the D-pad toward the nearest coin, and ${got.why}`, fix: "build a maze whose control walks one cell per step the way the D-pad holds (task.md)" });
@@ -266,22 +281,22 @@ async function checkComposeLeg(dir) {
   const expected = [carried[field]].flat();
   const conv = wire.convert.find((/** @type {any} */ c) => c.field === field);
   const radius = Math.max(1, Math.abs(conv?.scale?.[0] ?? 1));
-  const before = [...fxStates].reverse().find((s) => s.T < got.T - 1e-9);
-  const base = near(before?.state, expected, radius);
+  /** The quiet run, stepped to instant `K` (a step's `T`), then its particles state there. @param {string} K @param {number} seconds */
+  const quietAt = (K, seconds) => { while (!quietStates.has(K) && quiet.seconds < seconds + 1e-9) { const i = quiet.step(); if (!i) break; quietWatch(i); } return quietStates.get(K); };
   /** @type {{ T: number, n: number } | null} */
   let burst = null;
-  for (const s of fxStates) if (s.T >= got.T - 1e-9 && near(s.state, expected, radius) > base) { burst = { T: s.T, n: near(s.state, expected, radius) - base }; break; }
+  for (const s of fxStates) { const n = s.T >= got.T - 1e-9 ? bornNear(s.state, quietAt(s.K, s.T), expected, radius) : 0; if (n > 0) { burst = { T: s.T, n }; break; } }
   while (!burst && run.seconds < got.T + BURST_WITHIN) {
     const i = run.step();
     if (!i) break;
-    if (i.stepped.includes(fx.name)) { const n = near(run.state(fx.name), expected, radius); if (n > base) burst = { T: run.seconds, n: n - base }; }
+    if (i.stepped.includes(fx.name)) { const n = bornNear(run.state(fx.name), quietAt(i.T, run.seconds), expected, radius); if (n > 0) burst = { T: run.seconds, n }; }
   }
   const where = `${radius === 1 ? "1" : num(radius)} of ${pointText(expected)} in ${conv?.to ?? "the particles' frame"}`;
   const box = conv ? byName.particles.grammar.lower(fx.record).seams?.extents?.[conv.to.split(".").slice(1).join(".")] : undefined;
   const off = box && expected.some((v, k) => v < box.min[k] || v > box.max[k]);
   if (off) found.push({ file: "workbench.js", line: 1, code: "G013", message: `the coin at ${pointText(got.cell)} reached ${wire.to} at ${pointText(expected)}, outside the particles' box ${pointText(box.min)} to ${pointText(box.max)}, so the burst is not where the stage shows the coin`, fix: "relate the frames so the maze's cells land inside the particles' box (\"fit\", or an edge that maps them there)" });
   else if (burst) notes.push(`run: burst of ${burst.n} particles within ${where} at T = ${num(burst.T)}`);
-  else found.push({ file: "workbench.js", line: 1, code: "G013", message: `the coin at ${pointText(got.cell)} was picked up at T = ${num(got.T)}; its record reached ${wire.to} as ${JSON.stringify(carried)}, and no particles appeared within ${where} by T = ${num(got.T + BURST_WITHIN)}`, fix: "relate the frames so the coin's cell lands where the particles' box shows it, and give the burst emitter a trigger and a spawn that places particles at the record" });
+  else found.push({ file: "workbench.js", line: 1, code: "G013", message: `the coin at ${pointText(got.cell)} was picked up at T = ${num(got.T)}; its record reached ${wire.to} as ${JSON.stringify(carried)}, and no particles were born within ${where} by T = ${num(got.T + BURST_WITHIN)}`, fix: "relate the frames so the coin's cell lands where the particles' box shows it, and give the burst emitter a trigger and a spawn that places particles at the record" });
   run.runUntil(Math.max(run.seconds, got.T + 1));
   found.push(...runFindings(run.diagnostics, fileOf));
   const again = replay(composed, { runtimes: running, packages }, JSON.parse(JSON.stringify(run.record())));

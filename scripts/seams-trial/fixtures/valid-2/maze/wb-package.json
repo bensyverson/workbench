@@ -16,7 +16,7 @@
   "files": {
     "examples/01.js": "sha256-9xenykiutKY501OosTA5hFl0AFvw4L2f57e0KmEma9I=",
     "examples/02.js": "sha256-qimlv3TYO3N72goVfcW5UYh8r9PwQp+QN9O1gA5gz1A=",
-    "maze.dialect.js": "sha256-PWirDonbIlaCIeF3WiIMvKyt6Zejo2FDxNMfukWQAek=",
+    "maze.dialect.js": "sha256-8gfK83BqvBASNOYtWBjeDbYFj9dzjOcU80t0itFTt2o=",
     "maze.grammar.js": "sha256-gqqT02cbfpveiC+JuFyleapy1GTZvdn85WuGwuOqZ4U=",
     "maze.runtime.js": "sha256-2zp0oUmftjL09bEPXEqJPY5SrUlEQ+Iox5nlRJeq/zk=",
     "maze.ui.js": "sha256-FPb793yDKIvTFwO8ThxfpBYyYkHF9Mp0SWFSuDf2IxA="

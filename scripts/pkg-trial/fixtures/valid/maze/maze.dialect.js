@@ -1,7 +1,7 @@
 import { defineDialect, exact, list, struct } from "kit/define";
 
 // The maze: one player walks a grid of walls and coins, steered by a D-pad and two buttons. The UI trial's
-// input-driven case (docs/task.md, "Maze"); the host is described there in prose and is not built.
+// input-driven case; the host is not built.
 export const mazeDialect = defineDialect({
   name: "maze",
   numberType: "f64",
@@ -21,7 +21,7 @@ export const mazeDialect = defineDialect({
       },
     },
     // The host fills Pad from its input events: each member is true while that button is held, sampled once at the
-    // start of the tick. The UI declaration names this object (docs/ui-draft.md, "Inputs").
+    // start of the tick. The UI declaration names this object.
     Pad: {
       label: "the pad (pad)",
       members: { up: "bool", down: "bool", left: "bool", right: "bool", a: "bool", b: "bool" },

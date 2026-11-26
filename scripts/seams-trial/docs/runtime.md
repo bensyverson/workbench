@@ -53,7 +53,7 @@ export const drumsRuntime = defineRuntime(drums, {
 
 | Key | What |
 |---|---|
-| `clock(record)` | when the part steps: `{ tick: seconds }` (every so many seconds of workbench time), `{ frame: true }` (once per display frame; 60 a second headless) or `{ demand: true }` (only when an input changes or an Event arrives) |
+| `clock(record)` | when the part steps (**there is no default**: the Grammar decides, so a language whose Program may omit its `tick` writes the fallback in `clock`, as `clock: (record) => ({ tick: record.tick ?? 1 / 30 })`; a result that is not one of these three is N006): `{ tick: seconds }` (every so many seconds of workbench time), `{ frame: true }` (once per display frame; 60 a second headless) or `{ demand: true }` (only when an input changes or an Event arrives) |
 | `init(record, ctx)` | the run's first state, from the built record |
 | `step(state, ctx)` | the state after one step: a **new** object |
 | `events` | `{ out: { port: max }, in: { port: max } }`: for **every** Event port, the most records one step may push (`out`) or take (`in`), a whole number of at least 1 (D033). An input with `keepLast: n` takes at least `n` |
@@ -72,21 +72,41 @@ A declaration that is wrong (a missing max, a max on a value port or on a port t
 | `kernels` | the Program's compiled lambdas (below) |
 | `globals` | what your lambdas' global names read in this step (below) |
 | `controls` | the outside inputs addressed to this part (below) |
-| `rng` | the part's seeded random stream: `rng()` gives a number in [0, 1) |
+| `rng` | the part's seeded random stream: `rng()` gives a number in [0, 1). The kit seeds it from the **run's seed** (the host's `seed` option, 0 when it gives none) and the part's name, so two parts never share a stream and a replay is exact. A `.seed(n)` your language lets a Program write seeds nothing: the kit doesn't read it, so if your language has one, your runtime has to apply it itself (mix it into what you draw from `rng()`, or into your own state) |
 | `params` | the Program's params, as lambdas read `$` |
 
 `init` gets the same, without `T`, `dt`, `inputs` and `events`.
 
 ## Calling the Program's lambdas
 
-`ctx.kernels` holds each lambda the Program wrote, compiled, by id: `<instance>.<slot>`, where the instance is the construct's opening name (`kernels["big.glow"]` for a `.lamp("big", …)` construct's `glow`). The root construct's own lambdas are also there by slot name alone (`kernels.glow`, `kernels.accent`); an optional slot the Program did not write is `undefined`.
+`ctx.kernels` holds each lambda the Program wrote, compiled, by id: `<instance>.<slot>`, where the instance is the construct's opening name (`kernels["big.glow"]` for a `.lamp("big", …)` construct's `glow`). The root construct's own lambdas are also there by slot name alone (`kernels.glow`, `kernels.accent`), but **only for a slot that can be called once**; an optional slot the Program did not write is `undefined`. The aliases are not listed by `Object.keys(ctx.kernels)`, which lists ids only.
 
-A slot a construct may call more than once (one without `once`) has one lambda per call, and its id adds the call's place among **all** that instance's calls, counting from 0: a Program `kit("k").size(3).tone("lo", …).tone("hi", …)` has `k.tone#1` and `k.tone#2`. The record keeps such calls by the name each declares (`record.tones.lo`), not by place, so list the ids (`Object.keys(ctx.kernels)`, which lists ids only) and match them to the record's names in order.
+A slot a construct may call more than once (one without `once`) has no alias: it has one lambda per call, and its id adds the call's place among **all** that instance's calls, `#n`, counting from 0. Every call the instance has counts, once-slots and declarations without a lambda included, in the order the **Grammar** declares its slots (not the order the Program wrote them). So where a Grammar declares `bounds`, `maxParticles`, then `force` (repeatable), the Program
 
-- **A kernel takes its slot convention's params, in order**, and returns what the convention returns. Call it with plain values: a number, a string, a vector as an array `[x, y]`.
+```
+particles("fx").bounds({ width: 320, height: 224 }).maxParticles(600)
+  .force("fall", (p, dt) => { p.vel = p.vel + vec2(0, 1) * dt; })
+  .force("wind", (p, dt) => { p.vel = p.vel + vec2(1, 0) * dt; })
+```
+
+has the ids `fx.force#2` and `fx.force#3`, because `bounds` is call 0 and `maxParticles` call 1. (A construct whose Grammar keeps its calls in call order, `record: "calls"`, counts them in the order the Program made them.) The record keeps such calls by the name each declares (`record.forces.fall`), not by place, so list the ids (`Object.keys(ctx.kernels)`), sort them by their `#n`, and match them to the record's names in order. The kit does not match them for you.
+
+- **A kernel takes its slot convention's params, in order**, and returns what the convention returns. Call it with plain values: a number, a string, a vector or a point as an array `[x, y]` (a one-dimensional point is a bare number).
 - **An instance param** (an object a lambda may change, such as `Lamp`) is a plain object you make, holding each member the lambda may read or write. The kernel changes it in place; read the members back afterwards. A member that is a function (a `kill()`, say) is one you supply.
 - **A random-stream param** is `ctx.rng`.
 - **Globals.** Before a step, the kit sets `globals.$` (the params) and the inputs object (`globals.inp`). You set the others your Dialect declares before calling a kernel that reads them: an Event record's name (`globals.hit = record`, once per record), or any object your language shares between lambdas (`globals.counters`). Changes a kernel makes through a global land in the object you set. A kernel that reads a global you have not set throws (N004), so when you call a slot listed in a `record`'s `slots` without a record to hand it, set the name to a record of your own first.
+
+## The built record, and values at the boundary
+
+`ctx.record` is what the Program's `.build()` returns, and you can read it as it is: `console.log(JSON.stringify(ctx.record, null, 2))` in a test, or `JSON.stringify(program.build(), null, 2)`. It is plain data, shaped by your Grammar:
+
+- the Program's name is `record.name`, and its `params` are in `record.params`;
+- a slot called once is its value (`record.bounds`, `record.tick`), and is **absent** when the Program did not write an optional one: `record.tick` is `undefined`;
+- a repeatable named declaration is an object by name (`record.forces`: `{ fall: "…", wind: "…" }`), always present, empty when the Program wrote none; an unnamed repeatable one is a list in call order (`record.emitter`: `[{ name, opts, rate, spawn }]`); a slot's `as` renames its key (`.force` is `record.forces`);
+- **a lambda is its source text, a string, never a function.** Call lambdas through `ctx.kernels`; read the record for their names, places and settings;
+- helper functions and constants the lambdas use are listed in `record.units`.
+
+**Vectors and points.** At the runtime boundary a vector or a point is a plain array of its components: in the record's data, in `state`, in the Events you push and take (`{ pos: [3, 4] }` for a `point2`; a `point1` is a bare number, `{ pos: 8.5 }`), and in what you pass a kernel. `.x`, `.y` exist only in lambda source (`p.pos.x`); the compiled kernel reads them as `v[0]`, `v[1]`, so your runtime reads `p.pos[0]`. Vectors are values: replace one (`p.pos = [x, y]`), don't change a component in place.
 
 ## The rules a step keeps
 
@@ -106,7 +126,7 @@ In a development run (the default, and the checker's) every state is frozen and 
 
 ## Controls
 
-An outside input, such as a D-pad the person presses, reaches the part it is addressed to as `ctx.controls.<name>`: the latest value at or before the instant, a whole new value each time (not merged). It is absent until the first one arrives, so read it with a fallback. The name is the host's: nothing in the kit links it to your UI's `inputs`. In this workbench the page sends a D-pad as `controls.pad`, `{ up, down, left, right, a, b }`, each `true` while held.
+An outside input, such as a D-pad the person presses, reaches the part it is addressed to as `ctx.controls.<name>`: the latest value at or before the instant, a whole new value each time (not merged). **`ctx.controls` is always an object** (frozen, and `{}` before anything arrives, in `init` too), so `ctx.controls.pad` is safe to read; it is `undefined` until that name's first value arrives, so read it with a fallback (`const pad = controls.pad ?? {}`). The name is the host's: nothing in the kit links it to your UI's `inputs`, and the glue does not say which part a control goes to. In this workbench the page sends a D-pad as `controls.pad`, `{ up, down, left, right, a, b }`, each `true` while held; the checker presses it the same way.
 
 ## Run codes
 

@@ -7,6 +7,21 @@ import assert from "node:assert/strict";
 import { checkLeg, stateProblems, portProblems } from "../checker/legs.js";
 import { handIn, remove, sub, FIXTURES_2 } from "../fixture-copy.js";
 
+const TRIGGER_LOOP = "for (const ev of inputs[e.opts.trigger] ?? []) for (let i = 0; i < (e.opts.perEvent ?? PER_EVENT); i++) at.push(ev);";
+const SPAWNED = "if (!p.dead) { next.push(stored(p, e.name)); live[e.name] += 1; }";
+/**
+ * Edits a particles runtime into a marker system: its trigger emitter spawns one long-lived particle at T = 0, and
+ * each record only moves that particle to the record's position. With `burst` it also spawns the real burst.
+ * @param {string} dir @param {boolean} burst @param {string} prefix
+ */
+function markerSystem(dir, burst, prefix) {
+  const file = `${prefix}particles.runtime.js`;
+  const move = "const m = next.find((q) => q.life === 1e9); if (m) { m.x = ev.at[0]; m.y = ev.at[1]; }";
+  const more = burst ? " for (let i = 0; i < (e.opts.perEvent ?? PER_EVENT); i++) at.push(ev);" : "";
+  sub(dir, file, TRIGGER_LOOP, `{ if (state.t === 0) at.push({ at: [0, 0], marker: true }); for (const ev of inputs[e.opts.trigger] ?? []) { ${move}${more} } }`);
+  sub(dir, file, SPAWNED, "if (!p.dead) { const q = stored(p, e.name); if (ev.marker) q.life = 1e9; next.push(q); live[e.name] += 1; }");
+}
+
 /** The codes a broken copy of the reference hand-in gets. @param {"maze" | "particles" | "compose"} role @param {(d: string) => void} [edit] */
 async function codes(role, edit) {
   const dir = await handIn(role, edit, { from: FIXTURES_2 });
@@ -121,4 +136,19 @@ test("G004: the ports each author's task asks for", () => {
   assert.match(portProblems(dialect({}, { b: ev }), "particles", good).join(), /value input/);
   assert.match(portProblems(dialect({}, { b: ev, s: val }), "particles", { ...good, examples: ["p.vel = vec2(0, 1)"] }).join(), /reads/);
   assert.match(portProblems(dialect({}, { b: ev, s: val }), "particles", { ...good, grammar: "" }).join(), /ref\("in"/);
+});
+
+test("G013: a marker that only follows the record is not a burst; with a real burst added it passes", async () => {
+  const { codes: c, r } = await codes("compose", (d) => markerSystem(d, false, "particles/"));
+  assert.deepEqual(c, ["G013"], r.diagnostics.map((x) => x.message).join("\n"));
+  assert.match(r.diagnostics[0].message, /no particles were born/);
+  const { codes: ok } = await codes("compose", (d) => markerSystem(d, true, "particles/"));
+  assert.deepEqual(ok, []);
+});
+
+test("G008: a marker that only follows the record is not a burst; with a real burst added it passes", async () => {
+  const { codes: c } = await codes("particles", (d) => markerSystem(d, false, ""));
+  assert.deepEqual(c, ["G008"]);
+  const { codes: ok } = await codes("particles", (d) => markerSystem(d, true, ""));
+  assert.deepEqual(ok, []);
 });

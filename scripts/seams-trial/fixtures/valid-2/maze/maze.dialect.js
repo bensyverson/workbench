@@ -21,7 +21,7 @@ export const mazeDialect = defineDialect({
       },
     },
     // The runtime fills Pad from controls.pad: each member is true while that button is held, as of the
-    // start of the tick. The UI declaration names this object (docs/ui-draft.md, "Inputs").
+    // start of the tick. The UI declaration names this object.
     Pad: {
       label: "the pad (pad)",
       members: { up: "bool", down: "bool", left: "bool", right: "bool", a: "bool", b: "bool" },

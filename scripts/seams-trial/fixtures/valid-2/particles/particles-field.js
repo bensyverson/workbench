@@ -1,5 +1,5 @@
 // The stage element of the passing fixture: draws state.particles as dots and reports a click as a pick.
-// Properties in (state, params, text), events out (wb-pick), per docs/ui-draft.md "stage: the contract".
+// Properties in (state, params, text), events out (wb-pick).
 class ParticlesField extends HTMLElement {
   #state = null;
   set state(v) { this.#state = v; this.#draw(); }

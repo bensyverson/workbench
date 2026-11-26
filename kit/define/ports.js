@@ -71,7 +71,8 @@ export function declareSeams(def) {
       if (Object.hasOwn(KIT_FRAMES, n)) { add("D030", at, `the kit declares the frame '${n}' (${KIT_FRAMES[n].note}) for every package; a package names it without declaring it`, `remove frames.${n}; write f64@${n}, or a rate such as vec2@px/${n}`); declaredFrames.add(n); continue; }
       if (!isObj(f)) { add("D030", at, `frame '${n}' is { dims, note, extent? }, not ${show(f)}`, `${n}: { dims: 2, note: "…" }`); continue; }
       declaredFrames.add(n);
-      keys(f, FRAME_KEYS, at, `frame '${n}'`, "D030");
+      if (Object.hasOwn(f, "edges")) add("D030", [...at, "edges"], `frame '${n}' has no key 'edges': edges is a Dialect key, beside frames, not inside one frame (an edge names both its frames)`, `move it up: edges(record) { return [{ from: "cell", to: "px", scale: 16, offset: 8 }]; } beside frames`);
+      keys(f, FRAME_KEYS.concat("edges"), at, `frame '${n}'`, "D030");
       const dimsOk = f.dims === 1 || f.dims === 2 || f.dims === 3;
       if (!dimsOk) add("D030", [...at, "dims"], `frame '${n}': dims is 1 (a unit: metres), 2 or 3 (a space), not ${show(f.dims)}`, "dims: 2");
       if (typeof f.note !== "string" || f.note.trim() === "") add("D030", [...at, "note"], `frame '${n}' has no note: a composer reads it to relate the frame to another package's (which way the axes point, where the origin is)`, 'note: "grid cells; x right, y down; (0, 0) is the top-left cell\'s center"');

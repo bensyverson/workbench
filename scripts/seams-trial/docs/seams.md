@@ -101,7 +101,7 @@ globals: { …, inp: "In" },
 
 ## Frames
 
-A **frame** is a coordinate space or a unit your language measures in.
+A **frame** is a coordinate space or a unit your language measures in. Frames are declared in the Dialect's `frames`, and the edges between your own frames in the Dialect's `edges`, a key beside `frames` (not inside a frame):
 
 ```js
 // board.dialect.js
@@ -111,13 +111,17 @@ frames: {
     note: "lamps from left to right; lamp 0's center is at 0, lamp 1's at 1",
     extent: (record) => ({ min: [-0.5], max: [record.lamps - 0.5] }),
   },
+  cm: { dims: 1, note: "centimeters along the strip, from lamp 0's center to the right" },
 },
+edges: () => [{ from: "lamp", to: "cm", scale: 2.5, offset: 0 }],
 ```
 
 - `dims`: 1, 2 or 3. A 1-D frame holds positions (`point1@lamp`) and amounts (`f64@lamp`).
 - `note` (required): which way each axis points, where the origin is and what one unit is. A composer reads it to relate your frame to someone else's.
 - `extent(record)` (optional): the box your frame's content fills in a built Program (the record `.build()` returns), as `{ min, max }`, one number per dim each. A 2-D box is `{ min: [0, 0], max: [record.width, record.height] }`. It lets a composer write `"fit"`.
-- `edges(record)` (optional): `[{ from, to, scale, offset }]` between **your own** frames. You can't relate your frame to another package's: you don't know it.
+- A frame has only these three keys. Edges are not a frame's key: they are the Dialect's `edges(record)` above (D030 if you put `edges` inside a frame).
+
+`edges(record)` (optional, a key of the Dialect beside `frames`): `[{ from, to, scale, offset }]` between **your own** frames, here one lamp is 2.5 cm. You can't relate your frame to another package's: you don't know it.
 
 Frames of different packages are different frames, even with the same name: `drums.step` and `board.lamp` are unrelated until a glue program relates them.
 

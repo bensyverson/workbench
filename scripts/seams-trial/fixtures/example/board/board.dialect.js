@@ -22,7 +22,9 @@ export const boardDialect = defineDialect({
       note: "lamps from left to right; lamp 0's center is at 0, lamp 1's at 1",
       extent: (record) => ({ min: [-0.5], max: [record.lamps - 0.5] }),
     },
+    cm: { dims: 1, note: "centimeters along the strip, from lamp 0's center to the right" },
   },
+  edges: () => [{ from: "lamp", to: "cm", scale: 2.5, offset: 0 }],
   ports: {
     in: {
       flash: {

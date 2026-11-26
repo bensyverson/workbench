@@ -15,6 +15,21 @@ export const RELEASED = Object.freeze({ up: false, down: false, left: false, rig
 export const PAD = "pad";
 
 /**
+ * A runtime that steps as `rt` does and pushes no Event: what a part does when nothing it says is ever delivered.
+ * @param {any} rt
+ */
+export function silencing(rt) {
+  return defineRuntime(rt.grammar, {
+    clock: rt.clock, init: rt.init, events: rt.events,
+    step(/** @type {any} */ state, /** @type {any} */ ctx) {
+      const next = rt.step(state, ctx);
+      for (const v of Object.values(ctx.events)) /** @type {unknown[]} */ (v).length = 0;
+      return next;
+    },
+  });
+}
+
+/**
  * A runtime whose step also keeps the Event records it pushes, by instant: `caught.get(T)` is `{ port: records }`.
  * @param {any} rt
  */
