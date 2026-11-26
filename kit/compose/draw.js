@@ -2,7 +2,7 @@
 // built Program gives (ruling 1), so every wire is judged on what this Program can draw. The shown part's Draw
 // output is the page's: its only one, or the one named `view` (S402). Given a renderer profile, the op kinds the
 // shown list can hold are judged (S401, ruling 2), read from the builders and followed through each Draw input a
-// builder spreads; a kind the kit cannot see (a builder whose kinds are open) is left to draw time.
+// builder spreads, even when another builder on the way is open; a kind the kit cannot see (a builder whose kinds are open) is left to draw time.
 
 import { PROFILES, kindProblems } from "../draw/index.js";
 import { printSeam } from "../seam/index.js";
@@ -64,7 +64,6 @@ export function shownDraw(shown, wires, parts, options) {
   }
   if (!profile) return { view: chosen.name, problems };
   const found = kindsReaching(shown, chosen.name, wires, parts);
-  if (found.open) return { view: chosen.name, problems };
   const refused = kindProblems(profile, [...found.from.keys()]);
   if (refused.length) {
     const where = refused.map((k) => `${k}, from ${found.from.get(k)?.map((s) => `${s.part.name}.out.${s.port}`).join(" and ")}`).join("; ");
@@ -81,7 +80,8 @@ export function shownDraw(shown, wires, parts, options) {
 
 /**
  * The op kinds a part's Draw output can hold, each with the outputs whose builders write it, followed through the
- * Draw inputs its builders spread to the outputs wired to them. `open` when any builder on the way hides a kind.
+ * Draw inputs its builders spread to the outputs wired to them. `open` when any builder on the way hides a kind
+ * too: the kinds it names are still true.
  * @param {DrawPart} part @param {string} port @param {DrawWire[]} wires @param {Map<any, DrawPart>} parts
  */
 function kindsReaching(part, port, wires, parts) {

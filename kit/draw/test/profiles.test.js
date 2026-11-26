@@ -35,7 +35,7 @@ test("Canvas draws every list", () => {
   assert.deepEqual(r.diagnostics, []);
 });
 
-test("the Game Boy draws a list that fits, and counts its sprites by 8-by-8 objects", () => {
+test("the Game Boy draws a list that fits, and counts its sprites by 8-by-8 objects, text characters among them", () => {
   const list = [
     { op: "tiles", at: [0, 0], image: "p.bg", grid: [[0, 1], [2, -1]] },
     { op: "image", at: [8, 8], image: "p.hero", flip: "x" },
@@ -44,7 +44,7 @@ test("the Game Boy draws a list that fits, and counts its sprites by 8-by-8 obje
   ];
   const r = checkDraw(GAMEBOY, list, { images, box });
   assert.deepEqual(r.diagnostics, []);
-  assert.equal(r.summary, "Game Boy (DMG) draws it: 1 tiles layer, 8 sprites (at most 4 on a row), 8 characters");
+  assert.equal(r.summary, "Game Boy (DMG) draws it: 1 tiles layer, 15 sprites (at most 7 on a row; 7 of them text characters)");
 });
 
 test("a Game Boy limit passed at draw time is J040, naming the profile and the limit", () => {

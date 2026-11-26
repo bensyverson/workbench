@@ -33,7 +33,7 @@ test("each op draws in painter's order with its colors", () => {
     "fillStyle=#ff0000ff", "fillRect(1,2,3,4)", "strokeStyle=#00ff00ff", "lineWidth=1", "strokeRect(1,2,3,4)",
     "beginPath()", "ellipse(5,5,2,1,0,0,6.283185307179586)", "fillStyle=#0000ffff", "fill()",
     "beginPath()", "moveTo(0,0)", "lineTo(4,0)", "lineTo(4,4)", "closePath()", "lineWidth=2", "strokeStyle=#000000ff", "stroke()",
-    "font=8px monospace", "textBaseline=top", "fillStyle=#ffffffff", "fillText(HI,0,10)",
+    "font=8px monospace", "textBaseline=top", "fillStyle=#ffffffff", "measureText(M)", "fillText(HI,0,10)",
   ]);
 });
 

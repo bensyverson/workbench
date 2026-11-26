@@ -14,7 +14,7 @@ export const OPS = Object.freeze({
   ellipse: { at: ["point2", true], r: ["vec2", true], fill: ["color", false], stroke: ["color", false] },
   line: { points: ["points", true], width: ["f64", true], stroke: ["color", true], closed: ["bool", false], fill: ["color", false] },
   image: { at: ["point2", true], image: ["image", true], cell: ["cell", false], size: ["vec2", false], flip: ["flip", false] },
-  tiles: { at: ["point2", true], image: ["image", true], grid: ["grid", true], key: ["key", false], size: ["vec2", false], wrap: ["vec2", false] },
+  tiles: { at: ["point2", true], image: ["image", true], grid: ["grid", true], key: ["key", false], size: ["vec2", false], wrap: ["vec2", false], wrapAt: ["point2", false] },
   text: { at: ["point2", true], str: ["str", true], font: ["font", true], fill: ["color", true] },
 });
 /** The op kinds, in the table's order. */
@@ -56,6 +56,7 @@ export function typeOp(op, paint) {
     const p = fieldProblem(k, type, o[k], o, paint);
     if (p) out.push(`${name}: ${p}`);
   }
+  if (o.op === "line" && o.fill !== undefined && o.fill !== null && o.closed !== true) out.push("a line: fill needs closed: true (an open line has no inside to fill)");
   return out;
 }
 
@@ -162,7 +163,8 @@ export function nativeSize(op, images) {
 /**
  * An op converted across a frame edge (ruling 3, 2026-11-26): positions by scale and offset; a rect's size, an
  * image's and a tiles op's cell size by the scale, sign kept (a negative size mirrors); radii by the scale's
- * magnitude; a line's width by the mean magnitude; text by `at` only. An image or tiles op without `size` takes its
+ * magnitude; a line's width by the mean magnitude; text by `at` only (its top-left, so a flipping wire does not
+ * mirror the string's box); a wrapped tiles op's ring origin (`wrapAt`) as a point. An image or tiles op without `size` takes its
  * image's (named in `images`, as the wire carries it) scaled, unless the scale is one on both axes.
  * @param {Op} op @param {Edge} e @param {Record<string, Image>} images @returns {Op}
  */
@@ -177,6 +179,11 @@ export function convertOp(op, e, images) {
       if (isNum(o.width)) o.width = o.width * (Math.abs(e.scale[0]) + Math.abs(e.scale[1])) / 2;
       break;
     case "image": case "tiles": {
+      // a ring's origin is a frame position like `at`, so the wire moves it too (it is the frame's origin until then)
+      if (o.op === "tiles" && o.wrap !== undefined) {
+        const ring = movePoint(isVec(o.wrapAt) ? o.wrapAt : [0, 0], e);
+        if (ring[0] !== 0 || ring[1] !== 0) o.wrapAt = ring; else delete o.wrapAt;
+      }
       if (isVec(o.size)) { o.size = scaleVec(o.size, e); break; }
       const n = nativeSize(o, images);
       if (n && !unit(e)) o.size = scaleVec(n, e);

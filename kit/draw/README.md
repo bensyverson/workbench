@@ -19,7 +19,7 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 | `carryList(list)`, `isCarried(op)` | marks ops that left their builder or crossed a wire, so a builder that spreads them does not type them again |
 | `CANVAS`, `GAMEBOY`, `PROFILES` | the renderer profiles (`{ name, label, kinds, limits? }`) |
 | `kindProblems(profile, kinds)` | the kinds a profile does not draw: what kit/compose's S401 reports |
-| `checkDraw(profile, list, { images, box })` | the draw-time check: `{ ok, diagnostics, summary }` (J040–J042) |
+| `checkDraw(profile, list, { images, box })` | the draw-time check (`box` null for a frame with no extent): `{ ok, diagnostics, summary }` (J040–J042) |
 | `shadeOf(hex)` | a color's Game Boy shade, 0 (lightest) to 3, or null for alpha 0 |
 | `drawCanvas(ctx, list, { images, sources? })` | draws a list on a Canvas 2D context, in painter's order |
 | `DRAW_CODES`, `DRAW_PORT_KEYS`, `REFUSED_CALLS` | |
@@ -32,10 +32,10 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 | `ellipse` | `at: point2` (center), `r: vec2`, `fill?`, `stroke?` | `at`; `r` by the scale's magnitude |
 | `line` | `points` (two or more), `width`, `stroke`, `closed?`, `fill?` | every point; `width` by the mean magnitude |
 | `image` | `at` (top-left), `image`, `cell?`, `size?`, `flip?: 'x' \| 'y' \| 'xy'` | `at`; `size` by the scale; an unsized image gets its declared size scaled |
-| `tiles` | `at` (top-left), `image`, `grid`, `key?`, `size?` (one cell's), `wrap?: [cols, rows]` | `at`; the cell size by the scale (ruling 3) |
-| `text` | `at` (top-left), `str`, `font`, `fill` | `at` only |
+| `tiles` | `at` (top-left), `image`, `grid`, `key?`, `size?` (one cell's), `wrap?: [cols, rows]`, `wrapAt?` (the ring's origin) | `at` and `wrapAt` as points; the cell size by the scale (ruling 3) |
+| `text` | `at` (top-left), `str`, `font`, `fill` | `at` only: a wire that flips an axis moves the string's top-left, not its box, so the text lands one glyph height (8 units, scaled) off where a mirrored box would be; place text after the flip, or in a frame that does not flip |
 
-- **A tiles `grid`** is a list of rows, each a list of cell numbers (`-1` draws nothing) or a string read through `key`, `{ "<char>": <cell> }` (ruling 5: the grid a maze keeps in its state feeds a tiles op as it is). A character the key does not map is J020. `wrap` makes the grid a ring that repeats from the frame's origin, so a scrolled map is a tiles op whose `at` is minus the scroll.
+- **A tiles `grid`** is a list of rows, each a list of cell numbers (`-1` draws nothing) or a string read through `key`, `{ "<char>": <cell> }` (ruling 5: the grid a maze keeps in its state feeds a tiles op as it is). A character the key does not map is J020. `wrap` makes the grid a ring that repeats from the frame's origin, so a scrolled map is a tiles op whose `at` is minus the scroll. `wrapAt` is the ring's origin when it is not the frame's: a builder leaves it out, and a wire sets it (an op crossing an offset keeps its ring with its frame). A cell that straddles the ring's far edge is drawn at both ends, so a scrolled ring has no gap.
 - **Colors** are `"#rrggbb"` or `"#rrggbbaa"`, or a name the Dialect's `colors` declares; an op leaves its part with every color as `"#rrggbbaa"`, so a stranger's list never needs the names.
 - **Images** are declared `{ size, cell?, note }`, with no pixel data; an op leaves its part with its image named `<part>.<image>`. A host that has a picture passes it to `drawCanvas` in `sources` by that name; without one, Canvas draws the image's box.
 
@@ -64,9 +64,9 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 ## What the draft left to the build (ruling 6)
 
 - **A `from` layer's count** toward the max: as many ops as it returns (a single op counts 1, null 0); its declared max is unknown unless the layer states `max`.
-- **A negative `size`** spans backwards from `at`: a rect covers `at` to `at + size`, and an image or tiles cell drawn with a negative size is mirrored on that axis (as a flipping edge makes it). A radius is a magnitude, so `r` stays positive. A renderer that cannot mirror refuses (J041).
+- **A negative `size`** spans backwards from `at`: a rect covers `at` to `at + size`, and an image or tiles cell drawn with a negative size is mirrored on that axis (as a flipping edge makes it). A radius is a magnitude, so `r` stays positive. A renderer that cannot mirror refuses (J041): the Game Boy mirrors an image with its sprite's flip bit and refuses a mirrored tiles op.
 - **Alpha on a 4-shade renderer:** alpha 0 draws nothing; any other alpha draws the color's shade, by brightness. The Game Boy has no blending.
-- **Text formatting:** `str` is a string; a builder formats a number itself (`"SCORE " + <n>`, a helper that pads). `text` is one line of `"mono"`, 8 by 8 units a character.
+- **Text formatting:** `str` is a string; a builder formats a number itself (`"SCORE " + <n>`, a helper that pads). `text` is one line of `"mono"`, 8 by 8 units a character. Canvas draws a character 8 units wide by measuring the face's own width at 8 px and stretching the string to fit (an em box 8 tall; a context that cannot measure draws the face as it is). A line's `fill` needs `closed: true` (J020 otherwise): an open line has no inside.
 - **A Draw input and a `demand` part:** a Draw input is a value input, so a changed list wakes a `demand` part as a changed value does, and the runtime sees it in `ctx.inputs` too.
 - **Which output the page shows:** the shown part's only Draw output, or the one named `view`; several with none named `view` is S402.
 
@@ -75,13 +75,15 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 | Profile | Draws | Draw-time checks |
 |---|---|---|
 | `CANVAS` | every op | none |
-| `GAMEBOY` | `image` cells as sprites, `tiles` as the background and window, `text` | J042 another kind; J041 an image whose cells are not 8 by 8 multiples, an image or tiles drawn at another size (a scaling wire or a `size`); J040 more than 40 sprites (a 16-by-16 cell is 4), more than 10 on a pixel row, more than 2 tiles layers, a stage past 160 by 144 |
+| `GAMEBOY` | `image` cells as sprites (a negative size is the flip bit), `tiles` as the background and window, `text` as sprites | J042 another kind; J041 an image whose cells are not 8 by 8 multiples, an image drawn at another size than its own (a scaling wire or a `size`; a mirror is fine), tiles with a size or a mirror, a second tiles layer that is not exactly the window; J040 more than 40 sprites (a 16-by-16 cell is 4; each non-space text character is 1), more than 10 on a pixel row, more than 2 tiles layers, a stage past 160 by 144 |
+
+**Game Boy text** is always charged as sprites, one 8-by-8 sprite per character that is not a space, against the 40 total and the 10 a row; the window layer is not used for text (modeling it was more than a small change). A **second tiles layer** is the window, and is refused (J041) unless the hardware can draw it exactly: every cell a tile (no `-1`, no ragged row), at a multiple of 8 from the stage's corner, and reaching the stage's right and bottom edges. A first layer is the background. A frame with no extent (`box` null) is judged against the screen.
 
 ## Codes
 
 | Code | When |
 |---|---|
-| J001 | a malformed Draw port: no builder or several, an each path that is not a state list with a max, a pen layer without its max, a bad max, a Draw input given a default, required, delivery, record or type, a frame that is not 2-D |
+| J001 | a malformed Draw port: no builder or several, a layer with a key it does not take, an each path that is not a state list with a max, a pen layer without its max, a bad max, a Draw input given a default, required, delivery, record or type, a frame that is not 2-D |
 | J002 | a builder calls map, flatMap, filter, forEach, reduce, push or concat |
 | J003 | a malformed `colors` or `images` declaration |
 | J010 | a Program's max that is not a whole number of at least 0, or past the seam's ceiling |

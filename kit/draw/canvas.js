@@ -6,7 +6,7 @@ import { GLYPH, nativeSize, gridCells } from "./ops.js";
 
 /** @typedef {import("./ops.js").Op} Op */
 /** @typedef {import("./ops.js").Image} Image */
-/** The calls the renderer makes: a CanvasRenderingContext2D has them all. @typedef {{ fillStyle: unknown, strokeStyle: unknown, lineWidth: number, font: string, textBaseline: string, fillRect: Function, strokeRect: Function, beginPath: Function, ellipse: Function, moveTo: Function, lineTo: Function, closePath: Function, fill: Function, stroke: Function, fillText: Function, drawImage: Function, save: Function, restore: Function, translate: Function, scale: Function }} Context2D */
+/** The calls the renderer makes: a CanvasRenderingContext2D has them all. @typedef {{ fillStyle: unknown, strokeStyle: unknown, lineWidth: number, font: string, textBaseline: string, fillRect: Function, strokeRect: Function, beginPath: Function, ellipse: Function, moveTo: Function, lineTo: Function, closePath: Function, fill: Function, stroke: Function, fillText: Function, measureText?: Function, drawImage: Function, save: Function, restore: Function, translate: Function, scale: Function }} Context2D */
 
 /** The color an image without pixel data draws its box in. */
 const PLACEHOLDER = "#808080ff";
@@ -50,11 +50,13 @@ export function drawCanvas(ctx, list, { images, sources = {} }) {
         const img = images[op.image];
         if (!img?.cell) break;
         const c = op.size ?? img.cell;
+        // a ring repeats from its origin (the frame's, until a wire moves it): a scrolled map is a tiles op whose at is minus the scroll
+        const ring = op.wrapAt ?? [0, 0];
         gridCells(op).forEach((row, r) => row.forEach((n, col) => {
           if (n < 0) return;
-          // a ring repeats from the frame's origin: a scrolled map is a tiles op whose at is minus the scroll
-          const x = wrapped(op.at[0] + col * c[0], op.wrap?.[0], c[0]), y = wrapped(op.at[1] + r * c[1], op.wrap?.[1], c[1]);
-          blit(ctx, sources[op.image], cellAt(img, n), /** @type {number[]} */ (img.cell), [x, y], c, undefined);
+          for (const x of ringed(op.at[0] + col * c[0], op.wrap?.[0], c[0], ring[0]))
+            for (const y of ringed(op.at[1] + r * c[1], op.wrap?.[1], c[1], ring[1]))
+              blit(ctx, sources[op.image], cellAt(img, n), /** @type {number[]} */ (img.cell), [x, y], c, undefined);
         }));
         break;
       }
@@ -62,7 +64,14 @@ export function drawCanvas(ctx, list, { images, sources = {} }) {
         ctx.font = `${GLYPH}px monospace`;
         ctx.textBaseline = "top";
         ctx.fillStyle = op.fill;
-        ctx.fillText(op.str, op.at[0], op.at[1]);
+        // a monospace face is about 0.6 em wide, so stretch the string to GLYPH units a character, as the op table promises
+        const width = typeof ctx.measureText === "function" ? ctx.measureText("M")?.width : undefined;
+        if (!(width > 0)) { ctx.fillText(op.str, op.at[0], op.at[1]); break; }
+        ctx.save();
+        ctx.translate(op.at[0], op.at[1]);
+        ctx.scale(GLYPH / width, 1);
+        ctx.fillText(op.str, 0, 0);
+        ctx.restore();
         break;
       default: break;
     }
@@ -76,8 +85,21 @@ function cellAt(img, n) {
   return [(n % across) * c[0], Math.floor(n / across) * c[1]];
 }
 
-/** An offset in a ring of `count` cells of `size` (no ring: as it is). @param {number} v @param {number | undefined} count @param {number} size */
-const wrapped = (v, count, size) => (count ? ((v % (count * size)) + count * size) % (count * size) : v);
+/**
+ * Where a cell at `v` is drawn on one axis: as it is with no ring; in a ring of `count` cells of `size` (signed: a
+ * mirrored ring spans backwards from its origin), its position wrapped into the ring, and also one ring back when
+ * the cell straddles the ring's far edge, so a scrolled ring has no gap.
+ * @param {number} v @param {number | undefined} count @param {number} size @param {number} origin @returns {number[]}
+ */
+function ringed(v, count, size, origin) {
+  if (!count) return [v];
+  const span = count * Math.abs(size), wide = Math.abs(size);
+  const low = size < 0 ? origin - span : origin;
+  const edge = size < 0 ? v + size : v;
+  const at = low + (((edge - low) % span) + span) % span;
+  const place = (/** @type {number} */ lo) => (size < 0 ? lo - size : lo);
+  return at + wide > low + span ? [place(at), place(at - span)] : [place(at)];
+}
 
 /**
  * One picture, or one cell of it, drawn at a size; a negative size or a flip mirrors it about its own box.

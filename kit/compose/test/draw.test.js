@@ -56,6 +56,14 @@ test("a profile judges the shown list's kinds at composition, through the inputs
   // a kind the kit cannot see is left to draw time
   const open = glue({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ ...c, op: c.kind }); } });
   assert.deepEqual(errors(open.check({ profile: GAMEBOY })), []);
+  // but a builder that is open does not hide the kinds the kit can see: a rect beside it is still S401
+  const hidden = glue({ maze: (d) => {
+    d.ports.out.view.layers[0].from = () => ({ op: "rect", at: [0, 0], size: [1, 1] });
+    d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ ...c, op: c.kind });
+  } });
+  const seen = errors(hidden.check({ profile: GAMEBOY }));
+  assert.deepEqual(seen.map((d) => d.code), ["S401"]);
+  assert.match(seen[0].message, /can hold rect, from level\.out\.view/);
   // a Game Boy-shaped maze passes
   const gb = glue({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ op: "image", at: [c.x, c.y], image: "sheet", cell: 0 }); } });
   assert.deepEqual(errors(gb.check({ profile: GAMEBOY })), []);
