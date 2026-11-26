@@ -1,6 +1,6 @@
 # Draft: the composed page, with draw lists on the wire
 
-*2026-11-26, leaf `FqsPVJ` (M4 Composition, `SPPLaM`). A design draft for Ben, not built and not ruled. Ben's two rulings shape it. First, a workbench that combines stages adds a **root part** in its own Dialect, which takes the other parts' outputs and draws what it likes ([the seams draft](2026-11-25-seams-draft.md), rulings block). Second, what crosses the wire is **a draw list**: "essentially draw calls, which can then be lowered to GLSL, SDL, Canvas, or even Game Boy" (Ben, 2026-11-26). Inputs: the relay trial's finding 7 ([findings](2026-11-25-seams-relay-trial-findings.md)); the UI's stage contract (`kit/define/README.md`, `defineUI`); the seams and clocks drafts as ruled.*
+*2026-11-26, leaf `FqsPVJ` (M4 Composition, `SPPLaM`). A design draft for Ben; **ruled 2026-11-26: questions 1, 3 and 4 as recommended, question 2 as revised** (a general 2-D vocabulary, with platform limits only in renderer profiles). Ben's two rulings shape it. First, a workbench that combines stages adds a **root part** in its own Dialect, which takes the other parts' outputs and draws what it likes ([the seams draft](2026-11-25-seams-draft.md), rulings block). Second, what crosses the wire is **a draw list**: "essentially draw calls, which can then be lowered to GLSL, SDL, Canvas, or even Game Boy" (Ben, 2026-11-26). Inputs: the relay trial's finding 7 ([findings](2026-11-25-seams-relay-trial-findings.md)); the UI's stage contract (`kit/define/README.md`, `defineUI`); the seams and clocks drafts as ruled.*
 
 ## The problem in one paragraph
 
@@ -16,7 +16,7 @@ ports: { out: {
 
 // particles.dialect.js: particles offers its own
 ports: { out: {
-  view: { seam: "Draw<512>@px", from: (s) => drawParticles(s), note: "each live particle as a disc" },
+  view: { seam: "Draw<512>@px", from: (s) => drawParticles(s), note: "each live particle as an ellipse" },
 } }
 
 // arcade.dialect.js: the root's Dialect takes two pictures and makes one
@@ -41,20 +41,22 @@ compose("coin-bursts")
 
 `Draw<max>@<frame>` is a new seam type: a list of at most `max` **draw ops**, in painter's order, measured in one frame. Like `list<T, max>`, its max is part of the type, so every list has a known worst case before anything runs.
 
-A draw op is a record from a small, closed set:
+> **Revised 2026-11-26 (Ben: "I don't want to overfit DMG").** The first version of this section (palette indices limited by the target, a `sprite` op) was shaped by the Game Boy. Now the vocabulary is general 2-D, and everything about one platform lives only in that platform's renderer profile (below).
+
+A draw op is a record from a small, closed set: roughly what Canvas 2D, SDL and a 2-D GPU batcher have in common.
 
 | Op | Fields | Converts |
 |---|---|---|
-| `rect` | `at: point2`, `size: vec2`, `fill`, `stroke?` | `at` by scale and offset, `size` by scale |
-| `disc` | `at: point2`, `r: f64` (a quantity), `fill` | `r` by the uniform scale |
-| `line` | `from: point2`, `to: point2`, `width: f64`, `stroke` | both points; `width` by the scale |
-| `sprite` | `at: point2`, `sheet`, `tile: i32`, `flip?` | `at` only; a sprite's size is its sheet's, and a renderer with object limits splits a large one, each piece counting |
-| `tiles` | `at: point2`, `sheet`, `grid: list<list<i32>>`, `wrap?: vec2` (a scrolling ring, as DMG's 32×32 map) | `at` only |
+| `rect` | `at: point2`, `size: vec2`, `fill?`, `stroke?` | `at` by scale and offset, `size` by scale |
+| `ellipse` | `at: point2`, `r: vec2`, `fill?`, `stroke?` | `at`; `r` by the scale |
+| `line` | `points: list<point2>`, `width: f64`, `stroke`, `closed?`, `fill?` | every point; `width` by the scale (a polyline, or a polygon when closed) |
+| `image` | `at: point2`, `image`, `cell?: i32`, `size?: vec2`, `flip?` | `at`; `size` by the scale |
+| `tiles` | `at: point2`, `image`, `grid: list<list<i32>>`, `wrap?: vec2` | `at` only |
 | `text` | `at: point2`, `str`, `font`, `fill` | `at` only |
 
-- **Colors are palette indices, not RGB.** A Dialect declares a palette (named colors), and a renderer maps each index to what its target can show. Canvas maps it to RGBA. A Game Boy renderer maps it to one of 4 shades, and refuses a palette with more than 4 entries rather than guessing.
-- **Sheets are declared assets** (a tile size and an image), named in the Dialect like frames. That way `sprite` and `tiles` work on targets with no free-form drawing.
-- The set stays closed and small on purpose. Every op must be something each renderer either draws exactly or refuses up front.
+- **Colors are real colors (RGBA), and a Dialect may name them** (`wall`, `coin`), like design tokens. A full-color renderer draws them as written. A renderer with a limited palette maps each color to its nearest entry (by luminance, for a 4-shade Game Boy). A Dialect that cares how it looks there may give that renderer an explicit mapping for its named colors. The palette's size is a renderer fact, never a Dialect rule.
+- **Images are declared assets** (a picture, optionally cut into a grid of cells), named in the Dialect like frames. `image` draws one picture or cell; `tiles` draws a grid of cells. Every 2-D engine has both (a sprite atlas and a tilemap). On the Game Boy they become OAM sprites and the BG map, but that mapping is the renderer's.
+- The set stays closed and small on purpose, but it is **not the lowest common denominator.** Each op must be something a renderer either draws exactly or refuses up front. The Game Boy renderer refuses `ellipse`, `line`, free `rect`s and images that aren't 8×8-aligned cells. A Dialect that wants to run there uses `image` and `tiles` only, and the composition check says so when it doesn't.
 
 ## Where a draw list comes from
 
@@ -85,7 +87,7 @@ The agent that built the DMG Workbench never wrote draw calls. It designed **thr
 1. **The drawing vocabulary is the Dialect's choice, not the kit's.** This agent chose hardware-shaped layers. An agent porting Canvas sketches would choose immediate calls (`ctx.arc`) instead; the book survey filed those as `Native` code (synthesis §5). The kit should not force a style on a Dialect. It should define only what crosses a wire (the draw list) and the renderers. Each Dialect bridges from its own vocabulary to the list.
 2. **The bridge is small, and it replaces the hard part.** For DMG it is about 30 lines of runtime code:
    - the background becomes one `tiles` op, with the scroll as its offset;
-   - each entity's `draw` result becomes a `sprite` op;
+   - each entity's `draw` result becomes an `image` op (a cell of its sheet);
    - each HUD cell becomes a `text` op (or a `tiles` op over a font sheet).
 
    The ~70-line framebuffer renderer, with its OAM and scanline emulation, moves into the kit's Game Boy renderer and is shared by every package. The op set above already has the three ops DMG needs.
@@ -100,10 +102,10 @@ A **renderer** turns the shown part's draw list into pixels on one target. Each 
 |---|---|---|
 | Canvas 2D | nearly one call per op | none that matter |
 | SDL | nearly one call per op | none that matter |
-| GLSL / WebGL | ops batched into instance buffers by kind, one draw call per kind; `disc` as a quad with a distance test | instance-buffer size |
-| Game Boy (DMG) | `tiles` to the background map, `sprite` to sprite slots; `rect`, `disc`, `line` and free text are refused | 4 shades; 40 sprites, 10 per scanline; 8×8 tiles; a 20×18 tile screen |
+| GLSL / WebGL | ops batched into instance buffers by kind, one draw call per kind; `ellipse` as a quad with a distance test | instance-buffer size |
+| Game Boy (DMG) | `tiles` to the background map, `image` cells to sprite slots, `text` through a font sheet; `rect`, `ellipse`, `line` and unaligned images are refused; colors mapped to 4 shades | 4 shades; 40 sprites, 10 per scanline; 8×8 tiles; a 20×18 tile screen |
 
-**Checking a list against a profile happens at composition wherever the types allow, and at run time only where they can't.** This follows the queue ruling: a `Draw<512>` into a renderer limited to 40 sprites is a compose-time error naming both sides, unless the op mix is narrower (a list typed to `sprite` only, at most 40). A per-scanline limit depends on positions, so it is checked when the list is drawn, and reported with an R code: the part, the instant, the scanline. A renderer never silently drops ops.
+**Checking a list against a profile happens at composition wherever the types allow, and at run time only where they can't.** This follows the queue ruling: a `Draw<512>` into a renderer limited to 40 sprites is a compose-time error naming both sides, unless the op mix is narrower (a list typed to `image` only, at most 40). A per-scanline limit depends on positions, so it is checked when the list is drawn, and reported with an R code: the part, the instant, the scanline. A renderer never silently drops ops.
 
 ## Input through the stage
 
@@ -118,7 +120,10 @@ A click or touch on the stage lands in the shown part's frame. The root owns the
 ## Parked
 
 - **Transforms inside a list** (rotate, a group with its own frame). The frame relation covers placement, and no pair of ours needs rotation (the seams draft parked it too).
-- **3-D.** `Draw3` would follow the same pattern when a 3-D Dialect exists.
+- **3-D** (Ben asked, 2026-11-26). Not designed until a 3-D Dialect exists (the dogfood ruling), but three doors stay open now:
+  - *3-D is a scene, not a list of calls.* The natural form is retained: instances of declared meshes (assets, like images) with a transform and a material, plus a camera and lights. A `Scene<max>@<frame3>` seam would follow `Draw`'s rules: a declared max, conversion by frame, renderer profiles. Frames already allow `dims: 3`. 3-D will un-park rotation in edges, since a rigid transform needs it.
+  - *Projection is a renderer's job, and its output is an image.* A 3-D part reaches a 2-D root as a rendered picture: an `image` op whose source is another part's output (`Image@px`, the seams draft's first named extension), not a declared asset. The same seam lets a `fields` shader's output be drawn inside a 2-D page, so it is worth designing before 3-D is.
+  - *Per-pixel 3-D already has a home.* A raymarched SDF scene is a `fields` Kernel that produces an image, with no meshes, and it works today. A mesh renderer's materials could also be `fields` Kernels lowered to GLSL.
 - **Text layout beyond one line.** A `text` op is one run of characters, and a renderer may refuse fonts it lacks.
 - **Partial redraw and dirty regions.** A renderer may diff lists internally. The contract is a whole list per step.
 
@@ -129,7 +134,7 @@ A click or touch on the stage lands in the shown part's frame. The root owns the
    - **(b) A draw handle** with an effect verb, pushed into a list with a declared max (DMG's `hud`, and `step`'s Events). This is natural for Canvas-shaped Dialects.
 
    Both keep the bound static. **I was wrong about (b) when I told Ben, earlier on 2026-11-26, that a handle moves profile checks to run time.** The `Draw<max>` type declares the max, so the composition check uses that, and only exceeding it is a run-time error (the scanline check is run-time anyway). Recommended: allow both, chosen by the Dialect's vocabulary. Add only **concatenation** of whole lists (maxes add), so a root can layer `[...inp.board, ...inp.fx]`. `map` is not needed.
-2. **A closed op set with palette-indexed color and declared sheets**, designed against the Game Boy's limits from the start. Recommended. The alternative, free RGBA and arbitrary paths, makes Canvas easy and every constrained target a pile of approximations.
+2. **A closed, general 2-D op set, with real colors that a Dialect may name, and declared images.** Revised after Ben's concern about overfitting DMG: nothing in the vocabulary is platform-specific. A constrained target's limits (palette size, object counts, cell sizes) are in its renderer profile, which refuses what it can't draw exactly. The alternative, a vocabulary shaped by the most constrained target, makes every other target pay for the Game Boy.
 3. **Renderer profiles, checked at composition where the types allow**, never dropping ops silently. Recommended: the same rule as the queues.
 4. **The custom-element stage stays** as an escape hatch whose picture can't be composed. Recommended.
 
