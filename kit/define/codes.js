@@ -24,11 +24,20 @@ export const DEFINE_CODES = Object.freeze({
   D015: "A construct state without record: \"calls\", init or step, or whose names clash with a Program namespace; an opt or rest argument that is not last",
   D017: "Two things in a construct that the record would put under one key: an opening argument, a child construct, a slot's as, units",
   D018: "A slot or construct named like a property runtimes probe on every object (then, toJSON, inspect, …)",
-  D019: "A lambda() in a construct's opens, which is not built yet",
+  D019: "A lambda() or a rest() in a construct's opens, which is not built yet (a rest tail there would keep only its first value)",
   D020: "A Dialect without text(state), its text view (its screen and state as characters, sized for a model)",
   D021: "A malformed effect declaration: an unknown verb, object or member in may; a write, destroy or bump with no object; a non-read in a pure space's slot or in helpers; a bump outside an instance space or of a member that is not a total; a write of a member that is not writable; one slot that may both read and bump a total; write and bump on one member, or on a member that is not a value; bump on a non-f64; effects on an intrinsic",
   D022: "An instance a lambda could reach other than as its instance space's slot parameter (a member, method result, global, list item, struct field, intrinsic or call result of its type; a slot outside the space that takes one; a slot in it that takes none or two), or a write or destroy of an object in a slot whose space's instance is not that object",
   D023: "A malformed state (the run's state a Dialect declares): not an object, no members, a member that is not a type or is a nested plain object (write struct({ … })), an object() or a declared object as a member, void or null as a type, a list whose max is not a positive whole number (a state list may leave the max out: list(type))",
+  D024: "A malformed ports declaration: a key a port does not take (with a did-you-mean), a missing seam or value output's from, no note on a tagged or Event port, a port name that is not an identifier, a value of the wrong form; a type on an Event input whose record no lambda reads",
+  D025: "A seam type that does not parse (a rate over anything but s included), names a frame the Dialect does not declare, or tags a point or vector with a frame of other dims",
+  D026: "An output's from that is neither a path nor a lambda, a path that names nothing in the run's state, a lambda that breaks the UI value lambda rules, or a from on an Event output (a runtime pushes its records)",
+  D027: "A local type that does not pair with its port's seam type: the state at an output's from, what an output's lambda gives (found when a Program lowers), or the type an input or an Event record's field reads as (no vector type of a point's or vector's dims, or several and no type)",
+  D028: "A value input with neither default nor required: true, or both, or a default that does not fit its seam type, or a delivery; an Event input with a default or required, or a delivery other than \"reliable\" or { keepLast: n } (n a positive whole number)",
+  D029: "Value inputs without inputs: { object, name }; an inputs object that is not a declared object or already has members; no global of inputs.name naming that object",
+  D030: "A malformed frames or edges declaration: a key a frame does not take, dims other than 1, 2 or 3, a missing note, an extent or edges that is not a function, a frame named like the kit's s; or (when a Program lowers) an extent(record) or edges(record) that throws or returns the wrong shape",
+  D031: "A Grammar whose ref(\"in\") has no ports.in to name, that declares name(\"in\") itself, with a slot or child construct named out, in or frame (the handles every builder has), or a ref kind other than \"event\" or \"value\" on ref(\"in\")",
+  D032: "An Event input's record that is not { name, slots }: a name that is not an identifier or is already a global, object, intrinsic, type, the inputs' or params' name or another input's record; slots that are empty or name no slot convention; a record on a value input",
 });
 
 /** defineUI's codes: U… is a UI declaration refused when defineUI is called. U006 is retired (its job, a bad state, is D023's); its number is not reused. */

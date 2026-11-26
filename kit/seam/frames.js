@@ -88,13 +88,13 @@ const num = (x) => String(Math.round(x * 1e9) / 1e9);
 
 /**
  * A planned conversion as the draft prints it: `at: maze.cell → particles.px, point, ×32 +16`.
- * @param {{ field: string, kind: "point" | "vector" | "quantity", from: string, to: string, edge: Edge }} c
+ * @param {{ field: string, kind: "point" | "vector" | "quantity", rate?: true, from: string, to: string, edge: Edge }} c
  */
 export function convertText(c) {
   /** @param {number[]} v */
   const one = (v) => (v.every((x) => close(x, v[0])) ? num(v[0]) : `[${v.map(num).join(", ")}]`);
   const by = c.kind === "quantity" ? `×${num(Math.abs(c.edge.scale[0]))}` : c.kind === "vector" ? `×${one(c.edge.scale)}` : `×${one(c.edge.scale)} +${one(c.edge.offset)}`;
-  return `${c.field || "(value)"}: ${c.from} → ${c.to}, ${c.kind}, ${by}`;
+  return `${c.field || "(value)"}: ${c.from} → ${c.to}, ${c.kind}${c.rate ? " per second" : ""}, ${by}`;
 }
 
 /** Whether a quantity can cross an edge: one scale magnitude on every axis (a flip keeps a length's size). @param {Edge} e */

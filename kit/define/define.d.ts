@@ -117,7 +117,35 @@ export interface DialectDef {
   state?: Record<string, TypeDef>;
   /** The object a lambda reads the Program's params through, the name it reads it by, and the members known only at run time, which build-time code may not read (B014). */
   params?: { object: string; name: string; runtime?: string[] };
+  /** What the Dialect offers and accepts across a seam: its outputs and inputs, in seam types (kit/seam). */
+  ports?: { out?: Record<string, OutPortDef>; in?: Record<string, InPortDef> };
+  /** The coordinate spaces and units the Dialect measures in, by name. The kit's `s` (seconds) needs no declaring. */
+  frames?: Record<string, FrameDef>;
+  /** The edges between the Dialect's own frames, from the built record. */
+  edges?: (record: Record<string, any>) => Array<{ from: string; to: string; scale: number | number[]; offset?: number | number[] }>;
+  /** The object a lambda reads the value inputs through, and the global it reads it by (`inp.radius`). */
+  inputs?: { object: string; name: string };
 }
+
+/** One output port as written: a value output reads the run's state by a path or a value lambda; an Event output has no `from` (a runtime pushes its records). */
+export interface OutPortDef { seam: string; from?: string | ((s: any) => unknown); note?: string }
+/** One input port as written. A value input has a `default` or `required: true`; an Event input a `delivery` and, when lambdas read its record, a `record`. */
+export interface InPortDef { seam: string; note?: string; default?: unknown; required?: true; type?: string; delivery?: Delivery; record?: { name: string; slots: string[] } }
+/** How an Event input takes its records: every one (the default), or only the newest n. */
+export type Delivery = "reliable" | { keepLast: number };
+/** One frame as written: a unit (1 dims) or a space (2 or 3), its note, and optionally the box it spans for a built record. */
+export interface FrameDef { dims: 1 | 2 | 3; note: string; extent?: (record: Record<string, any>) => { min: number[]; max: number[] } }
+
+/** One output port, parsed. */
+export interface OutPort { name: string; seam: import("../seam/seam.js").Seam; seamText: string; from?: string | Function; note: string | null }
+/** One input port, parsed. */
+export interface InPort { name: string; seam: import("../seam/seam.js").Seam; seamText: string; note: string | null; default?: unknown; required: boolean; delivery?: Delivery; record?: { name: string; slots: string[] } }
+/** One frame, parsed. */
+export interface Frame { name: string; dims: 1 | 2 | 3; note: string; extent: Function | null }
+/** What a Dialect declares at its seams, parsed. */
+export interface Seams { out: Record<string, OutPort>; in: Record<string, InPort>; frames: Record<string, Frame>; edges: Function | null; inputs: { object: string; name: string } | null }
+/** An Event input's record as lambdas read it: the global's name, the slot conventions that see it, its fields' local types. */
+export interface EventRecord { input: string; name: string; slots: string[]; members: Record<string, unknown> }
 
 /** Which top-level helpers lowering checks: `"called"` (the default) those a lambda reaches, `"all"` every function, reached or not (their parameters then stay untyped, so what they do through one is not checked). */
 export type HelperCheck = "called" | "all";
@@ -154,6 +182,10 @@ export interface Dialect {
   readonly stateType?: Type;
   /** Every place `value` does not fit the declared state, by path (`player.x`, `bodies[1].mass`); [] when it fits. Present only with `state`. */
   readonly checkState?: (value: unknown) => StateMismatch[];
+  /** The ports, frames, edges and inputs the Dialect declares, parsed (empty when it declares none). */
+  readonly seams: Seams;
+  /** Where defineDialect was called: a seam problem found when a Program lowers is placed there. */
+  readonly site: { file: string; loc: import("../parse/ast.js").Loc };
   /** The Library units the sources use, in dependency order. */
   libraryFor(sources: string[]): UnitDecl[];
   /** The Environment for one Program record; `states` gives each stateful lambda's construct state, by slot id. */

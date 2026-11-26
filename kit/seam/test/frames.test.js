@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeEdge, composeEdges, invertEdge, fitEdge, FrameGraph, convertText } from "../checker/frames.js";
+import { normalizeEdge, composeEdges, invertEdge, fitEdge, FrameGraph, convertText } from "../index.js";
 
 test("an edge's scalar scale and offset apply to every axis; a bad one says why", () => {
   assert.deepEqual(normalizeEdge({ scale: 32, offset: 16 }, 2), { ok: true, edge: { scale: [32, 32], offset: [16, 16] } });
@@ -50,4 +50,8 @@ test("a conversion prints by kind", () => {
   assert.equal(convertText({ field: "at", kind: "point", from: "maze.cell", to: "particles.px", edge: e }), "at: maze.cell → particles.px, point, ×32 +16");
   assert.equal(convertText({ field: "v", kind: "vector", from: "a.x", to: "b.y", edge: { scale: [2, -2], offset: [1, 1] } }), "v: a.x → b.y, vector, ×[2, -2]");
   assert.equal(convertText({ field: "", kind: "quantity", from: "a.x", to: "b.y", edge: { scale: [2, -2], offset: [1, 1] } }), "(value): a.x → b.y, quantity, ×2");
+});
+
+test("a rate's conversion prints as its kind per second", () => {
+  assert.equal(convertText({ field: "v", kind: "vector", rate: true, from: "a.x", to: "b.y", edge: { scale: [2, 2], offset: [1, 1] } }), "v: a.x → b.y, vector per second, ×2");
 });

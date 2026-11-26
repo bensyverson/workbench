@@ -25,7 +25,13 @@ export const OBJECT_PROBES = Object.freeze(["constructor", "valueOf", "toString"
 /** The bounds a number shape takes in data("number", { … }). */
 const BOUNDS = Object.freeze(["min", "max", "whole"]);
 /** The keys a spec's trailing options object may hold, by spec; any other spec takes only `as`. */
-const SPEC_OPTIONS = /** @type {Record<string, string[]>} */ ({ name: ["as", "within"], data: ["as", ...BOUNDS] });
+const SPEC_OPTIONS = /** @type {Record<string, string[]>} */ ({ name: ["as", "within"], data: ["as", ...BOUNDS], ref: ["as", "kind"] });
+/** The namespace the kit fills from a Dialect's ports.in, which ref("in") names. */
+export const INPUTS_NS = "in";
+/** What `ref("in", { kind })` may ask for: only Event inputs, or only value inputs. */
+export const INPUT_KINDS = Object.freeze(["event", "value"]);
+/** The handles every builder has: a slot or child construct of one of these names could never be called. */
+export const HANDLE_SIDES = Object.freeze(["out", "in", "frame"]);
 /** Methods every builder has, which no slot or construct may take. */
 export const KIT_METHODS = Object.freeze(["check", "build"]);
 
@@ -113,6 +119,50 @@ function refsIn(spec, found) {
 }
 
 /**
+ * Every ref() spec a spec list holds, at any depth, as refsIn finds them, with its options.
+ * @param {unknown} spec @param {(ref: { ns: unknown, opts: unknown }) => void} found
+ */
+function refSpecsIn(spec, found) {
+  if (Array.isArray(spec)) { spec.forEach((x) => refSpecsIn(x, found)); return; }
+  const t = tagged(spec);
+  if (!t) { if (isPlainObject(spec)) Object.values(spec).forEach((x) => refSpecsIn(x, found)); return; }
+  const any = /** @type {any} */ (t);
+  switch (t[TAG]) {
+    case "ref": found({ ns: any.ns, opts: any.opts }); return;
+    case "opt": case "recordOf": case "listOf": case "oneOf": refSpecsIn(any.of, found); return;
+    case "rest": refSpecsIn(any.spec, found); return;
+    case "data": refSpecsIn(any.shape, found);
+  }
+}
+
+/**
+ * The Grammar against its Dialect's seams (D031): a ref("in") names one of ports.in, so the Dialect must declare
+ * some; the kit fills the in namespace, so no name("in"); every builder has .out, .in and .frame, so no slot or
+ * child construct takes one of those names; a ref's kind asks for Event or value inputs, so only on ref("in").
+ * @param {T.Dialect | null} dialect @param {Record<string, any>} cs @param {Set<string>} programNs @param {Problem[]} out
+ */
+function checkSeams(dialect, cs, programNs, out) {
+  const inputs = dialect ? Object.keys(dialect.seams?.in ?? {}) : [];
+  let noInputs = false;
+  for (const [cn, c] of Object.entries(cs)) {
+    const lists = [[["constructs", cn, "opens"], c.opens], ...Object.entries(isPlainObject(c.slots) ? c.slots : {}).map(([sn, s]) => [["constructs", cn, "slots", sn, "args"], /** @type {any} */ (s)?.args])];
+    for (const [path, specs] of lists) refSpecsIn(specs, (r) => {
+      const kind = isPlainObject(r.opts) ? r.opts.kind : undefined;
+      if (r.ns === INPUTS_NS && !inputs.length && dialect && !noInputs) {
+        noInputs = true;
+        out.push({ code: "D031", path: /** @type {Array<string | number>} */ (path), message: `a ref("in") names one of the Dialect's inputs, and the ${dialect.name} Dialect declares no ports.in.`, tip: 'declare the input in defineDialect: ports: { in: { burst: { seam: "Event<{ … }>", note: "…" } } }' });
+      }
+      if (kind === undefined) return;
+      if (r.ns !== INPUTS_NS) out.push({ code: "D031", path: /** @type {Array<string | number>} */ (path), message: `ref("${String(r.ns)}", { kind }): only ref("in") takes a kind, which asks for Event or value inputs.`, tip: `remove kind, or write ref("in", { kind: "event" })` });
+      else if (!INPUT_KINDS.includes(/** @type {string} */ (kind))) out.push({ code: "D031", path: /** @type {Array<string | number>} */ (path), message: `ref("in", { kind }): kind is "event" or "value", not ${describe(kind)}.`, tip: 'ref("in", { kind: "event" })' });
+    });
+    if (c.parent !== undefined && HANDLE_SIDES.includes(cn)) out.push({ code: "D031", path: ["constructs", cn], message: `the child construct '${cn}' would be a method named like the handles every builder has (.out, .in, .frame).`, tip: `rename '${cn}'` });
+    for (const sn of Object.keys(isPlainObject(c.slots) ? c.slots : {})) if (HANDLE_SIDES.includes(sn)) out.push({ code: "D031", path: ["constructs", cn, "slots", sn], message: `construct '${cn}': the slot '${sn}' is named like the handles every builder has (.out, .in, .frame).`, tip: `rename '${sn}'` });
+  }
+  if (programNs.has(INPUTS_NS)) out.push({ code: "D031", path: ["constructs"], message: 'a name("in") declares into the namespace the kit fills from the Dialect\'s ports.in.', tip: "use another namespace" });
+}
+
+/**
  * name()'s `within`: a construct that is the declaring one or an ancestor of it, one scope per namespace, and
  * every ref into a scoped namespace inside an instance of its `within` construct (D011).
  * @param {Record<string, any>} cs @param {Problem[]} out
@@ -186,7 +236,11 @@ export function validateGrammar(dialect, def) {
     if (PROBES.includes(cn)) out.push({ code: "D018", path, message: `construct '${cn}' takes a name that runtimes and test libraries probe on every object (${listed([...PROBES])}); its method could never be called.`, tip: `rename '${cn}'` });
     if (c.opens !== undefined) {
       checkSpecs(c.opens, conventions, [...path, "opens"], `construct '${cn}', opens`, out);
-      if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => { if (holdsLambda(spec)) out.push({ code: "D019", path: [...path, "opens", i], message: `construct '${cn}', opens, argument ${i + 1}: a lambda in an opening is not built yet; only a slot's lambdas are lowered.`, tip: `put the lambda in a decl slot of '${cn}'` }); });
+      if (Array.isArray(c.opens)) c.opens.forEach((/** @type {unknown} */ spec, /** @type {number} */ i) => {
+        if (holdsLambda(spec)) out.push({ code: "D019", path: [...path, "opens", i], message: `construct '${cn}', opens, argument ${i + 1}: a lambda in an opening is not built yet; only a slot's lambdas are lowered.`, tip: `put the lambda in a decl slot of '${cn}'` });
+        // the record keeps one value per opening key, so a rest tail there would keep only its first value
+        else if (tagged(spec)?.[TAG] === "rest") out.push({ code: "D019", path: [...path, "opens", i], message: `construct '${cn}', opens, argument ${i + 1}: rest() in an opening is not built yet; an opening argument is one value under one record key.`, tip: `put the values in a decl slot of '${cn}' that takes rest(…)` });
+      });
     }
     if (c.required !== undefined) {
       if (typeof c.required !== "boolean") out.push({ code: "D011", path: [...path, "required"], message: `construct '${cn}': required must be true or false, not ${describe(c.required)}.`, tip: "required: true" });
@@ -229,6 +283,7 @@ export function validateGrammar(dialect, def) {
 
   for (const cn of names) collideKeys(cs, cn, cn === def.root, out);
   checkWithin(cs, out);
+  checkSeams(dialect, cs, programNs, out);
 
   // The slot that declares the Program's params: a root decl slot whose first argument is the param's name and
   // whose second is its declaration (its `value` the default a build-time read gets).

@@ -11,7 +11,7 @@ import { an } from "./codes.js";
 /**
  * @typedef {object} Found
  * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt, severity?: "warning", tip?: string, finite?: true, value?: number }>} errors  errors, and warnings that do not refuse the call; `finite` marks a number that is not finite (`value`), which still fits its shape's type
- * @property {Array<{ ns: string, value: string, path: Array<string | number> }>} refs
+ * @property {Array<{ ns: string, value: string, path: Array<string | number>, kind?: string }>} refs  `kind`: what ref("in", { kind }) asks for
  * @property {Array<{ convention: string, src: string, ast: ArrowFunctionExpression, path: Array<string | number>, key?: string }>} lambdas
  */
 
@@ -171,7 +171,7 @@ export function matchShape(shape, v, path, out, key) {
     case "listOf": return Array.isArray(v) ? v.map((x, i) => matchShape(s.of, x, [...path, i], out, key)) : fail(`expected a list, got ${describe(v)}`);
     case "ref":
       if (typeof v !== "string") return fail(`expected the name of ${an(/** @type {string} */ (s.ns))}, got ${describe(v)}`);
-      out.refs.push({ ns: /** @type {string} */ (s.ns), value: v, path });
+      { const kind = /** @type {any} */ (s).opts?.kind; out.refs.push({ ns: /** @type {string} */ (s.ns), value: v, path, ...(typeof kind === "string" ? { kind } : {}) }); }
       return v;
     case "data": {
       // data(shape, { min, max, whole }): the shape, then a number shape's bounds

@@ -8,6 +8,7 @@ import { isPlainObject, kindOf, struct } from "./tags.js";
 import { callSite } from "./site.js";
 import { checkStateValue, stateErrorMessage } from "./state.js";
 import { dialectVector, dialectScalar } from "../ir/types.js";
+import { declareSeams, checkOutputs, noSeams } from "./ports.js";
 
 /** @import { Type, VecType, ScalarType, EffectVerb } from "../ir/ir.js" */
 /** @import { Environment, ObjectDecl, SlotDecl, SlotRef } from "../lower/environment.js" */
@@ -15,6 +16,7 @@ import { dialectVector, dialectScalar } from "../ir/types.js";
 /** @import * as T from "./define.js" */
 /** @import { Problem, Resolver } from "./types.js" */
 /** @import { SpaceModel } from "./effects.js" */
+/** @typedef {{ members: Record<string, unknown>, records: T.EventRecord[], inputs: T.Seams["inputs"] }} SeamEnv */
 
 /** A bad definition: every problem found, each a DefineDiagnostic. */
 export class DefinitionError extends Error {
@@ -68,7 +70,9 @@ function libraryFor(library, sources) {
  * @returns {T.Dialect}
  */
 export function defineDialect(def) {
-  refuse("defineDialect", validateDialect(def));
+  // the seams are judged with the rest, so one refusal lists every problem
+  const seamed = isPlainObject(def) ? declareSeams(/** @type {Record<string, any>} */ (def)) : null;
+  refuse("defineDialect", [...validateDialect(def), ...(seamed?.problems ?? [])]);
   /** @type {Record<string, VecType>} */
   const vectors = {};
   /** @type {Record<string, ScalarType>} */
@@ -111,6 +115,10 @@ export function defineDialect(def) {
   // The run's state (not a construct's): its core Type, a value check by path, and a text view that applies it.
   const stateType = def.state === undefined ? undefined : resolveType(struct(def.state), statics);
   const checkState = stateType && ((/** @type {unknown} */ v) => checkStateValue(stateType, v));
+  const seams = seamed?.seams ?? noSeams();
+  refuse("defineDialect", checkOutputs(seams, /** @type {Record<string, any>} */ (def), stateType));
+  /** @type {SeamEnv} */
+  const seamEnv = { members: seamed?.members ?? {}, records: seamed?.records ?? [], inputs: seams.inputs };
   const text = checkState
     ? (/** @type {unknown} */ s) => {
       const bad = checkState(s);
@@ -130,7 +138,9 @@ export function defineDialect(def) {
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
     text,
     ...(stateType ? { state: def.state, stateType, checkState } : {}),
-    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces),
+    seams,
+    site: callSite(),
+    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces, seamEnv),
   });
   MADE.add(dialect);
   return dialect;
@@ -143,9 +153,10 @@ export function defineDialect(def) {
  * @param {Record<string, "scalar">} vectorMultiply  the vectors that multiply only by a scalar
  * @param {Record<string, any>} program @param {Map<string, unknown>} states
  * @param {SpaceModel} spaces  each space's instance object, or null when it is pure
+ * @param {SeamEnv} seamEnv  the value inputs' members, and each Event input's record object
  * @returns {Environment}
  */
-function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces) {
+function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces, seamEnv) {
   /** @type {Record<string, ObjectDecl>} */
   const objects = {};
   /** @type {Resolver} */
@@ -191,6 +202,22 @@ function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultip
     if (Object.hasOwn(globals, n)) refuse("environment(program)", [{ code: "D007", path: ["environment"], message: `environment(program) declares the global '${n}' twice: the Dialect already has it.`, tip: `give the global another name: the Dialect already declares '${n}'` }]);
     globals[n] = resolveType(t, r);
   }
+  // the value inputs, as members of the object the Dialect names for them (it declares it empty)
+  if (seamEnv.inputs && Object.hasOwn(objects, seamEnv.inputs.object)) {
+    const into = objects[seamEnv.inputs.object];
+    for (const [m, t] of Object.entries(seamEnv.members)) Object.defineProperty(into.members, m, { value: resolveMember(t, r), enumerable: true, writable: true, configurable: true });
+  }
+  // each Event input's record: an object of read-only fields whose every read is `read <name>.<field>`, so only
+  // the slots its record names (which may read it) see it; any other lambda's read is L004
+  /** @type {Map<string, string[]>} */
+  const recordReads = new Map();
+  for (const rec of seamEnv.records) {
+    objects[rec.name] = { label: `the ${rec.input} record (${rec.name})`, members: Object.fromEntries(Object.entries(rec.members).map(([m, t]) => [m, { kind: /** @type {const} */ ("value"), t: resolveType(t, r), effect: /** @type {import("../ir/ir.js").Effect} */ (`read ${rec.name}.${m}`) }])) };
+    globals[rec.name] = { obj: rec.name };
+    for (const s of rec.slots) recordReads.set(s, [...(recordReads.get(s) ?? []), `read ${rec.name}`]);
+  }
+  /** A convention, with the records its slot sees added to what it may read. @param {SlotDecl} d @param {string} kind @returns {SlotDecl} */
+  const seeing = (d, kind) => (recordReads.has(kind) ? { ...d, may: [...(d.may ?? []), .../** @type {string[]} */ (recordReads.get(kind))] } : d);
   /** @type {Map<string, SlotDecl>} */
   const fixed = new Map();
   const helperMay = helpersMay(/** @type {Record<string, any>} */ (def), spaces);
@@ -214,13 +241,13 @@ function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultip
       if (c === undefined) return `the ${def.name} Dialect has no '${ref.kind}' slot convention`;
       if (typeof c !== "function") {
         let d = fixed.get(ref.kind);
-        if (!d) fixed.set(ref.kind, (d = convention(c, r, spaces)));
+        if (!d) fixed.set(ref.kind, (d = seeing(convention(c, r, spaces), ref.kind)));
         return d;
       }
       const made = c(ref, program, states.get(ref.id));
       if (typeof made === "string") return made;
       checkConvention(made, def, objects, ref, added);
-      return convention(made, r, spaces);
+      return seeing(convention(made, r, spaces), ref.kind);
     },
   };
 }

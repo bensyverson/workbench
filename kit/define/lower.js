@@ -9,6 +9,7 @@ import { didYouMean, dialectError } from "./codes.js";
 import { enumOf, opt, list, struct, union, kindOf } from "./tags.js";
 import { rematch, single, nameOf, openKey, setOwn, LOCS } from "./record.js";
 import { bindings } from "./params.js";
+import { lowerPorts } from "./port-lower.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Type } from "../ir/ir.js" */
@@ -25,6 +26,7 @@ import { bindings } from "./params.js";
  * @property {Array<T.BuildDiagnostic | LowerDiagnostic>} diagnostics  state refusals (B003, B010, B011), then each lambda's and helper's, each tied to its call or lambda
  * @property {Record<string, unknown>} states  each stateful construct instance's final state, by name
  * @property {Record<string, import("./params.js").Binding>} params  each declared param's binding time: read at build (by which call) or only in Kernels (which)
+ * @property {import("./port-lower.js").LoweredSeams} [seams]  for a Dialect with seams: each frame's box, its edges, each output lambda's lowering
  */
 
 /**
@@ -323,7 +325,11 @@ export function lowerRecord(g, record) {
   const { results, helpers: helperResults } = lowerProgram(env, live.map((l) => ({ src: l.src, slot: l.ref })), helpers);
   results.forEach((r, i) => diagnostics.push(...r.diagnostics.map((d) => ({ ...d, file: live[i].call.at.file, ref: live[i].ref }))));
   for (const h of helperResults) diagnostics.push(...h.result.diagnostics.map((d) => ({ ...d, unit: h.name })));
+  const s = g.dialect.seams;
+  const ported = s && (Object.keys(s.out).length || Object.keys(s.frames).length || s.edges) ? lowerPorts(g.dialect, record) : null;
+  if (ported) diagnostics.push(.../** @type {any[]} */ (ported.diagnostics));
   return {
+    ...(ported ? { seams: { extents: ported.extents, edges: ported.edges, outputs: ported.outputs } } : {}),
     environment: env,
     lambdas: live.map((l, i) => ({ ref: l.ref, src: l.src, result: results[i] })),
     helpers: helperResults,

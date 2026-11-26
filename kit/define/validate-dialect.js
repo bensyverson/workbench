@@ -11,7 +11,7 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "conditions", "state"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "conditions", "state", "ports", "frames", "edges", "inputs"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
 /** What `conditions` may say: only bool values are conditions. */
 export const CONDITIONS = Object.freeze(["bool"]);

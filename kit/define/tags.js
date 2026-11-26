@@ -47,10 +47,15 @@ export function name(...a) {
   const rest = opts ? a.slice(0, -1) : a;
   return { [TAG]: "name", ns: rest[0], count: rest.length, as: /** @type {any} */ (opts?.as), within: opts?.within, opts };
 }
-/** @param {...unknown} a @returns {T.RefTag} */
+/**
+ * `ref(ns, { as?, kind? })`: a namespace is a string, so a trailing plain object after it is the options; `kind`
+ * (on ref("in") only) asks for Event or value inputs.
+ * @param {...unknown} a @returns {T.RefTag}
+ */
 export function ref(...a) {
-  const [rest, as, opts] = splitAs(a);
-  return { [TAG]: "ref", ns: rest[0], count: rest.length, as, opts };
+  const opts = a.length > 1 && isOptions(a.at(-1)) ? /** @type {Record<string, unknown>} */ (a.at(-1)) : undefined;
+  const rest = opts ? a.slice(0, -1) : a;
+  return { [TAG]: "ref", ns: rest[0], count: rest.length, as: /** @type {any} */ (opts?.as), opts };
 }
 /**
  * `data(shape, { min?, max?, whole?, as? })`: the bounds are a number shape's; a trailing plain object after the

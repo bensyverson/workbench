@@ -1,0 +1,8 @@
+// kit/compose: the glue program. compose(name) wires parts, each a Program built by its own package's Grammar,
+// relates their frames, and checks every wire and edge, naming both sides. The composed record holds each wire's
+// conversion plan as data, for the scheduler. README.md is the spec; no Node built-ins, so it runs in the page too.
+
+export { compose, ComposeError, isComposition } from "./compose.js";
+export { COMPOSE_CODES } from "./codes.js";
+export { formatDiagnostic } from "./format.js";
+export { scanGlue, GLUE_SPECIFIERS } from "./glue.js";

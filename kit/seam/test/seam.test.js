@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseSeam, printSeam, pairLocal, compareSeams, framesOf } from "../checker/seam.js";
+import { parseSeam, printSeam, pairLocal, compareSeams, framesOf } from "../index.js";
 
 /** @param {string} s */
 const ok = (s) => {
@@ -112,4 +112,36 @@ test("comparison: each mismatch has its S code and names the field", () => {
   assert.deepEqual(codes("point2@a", "vec2@b"), ["S255"]);
   assert.deepEqual(codes("vec2@a", "point2@b"), ["S255"]);
   assert.deepEqual(codes("vec2", "point2@b"), ["S255"]);
+});
+
+// Rates (ruled 2026-11-26): written only per second, over a frame, as a vector or a quantity. The kit's `s` is
+// one unit every package shares, so a rate converts by its space's edge alone.
+test("a rate per second parses, prints and carries rate: true", () => {
+  assert.deepEqual(ok("vec2@px/s"), { kind: "vector", dims: 2, frame: "px", rate: true });
+  assert.deepEqual(ok("f64@cell/s"), { kind: "quantity", frame: "cell", rate: true });
+  assert.equal(printSeam(ok("vec3@m / s")), "vec3@m/s");
+  assert.equal(printSeam(ok("Event<{ v: vec2@px/s }>")), "Event<{ v: vec2@px/s }>");
+  assert.deepEqual(framesOf(ok("{ v: vec2@px/s, d: f64@s }")), ["px", "s"]);
+});
+
+test("a rate over anything but s, of a point, or untagged is refused with a reason", () => {
+  for (const [bad, why] of /** @type {Array<[string, RegExp]>} */ ([["vec2@px/ms", /per second/], ["f64@cell/min", /per second/], ["point2@px/s", /point/], ["vec2/s", /frame/], ["f64/s", /frame/], ["vec2@px/", /per second/], ["bool/s", /./]])) {
+    const r = parseSeam(bad);
+    assert.equal(r.ok, false, `'${bad}' should not parse`);
+    assert.match(/** @type {any} */ (r).error, why, bad);
+  }
+});
+
+test("a rate pairs with what its kind pairs with; the kit's s is a frame like any other in a seam", () => {
+  assert.equal(pairLocal(ok("vec2@px/s"), v2), null);
+  assert.equal(pairLocal(ok("f64@cell/s"), "f64"), null);
+  assert.deepEqual(ok("f64@s"), { kind: "quantity", frame: "s" });
+});
+
+test("comparison: a rate meets only a rate; its tagged leaf says so", () => {
+  assert.deepEqual(cmp("vec2@a/s", "vec2@b/s").tagged, [{ field: "", kind: "vector", dims: 2, from: "a", to: "b", rate: true }]);
+  assert.deepEqual(cmp("{ r: f64@a/s }", "{ r: f64@b/s }").tagged, [{ field: "r", kind: "quantity", dims: null, from: "a", to: "b", rate: true }]);
+  assert.deepEqual(codes("vec2@a/s", "vec2@b"), ["S201"]);
+  assert.deepEqual(codes("{ r: f64@a }", "{ r: f64@b/s }"), ["S202"]);
+  assert.match(cmp("vec2@a", "vec2@b/s").problems[0].message, /per second/);
 });

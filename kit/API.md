@@ -108,7 +108,7 @@ export const program = defineGrammar(myLang, {
 - `ref(ns)` names a declared one, earlier or later (B003, with a did-you-mean).
 - `data(shape)` is a value of a shape (B004). Shapes: `"number" "string" "boolean" "string[]" "number[]"`, an object of shapes (`"key?"` optional), `oneOf(…)`, `enumOf([...])`, `recordOf(shape)`, `listOf(shape)`, with `ref` and `lambda` allowed inside. A number takes bounds, also inside a shape: `data("number", { min: 1, max: 120, whole: true })`. `Infinity` and `NaN` are B004.
 - `lambda(convention)` is a Runtime Lambda. It also accepts a top-level helper's name or source text; nothing requires an arrow written in place.
-- `opt(spec)` and `rest(spec)` go last. An opening argument's spec takes `{ as: "key" }` last to name its record key.
+- `opt(spec)` and `rest(spec)` go last. `rest(spec)` is for a decl slot only: an opening argument is one value under one record key, so `opens` refuses it (D019). An opening argument's spec takes `{ as: "key" }` last to name its record key.
 
 **Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. Your checks report with `ctx.error(code, message, { tip, arg, suggest, fix })`; the code is one letter of your own and three digits (not `B C D L P S U V`, which the kit keeps; `ctx.error` with one throws). `fix` prints as `fix: write <fix>`, so put advice in `tip`. Read [docs/codes.md](docs/codes.md) before you write checks, or when a code is new to you.
 
@@ -140,6 +140,39 @@ export const orbitsUI = defineUI(orbits, {     // orbits: what defineGrammar ret
 The UI reads the **run's state your Dialect's `state` declares** (above): a path is `"bounds.width"` and stops at a list; a lambda is `(s, $) => …` (a table column's `(row, s, $) => …`). A UI has no `state` key (`U001`), and a Dialect with no `state` is `U013`. The refusals are `U` codes with a fix, collected in one `DefinitionError`; the full list is `UI_CODES` in [define/codes.js](define/codes.js), and the keys and rules are in [define/README.md](define/README.md#defineui).
 
 `defineUI` checks the lambdas without a Program; `orbitsUI.lower(record)` types them against one (the record `run` or `.build()` gives), as your Grammar's `lower` does a Program's lambdas. `$` has the params that Program declares (so `$.mass` is `L002` in a Program without `mass`), and each key's result must be its type: `badIf` and `expect` a bool; `max` and `y` a number; a stat's or column's `value` a number or string; a text's `value` a string; `badge` a string or `null`; `tone` one of `"good" "warn" "bad" "dim"` or `null`. A lambda may have no effect (`L004`). It returns `kernels` by id (`tiles.bodies.body[0].value`) and `diagnostics`, each an `L` code carrying the `id`, `tile` and `key` of its lambda.
+
+## Seams: ports, frames and inputs
+
+A package that others may compose with declares what it **offers** and **accepts**, in seam types every package shares ([seam/README.md](seam/README.md)): `f64` `bool` `str`, a quantity `f64@cell`, a point `point2@cell`, a vector `vec2@cell` (or untagged `vec2`), a rate per second `vec2@px/s` or `f64@cell/s`, an enum `'coin' | 'key'`, a record `{ at: point2@cell }`, `list<T, max>`, and `Event<{ … }>` (the records one step produced). You never name another package: a composer wires your ports to a stranger's.
+
+```js
+frames: {                                         // the spaces and units you measure in; different packages' frames never unify by name
+  cell: { dims: 2, note: "grid cells; x right, y down; (0, 0) is the top-left cell's center",
+          extent: (record) => ({ min: [-0.5, -0.5], max: [record.grid[0].length - 0.5, record.grid.length - 0.5] }) },
+},                                                // the kit's s (seconds) needs no declaring: f64@s
+edges: (record) => [{ from: "cell", to: "px", scale: 16, offset: 8 }],   // optional: between your own frames
+ports: {
+  out: {
+    picked: { seam: "Event<{ at: point2@cell }>", note: "a coin picked up this step, at its cell" },   // no from: a runtime pushes it
+    player: { seam: "point2@cell", from: (s) => [s.player.x, s.player.y], note: "where the player stands" },
+    score:  { seam: "f64", from: "score", note: "coins so far" },        // from: a path into state, or a value lambda
+  },
+  in: {
+    burst:  { seam: "Event<{ at: point2@px }>", note: "fires every emitter whose trigger is 'burst'",
+              delivery: "reliable",                       // the default; or { keepLast: 8 }
+              record: { name: "ev", slots: ["spawn"] } }, // spawn lambdas read the record as ev.at; no other lambda may
+    radius: { seam: "f64@px", default: 40, note: "how far a burst spreads" },   // or required: true
+  },
+},
+inputs: { object: "In", name: "inp" },            // value inputs, read as inp.radius: declare objects.In empty and globals.inp: "In"
+```
+
+- **A note is required** on a tagged or Event port: it is what a composer reads to decide what to wire (D024).
+- **Pairing.** A port's local type must have its seam's structure: a `point2@cell` output's state is a `vector(2, "f64")`, a record a `struct` with the same fields (D027). An output lambda may build a point or vector as an array literal of exactly its dims. An input's point or vector reads as your one `vector` type of its dims; with several, say which with `type: "vec2"`.
+- **Triggers.** A Grammar names an input with `ref("in")`, checked by name (B003, with a did-you-mean); `ref("in", { kind: "event" })` takes only Event inputs, `{ kind: "value" }` only value inputs.
+- **Handles.** Every builder has read-only `.out.<port>`, `.in.<port>` and `.frame.<name>`, which a composer passes to kit/compose ([compose/README.md](compose/README.md)). So no slot or child construct may be named `out`, `in` or `frame` (D031).
+- An output lambda's result, `extent(record)` and `edges(record)` are checked when an example lowers (D027, D030), at your `defineDialect` line.
+- **Composing** packages is a glue program's job, with `kit/compose`: read [compose/README.md](compose/README.md) when you wire parts, relate frames, rename record fields or break a cycle.
 
 ## A Program
 
@@ -176,7 +209,8 @@ These cost earlier authors time.
 7. **Intrinsics exist only inside lambdas.** `const START = dayOf(2026, 1, 1)` at the top level fails when the file loads.
 8. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
 9. **`state` means two things.** A Dialect's `state` is the run's, what `text(state)` and a UI are handed; a Grammar construct's `state` (`record: "calls"`) is its build-time record. Write each where it belongs.
+10. **An Event output has no `from`**, and the queue an Event input's `delivery` implies is not checked yet: no runtime exists.
 
 ## Not built
 
-Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, lambdas in a construct's opening arguments. Report a need for one as a gap; don't invent API.
+Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, lambdas or `rest()` in a construct's opening arguments, an Event runtime (`defineRuntime`), delivery and queue bounds, a composed page that layers parts. Report a need for one as a gap; don't invent API.

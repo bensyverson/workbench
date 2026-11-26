@@ -19,6 +19,16 @@ The kit's terms, as ruled on 2026-11-23 ([nomenclature decision](../project/2026
 - **Workbench Declaration**: the `Workbench(…)` file. It declares what the tool does (views by role, commands, the lab scope), not how it looks.
 - **Skin**: the `Skin(…)` file. It declares how the tool looks.
 
+## Seams and composition
+
+- **Seam type**: a type in the small closed vocabulary every package's ports are written in (`point2@cell`, `vec2@px/s`, `Event<{ at: point2@cell }>`; [kit/seam](seam/README.md)). Not a second type system for lambdas: a Dialect pairs each port's seam type with its own types.
+- **Port**: a Dialect's declared output (`ports.out`) or input (`ports.in`). Values cross between parts only through ports. An **Event** port carries the records one step produced; any other port is a value, read each step.
+- **Frame**: a coordinate space (2 or 3 dims) or unit (1 dim) a Dialect measures in. Frames of different Dialects are different frames even when named alike. The kit declares one shared unit, `s` (seconds).
+- **Edge**: a diagonal affine map `{ scale, offset }` per axis between two frames: a Dialect's own (`edges(record)`) or a composer's (`.frame`). A path of edges plans each conversion on a wire.
+- **Glue program**: the workbench's own file (`workbench.js`) that builds each part with its package's Grammar and composes them with `kit/compose`: `.part`, `.frame`, `.wire`, `.show`. It owns every fact that spans two parts, and holds no lambdas.
+- **Part**: one Program in a composition, named by its root's opening name (`maze("level")` is the part `level`).
+- **Handle**: `part.out.<port>`, `part.in.<port>` or `part.frame.<name>` on any builder: a read-only name of one part's port or frame, passed to kit/compose's `.wire` and `.frame`. Not a value.
+
 ## Programs and compiling them
 
 - **Program**: text written in a Domain Language. Running its fluent chain builds the program; its Runtime Lambdas are lowered.

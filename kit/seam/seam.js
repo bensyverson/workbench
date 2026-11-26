@@ -1,16 +1,17 @@
 // The seam types (the draft's "Seam types"): a small closed vocabulary for what crosses between parts. This file
 // parses the written form, prints it back canonically, pairs a seam type with a Dialect's local (IR) type, and
 // compares a producer's seam with a consumer's, field by field, listing the tagged leaves a conversion needs.
-// The stand-in for the draft's kit/seam.
+// A rate is a vector or quantity per second (`vec2@px/s`): the kit's one shared unit, `s`, is the same in every
+// package, so a rate converts by its space's edge alone.
 
-/** @import { Type } from "../../../kit/ir/ir.js" */
+/** @import { Type } from "../ir/ir.js" */
 
 /**
  * A parsed seam type.
  * @typedef {{ kind: "scalar", of: "f64" | "bool" | "str" }
- *   | { kind: "quantity", frame: string }
+ *   | { kind: "quantity", frame: string, rate?: true }
  *   | { kind: "point", dims: 2 | 3, frame: string }
- *   | { kind: "vector", dims: 2 | 3, frame: string | null }
+ *   | { kind: "vector", dims: 2 | 3, frame: string | null, rate?: true }
  *   | { kind: "enum", values: string[] }
  *   | { kind: "record", fields: Record<string, Seam> }
  *   | { kind: "list", of: Seam, max: number }
@@ -18,6 +19,8 @@
  */
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** The kit's one shared unit, which every package may name without declaring it: seconds. */
+export const SECONDS = "s";
 
 /** A seam type's text that does not parse. */
 class SeamSyntax extends Error {}
@@ -96,9 +99,23 @@ export function parseSeam(text) {
       if (!IDENT.test(f)) throw new SeamSyntax(`a frame after @ is a name, not '${f || "the end"}'`);
       return f;
     };
-    if (t === "f64") { const f = tag(); return f === null ? { kind: "scalar", of: "f64" } : { kind: "quantity", frame: f }; }
+    /** A trailing `/s`: whether the leaf is a rate. @param {string | null} f  its frame */
+    const per = (f) => {
+      if (peek() !== "/") return false;
+      next();
+      const u = next();
+      if (u !== SECONDS) throw new SeamSyntax(`a rate is written per second only, ${t}${f === null ? "" : `@${f}`}/s, not per '${u || "nothing"}'`);
+      if (f === null) throw new SeamSyntax(`a rate is measured in a frame: write ${t}@<frame>/s`);
+      return true;
+    };
+    if (t === "f64") {
+      const f = tag();
+      const rate = per(f);
+      return f === null ? { kind: "scalar", of: "f64" } : rate ? { kind: "quantity", frame: f, rate: true } : { kind: "quantity", frame: f };
+    }
     if (t === "bool" || t === "str") {
       if (peek() === "@") throw new SeamSyntax(`${t} cannot be tagged with a frame; only f64, points and vectors are measured in one`);
+      if (peek() === "/") throw new SeamSyntax(`${t} cannot be a rate; only f64 and vectors change per second`);
       return { kind: "scalar", of: t };
     }
     const m = /^(point|vec)([23])$/.exec(t);
@@ -107,9 +124,10 @@ export function parseSeam(text) {
       const f = tag();
       if (m[1] === "point") {
         if (f === null) throw new SeamSyntax(`a point is a position in a frame: write ${t}@<frame>`);
+        if (peek() === "/") throw new SeamSyntax(`a point is a place, so it has no rate; a velocity is a vector: vec${dims}@${f}/s`);
         return { kind: "point", dims, frame: f };
       }
-      return { kind: "vector", dims, frame: f };
+      return per(f) ? { kind: "vector", dims, frame: f, rate: true } : { kind: "vector", dims, frame: f };
     }
     throw new SeamSyntax(`'${t || "the end"}' is not a seam type; use f64, bool, str, f64@frame, point2@frame, point3@frame, vec2, vec3 (optionally @frame), an enum ('a' | 'b'), a record ({ … }), list<T, max> or Event<{ … }>`);
   };
@@ -127,7 +145,7 @@ export function parseSeam(text) {
 function tokenize(text) {
   /** @type {string[]} */
   const tokens = [];
-  const re = /\s*(?:([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|-\d+)|('[^']*'|"[^"]*")|([<>{}:,|@]))/y;
+  const re = /\s*(?:([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|-\d+)|('[^']*'|"[^"]*")|([<>{}:,|@/]))/y;
   let at = 0;
   while (at < text.length) {
     if (/^\s*$/.test(text.slice(at))) break;
@@ -145,9 +163,9 @@ function tokenize(text) {
 export function printSeam(s) {
   switch (s.kind) {
     case "scalar": return s.of;
-    case "quantity": return `f64@${s.frame}`;
+    case "quantity": return `f64@${s.frame}${s.rate ? "/s" : ""}`;
     case "point": return `point${s.dims}@${s.frame}`;
-    case "vector": return `vec${s.dims}${s.frame === null ? "" : `@${s.frame}`}`;
+    case "vector": return `vec${s.dims}${s.frame === null ? "" : `@${s.frame}`}${s.rate ? "/s" : ""}`;
     case "enum": return s.values.map((v) => `'${v}'`).join(" | ");
     case "record": { const f = Object.entries(s.fields); return f.length ? `{ ${f.map(([k, v]) => `${k}: ${printSeam(v)}`).join(", ")} }` : "{}"; }
     case "list": return `list<${printSeam(s.of)}, ${s.max}>`;
@@ -232,7 +250,7 @@ export function pairLocal(seam, local) {
       return p ? `the list's items: ${p}` : null;
     }
     case "event": {
-      if (!(typeof local === "object" && "list" in local)) return `${printSeam(seam)} pairs with a state list of its record (the host refills it each step), not ${printType(local)}`;
+      if (!(typeof local === "object" && "list" in local)) return `${printSeam(seam)} pairs with a list of its record, not ${printType(local)}`;
       const p = pairLocal(seam.of, local.list);
       return p ? `the list's items: ${p}` : null;
     }
@@ -246,11 +264,11 @@ export function pairLocal(seam, local) {
  */
 /**
  * A tagged leaf both sides have: where it is (`at`, `items[].at`, "" for the whole value), what kind, and its frames.
- * @typedef {{ field: string, kind: "point" | "vector" | "quantity", dims: number | null, from: string, to: string }} TaggedLeaf
+ * @typedef {{ field: string, kind: "point" | "vector" | "quantity", dims: number | null, from: string, to: string, rate?: true }} TaggedLeaf
  */
 
 /** @param {Seam} s */
-const kindWord = (s) => (s.kind === "event" ? "an Event" : s.kind === "record" ? "a record" : s.kind === "list" ? "a list" : s.kind === "enum" ? "an enum" : s.kind === "point" ? "a point" : s.kind === "vector" ? "a vector" : s.kind === "quantity" ? "a quantity" : `${s.of === "f64" ? "an" : "a"} ${s.of}`);
+const kindWord = (s) => (s.kind === "event" ? "an Event" : s.kind === "record" ? "a record" : s.kind === "list" ? "a list" : s.kind === "enum" ? "an enum" : s.kind === "point" ? "a point" : s.kind === "vector" ? (s.rate ? "a vector per second" : "a vector") : s.kind === "quantity" ? (s.rate ? "a quantity per second" : "a quantity") : `${s.of === "f64" ? "an" : "a"} ${s.of}`);
 
 /**
  * Compares what a producer's port gives with what a consumer's port takes. Frames are compared by name only as
@@ -283,7 +301,9 @@ export function compareSeams(from, to) {
     const sameKind = a.kind === b.kind || (a.kind === "enum" && b.kind === "scalar" && b.of === "str") || (a.kind === "scalar" && a.of === "str" && b.kind === "enum");
     const dimsDiffer = pv(a) && pv(b) && /** @type {any} */ (a).dims !== /** @type {any} */ (b).dims;
     const scalarDiffers = a.kind === "scalar" && b.kind === "scalar" && a.of !== b.of;
-    if (!sameKind || dimsDiffer || scalarDiffers) {
+    // a rate is its own kind: a velocity is not a displacement, and the kit does not multiply by a duration
+    const rateDiffers = (a.kind === "vector" || a.kind === "quantity") && Boolean(/** @type {any} */ (a).rate) !== Boolean(/** @type {any} */ (b).rate);
+    if (!sameKind || dimsDiffer || scalarDiffers || rateDiffers) {
       add(inRecord ? "S202" : "S201", `${where(field)} is ${kindWord(a)} (${printSeam(a)}) and the input takes ${kindWord(b)} (${printSeam(b)})`);
       return;
     }
@@ -319,7 +339,7 @@ export function compareSeams(from, to) {
           add("S252", `${where(field)} is ${printSeam(a)} and the input takes ${printSeam(b)}: ${fa === null ? "the output is untagged" : "the input is untagged"}, so no frame says how to convert it`);
           return;
         }
-        if (fa !== null && fb !== null) tagged.push({ field, kind: a.kind, dims: a.kind === "quantity" ? null : /** @type {any} */ (a).dims, from: fa, to: fb });
+        if (fa !== null && fb !== null) tagged.push({ field, kind: a.kind, dims: a.kind === "quantity" ? null : /** @type {any} */ (a).dims, from: fa, to: fb, ...(/** @type {any} */ (a).rate ? { rate: /** @type {const} */ (true) } : {}) });
       }
     }
   };

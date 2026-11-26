@@ -12,7 +12,7 @@ Read this page, then [API.md](API.md). The pages in [docs/](docs/) cover one top
 | `<lang>.grammar.js` | `export const <builder> = defineGrammar(<dialect>, {...})`: the builder methods and their arguments |
 | `examples/*.js` | Programs, one per file: `export default ($) => <builder>("name")…;` |
 
-Import only from `"kit/define"` and your own files.
+Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md).
 
 ## The loop
 
@@ -33,4 +33,6 @@ Don't invent API, and don't work around it silently. Express what you can, inclu
 - **Construct**: a thing a Program declares, with its own builder methods. The root construct is the Program.
 - **Slot**: one builder method of a construct.
 - **Runtime Lambda**: a function passed into a Program. The kit reads its text and never calls it.
+- **Port**: what a Dialect offers (`ports.out`) or accepts (`ports.in`), written in a seam type every package shares.
+- **Frame**: a coordinate space or unit a Dialect measures in; a composer relates one package's to another's.
 - **Build time / run time**: the Program function runs once, at build time. Its lambdas run later, per row, pixel or month.

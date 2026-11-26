@@ -13,6 +13,8 @@ import { freeNames, paramNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 import { unitOf, PLAIN } from "./scope.js";
 import { noteRoot, noteCall, noteConvention, misfit } from "./params.js";
+import { sideOf } from "./handles.js";
+import { INPUTS_NS } from "./validate-grammar.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Found } from "./shapes.js" */
@@ -136,7 +138,7 @@ class Program {
     /** @type {T.BuildDiagnostic[]} */
     this.diagnostics = [];
     /** @type {Map<string, Set<string>>} */
-    this.names = new Map([[UNITS, new Set([...Object.keys(g.dialect.def.intrinsics ?? {}), ...g.dialect.library.map((u) => u.name), ...Object.keys(g.dialect.def.globals ?? {}), ...callableTypes(g.dialect.def.types), ...Object.keys(g.dialect.def.conversions ?? {})])]]);
+    this.names = new Map([[INPUTS_NS, new Set(Object.keys(g.dialect.seams?.in ?? {}))], [UNITS, new Set([...Object.keys(g.dialect.def.intrinsics ?? {}), ...g.dialect.library.map((u) => u.name), ...Object.keys(g.dialect.def.globals ?? {}), ...callableTypes(g.dialect.def.types), ...Object.keys(g.dialect.def.conversions ?? {})])]]);
     /** The names of each namespace a `within` scopes, per instance of its `within` construct. @type {WeakMap<Instance, Map<string, Set<string>>>} */
     this.scopedNames = new WeakMap();
     /** @type {Instance | null} */
@@ -423,6 +425,7 @@ class Program {
     for (const call of [/** @type {Call} */ (/** @type {any} */ (inst).openCall), ...inst.calls]) {
       for (const r of call.found.refs) {
         if (stateNames.includes(r.ns)) continue; // checked against the state when lowered
+        if (r.ns === INPUTS_NS) { this.checkInput(r, what, call); continue; }
         const { set, owner } = this.namespace(r.ns, inst);
         const known = [...set];
         const within = owner ? ` in ${owner.construct.name} '${instanceName(owner)}'` : "";
@@ -430,6 +433,23 @@ class Program {
       }
     }
     if (typeof c.def.check === "function") c.def.check(inst === this.root ? seen : recordOf(inst), this.context(at, [], seen));
+  }
+
+  /**
+   * A ref("in"): one of the Dialect's inputs, of the kind it asks for (B003, naming the kind and the inputs that fit).
+   * @param {{ value: string, path: Array<string | number>, kind?: string }} r @param {string} what @param {Call} call
+   */
+  checkInput(r, what, call) {
+    const inputs = this.g.dialect.seams?.in ?? {};
+    const isEvent = (/** @type {string} */ n) => inputs[n].seam.kind === "event";
+    const kindOf = (/** @type {string} */ n) => (isEvent(n) ? "an Event input" : "a value input");
+    const fit = Object.keys(inputs).filter((n) => r.kind === undefined || (r.kind === "event") === isEvent(n));
+    if (fit.includes(r.value)) return;
+    const wanted = r.kind === "event" ? "an Event input" : r.kind === "value" ? "a value input" : "an input";
+    const head = `${what}${call.slot === "(opens)" ? "" : `, .${call.slot}`}: ${where(r.path)}: `;
+    // a name of the other kind is rarely spelled like the one meant, so its message lists every input that fits
+    const message = Object.hasOwn(inputs, r.value) ? `'${r.value}' is ${kindOf(r.value)}; this takes ${wanted}${fit.length ? `: ${fit.map((n) => `'${n}'`).join(", ")}` : `, and the ${this.g.dialect.name} Dialect declares none`}.` : `there is no ${wanted.replace(/^an? /, "")} '${r.value}'.${didYouMean(r.value, fit)}`;
+    this.diagnostics.push(diag("B003", `${head}${message}`, fit.length ? `name one of the ${this.g.dialect.name} Dialect's inputs: ${fit.join(", ")}` : `the ${this.g.dialect.name} Dialect declares no ${wanted.replace(/^an? /, "")}s in ports.in`, { file: call.file, loc: call.loc }));
   }
 
   /**
@@ -534,8 +554,11 @@ class Program {
     const program = this;
     /** @type {any} */
     const proxy = new Proxy({}, {
+      // a builder is a chain of calls, not a record: nothing is set on it (its handles are read-only)
+      set() { return false; },
       get(_, prop) {
         if (prop === PROGRAM) return program;
+        if (prop === "out" || prop === "in" || prop === "frame") return sideOf(program, prop, program.g.dialect.seams, instanceName(/** @type {Instance} */ (program.root)), program.g.dialect.name);
         if (prop === Symbol.toPrimitive) return () => `[${inst.construct.name} builder '${instanceName(inst)}']`;
         if (typeof prop === "symbol" || PROBES.has(prop)) return undefined;
         if (prop === "check") return (/** @type {T.BuildOptions | undefined} */ o) => program.analyze(o).diagnostics;

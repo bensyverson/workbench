@@ -16,10 +16,14 @@ const FIX_STATIC = `import the module statically, with a relative path or "${KIT
  * @param {string} path  the module's path in the package
  * @param {string} text
  * @param {Iterable<string>} files  the package's file paths, for the existence check
+ * @param {{ bare?: string[], who?: string }} [options]  for a module that is not a package's (a glue program):
+ *   `bare`, the specifiers it may import by name instead of "kit/define" and relative paths; `who`, how the refusal names it
  * @returns {{ imports: import("./package.js").ModuleImport[], diagnostics: import("./package.js").PackageDiagnostic[] }}
  */
-export function scanImports(path, text, files) {
+export function scanImports(path, text, files, options = {}) {
   const have = new Set(files);
+  const bare = options.bare;
+  const allowed = bare ? `${options.who ?? "this module"} imports only ${bare.map((b) => JSON.stringify(b)).join(", ")}` : `a package imports only "${KIT_SPECIFIER}" and its own files`;
   /** @type {import("./package.js").ModuleImport[]} */
   const imports = [];
   /** @type {import("./package.js").PackageDiagnostic[]} */
@@ -45,11 +49,11 @@ export function scanImports(path, text, files) {
       const source = /** @type {{ source?: import("../vendor/acorn/acorn.mjs").Literal | null }} */ (n).source;
       if (!source || typeof source.value !== "string") return;
       const specifier = source.value;
-      const why = refusal(path, specifier, have);
+      const why = bare ? (bare.includes(specifier) ? null : "it may not") : refusal(path, specifier, have);
       /** @type {string | null} */
       let resolved = null;
-      if (why === null) resolved = specifier === KIT_SPECIFIER ? KIT_SPECIFIER : /** @type {string} */ (resolveRelative(path, specifier));
-      else diagnostics.push(diag("K007", `${path} imports ${JSON.stringify(specifier)}, which ${why}; a package imports only "${KIT_SPECIFIER}" and its own files`, `remove the import, or import a file of the package by a relative path ("./x.js")`, path, line));
+      if (why === null) resolved = bare || specifier === KIT_SPECIFIER ? specifier : /** @type {string} */ (resolveRelative(path, specifier));
+      else diagnostics.push(diag("K007", `${path} imports ${JSON.stringify(specifier)}, which ${why}; ${allowed}`, bare ? "remove the import, or import a package by its name" : `remove the import, or import a file of the package by a relative path ("./x.js")`, path, line));
       imports.push({ specifier, resolved, line, start: source.start + 1, end: source.end - 1 });
     }
   });
