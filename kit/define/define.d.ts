@@ -65,10 +65,14 @@ export interface DefineSlotRef extends SlotRef {
   key?: string;
 }
 
-/** What `environment(program)` returns: objects (members merge into declared ones) and globals. */
+/**
+ * What `environment(program)` returns: objects (members merge into declared ones), globals, and `state`: the fields
+ * the Program's declarations add to the Dialect's extensible state struct, in state types.
+ */
 export interface EnvironmentAddition {
   objects?: Record<string, { label?: string; members?: Record<string, unknown> }>;
   globals?: Record<string, TypeDef>;
+  state?: Record<string, TypeDef>;
 }
 
 /** A space: pure (its lambdas change nothing), or an instance space (each lambda is handed one `instance` and may change only it). */
@@ -161,8 +165,11 @@ export interface Intrinsic {
 
 export type Compare = { kind: "exact" } | { kind: "tolerance"; figure: number };
 
-/** One place a run's state does not fit its declaration: the path ("" for the root) and what was expected. */
-export interface StateMismatch { path: string; message: string }
+/**
+ * One place a run's state does not fit its declaration: the path ("" for the root) and what was expected. `outside`
+ * marks a field in the extensible struct that the Program does not declare (a run reports it as N003).
+ */
+export interface StateMismatch { path: string; message: string; outside?: true }
 
 /** What defineDialect returns. */
 export interface Dialect {
@@ -173,13 +180,17 @@ export interface Dialect {
   readonly library: UnitDecl[];
   readonly targets: Record<string, { accepts: "*" | string[]; compare: Compare }>;
   /** The text view, as the definition gave it; with `state` declared it first checks its argument and throws an error naming the paths that do not fit. */
-  text(state: any): string;
+  text(state: any, program?: Record<string, any>): string;
   /** The declared run's state, as written (absent when the Dialect declares none). */
   readonly state?: Record<string, TypeDef>;
   /** The declared run's state as a core Type (a struct), for lowering lambdas that read it. */
   readonly stateType?: Type;
   /** Every place `value` does not fit the declared state, by path (`player.x`, `bodies[1].mass`); [] when it fits. Present only with `state`. */
-  readonly checkState?: (value: unknown) => StateMismatch[];
+  readonly checkState?: (value: unknown, program?: Record<string, any>) => StateMismatch[];
+  /** The run's state for one Program: `stateType` with the Program's fields added to the extensible struct (stateType itself when there is none). Present only with `state`. */
+  readonly stateTypeFor?: (program: Record<string, any>) => Type;
+  /** The fields one Program adds to the run's state, as environment(program) declares them ({} when none). */
+  stateFields(program: Record<string, any>): Record<string, unknown>;
   /** The ports, frames, edges and inputs the Dialect declares, parsed (empty when it declares none). */
   readonly seams: Seams;
   /** Where defineDialect was called: a seam problem found when a Program lowers is placed there. */

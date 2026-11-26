@@ -10,7 +10,8 @@ The vocabulary every package's ports are written in, and the math a composition 
 | `printSeam(seam)` | the canonical text: `"Event<{ at: point2@cell }>"`, `"vec2@px/s"` |
 | `framesOf(seam)`, `leavesOf(seam)`, `frameOf(leaf)` | the frames a seam names (in order, once each); each leaf with its field path; one leaf's frame or null |
 | `pairLocal(seam, type)` | null when a Dialect's local (IR) type has the seam's structure, else what does not fit |
-| `compareSeams(from, to)` | `{ problems, tagged, dropped }`: each mismatch with its S code and field, each tagged leaf both sides have (`{ field, kind, dims, from, to, rate? }`), and the producer's record fields the consumer does not take |
+| `compareSeams(from, to)` | `{ problems, tagged, dropped, filled }`: each mismatch with its S code and field, each tagged leaf both sides have (`{ field, kind, dims, from, to, rate? }`), the producer's record fields the consumer does not take, and each field the producer lacks that the consumer gives a default for, with that default (`{ <field>: <value> }`) |
+| `printValue(value)` | a record field's default as a seam type writes it (`40`, `true`, `'pop'`, `[0, 1]`) |
 | `printType(type)` | an IR type as a message writes it |
 | `SECONDS` | `"s"`, the kit's one shared unit |
 | `normalizeEdge(e, dims)` | `{ scale, offset }` as written (a number for every axis, or one per axis) to one array per axis, or why not |
@@ -29,7 +30,7 @@ The vocabulary every package's ports are written in, and the math a composition 
 | vector | `vec2@<frame>`, `vec3@<frame>`; `vec2`, `vec3` untagged | a displacement: scale only, sign kept |
 | rate | `vec2@<frame>/s`, `f64@<frame>/s` | a vector or quantity per second: converts as its kind, by its frame's edge alone, since `s` is the same in every package |
 | enum | `'rock' \| 'open'` | a string from a closed set |
-| record | `{ at: point2@cell, kind: 'coin' \| 'key' }` | fields of seam types |
+| record | `{ at: point2@cell, kind: 'coin' \| 'key' }` | fields of seam types; a field may declare a default, `<field>: <type> = <value>` (a number, `true` or `false`, a `'string'` or a list such as `[0, 1]`), which kit/define allows only on a top-level field of an Event input's record and a wire fills when the producer's record lacks the field |
 | list | `list<T, max>` | at most `max` values |
 | Event | `Event<{ at: point2@cell }>` | the records one step produced, in order; only at a port's top |
 

@@ -94,9 +94,25 @@ export function defaults(runtime) {
 }
 
 /**
- * Runs a part's init on its record: the state, or an error message (N004 when it threw, N002 when it does not fit).
+ * A state checked against its part's Program's state (the Dialect's, with the fields the Program declares): N003 when
+ * it keeps a field the Program does not declare in the extensible struct (memory outside its state), N002 when it
+ * does not fit otherwise, or null.
+ * @param {Part} p @param {unknown} s @param {string} what
+ * @returns {{ code: "N002" | "N003", message: string } | null}
+ */
+function stateProblem(p, s, what) {
+  const bad = p.runtime.dialect.checkState?.(s, p.record) ?? [];
+  if (!bad.length) return null;
+  const outside = bad.filter((/** @type {{ outside?: true }} */ m) => m.outside);
+  if (outside.length) return { code: "N003", message: `part '${p.name}' (${p.dialect}): ${what} a state that kept memory outside its state: ${stateErrorMessage(p.dialect, outside)}` };
+  return { code: "N002", message: `part '${p.name}': ${what} a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
+}
+
+/**
+ * Runs a part's init on its record: the state, or an error message (N004 when it threw, N002 or N003 when it does
+ * not fit).
  * @param {Part} p @param {boolean} dev
- * @returns {{ state: any } | { code: "N002" | "N004", message: string }}
+ * @returns {{ state: any } | { code: "N002" | "N003" | "N004", message: string }}
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
@@ -104,8 +120,8 @@ export function runInit(p, dev) {
   /** @type {any} */
   let s;
   try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "N004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
-  const bad = p.runtime.dialect.checkState?.(s) ?? [];
-  if (bad.length) return { code: "N002", message: `part '${p.name}': init returned a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
+  const bad = stateProblem(p, s, "init returned");
+  if (bad) return bad;
   return { state: dev ? deepFreeze(s) : s };
 }
 
@@ -136,8 +152,8 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     const max = p.runtime.events.out[n], got = r.events[n].length;
     if (got > max) return { code: "N002", message: `part '${p.name}': events.${n}: ${got} records, and the runtime declares at most ${max} per step (events: { out: { ${n}: … } })` };
   }
-  const bad = p.runtime.dialect.checkState?.(r.state) ?? [];
-  if (bad.length) return { code: "N002", message: `part '${p.name}': step returned a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
+  const bad = stateProblem(p, r.state, "step returned");
+  if (bad) return bad;
   if (dev) {
     // the same step on the same state must give the same result: anything else kept memory outside its state
     /** @type {any} */

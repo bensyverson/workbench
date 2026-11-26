@@ -13,12 +13,19 @@
  *   | { kind: "point", dims: 1 | 2 | 3, frame: string }
  *   | { kind: "vector", dims: 2 | 3, frame: string | null, rate?: true }
  *   | { kind: "enum", values: string[] }
- *   | { kind: "record", fields: Record<string, Seam> }
+ *   | { kind: "record", fields: Record<string, Seam>, defaults?: Record<string, SeamValue> }
  *   | { kind: "list", of: Seam, max: number }
  *   | { kind: "event", of: Seam }} Seam
  */
 
+/**
+ * A record field's default, as written after `=`: a number, a bool, a string, or a list of these (a vector's
+ * components).
+ * @typedef {number | boolean | string | unknown[]} SeamValue
+ */
+
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const NUMBER = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 /** The kit's one shared unit, which every package may name without declaring it: seconds. */
 export const SECONDS = "s";
 
@@ -40,6 +47,25 @@ export function parseSeam(text) {
   const next = () => list[i++] ?? "";
   /** @param {string} t */
   const expect = (t) => { const got = next(); if (got !== t) throw new SeamSyntax(`expected '${t}'${got ? ` but found '${got}'` : " at the end"}`); };
+  /** A default after `=`. @returns {SeamValue} */
+  const value = () => {
+    const t = next();
+    if (NUMBER.test(t)) return Number(t);
+    if (t === "true" || t === "false") return t === "true";
+    if (t.startsWith("'")) return t.slice(1, -1);
+    if (t === "[") {
+      /** @type {SeamValue[]} */
+      const items = [];
+      while (peek() !== "]") {
+        items.push(value());
+        if (peek() === ",") next();
+        else if (peek() !== "]") throw new SeamSyntax(`expected ',' or ']' in a default's list${peek() ? `, found '${peek()}'` : ""}`);
+      }
+      next();
+      return items;
+    }
+    throw new SeamSyntax(`a default is a number, true or false, a 'string' or a list such as [0, 1], not '${t || "the end"}'`);
+  };
   /** @param {boolean} top @returns {Seam} */
   const type = (top) => {
     const t = peek();
@@ -69,6 +95,8 @@ export function parseSeam(text) {
       next();
       /** @type {Record<string, Seam>} */
       const fields = {};
+      /** @type {Record<string, SeamValue>} */
+      const defaults = {};
       while (peek() !== "}") {
         const f = next();
         if (!IDENT.test(f)) throw new SeamSyntax(`a record field is a name, not '${f || "the end"}'`);
@@ -76,11 +104,12 @@ export function parseSeam(text) {
         if (Object.hasOwn(fields, f)) throw new SeamSyntax(`the record has the field '${f}' twice`);
         expect(":");
         fields[f] = type(false);
+        if (peek() === "=") { next(); defaults[f] = value(); }
         if (peek() === ",") next();
         else if (peek() !== "}") throw new SeamSyntax(`expected ',' or '}' after the field '${f}'${peek() ? `, found '${peek()}'` : ""}`);
       }
       next();
-      return { kind: "record", fields };
+      return Object.keys(defaults).length ? { kind: "record", fields, defaults } : { kind: "record", fields };
     }
     if (t === "list") {
       next(); expect("<");
@@ -148,7 +177,7 @@ export function parseSeam(text) {
 function tokenize(text) {
   /** @type {string[]} */
   const tokens = [];
-  const re = /\s*(?:([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|-\d+)|('[^']*'|"[^"]*")|([<>{}:,|@/]))/y;
+  const re = /\s*(?:([A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|('[^']*'|"[^"]*")|([<>{}:,|@/=[\]]))/y;
   let at = 0;
   while (at < text.length) {
     if (/^\s*$/.test(text.slice(at))) break;
@@ -170,10 +199,21 @@ export function printSeam(s) {
     case "point": return `point${s.dims}@${s.frame}`;
     case "vector": return `vec${s.dims}${s.frame === null ? "" : `@${s.frame}`}${s.rate ? "/s" : ""}`;
     case "enum": return s.values.map((v) => `'${v}'`).join(" | ");
-    case "record": { const f = Object.entries(s.fields); return f.length ? `{ ${f.map(([k, v]) => `${k}: ${printSeam(v)}`).join(", ")} }` : "{}"; }
+    case "record": {
+      const f = Object.entries(s.fields);
+      const d = s.defaults ?? {};
+      return f.length ? `{ ${f.map(([k, v]) => `${k}: ${printSeam(v)}${Object.hasOwn(d, k) ? ` = ${printValue(d[k])}` : ""}`).join(", ")} }` : "{}";
+    }
     case "list": return `list<${printSeam(s.of)}, ${s.max}>`;
     case "event": return `Event<${printSeam(s.of)}>`;
   }
+}
+
+/** A default as a seam type writes it. @param {SeamValue} v @returns {string} */
+export function printValue(v) {
+  if (Array.isArray(v)) return `[${v.map((x) => printValue(/** @type {SeamValue} */ (x))).join(", ")}]`;
+  if (typeof v === "string") return v.includes("'") ? JSON.stringify(v) : `'${v}'`;
+  return String(v);
 }
 
 /** The frame a leaf is tagged with, or null. @param {Seam} s */
@@ -278,7 +318,8 @@ const kindWord = (s) => (s.kind === "event" ? "an Event" : s.kind === "record" ?
  * Compares what a producer's port gives with what a consumer's port takes. Frames are compared by name only as
  * tags (whether both sides are tagged); joining them is the frame graph's job, from `tagged`.
  * @param {Seam} from @param {Seam} to
- * @returns {{ problems: SeamProblem[], tagged: TaggedLeaf[], dropped: string[] }}
+ * @returns {{ problems: SeamProblem[], tagged: TaggedLeaf[], dropped: string[], filled: Record<string, SeamValue> }}
+ *   `filled`: each field the producer lacks and the consumer declares a default for, by path, with that default
  */
 export function compareSeams(from, to) {
   /** @type {SeamProblem[]} */
@@ -287,6 +328,8 @@ export function compareSeams(from, to) {
   const tagged = [];
   /** The producer's record fields the consumer does not take, by path: dropped on the wire. @type {string[]} */
   const dropped = [];
+  /** @type {Record<string, SeamValue>} */
+  const filled = {};
   /** @param {string} field */
   const where = (field) => (field ? `the field '${field}'` : "the value");
   /** @param {Seam} a @param {Seam} b @param {string} field @param {boolean} inRecord */
@@ -318,7 +361,13 @@ export function compareSeams(from, to) {
       case "record": {
         const bf = /** @type {any} */ (b).fields;
         const sub = (/** @type {string} */ k) => (field ? `${field}.${k}` : k);
-        for (const k of Object.keys(bf)) if (!Object.hasOwn(a.fields, k)) problems.push({ code: "S202", field: sub(k), message: `the record has no field '${k}', which the input takes (${k}: ${printSeam(bf[k])})` });
+        const defaults = /** @type {Record<string, SeamValue>} */ (/** @type {any} */ (b).defaults ?? {});
+        for (const k of Object.keys(bf)) {
+          if (Object.hasOwn(a.fields, k)) continue;
+          // a wire fills a defaulted field the producer lacks with the consumer's own default; it never computes one
+          if (Object.hasOwn(defaults, k)) filled[sub(k)] = defaults[k];
+          else problems.push({ code: "S202", field: sub(k), message: `the record has no field '${k}', which the input takes (${k}: ${printSeam(bf[k])}) and gives no default for` });
+        }
         // a field the input does not take is dropped on the wire: a stranger's record may say more than the consumer reads
         for (const k of Object.keys(a.fields)) if (!Object.hasOwn(bf, k)) dropped.push(sub(k));
         for (const k of Object.keys(a.fields)) if (Object.hasOwn(bf, k)) walk(a.fields[k], bf[k], sub(k), true);
@@ -350,5 +399,5 @@ export function compareSeams(from, to) {
     }
   };
   walk(from, to, "", false);
-  return { problems, tagged, dropped };
+  return { problems, tagged, dropped, filled };
 }

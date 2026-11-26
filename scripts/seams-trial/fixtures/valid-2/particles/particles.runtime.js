@@ -40,10 +40,10 @@ export const particlesRuntime = defineRuntime(particles, {
     const handed = (q) => {
       const p = { pos: [q.x, q.y], vel: [q.vx, q.vy], age: q.age, life: q.life, size: q.size, dead: false };
       p.kill = () => { p.dead = true; };
-      fieldNames.forEach((f, i) => { p[f] = q.fields[i]; });
+      for (const f of fieldNames) p[f] = q.fields[f];
       return p;
     };
-    const stored = (p, emitter) => ({ x: p.pos[0], y: p.pos[1], vx: p.vel[0], vy: p.vel[1], age: p.age, life: p.life, size: p.size, emitter, fields: fieldNames.map((f) => p[f]) });
+    const stored = (p, emitter) => ({ x: p.pos[0], y: p.pos[1], vx: p.vel[0], vy: p.vel[1], age: p.age, life: p.life, size: p.size, emitter, fields: Object.fromEntries(fieldNames.map((f) => [f, p[f]])) });
 
     const next = [];
     for (const q of state.particles) {
@@ -63,7 +63,7 @@ export const particlesRuntime = defineRuntime(particles, {
       for (let n = Math.floor(rate * dt + rng()); n > 0; n--) at.push({ at: [e.opts.x, e.opts.y] });
       at.forEach((ev, i) => {
         if (next.length >= state.maxParticles) return;
-        const p = handed({ x: ev.at[0], y: ev.at[1], vx: 0, vy: 0, age: 0, life: 1, size: 1, fields: fieldNames.map((f) => record.fields[f].value) });
+        const p = handed({ x: ev.at[0], y: ev.at[1], vx: 0, vy: 0, age: 0, life: 1, size: 1, fields: Object.fromEntries(fieldNames.map((f) => [f, record.fields[f].value])) });
         globals.ev = ev;
         kernels[`${e.name}.spawn`](p, rng, i);
         if (!p.dead) { next.push(stored(p, e.name)); live[e.name] += 1; }

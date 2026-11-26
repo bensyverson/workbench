@@ -45,7 +45,7 @@ export const <dialect> = defineDialect({
   environment(program) {                         // what one Program adds; runs before any lambda is lowered
     const members = {};
     for (const n of Object.keys(program.params ?? {})) members[n] = "f64";
-    return { objects: { <Params>: { members } } };
+    return { objects: { <Params>: { members } }, state: { <decl>: "<type>" } };   // state: optional, one field per declaration (below)
   },
   state: { <field>: "<type>" },                  // optional: the run's state, what text(state) is handed
   text(state) { … },                             // required: your host's screen as characters, for a model
@@ -57,9 +57,21 @@ export const <dialect> = defineDialect({
 - **Helpers and Library entries are typed by their calls.** Each parameter takes the one type every call passes; two types is L014. An uncalled helper's parameters have no type, so what it does through them is never checked.
 - **Intrinsics** need `ref` and a `spell` per target. At run time a vector is a plain array (`[x, y]`). Read [docs/intrinsics.md](docs/intrinsics.md) when you write one.
 - **A convention function** may be called several times per lambda, so it must be pure. Return a string from it to refuse the lambda (B011). Read [docs/state.md](docs/state.md) when a lambda's types depend on what the Program declared before it.
-- **`environment(program)`** returns objects whose members merge into the declared ones; repeating a declared member is D007.
+- **`environment(program)`** returns objects whose members merge into the declared ones; repeating a declared member is D007. It may also return `state`: the fields a Program's declarations add to the run's state (next).
 - **`text(state)`** prints what a person would see, sized for a model's context. You decide what `state` is; declare it with `state` (next).
 - **`state`** (optional) is the shape of the **run's** state: the value `text(state)` and a UI's views are handed while a Program runs. It is not a Grammar construct's `state` (that is build-time, and a different thing). Write a plain object of member types in this Dialect's vocabulary: `state: { <f1>: "f64", <f2>: "bool", <f3>: "<vec>", <f4>: enumOf(["<a>", "<b>"]), <f5>: opt("f64"), <f6>: struct({ <x>: "f64" }), <f7>: list(struct({ <x>: "f64" }), <max>), <f8>: list("str") }` (`<max>`: the most items your spec allows): a state list may leave out its max (a UI reads its `length` and an index, never loops over it), a list elsewhere may not. A nested object must be `struct({ … })`, not a bare `{ … }` (D023). The Dialect value then has `checkState(value)` (every mismatch by path) and its `text` throws on a value that does not fit.
+- **Data a Program declares goes in the state.** When a Program declares its own data (a field every `<item>` carries), mark one state struct extensible and have `environment(program)` return a field for each declaration:
+
+  ```js
+  state: { <items>: list(struct({ <field>: "f64", <own>: struct({}, { extensible: true }) }), <max>) },   // or the struct itself, with fields of its own
+  environment(program) {
+    const state = {};
+    for (const n of Object.keys(program.<decls> ?? {})) state[n] = "<type>";
+    return { …, state };                       // each becomes a field of <own>: <items>[i].<own>.<n>
+  },
+  ```
+
+  One struct may be extensible (more is D023). A Program field named like one of the struct's own is D007, so keep the Program's fields in a struct of their own, as above. The run checks each state against the Program's fields: one missing or of the wrong type is N002, and a field the Program does not declare is N003 (memory outside the state). There is no cap but the Program's own declarations. A UI and a value output still read only the Dialect's own fields.
 - **A slot that says nothing may change nothing.** A lambda changes only the one object it is handed, in an instance space, with each effect listed in its slot's `may`. Read [docs/effects.md](docs/effects.md) when a lambda must write, destroy, draw a random number or add to a total.
 
 ## `defineGrammar`
@@ -164,6 +176,7 @@ ports: {
     <event-in>: { seam: "Event<{ <field>: point2@<frame2> }>", note: "<what receiving one does>",
               delivery: "reliable",                       // the default; or { keepLast: <n> }
               record: { name: "<name>", slots: ["<slot>"] } }, // those slots' lambdas read the record as <name>.<field>; no other lambda may
+    <event-in2>: { seam: "Event<{ <field>: point2@<frame2>, <field2>: f64 = <v> }>", note: "<…>" },   // <field2> has a default (below)
     <value-in>: { seam: "f64@<frame2>", default: <v>, note: "<what it controls>" },   // or required: true
   },
 },
@@ -172,6 +185,7 @@ inputs: { object: "<Inputs>", name: "<name>" },   // value inputs, read as <name
 
 - **A note is required** on a tagged or Event port: it is what a composer reads to decide what to wire (D024).
 - **Pairing.** A port's local type must have its seam's structure: a `point2@<frame>` output's state is a `vector(2, "f64")`, a record a `struct` with the same fields (D027). An output lambda may build a point or vector as an array literal of exactly its dims. A `point1` pairs with a plain `f64`. An input's point or vector reads as your one `vector` type of its dims; with several, say which with `type: "<vec>"`.
+- **A default for an Event input's field.** Write `<field>: <type> = <value>` in the input's record (a number, `true` or `false`, a `'string'`, or a list such as `[0, 1]` for a vector) when a producer may not have the field. A wire from a producer whose record lacks it fills your default into every record, already in your frame; a producer that has the field gives its own value. A field with no default must come from the producer (S202). Only a top-level field of an Event input's record takes a default; one elsewhere, or one that does not fit its type, is D028.
 - **Triggers.** A Grammar names an input with `ref("in")`, checked by name (B003, with a did-you-mean); `ref("in", { kind: "event" })` takes only Event inputs, `{ kind: "value" }` only value inputs.
 - **Handles.** Every builder has read-only `.out.<port>`, `.in.<port>` and `.frame.<frame>`, which a composer passes to kit/compose ([compose/README.md](compose/README.md)). So no slot or child construct may be named `out`, `in` or `frame` (D031).
 - An output lambda's result, `extent(record)` and `edges(record)` are checked when an example lowers (D027, D030), at your `defineDialect` line.
@@ -198,7 +212,7 @@ export const <runtime> = defineRuntime(<builder>, {
 });
 ```
 
-- **`step` returns the next state** and keeps no other memory: no module-level variables, no `Math.random` (use `ctx.rng`), no clock. The state must fit your Dialect's `state` (N002). A development run freezes it and runs each step twice to check (N003).
+- **`step` returns the next state** and keeps no other memory: no module-level variables, no `Math.random` (use `ctx.rng`), no clock. The state must fit your Dialect's `state`, with the fields the Program declares (N002). A field the Program does not declare in the extensible struct is N003, in any run. A development run also freezes the state and runs each step twice to check (N003). Read a Program's declarations from `record` (`record.<decls>`) to carry its fields from step to step.
 - **`ctx.inputs`** holds each value input converted into your frames, and each Event input's records since your last step, in order; `ctx.globals` is what your lambdas' globals read (set an Event record's name, `ctx.globals.<name> = record`, before calling a lambda that reads it).
 - **Every Event port needs its max** in `events` (D033). The composition sizes each queue from the maxes and the clocks, and refuses a reliable wire that could overflow (S116).
 

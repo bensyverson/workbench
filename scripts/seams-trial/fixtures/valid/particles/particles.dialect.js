@@ -83,8 +83,9 @@ export const particlesDialect = defineDialect({
     const params = {};
     for (const n of Object.keys(program.params ?? {})) params[n] = "f64";
     const fields = {};
+    const state = {};
     for (const n of Object.keys(program.fields ?? {})) {
-      if (!BUILTIN_FIELDS.includes(n)) fields[n] = { value: "f64", write: true };
+      if (!BUILTIN_FIELDS.includes(n)) { fields[n] = { value: "f64", write: true }; state[n] = "f64"; }
     }
     const counters = {};
     for (const n of Object.keys(program.counters ?? {})) counters[n] = { value: "f64", bump: true };
@@ -94,6 +95,8 @@ export const particlesDialect = defineDialect({
         Particle: { members: fields },
         Counters: { members: counters },
       },
+      // each .field is also a field of every particle's state, so its value lasts from tick to tick
+      state,
     };
   },
   // The run's state: what the host computes after each tick, and hands text(state) and the UI's views.
@@ -101,7 +104,8 @@ export const particlesDialect = defineDialect({
     t: "f64",
     maxParticles: "f64",
     bounds: struct({ width: "f64", height: "f64" }),
-    particles: list(struct({ x: "f64", y: "f64", vx: "f64", vy: "f64", age: "f64", life: "f64" }), 10000),
+    // fields: environment(program) adds one f64 per .field
+    particles: list(struct({ x: "f64", y: "f64", vx: "f64", vy: "f64", age: "f64", life: "f64", fields: struct({}, { extensible: true }) }), 10000),
     emitters: list(struct({ name: "str", live: "f64" }), 100),
     counters: list(struct({ name: "str", value: "f64" }), 100),
   },

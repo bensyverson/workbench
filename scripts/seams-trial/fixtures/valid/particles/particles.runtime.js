@@ -4,7 +4,8 @@ import { particles } from "./particles.grammar.js";
 // The particles' runtime (added by leaf ZH4KWX to make the relay's particles runnable). One step: every particle
 // ages and moves by its velocity, and dies past its life or outside the bounds; each emitter spawns by its rate,
 // and an emitter whose trigger is an Event input spawns its whole maxRate once per record, at the record's `at`.
-// Spawn lambdas set each new particle's fields; the kit passes them the seeded rng.
+// Spawn lambdas set each new particle's fields; the kit passes them the seeded rng. A particle keeps its .field
+// values in its state's `fields`, by name.
 
 const inside = (p, b) => p.x >= 0 && p.y >= 0 && p.x <= b.width && p.y <= b.height;
 
@@ -34,7 +35,8 @@ export const particlesRuntime = defineRuntime(particles, {
         const p = { pos: [...pos], vel: [0, 0], age: 0, life: 1, size: 1, kill: () => { dead = true; } };
         for (const f of Object.keys(record.fields ?? {})) p[f] = record.fields[f].value;
         kernels[`${e.name}.spawn`](p, rng, state.t);
-        if (!dead) { ps.push({ x: p.pos[0], y: p.pos[1], vx: p.vel[0], vy: p.vel[1], age: 0, life: p.life }); live[e.name] += 1; }
+        const fields = Object.fromEntries(Object.keys(record.fields ?? {}).map((f) => [f, p[f]]));
+        if (!dead) { ps.push({ x: p.pos[0], y: p.pos[1], vx: p.vel[0], vy: p.vel[1], age: 0, life: p.life, fields }); live[e.name] += 1; }
       }
     }
     return {

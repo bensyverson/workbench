@@ -28,3 +28,10 @@ test("a point1 is a plain number: it converts by scale and offset (100 C is 212 
   assert.equal(carry(100, wire({ convert: [{ field: "", kind: "point", scale: [1.8], offset: [32] }] })), 212);
   assert.deepEqual(carry({ t: 0 }, wire({ convert: [{ field: "t", kind: "point", scale: [1.8], offset: [32] }] })), { t: 32 });
 });
+
+test("a wire's fill gives a record each defaulted field it lacks, after the conversions, and never overrides one it has", () => {
+  const w = { ...wire({ convert: [{ field: "at", kind: "point", scale: [2, 2], offset: [0, 0] }] }), fill: { speed: 40, push: [0, 1] } };
+  assert.deepEqual(carry({ at: [1, 1] }, w), { at: [2, 2], speed: 40, push: [0, 1] }, "the default is the consumer's, so it is not converted");
+  assert.deepEqual(carry({ at: [1, 1], speed: 3 }, w), { at: [2, 2], speed: 3, push: [0, 1] });
+  assert.deepEqual(carry({ at: [1, 1] }, wire({})), { at: [1, 1] }, "a wire with no fill adds nothing");
+});

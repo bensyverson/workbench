@@ -13,7 +13,7 @@ Read this page, then [API.md](API.md). The pages in [docs/](docs/) cover one top
 | `<lang>.dialect.js` | `export const <name> = defineDialect({...})`: types, the operations a lambda may call, how each kind of lambda is called |
 | `<lang>.grammar.js` | `export const <builder> = defineGrammar(<dialect>, {...})`: the builder methods and their arguments |
 | `examples/*.js` | Programs, one per file: `export default ($) => <builder>("<name>")…;` |
-| `<lang>.runtime.js` | optional: `export const <name> = defineRuntime(<builder>, {...})`: how a run steps your state (API.md ▸ A runtime) |
+| `<lang>.runtime.js` | optional: `export const <name> = defineRuntime(<builder>, {...})`: how a run steps your state (API.md ▸ A runtime). Data a Program declares (a field per `<item>`) lives in that state too: API.md ▸ `defineDialect`, "Data a Program declares goes in the state" |
 
 Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md).
 
@@ -36,7 +36,7 @@ Don't invent API, and don't work around it silently. Express what you can, inclu
 - **Construct**: a thing a Program declares, with its own builder methods. The root construct is the Program.
 - **Slot**: one builder method of a construct.
 - **Runtime Lambda**: a function passed into a Program. The kit reads its text and never calls it.
-- **Port**: what a Dialect offers (`ports.out`) or accepts (`ports.in`), written in a seam type every package shares.
+- **Port**: what a Dialect offers (`ports.out`) or accepts (`ports.in`), written in a seam type every package shares. An Event input's field may have a default, `<field>: <type> = <value>`, for a producer that lacks it (API.md ▸ Seams).
 - **Frame**: a coordinate space or unit a Dialect measures in; a composer relates one package's to another's.
 - **Build time / run time**: the Program function runs once, at build time. Its lambdas run later, per row, pixel or month.
 - **Runtime**: a package's `init` and `step` over its own state; the kit's scheduler runs it on one workbench time, instant by instant.

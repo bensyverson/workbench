@@ -110,7 +110,7 @@ export function createRun(composed, options) {
     const consumer = /** @type {Part} */ (byName.get(to.part));
     const event = consumer.runtime.dialect.seams.in[to.port].seam.kind === "event";
     const keepLast = w.delivery && typeof w.delivery === "object" ? w.delivery.keepLast : null;
-    return { index, from, to, event, delay: w.delay, keepLast, convert: w.convert, rename: w.rename, dropped: w.dropped, queue: [], drops: 0, stopDrops: 0, text: `${w.from} → ${w.to}` };
+    return { index, from, to, event, delay: w.delay, keepLast, convert: w.convert, rename: w.rename, dropped: w.dropped, fill: w.fill, queue: [], drops: 0, stopDrops: 0, text: `${w.from} → ${w.to}` };
   });
   /** @type {Map<string, Wire>} */
   const wireTo = new Map(wires.map((w) => [`${w.to.part}.${w.to.port}`, w]));

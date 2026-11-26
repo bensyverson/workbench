@@ -36,7 +36,8 @@ export function checkKeys(obj, allowed, required, path, what, out) {
 /**
  * D002 (or D011 for a malformed compound) for each type in `t` that resolves to nothing.
  * @param {unknown} t @param {TypeScope} scope
- * @param {{ typeVars?: boolean, infer?: boolean, openList?: boolean }} allow  `openList`: a list may leave out its max (a Dialect's state only)
+ * @param {{ typeVars?: boolean, infer?: boolean, openList?: boolean, extensible?: boolean }} allow  `openList`: a list may leave out
+ *   its max; `extensible`: a struct may be marked `{ extensible: true }` (both a Dialect's state only)
  * @param {Array<string | number>} path @param {string} where @param {Problem[]} out
  */
 export function checkType(t, scope, allow, path, where, out) {
@@ -66,7 +67,11 @@ export function checkType(t, scope, allow, path, where, out) {
       if (h.options !== undefined) {
         const fields = isPlainObject(h.fields) ? Object.keys(h.fields) : [];
         const o = /** @type {any} */ (h.options);
-        if (!isPlainObject(o) || Object.keys(o).some((k) => k !== "optional") || !(Array.isArray(o.optional) && o.optional.every((/** @type {unknown} */ n) => typeof n === "string" && fields.includes(n)))) bad("struct()'s second argument must be { optional: [some of its own fields] }.", `struct({ … }, { optional: ["y"] })`);
+        const keys = isPlainObject(o) ? Object.keys(o) : [];
+        const optionalOk = !keys.includes("optional") || (Array.isArray(o.optional) && o.optional.every((/** @type {unknown} */ n) => typeof n === "string" && fields.includes(n)));
+        if (keys.includes("extensible") && !allow.extensible) bad("struct({ … }, { extensible: true }) is allowed only in the run's state, where a Program's declarations add fields to it.", "remove extensible, or move the struct into the Dialect's state");
+        else if (keys.includes("extensible") && o.extensible !== true) bad(`extensible is true or left out, not ${describe(o.extensible)}.`, "struct({ … }, { extensible: true })");
+        if (!isPlainObject(o) || keys.length === 0 || keys.some((k) => k !== "optional" && k !== "extensible") || !optionalOk) bad(`struct()'s second argument must be { optional: [some of its own fields] }${allow.extensible ? " or { extensible: true }" : ""}.`, `struct({ … }, { optional: ["y"] })`);
       }
       return;
     case "union":

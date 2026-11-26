@@ -3,7 +3,7 @@
 // what the Environment needs: the inputs object's members and each Event input's record object. `checkOutputs`
 // judges the value outputs against the Dialect's resolved run's state once it is built (D026, D027).
 
-import { parseSeam, printSeam, framesOf, leavesOf, pairLocal, printType, SECONDS } from "../seam/index.js";
+import { parseSeam, printSeam, printValue, framesOf, leavesOf, pairLocal, printType, SECONDS } from "../seam/index.js";
 import { didYouMean } from "./codes.js";
 import { TAG, kindOf, enumOf, struct, list } from "./tags.js";
 import { resolvePath } from "./ui/shapes.js";
@@ -133,11 +133,39 @@ export function declareSeams(def) {
         keys(p, side === "out" ? OUT_KEYS : IN_KEYS, at, what, "D024");
         const seam = seamOf(p, at, what);
         if (seam === null) continue;
+        defaultsOf(seam, side, at, what);
         const nt = note(p, seam, at, what);
         if (side === "out") outputOf(n, p, seam, nt, at, what);
         else inputOf(n, p, seam, nt, at, what);
       }
     }
+  }
+
+  /**
+   * Judges a seam's record field defaults (Ben, 2026-11-26): only a top-level field of an Event input's record may
+   * take one, the wire filling it when the producer's record lacks the field, and it must fit the field's type.
+   * @param {Seam} seam @param {"out" | "in"} side @param {Array<string | number>} at @param {string} what
+   */
+  function defaultsOf(seam, side, at, what) {
+    const where = [...at, "seam"];
+    const top = seam.kind === "event" && side === "in" ? seam.of : null;
+    /** @param {Seam} s @param {string} path */
+    const walk = (s, path) => {
+      if (s.kind === "event" || s.kind === "list") { walk(s.of, path); return; }
+      if (s.kind !== "record") return;
+      for (const [k, v] of Object.entries(s.defaults ?? {})) {
+        const field = path ? `${path}.${k}` : k;
+        if (s !== top) {
+          const why = side === "out" ? "an output's record is what its runtime pushes, so it has no defaults" : seam.kind !== "event" ? "a value input takes a whole default (default: …), not one per field" : "only a top-level field of the record may take one: a wire fills a field the producer's record lacks";
+          add("D028", where, `${what}: the field '${field}' declares a default (= ${printValue(v)}); ${why}`, `remove = ${printValue(v)}`);
+          continue;
+        }
+        const bad = fits(s.fields[k], v);
+        if (bad) add("D028", where, `${what}: the default of the field '${field}' (= ${printValue(v)}) does not fit ${printSeam(s.fields[k])}: ${bad}`, `${k}: ${printSeam(s.fields[k])} = ${sampleDefault(s.fields[k])}`);
+      }
+      for (const [k, v] of Object.entries(s.fields)) walk(v, path ? `${path}.${k}` : k);
+    };
+    walk(seam, "");
   }
 
   /** @param {string} n @param {any} p @param {Seam} seam @param {string | null} nt @param {Array<string | number>} at @param {string} what */

@@ -53,8 +53,10 @@ function dropAt(v, path) {
 }
 
 /**
- * One value or record carried across a wire: renamed, dropped, converted.
- * @param {unknown} v @param {{ rename: Record<string, string>, dropped: string[], convert: Conversion[] }} wire
+ * One value or record carried across a wire: renamed, dropped, converted, then filled: each field the producer's
+ * record lacks and the consumer declares a default for gets that default (already in the consumer's frame, so after
+ * the conversions). The wire never computes a value.
+ * @param {unknown} v @param {{ rename: Record<string, string>, dropped: string[], convert: Conversion[], fill?: Record<string, unknown> }} wire
  * @returns {unknown}
  */
 export function carry(v, wire) {
@@ -62,5 +64,10 @@ export function carry(v, wire) {
   // kit/compose lists dropped fields by their paths after the rename
   for (const d of wire.dropped) out = dropAt(out, segments(d));
   for (const c of wire.convert) out = convertAt(out, segments(c.field), c);
+  if (wire.fill && out !== null && typeof out === "object" && !Array.isArray(out)) {
+    const o = /** @type {Record<string, unknown>} */ (out);
+    const missing = Object.entries(wire.fill).filter(([k]) => !Object.hasOwn(o, k));
+    if (missing.length) out = { ...o, ...Object.fromEntries(missing) };
+  }
   return out;
 }

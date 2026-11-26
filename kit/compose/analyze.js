@@ -8,7 +8,7 @@ import { lowerRecord } from "../define/lower.js";
 import { instanceName } from "../define/record.js";
 import { didYouMean } from "../define/codes.js";
 import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
-import { compareSeams, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
+import { compareSeams, printValue, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
 import { applyRename, undelayedLoops } from "./wires.js";
 import { queueProblems } from "./queues.js";
 
@@ -20,7 +20,7 @@ import { queueProblems } from "./queues.js";
 
 /** @typedef {{ file: string, loc: Loc }} At */
 /** @typedef {{ name: string, program: any, dialect: any, seams: Seams, dialectName: string, version?: string, record: Record<string, any> | null, extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, at: At }} Part */
-/** @typedef {{ from: Handle, to: Handle, at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, delay: boolean, dropped: string[], ok: boolean }} Wire */
+/** @typedef {{ from: Handle, to: Handle, at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, delay: boolean, dropped: string[], fill: Record<string, unknown>, ok: boolean }} Wire */
 
 const WIRE_OPTIONS = ["rename", "delay"];
 
@@ -182,7 +182,7 @@ export function analyze(name, start, calls, options) {
     wired.set(hi, at);
     const po = pa.seams.out[ho.name], pi = pb.seams.in[hi.name];
     /** @type {Wire} */
-    const wire = { from: ho, to: hi, at, convert: [], rename: opts.rename, delay: opts.delay, dropped: [], ok: true };
+    const wire = { from: ho, to: hi, at, convert: [], rename: opts.rename, delay: opts.delay, dropped: [], fill: {}, ok: true };
     wires.push(wire);
     const renamed = applyRename(po.seam, pi.seam, opts.rename);
     if (renamed.problems.length) {
@@ -192,6 +192,7 @@ export function analyze(name, start, calls, options) {
     }
     const cmp = compareSeams(renamed.seam, pi.seam);
     wire.dropped = cmp.dropped;
+    wire.fill = cmp.filled;
     if (cmp.problems.length) wire.ok = false;
     for (const p of cmp.problems) add(at, p.code, `${text}: ${p.message}`, fixFor(p.code, po.seamText, pi.seamText), sides);
     for (const leaf of cmp.tagged) {
@@ -277,11 +278,11 @@ export function analyze(name, start, calls, options) {
     parts: [...parts.values()].filter((p) => !broken.has(p)).map((p) => ({ name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record) })),
     wires: wires.filter((w) => w.ok).map((w) => {
       const consumer = /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name];
-      return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, dropped: w.dropped, ...(consumer.delivery ? { delivery: consumer.delivery } : {}) };
+      return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(consumer.delivery ? { delivery: consumer.delivery } : {}) };
     }),
     show: live ? live.name : null,
   };
-  const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${w.delay ? "; delayed" : ""}`);
+  const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${Object.keys(w.fill).length ? `; fills ${Object.entries(w.fill).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ")}` : ""}${w.delay ? "; delayed" : ""}`);
   return { diagnostics: out, record, plan };
 }
 

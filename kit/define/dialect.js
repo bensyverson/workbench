@@ -6,7 +6,7 @@ import { spaceModel, helpersMay, programProblems, conventionProblems } from "./e
 import { resolveType, resolveMember, intrinsicSig, checkType } from "./types.js";
 import { isPlainObject, kindOf, struct } from "./tags.js";
 import { callSite } from "./site.js";
-import { checkStateValue, stateErrorMessage } from "./state.js";
+import { checkStateValue, stateErrorMessage, validateState, extensibleOf, extendState } from "./state.js";
 import { dialectVector, dialectScalar } from "../ir/types.js";
 import { declareSeams, checkOutputs, noSeams } from "./ports.js";
 
@@ -114,14 +114,18 @@ export function defineDialect(def) {
 
   // The run's state (not a construct's): its core Type, a value check by path, and a text view that applies it.
   const stateType = def.state === undefined ? undefined : resolveType(struct(def.state), statics);
-  const checkState = stateType && ((/** @type {unknown} */ v) => checkStateValue(stateType, v));
+  const programState = programStateOf(def, statics, stateType);
+  const checkState = stateType && ((/** @type {unknown} */ v, /** @type {Record<string, any> | undefined} */ program) => {
+    const ps = programState(program);
+    return checkStateValue(ps.type ?? stateType, v, "", [], ps.open);
+  });
   const seams = seamed?.seams ?? noSeams();
   refuse("defineDialect", checkOutputs(seams, /** @type {Record<string, any>} */ (def), stateType));
   /** @type {SeamEnv} */
   const seamEnv = { members: seamed?.members ?? {}, records: seamed?.records ?? [], inputs: seams.inputs };
   const text = checkState
-    ? (/** @type {unknown} */ s) => {
-      const bad = checkState(s);
+    ? (/** @type {unknown} */ s, /** @type {Record<string, any> | undefined} */ program) => {
+      const bad = checkState(s, program);
       if (bad.length) throw new Error(stateErrorMessage(def.name, bad));
       return def.text(s);
     }
@@ -137,13 +141,60 @@ export function defineDialect(def) {
     targets: /** @type {T.Dialect["targets"]} */ (targets),
     libraryFor: (/** @type {string[]} */ sources) => libraryFor(library, sources),
     text,
-    ...(stateType ? { state: def.state, stateType, checkState } : {}),
+    ...(stateType ? { state: def.state, stateType, checkState, stateTypeFor: (/** @type {Record<string, any>} */ program) => /** @type {Type} */ (programState(program).type) } : {}),
+    stateFields: (/** @type {Record<string, any>} */ program) => ({ ...programState(program).fields }),
     seams,
     site: callSite(),
-    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces, seamEnv),
+    environment: (/** @type {Record<string, any>} */ program, /** @type {Map<string, unknown>} */ states = new Map()) => {
+      const env = environmentOf(def, { vectors, scalars }, componentAliases, vectorMultiply, program, states, spaces, seamEnv);
+      programState(program); // what the Program adds to the run's state is refused where its other additions are
+      return env;
+    },
   });
   MADE.add(dialect);
   return dialect;
+}
+
+/**
+ * One Program's part of the run's state: the fields its declarations add to the Dialect's extensible struct, as
+ * environment(program) returns them in `state`, judged (D023, D007), resolved and added. Without a Program (or
+ * without an extensible struct) the type is the Dialect's own; `open` says how a check treats the extensible struct.
+ * Made once per Program record.
+ * @param {T.DialectDef} def @param {Resolver} statics @param {Type | undefined} stateType
+ * @returns {(program: Record<string, any> | undefined) => { fields: Record<string, unknown>, type: Type | undefined, open: import("./state.js").OpenStruct | null }}
+ */
+function programStateOf(def, statics, stateType) {
+  const target = stateType && def.state ? extensibleOf(def.state, stateType) : null;
+  const bare = { fields: {}, type: stateType, open: target ? { struct: target, strict: false } : null };
+  /** @type {WeakMap<object, ReturnType<ReturnType<typeof programStateOf>>>} */
+  const made = new WeakMap();
+  return (program) => {
+    if (program === undefined || program === null || typeof program !== "object") return bare;
+    const hit = made.get(program);
+    if (hit) return hit;
+    const added = def.environment ? def.environment(program)?.state : undefined;
+    /** @type {Problem[]} */
+    const out = [];
+    const at = ["environment", "state"];
+    const tip = "return state: { <field>: <type> } from environment(program), one entry per field the Program declares";
+    if (added !== undefined && !isPlainObject(added)) out.push({ code: "D023", path: at, message: `environment(program) returns state as an object of field types, not ${Array.isArray(added) ? "a list" : typeof added}.`, tip });
+    const fields = isPlainObject(added) ? /** @type {Record<string, unknown>} */ (added) : {};
+    const names = Object.keys(fields);
+    if (names.length && !target) out.push({ code: "D023", path: at, message: `environment(program) adds ${names.join(", ")} to the run's state, and the ${def.name} Dialect marks no state struct extensible.`, tip: "mark the struct a Program's own data goes in: struct({ <fields> }, { extensible: true })" });
+    if (names.length && target) {
+      const scope = { types: new Set(Object.keys(def.types ?? {})), objects: new Set() };
+      out.push(...validateState(fields, scope).map((p) => ({ ...p, path: ["environment", ...p.path] })));
+      for (const n of names) {
+        if (Object.hasOwn(/** @type {any} */ (target).struct, n)) out.push({ code: "D007", path: [...at, n], message: `environment(program) adds the state field '${n}', which the extensible struct already declares.`, tip: `give the Program's field another name: the Dialect declares '${n}'` });
+      }
+    }
+    refuse("environment(program)", out);
+    const resolved = Object.fromEntries(names.map((n) => [n, resolveType(fields[n], statics)]));
+    const ext = target ? extendState(/** @type {Type} */ (stateType), target, resolved) : null;
+    const r = { fields: { ...fields }, type: ext ? ext.type : stateType, open: ext ? { struct: ext.extended, strict: true } : null };
+    made.set(program, r);
+    return r;
+  };
 }
 
 /**

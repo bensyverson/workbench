@@ -71,8 +71,8 @@ const cmp = (a, b) => compareSeams(ok(a), ok(b));
 const codes = (a, b) => cmp(a, b).problems.map((p) => p.code);
 
 test("comparison: identical untagged seams cross unchanged", () => {
-  assert.deepEqual(cmp("f64", "f64"), { problems: [], tagged: [], dropped: [] });
-  assert.deepEqual(cmp("{ n: vec2, k: 'a' }", "{ n: vec2, k: 'a' | 'b' }"), { problems: [], tagged: [], dropped: [] });
+  assert.deepEqual(cmp("f64", "f64"), { problems: [], tagged: [], dropped: [], filled: {} });
+  assert.deepEqual(cmp("{ n: vec2, k: 'a' }", "{ n: vec2, k: 'a' | 'b' }"), { problems: [], tagged: [], dropped: [], filled: {} });
 });
 
 test("comparison: tagged leaves are listed with their field paths for the conversion", () => {
