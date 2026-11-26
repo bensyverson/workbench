@@ -107,6 +107,16 @@ A **renderer** turns the shown part's draw list into pixels on one target. Each 
 
 **Checking a list against a profile happens at composition wherever the types allow, and at run time only where they can't.** This follows the queue ruling: a `Draw<512>` into a renderer limited to 40 sprites is a compose-time error naming both sides, unless the op mix is narrower (a list typed to `image` only, at most 40). A per-scanline limit depends on positions, so it is checked when the list is drawn, and reported with an R code: the part, the instant, the scanline. A renderer never silently drops ops.
 
+## The shader backend (Ben asked, 2026-11-26)
+
+Two different things share the word "GLSL" here, and they relate in three ways.
+
+- **The GPU renderer is kit code, not a compiled Program.** It batches a draw list's ops by kind into instance buffers and draws each kind with a fixed shader: a distance test for `ellipse`, a sampled atlas cell for `image`, a cell lookup for `tiles`. Those shaders should be **written in Bench as `fields` Kernels and emitted by kit/emit/glsl**, not as hand-written GLSL strings. Then the pixel debugger works on the renderer itself, and the JS/GLSL comparison tests it as it tests M2's kernels.
+- **A shader part's output is an image on a wire.** A `fields` Program (a per-pixel Kernel) renders to an `Image@px` output, and a root draws it with an `image` op whose source is that input. This is the same seam 3-D projection needs (Parked). The CPU renderers run the Kernel through the JS backend; slow, but exact.
+- **A fill may be a Kernel (later).** An op's `fill` could name a `fields` Kernel instead of a color: a gradient, noise, a glow, evaluated per pixel inside the shape. It would be lowered by kit/emit/glsl for the GPU renderer and by the JS backend for Canvas, and refused by a profile without per-pixel fills (the Game Boy). This is the natural way to give draw lists effects without growing the op set. It waits until a Dialect asks for it.
+
+**The gap, checked 2026-11-26:** kit/emit/glsl has no textures or samplers (uniforms are scalars, toggles and choices; kit/emit/glsl/README.md). The renderer's `image` and `tiles` shaders, and an `Image` input, all need a sampler type in the `fields` environment and the emitter. That is the first kit change any GPU renderer needs.
+
 ## Input through the stage
 
 A click or touch on the stage lands in the shown part's frame. The root owns the page's controls (the seams draft's ruling), so it decides what a click means and wires that to whichever part should hear it. The kit can map a point back through any frame path, because edges are invertible, so the root can ask which board cell was clicked without knowing the maze.
