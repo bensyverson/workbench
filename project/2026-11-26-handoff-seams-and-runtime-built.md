@@ -55,7 +55,7 @@
 ## Review
 
 - `c513d92`: reviewed by reviewer-seams-2. Its leaves are labeled `reviewed`, and its findings are in `cUXOI7`, with probes in `local/rev-seams-1/r2-*`.
-- **`04fc8f2`: reviewer-run-1 was still running at handoff.** Its probes are in `local/rev-run-1/`. If its report didn't land this session, rerun the review of `04fc8f2` first (the brief is in this session's transcript; its goal list is the clocks rulings). Then file the findings with `--found-in ZH4KWX` and label ZH4KWX `reviewed`.
+- `04fc8f2`: reviewed by reviewer-run-1. It found one HIGH: under the real-time driver, S116 can pass a tick→frame wire whose consumer then takes more than its max in one step, silently. This comes from the first frame's closed window and merged short frames, and nothing checks a step's intake. It also found four MEDIUM and four LOW. Headless delivery held across 234 randomized cases. The findings are filed as `0aVPIi` (the driver and S116's window) and `TB849g` (nested drops, a rebuild whose init throws, the content key's canonical form), with probes in `local/rev-run-1/`. ZH4KWX is labeled `reviewed`.
 
 ## Prerelease
 
@@ -63,6 +63,7 @@
 
 ## Next
 
+0. **`0aVPIi` (HIGH) and `TB849g`:** the runtime review's findings. One Opus agent, since the driver and the queue bound are a runtime contract. Every finding has a probe as its red test. Fix these before anything runs under the real-time driver.
 1. **`cUXOI7` plus `3knMDf`:** one Sonnet agent, kit/compose and kit/seam.
    - the six LOW findings;
    - `point1`;
