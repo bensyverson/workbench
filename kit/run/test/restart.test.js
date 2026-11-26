@@ -1,12 +1,13 @@
 // Restarts and the run's place between instants: a rebuild that restarts a stopped part (or fixes a failed init)
-// while no other part makes instants gives the same run however runUntil is chunked, and no instant runs ahead of an
-// input already applied; a replay applies the inputs a run applied after its last instant; a stopped part takes no
-// Events (Ben, 2026-11-26): records sent to it are dropped and counted, and a restart begins with empty queues.
+// takes effect at its own stamp, whatever other parts make instants (ruling R2), gives the same run however runUntil
+// is chunked, and no instant runs ahead of an input already applied; a replay applies the inputs a run applied after
+// its last instant; a stopped part takes no Events (Ben, 2026-11-26): records sent to it are dropped and counted,
+// noted once per wire per stop (R3), and a restart begins with empty queues.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRun, replay } from "../index.js";
 import { compose } from "../../compose/index.js";
-import { bursts, rightAt, tiny, pair } from "./helpers.js";
+import { bursts, rightAt, tiny, pair, ticker } from "./helpers.js";
 
 /** One tick part (1/4 s) whose step throws once k reaches 3: it stops at T = 3/4, and then no part is due. */
 function lonely() {
@@ -106,7 +107,7 @@ test("an input stamped at or before the run's T applies at once, as runUntil(T) 
   run.runUntil(1.05);
   run.input({ kind: "rebuild", T: 1.045, part: "level", record: same, package: { content: "sha256-B" } });
   assert.equal(run.builds.length, 1);
-  assert.equal(run.builds[0].boundary.before, "16/15");
+  assert.equal(run.builds[0].boundary.before, "209/200"); // at its own stamp, 1.045 (ruling R2)
   assert.deepEqual(replay(composed, { runtimes, packages }, run.record()).diagnostics, []);
 });
 
@@ -158,4 +159,85 @@ test("a part whose init failed takes no Events either: its records are dropped a
   const run = createRun(composed, { runtimes: [runtimes[0], bad], dev: false });
   run.runUntil(1);
   assert.deepEqual(run.stats().stopped, { "a.out.e → b.in.e": 9 });
+});
+
+test("R3: records dropped to a stopped part are noted once per wire per stop: a restart clears the note", () => {
+  const { composed, runtimes, packages } = backlog(); // b stays broken: restarted at 9/8, it stops again there
+  const run = createRun(composed, { runtimes, dev: false, packages });
+  run.runUntil(1);
+  run.input({ kind: "rebuild", part: "b", record: composed.parts[1].record, package: { content: "sha256-B" } });
+  run.runUntil(2);
+  assert.deepEqual(run.diagnostics.map((d) => `${d.code}@${d.T}`), ["N004@1/2", "N001@5/8", "N004@9/8", "N001@5/4"]);
+  assert.deepEqual(run.stats().stopped, { "a.out.e → b.in.e": 11 });
+  // without a restart, the second stop's drops are not noted again
+  run.runUntil(3);
+  assert.equal(run.diagnostics.length, 4);
+  // a rewind between the two stops restores the note as it stood (and drops the later rebuild: a new branch)
+  run.rewind(1);
+  run.input({ kind: "rebuild", part: "b", record: composed.parts[1].record, package: { content: "sha256-B" } });
+  run.runUntil(2);
+  assert.deepEqual(run.diagnostics.map((d) => `${d.code}@${d.T}`), ["N004@1/2", "N001@5/8", "N004@9/8", "N001@5/4"]);
+});
+
+/** A 1/8 s part that throws once k reaches 3 unless its param v is 2, fixed at 1.01 by a rebuild; `slow` adds a 1 s ticker. */
+function restartWith(/** @type {boolean} */ slow) {
+  const t = tiny("tk", { state: { k: "f64" }, inputs: false, ports: { out: {}, in: {} } },
+    { clock: () => ({ tick: 1 / 8 }), init: () => ({ k: 0 }), step: (/** @type {any} */ s, /** @type {any} */ c) => { if (s.k >= 3 && c.record.params?.v?.value !== 2) throw new Error("boom"); return { k: s.k + 1 }; } });
+  const x = ticker("slow", { tick: 1 });
+  const runtimes = [t.runtime, x.runtime];
+  let c = compose("c").part(/** @type {any} */ (t.grammar("tk")));
+  if (slow) c = c.part(x.part);
+  const composed = c.build({ runtimes });
+  const fixed = compose("c").part(/** @type {any} */ (t.grammar("tk")).param("v", { value: 2 })).build({ runtimes }).parts[0].record;
+  const fix = { kind: "rebuild", T: 1.01, part: "tk", record: fixed };
+  return { composed, runtimes, fix };
+}
+
+test("R2: a restart takes effect at its own stamp, so an unrelated part's clock does not delay the restarted part's first instant", () => {
+  /** @param {any} run */
+  const tkInstants = (run) => run.hashes.filter((/** @type {any} */ h, /** @type {number} */ i) => i === 0 || h.parts.tk !== run.hashes[i - 1].parts.tk).map((/** @type {any} */ h) => h.T);
+  const alone = restartWith(false), withTicker = restartWith(true);
+  const a = createRun(alone.composed, { runtimes: alone.runtimes, dev: false, inputs: [alone.fix] });
+  a.runUntil(2.5);
+  const b = createRun(withTicker.composed, { runtimes: withTicker.runtimes, dev: false, inputs: [withTicker.fix] });
+  b.runUntil(2.5);
+  assert.deepEqual(b.builds[0].boundary, { after: "1", before: "101/100" });
+  assert.deepEqual(a.builds[0].boundary, { after: "3/8", before: "101/100" });
+  assert.equal(b.hashes.find((h) => h.T === "9/8") !== undefined, true, "the restarted part steps at 9/8");
+  assert.deepEqual(tkInstants(b), tkInstants(a));
+  assert.equal(b.state("tk").k, a.state("tk").k);
+  for (const cuts of [[1.01, 2.5], [1, 1.005, 1.2, 2.5], [1.125, 2.5]]) {
+    const r = createRun(withTicker.composed, { runtimes: withTicker.runtimes, dev: false, inputs: [withTicker.fix] });
+    for (const t of cuts) r.runUntil(t);
+    assert.equal(sig(r), sig(b), `cuts ${cuts}`);
+  }
+  const live = createRun(withTicker.composed, { runtimes: withTicker.runtimes, dev: false });
+  live.runUntil(1.005);
+  live.input({ ...withTicker.fix });
+  live.runUntil(2.5);
+  assert.equal(sig(live), sig(b));
+  assert.deepEqual(replay(withTicker.composed, { runtimes: withTicker.runtimes, dev: false }, live.record()).diagnostics, []);
+});
+
+test("R2 on a display run whose frame part waits on a frame not yet logged: an instant that runs anyway lets the restart land at its stamp", () => {
+  const { composed: c0, runtimes: r0, fix } = restartWith(true);
+  const fp = tiny("fp", { state: { k: "f64" }, inputs: false, ports: { out: {}, in: {} } }, { clock: () => ({ frame: true }), init: () => ({ k: 0 }), step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
+  const runtimes = [...r0, fp.runtime];
+  const composed = { ...c0, parts: [...c0.parts, compose("x").part(/** @type {any} */ (fp.grammar("fp"))).build({ runtimes: [fp.runtime] }).parts[0]] };
+  const run = createRun(composed, { runtimes, frames: "display", dev: false, inputs: [fix] });
+  run.advance(2.5); // from the log alone: no frame logged after T = 0, so fp waits; the 1 s ticker still runs
+  assert.deepEqual(run.builds[0].boundary, { after: "1", before: "101/100" });
+  assert.ok(run.hashes.some((h) => h.T === "9/8"), run.hashes.map((h) => h.T).join(" "));
+});
+
+test("step() with no part due and none restarted applies the whole log and returns null; a later input before it says so plainly", () => {
+  const t = tiny("tk", { state: { k: "f64" }, inputs: false, ports: { out: {}, in: {} } },
+    { clock: () => ({ tick: 1 / 4 }), init: () => { throw new Error("bad init"); }, step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
+  const runtimes = [t.runtime];
+  const composed = compose("c").part(/** @type {any} */ (t.grammar("tk"))).build({ runtimes });
+  const run = createRun(composed, { runtimes, dev: false, inputs: [{ kind: "control", T: 50, part: "tk", name: "x", value: 1 }] });
+  assert.equal(run.step(), null);
+  assert.equal(run.seconds, 50);
+  assert.throws(() => run.input({ kind: "control", T: 10, part: "tk", name: "x", value: 2 }), /an input stamped 10 comes before one already applied, at 50 \(the run is at 50\)/);
+  assert.equal(run.input({ kind: "control", T: 60, part: "tk", name: "x", value: 3 }).T.n, 60);
 });

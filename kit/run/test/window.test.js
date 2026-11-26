@@ -209,13 +209,17 @@ test("a demand producer woken every frame into a frame consumer of max 1 runs un
 for (const how of ["frame", "step"]) {
   test(`runUntil on a display run, then a driver ${how}: frames were logged up to T, so the next one counts from it and nothing overflows`, () => {
     const { run, driver } = tickToFrame();
-    driver.frame(1 / 60);
-    run.runUntil(1); // a skip ahead from the host, on the same run
-    assert.equal(run.lastFrame.n / run.lastFrame.d, 1);
+    driver.frame(1 / 60); // 17/1000, to the millisecond
+    run.runUntil(1); // a skip ahead from the host, on the same run: the grid from 17/1000, the last at or before 1 (R1)
+    assert.equal(`${run.lastFrame.n}/${run.lastFrame.d}`, "2951/3000");
     if (how === "frame") driver.frame(1 / 60); else driver.step();
     assert.ok(run.seconds > 1 && run.seconds <= 1.1, String(run.seconds));
     assert.deepEqual(run.diagnostics, []);
-    assert.ok(frameSpans(run).every((/** @type {number} */ s) => s <= 1 / 60 + 1e-12 || s <= 0.1), JSON.stringify(frameSpans(run)));
+    // the driver's first frame, then runUntil's a nominal frame apart, then the driver's within the cap
+    const spans = frameSpans(run);
+    assert.equal(spans[0], 0.017);
+    assert.ok(spans.slice(1, -1).every((/** @type {number} */ s) => Math.abs(s - 1 / 60) < 1e-12), JSON.stringify(spans));
+    assert.ok(/** @type {number} */ (spans.at(-1)) <= 0.1 + 1e-12, JSON.stringify(spans));
     assert.ok(run.state("b").biggest <= 2, String(run.state("b").biggest));
     allDelivered(run);
     const { composed, runtimes } = pair({ prodClock: { tick: 1 / 20 }, consClock: { frame: true }, per: 1, max: 2 });
@@ -223,14 +227,14 @@ for (const how of ["frame", "step"]) {
   });
 }
 
-test("runUntil on a display run logs frames at most a nominal frame apart, none closer than 1/240 s, and a replay logs none", () => {
+test("runUntil on a display run logs frames on the nominal grid only, none at a target off it, and a replay logs none", () => {
   const { run } = tickToFrame();
   run.runUntil(0.1);
   assert.deepEqual(run.log.inputs.map((/** @type {any} */ e) => e.T), ["1/60", "1/30", "1/20", "1/15", "1/12", "1/10"]);
-  run.runUntil(0.102); // closer than 1/240 s to the last frame: none logged
+  run.runUntil(0.11); // short of the grid's next point, 7/60: none logged (R1)
   assert.equal(run.log.inputs.length, 6);
-  run.runUntil(0.11);
-  assert.deepEqual(run.log.inputs.slice(6).map((/** @type {any} */ e) => e.T), ["11/100"]);
+  run.runUntil(0.12);
+  assert.deepEqual(run.log.inputs.slice(6).map((/** @type {any} */ e) => e.T), ["7/60"]);
   const { composed, runtimes } = pair({ prodClock: { tick: 1 / 20 }, consClock: { frame: true }, per: 1, max: 2 });
   const r = replay(composed, { runtimes, dev: false }, run.record());
   assert.deepEqual(r.diagnostics, []);

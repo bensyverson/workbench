@@ -7,7 +7,7 @@ import { q, qText, sub, toNumber } from "../define/rational.js";
 
 /** @import { Q } from "../define/rational.js" */
 
-/** The first millisecond after `t`: frame stamps are kept to the millisecond. @param {Q} t */
+/** The first millisecond after `t`: the driver keeps its frame stamps, and an input's default stamp, to the millisecond. @param {Q} t */
 export const afterMs = (t) => q(Math.floor((t.n * 1000) / t.d) + 1, 1000);
 
 /** The kinds of input. */

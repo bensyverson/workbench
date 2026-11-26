@@ -28,7 +28,7 @@ test("a rebuild with a new record lands between instants, bumps the revision, re
   run.runUntil(1);
   const [e] = run.builds;
   assert.equal(e.part, "level");
-  assert.deepEqual(e.boundary, { after: "1/8", before: "1/4" });
+  assert.deepEqual(e.boundary, { after: "1/8", before: "1/5" }); // at its own stamp (ruling R2)
   assert.deepEqual(e.revision, { before: 1, after: 2 });
   assert.equal(e.changed, true);
   assert.deepEqual(e.record, ["grid"]);
@@ -152,7 +152,7 @@ test("a rebuild whose init throws keeps the previous revision running: the event
   assert.deepEqual(run.diagnostics, []);
 });
 
-test("a rebuild that changes a clock lands at the same instant however the run is chunked; replay agrees", () => {
+test("a rebuild that changes a clock lands at its stamp however the run is chunked, and the new clock counts from there; replay agrees", () => {
   const { composed, runtimes, sized } = clocked();
   const inputs = [{ kind: "rebuild", T: 0.6, part: "a", record: sized(5) }, { kind: "rebuild", T: 0.65, part: "a", record: sized(1) }, { kind: "rebuild", T: 0.65, part: "a", record: sized(5) }];
   const whole = createRun(composed, { runtimes, inputs });
@@ -162,8 +162,10 @@ test("a rebuild that changes a clock lands at the same instant however the run i
   chunked.runUntil(0.7);
   chunked.runUntil(2);
   assert.deepEqual(chunked.hashes, whole.hashes);
-  // every rebuild landed after 1/2 and before 3/4, the instant the run was due at when they arrived
-  assert.deepEqual(whole.builds.map((/** @type {any} */ b) => b.boundary), Array(3).fill({ after: "1/2", before: "3/4" }));
+  // each rebuild takes effect at its own stamp (ruling R2): the first moves a to 1/5 s, whose first instant at or
+  // after 0.6 is 3/5 itself, so the two at 0.65 land after it
+  assert.deepEqual(whole.builds.map((/** @type {any} */ b) => b.boundary), [{ after: "1/2", before: "3/5" }, { after: "3/5", before: "13/20" }, { after: "3/5", before: "13/20" }]);
+  assert.ok(whole.hashes.some((/** @type {any} */ h) => h.T === "3/5"));
   assert.deepEqual(chunked.builds, whole.builds);
   assert.equal(replay(composed, { runtimes }, chunked.record()).ok, true);
 });

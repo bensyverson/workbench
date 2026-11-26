@@ -2,10 +2,10 @@
 // frame covers more than the run's `catchUp` seconds of T since the frame before it (the run starts at a frame at
 // T = 0), which is the window kit/compose's S116 sized each queue for. A machine that cannot keep up runs in slow
 // motion and drops nothing. Each frame it runs is written to the input log (a capped one with its wall time), so a
-// replay steps frame parts at the same T. Frame times are kept to the millisecond (a capped one lands exactly on the
-// cap past the last frame), and a frame closer than MIN_FRAME
-// to the last is merged into the next. Headless runs need no driver: run.runUntil(T) runs as fast as it can, with
-// frame parts at a nominal 60 Hz.
+// replay steps frame parts at the same T. The driver's frame times are kept to the millisecond (a capped one lands
+// exactly on the cap past the last frame; run.runUntil logs its own on the nominal grid), and a frame closer than
+// MIN_FRAME to the last is merged into the next. Headless runs need no driver: run.runUntil(T) runs as fast as it
+// can, with frame parts at a nominal 60 Hz.
 
 import { q, add, cmp, sub, toNumber } from "../define/rational.js";
 import { MIN_FRAME, NOMINAL_FRAME } from "../compose/queues.js";
@@ -33,11 +33,13 @@ export function createDriver(run, o = {}) {
     if (cmp(run.T, mark) === 0) return;
     ideal = toNumber(run.T); pendingWall = 0; pendingCapped = false; mark = run.T;
   };
-  /** The latest frame stamp the window allows, after the run's T (or the first millisecond after it, when T has run past it). */
-  const limit = () => {
-    const l = add(run.lastFrame, run.catchUp);
-    return cmp(l, run.T) > 0 ? l : afterMs(run.T);
-  };
+  /** Whether the window from the last frame still reaches past the run's T (T moved without frames when not). */
+  const open = () => cmp(add(run.lastFrame, run.catchUp), run.T) > 0;
+  /**
+   * The latest frame stamp the window allows: the cap past the last frame, or, when T has run a whole cap past it
+   * without frames (advance from the log alone), the cap past T, so no frame is capped that wall time did not slow.
+   */
+  const limit = () => add(open() ? run.lastFrame : run.T, run.catchUp);
   return {
     get paused() { return paused; },
     pause() { paused = true; },
@@ -51,7 +53,7 @@ export function createDriver(run, o = {}) {
       const next = run.nextInstant();
       if (run.framed) {
         let frame = add(run.lastFrame, NOMINAL_FRAME);
-        if (cmp(frame, run.T) <= 0) frame = limit();
+        if (cmp(frame, run.T) <= 0) frame = open() ? limit() : afterMs(run.T);
         if (!next || cmp(next, frame) >= 0) run.input({ kind: "frame", T: frame });
       }
       const i = run.step();
