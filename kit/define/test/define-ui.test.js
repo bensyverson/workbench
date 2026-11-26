@@ -155,7 +155,8 @@ test("U007: a lambda is checked against the Dialect's state and globals", () => 
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.constructor === 0)), ["U007"]);
   assert.deepEqual(codes(ex((/** @type {any} */ s) => { s.t = 0; return true; })), ["U007"], "assigns the state");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => { let n = 1; n += 2; return n > s.t; })), [], "a let local is assignable");
-  assert.deepEqual(codes(ex((/** @type {any} */ s) => { let n = 1; n += s.t; return n > 0; })), ["U007"], "but not set from the state: no state in a local");
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => { let n = 1; n += s.t; return n > 0; })), [], "and set from a scalar of the state (3kCvsI)");
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => { let b = s.bounds; return b.width > 0; })), ["U007"], "but a let does not hold a struct of the state");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.t > LIMIT)), ["U007"], "a free name the Dialect does not give");
   assert.deepEqual(codes(ex((/** @type {any} */ s, /** @type {any} */ $, /** @type {any} */ x) => s.t > x)), ["U007"], "too many parameters");
   assert.deepEqual(codes(ex(function (/** @type {any} */ s) { return s.t > 0; })), ["U007"], "outside the subset");

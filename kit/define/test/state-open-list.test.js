@@ -14,7 +14,7 @@ const codesOf = (def) => { try { defineDialect(def); return []; } catch (e) { as
 const messagesOf = (def) => { try { defineDialect(def); return []; } catch (e) { return e.diagnostics.map((d) => d.message); } };
 
 const dialect = defineDialect(base({
-  state: { t: "f64", bodies: list(struct({ mass: "f64", name: "str" })), tags: list("str"), grid: list(list("f64", 3)), maybe: opt(list("f64")) },
+  state: { t: "f64", bodies: list(struct({ mass: "f64", name: "str" })), tags: list("str"), grid: list(list("f64", 3)), maybe: opt(list("f64")), xs: list("f64", 4), few: list(struct({ mass: "f64" }), 5), best: opt("f64"), bounds: struct({ w: "f64" }) },
 }));
 const grammar = defineGrammar(dialect, { root: "p", constructs: { p: { opens: [name()], slots: { v: { kind: "decl", args: [lambda("v")], once: true } } } } });
 const program = () => { const { record, diagnostics } = run(() => grammar("o")); assert.deepEqual(diagnostics, []); return record; };
@@ -32,7 +32,7 @@ test("a state list with no max is accepted and resolves to a list type with no m
 
 test("checkState has no cap for a list with no max, and still checks every item", () => {
   const items = Array.from({ length: 5000 }, () => ({ mass: 1, name: "x" }));
-  const v = { t: 0, bodies: items, tags: [], grid: [[1, 2, 3]], maybe: null };
+  const v = { t: 0, bodies: items, tags: [], grid: [[1, 2, 3]], maybe: null, xs: [], few: [], bounds: { w: 1 } };
   assert.deepEqual(dialect.checkState(v), []);
   assert.equal(dialect.checkState({ ...v, grid: [[1, 2, 3, 4]] }).length, 1, "a list with a max still has its cap");
   assert.deepEqual(dialect.checkState({ ...v, bodies: [{ mass: "x", name: "y" }] }).map((m) => m.path), ["bodies[0].mass"]);
@@ -66,10 +66,34 @@ test("a UI lambda reads a max-less list's length and rows; ui.lower lowers them"
 });
 
 test("an index into a max-less list lowers as the kit's index does: possibly empty, so L008 unguarded", () => {
-  // Lowering narrows a possibly-empty value only through a local, and a UI lambda may hold no state in a local (kQu7xe),
-  // so today an index read is L008 however it is written: the open question in the leaf's report.
+  // Lowering narrows a possibly-empty value only through a local, so an index read with no local guard is L008 (3kCvsI keeps
+  // this test as the unguarded half: the guarded const pattern is the next test).
   const r = tile({ kind: "stat", label: "m", value: (s) => s.bodies[0].mass }).lower(program());
   assert.deepEqual(r.diagnostics.map((d) => d.code), ["L008"]);
+});
+
+test("a const item guarded with != null lowers clean, for a list with a max and one without", () => {
+  const lowers = (fn) => tile({ kind: "stat", label: "m", value: fn }).lower(program()).diagnostics.map((d) => d.code);
+  assert.deepEqual(lowers((s) => { const b = s.bodies[0]; return b != null ? b.mass : 0; }), [], "no max");
+  assert.deepEqual(lowers((s) => { const b = s.few[0]; return b != null ? b.mass : 0; }), [], "with a max");
+  assert.deepEqual(lowers((s) => { const b = s.best; return b != null ? b : 0; }), [], "an optional");
+  assert.deepEqual(lowers((s) => { const w = s.bounds; return w.w; }), []);
+  assert.deepEqual(lowers((s) => { const b = s.bodies[0]; return b.mass; }), ["L008"], "unguarded stays L008");
+  const loop = (s) => { let n = 0; for (let i = 0; i < s.xs.length; i++) n += s.xs[i]; return n; };
+  assert.deepEqual(uiCodes(loop), [], "reviewer probe ui2 passes defineUI");
+  assert.deepEqual(lowers(loop), ["L003"], "but kit/lower types s.xs[i] as possibly empty, so '+' refuses it: the kit's rule, not U007's");
+  assert.deepEqual(lowers((s) => { let n = 0; for (let i = 0; i < s.xs.length; i++) { const x = s.xs[i]; n += x != null ? x : 0; } return n; }), [], "guarded through a const it lowers clean");
+});
+
+test("the open-list rule holds through a const", () => {
+  assert.deepEqual(uiCodes((s) => { const xs = s.bodies; return xs.length; }), []);
+  assert.deepEqual(uiCodes((s) => { const xs = s.bodies; return xs[0].mass; }), []);
+  const refusedU = (fn) => { const c = uiCodes(fn); return c.length > 0 && c.every((x) => x === "U007"); };
+  assert.ok(refusedU((s) => { const xs = s.bodies; let n = 0; for (let i = 0; i < xs.length; i++) n += 1; return n; }), "a loop bounded by xs.length");
+  assert.ok(refusedU((s) => { const xs = s.bodies; let n = 0; for (const x of xs) n += 1; return n; }));
+  assert.ok(refusedU((s) => { const xs = s.bodies; return Math.abs(xs); }), "used whole");
+  assert.deepEqual(uiCodes((s) => { const g = s.grid[0]; return g.length; }), []);
+  assert.deepEqual(uiCodes((s) => { const xs = s.bodies; return xs.filter((b) => b.mass > 0).length; }).length > 0, true);
 });
 
 test("a UI lambda never loops over a max-less list, uses it whole, or queries it", () => {

@@ -75,6 +75,17 @@ export function resolvePath(root, path, aliases) {
  * @returns {string | null}  the problem, or null
  */
 export function resolveChain(root, rootName, segs, aliases) {
+  const r = chainType(root, rootName, segs, aliases);
+  return "problem" in r ? r.problem : null;
+}
+
+/**
+ * The Type a member chain ends at (the same walk as resolveChain), or its problem.
+ * @param {Type} root @param {string} rootName @param {string[]} segs
+ * @param {Record<string, Record<string, string>>} aliases
+ * @returns {{ type: Type } | { problem: string }}
+ */
+export function chainType(root, rootName, segs, aliases) {
   /** @type {Type} */
   let s = root;
   let text = rootName;
@@ -83,22 +94,25 @@ export function resolveChain(root, rootName, segs, aliases) {
     const k = kindOf(s);
     if (k === "object") {
       const fields = /** @type {any} */ (s).struct;
-      if (seg === "[]") return `${text} is an object; read its members by name`;
-      if (!Object.hasOwn(fields, seg)) return `${text} has no member '${seg}'.${didYouMean(seg, Object.keys(fields))}`;
+      if (seg === "[]") return { problem: `${text} is an object; read its members by name` };
+      if (!Object.hasOwn(fields, seg)) return { problem: `${text} has no member '${seg}'.${didYouMean(seg, Object.keys(fields))}` };
       s = fields[seg];
     } else if (k === "list") {
       if (seg === "length") s = "f64";
       else if (seg === "[]") s = /** @type {any} */ (s).list;
-      else return `${text} is a list; it has 'length' and items by index, not '${seg}'`;
+      else return { problem: `${text} is a list; it has 'length' and items by index, not '${seg}'` };
     } else if (k === "vector" && components(s, aliases).includes(seg)) {
       s = "f64";
     } else {
-      return `${text} is ${describe(k)}, which has no member '${seg}'`;
+      return { problem: `${text} is ${describe(k)}, which has no member '${seg}'` };
     }
     text += seg === "[]" ? "[…]" : `.${seg}`;
   }
-  return null;
+  return { type: s };
 }
+
+/** Whether a Type is a plain value (a number, string or boolean, not optional): what a `let` may hold of the state. @param {Type} t */
+export const isScalarType = (t) => !(typeof t === "object" && "opt" in t) && LEAVES.includes(kindOf(t));
 
 /**
  * Whether the member chain `segs` under `root` ends at a list the Dialect declared with no max (`list(type)` in state).
