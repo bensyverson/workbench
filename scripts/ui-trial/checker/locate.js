@@ -36,7 +36,7 @@ export function locatePos(src, path, decl) {
         for (let m = re.exec(src); m; m = re.exec(src)) if (code[m.index] === src[m.index]) return m;
         return null;
       };
-      const m = find(pos) ?? find(0);
+      const m = find(valueAt) ?? find(0);
       // a key not written out (a shorthand `tiles`) is skipped, and the next is searched for
       if (m) { pos = m.index; valueAt = m.index + m[0].length; }
     }

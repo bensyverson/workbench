@@ -20,7 +20,7 @@ export type Type =
   | { ref: string }
   /** A value that may be empty (null or undefined at run time). */
   | { opt: Type }
-  /** A list of at most `max` items, so a loop over it is bounded. `len` is its exact length, recorded only for an array literal: a constant index below it is never empty. `with` adds that object's members (a game board's `at`). */
+  /** A list of at most `max` items, so a loop over it is bounded. The one exception is a Dialect's state list declared `list(type)`: the Dialect's `stateType` leaves its `max` out though it is typed here as a number, and the UI's lowering (kit/define/ui/lower.js) gives it `OPEN_MAX` before kit/lower sees it, since a kernel's list always has a max.  `len` is its exact length, recorded only for an array literal: a constant index below it is never empty. `with` adds that object's members (a game board's `at`). */
   | { list: Type; max: number; len?: number; with?: string }
   /** A record. `optional` names fields that may be left out. */
   | { struct: Record<string, Type>; optional?: string[] }

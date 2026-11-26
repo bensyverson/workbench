@@ -8,7 +8,7 @@ The topic pages in [docs/](docs/) hold the detail; each line below that points t
 
 ## Types
 
-A type is a string: `"f64" "f32" "bool" "str" "null" "void"`, a declared vector, scalar or object, or one capital letter (a type variable in an intrinsic). Compound: `list(t, max)`, `opt(t)`, `struct({ x: "f64" }, { optional: ["x"] })`, `union(a, b)`, `enumOf(["a", "b"])`, `object(label, members)`. **There is no integer type.**
+A type is a string: `"f64" "f32" "bool" "str" "null" "void"`, a declared vector, scalar or object, or one capital letter (a type variable in an intrinsic). Compound: `list(t, max)` (`list(t)` with no max only in a Dialect's `state`), `opt(t)`, `struct({ x: "f64" }, { optional: ["x"] })`, `union(a, b)`, `enumOf(["a", "b"])`, `object(label, members)`. **There is no integer type.**
 
 ## `defineDialect`
 
@@ -56,7 +56,7 @@ export const myLang = defineDialect({
 - **A convention function** may be called several times per lambda, so it must be pure. Return a string from it to refuse the lambda (B011). Read [docs/state.md](docs/state.md) when a lambda's types depend on what the Program declared before it.
 - **`environment(program)`** returns objects whose members merge into the declared ones; repeating a declared member is D007.
 - **`text(state)`** prints what a person would see, sized for a model's context. You decide what `state` is; declare it with `state` (next).
-- **`state`** (optional) is the shape of the **run's** state: the value `text(state)` and a UI's views are handed while a Program runs. It is not a Grammar construct's `state` (that is build-time, and a different thing). Write a plain object of member types in this Dialect's vocabulary: `state: { score: "f64", alive: "bool", pos: "vec2", mode: enumOf(["play", "over"]), best: opt("f64"), player: struct({ x: "f64", y: "f64" }), bodies: list(struct({ mass: "f64" }), 100) }`. A nested object must be `struct({ … })`, not a bare `{ … }` (D023). The Dialect value then has `checkState(value)` (every mismatch by path) and its `text` throws on a value that does not fit.
+- **`state`** (optional) is the shape of the **run's** state: the value `text(state)` and a UI's views are handed while a Program runs. It is not a Grammar construct's `state` (that is build-time, and a different thing). Write a plain object of member types in this Dialect's vocabulary: `state: { score: "f64", alive: "bool", pos: "vec2", mode: enumOf(["play", "over"]), best: opt("f64"), player: struct({ x: "f64", y: "f64" }), bodies: list(struct({ mass: "f64" }), 100), log: list("str") }`: a state list may leave out its max (a UI reads its `length` and an index, never loops over it), a list elsewhere may not. A nested object must be `struct({ … })`, not a bare `{ … }` (D023). The Dialect value then has `checkState(value)` (every mismatch by path) and its `text` throws on a value that does not fit.
 - **A slot that says nothing may change nothing.** A lambda changes only the one object it is handed, in an instance space, with each effect listed in its slot's `may`. Read [docs/effects.md](docs/effects.md) when a lambda must write, destroy, draw a random number or add to a total.
 
 ## `defineGrammar`

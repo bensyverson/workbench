@@ -6,6 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
+import { lowerUI } from "../ui/lower.js";
 import { defineDialect, defineGrammar, defineUI, run, exact, scalar, vector, enumOf, struct, list, name, data, lambda } from "../index.js";
 
 const KIT_DEFINE = new URL("../index.js", import.meta.url).href;
@@ -167,10 +168,9 @@ test("badge gives a string or null, tone one of the tones or null, a text's valu
   assert.deepEqual([r.diagnostics[1].tile, r.diagnostics[1].key], [null, "badge"]);
 });
 
-test("a list in the state has a length though the Dialect declares no list members, and loops over it lower", () => {
+test("a list in the state has a length though the Dialect declares no list members, and a counted loop to it lowers", () => {
   const ui = tile({ kind: "stat", label: "sum", value: (s) => {
     let n = 0;
-    for (const b of s.bodies) n += b.speed;
     for (let i = 0; i < s.names.length; i++) n += 1;
     return n;
   } });
@@ -191,15 +191,18 @@ test("for a Dialect that declares no params, $ is an object with no members", ()
   assert.deepEqual(at(ui.lower(record)), [["tiles.t.body[1].value", "L002"]]);
 });
 
-test("a bad state read through a local, a ternary or a pattern, which defineUI lets through (kQu7xe), is an L code", () => {
-  const ui = defineUI(orbits, { tiles: {
+test("lowering itself refuses a bad state read through a local, a ternary or a pattern (defineUI refuses them first, kQu7xe)", () => {
+  const ok = tile({ kind: "check", label: "a", expect: (s) => s.alive });
+  const tiles = {
     t: { title: "T", place: { splitBelow: "stage" }, body: [
       { kind: "check", label: "a", expect: (s) => { const b = s.bounds; return b.bogus > 0; } },
       { kind: "check", label: "b", expect: (s) => (s.t > 0 ? s.bounds : s.bounds).bogus > 0 },
       { kind: "check", label: "c", expect: (s) => { const { bogus } = s.bounds; return bogus > 0; } },
     ] },
-  } });
-  const r = ui.lower(program());
+  };
+  assert.throws(() => defineUI(orbits, { tiles }), /U007/);
+  // Reaching lower() past defineUI's check: the same UI value with the unchecked tiles.
+  const r = lowerUI({ ...ok, tiles }, program());
   assert.deepEqual(at(r), [["tiles.t.body[0].expect", "L002"], ["tiles.t.body[1].expect", "L002"], ["tiles.t.body[2].expect", "L002"]]);
 });
 

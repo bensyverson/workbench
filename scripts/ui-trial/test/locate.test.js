@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkDir } from "../checker/index.js";
+import { locate } from "../checker/locate.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const PKG = join(HERE, "../packages/maze");
@@ -93,4 +94,20 @@ test("a multi-line lambda and two identical bad lambdas keep their lines", async
   ] } },
 });
 `), ["7 U007", "9 U007", "10 U007"]);
+});
+
+test("a key equal to the previous one (a tile named body) is found after it, not re-matched", () => {
+  const src = `defineUI(b, {
+  tiles: {
+    body: {
+      title: "T",
+      body: [
+        { kind: "text", value: "a" },
+        { kind: "text", value: 4 },
+      ],
+    },
+  },
+});`;
+  assert.equal(locate(src, ["tiles", "body", "body", 1, "value"], {}), 7);
+  assert.equal(locate(src, ["tiles", "body", "body", 0, "value"], {}), 6);
 });

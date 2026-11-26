@@ -62,7 +62,7 @@ test("a valid UI is frozen, remembers its package, and U-less", () => {
         { kind: "stat", label: "name", value: "label", max: (s, $) => $.mass },
         { kind: "table", label: "B", rows: "bodies", columns: ["name", { label: "km/s", value: (row, s, $) => row.speed / 1000 + s.bounds.width + $.mass }], limit: 20 },
         { kind: "table", label: "N", rows: "names", columns: [{ label: "n", value: (row) => row }] },
-        { kind: "plot", label: "p", y: (s) => s.center.x + s.center.u + s.center[0] + s.label.length, window: 10 },
+        { kind: "plot", label: "p", y: (s) => s.center.x + s.center.u + s.bodies.length, window: 10 },
         { kind: "check", label: "c", expect: (s) => s.mode === "a" && s.best !== null },
       ] },
       drift: { title: "D", place: { splitBelow: "bodies" }, body: [{ kind: "row", items: [{ kind: "text", value: "hello" }, { kind: "runs", label: "r", param: "mass", from: 0, to: 4, steps: 5, seconds: 2, y: "t" }] }] },
@@ -146,13 +146,16 @@ test("U007: a lambda is checked against the Dialect's state and globals", () => 
   assert.match(typo[0].message, /Did you mean 't'\?/);
   assert.equal(typo[0].line, 1);
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.bodies.speed > 0)), ["U007"], "a list has length and items");
-  assert.deepEqual(codes(ex((/** @type {any} */ s) => s.bodies[0].speed > 0 && s.bodies.length > 0 && s.label.length > 0 && s.center.y > 0)), []);
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => s.bodies[0].speed > 0 && s.bodies.length > 0 && s.center.y > 0)), []);
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => s.label.length > 0)), ["U007"], "a string has no length: lowering refuses it");
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => s.center[1] > 0)), ["U007"], "a vector is read by component name");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.center.z > 0)), ["U007"], "a vec2 has no z");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.t.length > 0)), ["U007"], "only a string has length");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s === 0)), ["U007"], "the state is not used whole");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.constructor === 0)), ["U007"]);
   assert.deepEqual(codes(ex((/** @type {any} */ s) => { s.t = 0; return true; })), ["U007"], "assigns the state");
-  assert.deepEqual(codes(ex((/** @type {any} */ s) => { let n = 1; n += s.t; return n > 0; })), [], "a let local is assignable");
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => { let n = 1; n += 2; return n > s.t; })), [], "a let local is assignable");
+  assert.deepEqual(codes(ex((/** @type {any} */ s) => { let n = 1; n += s.t; return n > 0; })), ["U007"], "but not set from the state: no state in a local");
   assert.deepEqual(codes(ex((/** @type {any} */ s) => s.t > LIMIT)), ["U007"], "a free name the Dialect does not give");
   assert.deepEqual(codes(ex((/** @type {any} */ s, /** @type {any} */ $, /** @type {any} */ x) => s.t > x)), ["U007"], "too many parameters");
   assert.deepEqual(codes(ex(function (/** @type {any} */ s) { return s.t > 0; })), ["U007"], "outside the subset");

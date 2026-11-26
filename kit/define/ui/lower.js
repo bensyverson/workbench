@@ -33,6 +33,13 @@ import { TONES } from "./validate.js";
 
 /** The convention a view's lambda runs in, by name: what messages call its space. */
 const SPACE = "view";
+/**
+ * The max a state list declared `list(type)` gets in a UI kernel: the IR holds a max on every list (the verifier requires one),
+ * and this is the largest whole number it can, so no check against it ever fails. A UI lambda never loops over such a list
+ * (defineUI refuses it), so nothing sizes anything by it; `length` and an index are all it is read by.
+ */
+export const OPEN_MAX = Number.MAX_SAFE_INTEGER;
+
 /** The object `$` is when the Dialect declares no params: one with no members. */
 const NO_PARAMS = "(no params)";
 
@@ -89,6 +96,19 @@ export function sitesOf(ui, state, aliases) {
   return out;
 }
 
+/** `t` with every list that has no max given OPEN_MAX; `t` itself when it has none. @param {Type} t @returns {Type} */
+export function closeLists(t) {
+  if (typeof t !== "object") return t;
+  if ("list" in t) return { ...t, list: closeLists(t.list), max: t.max ?? OPEN_MAX };
+  if ("opt" in t) { const o = closeLists(t.opt); return o === t.opt ? t : { ...t, opt: o }; }
+  if ("struct" in t) {
+    const fields = Object.fromEntries(Object.entries(t.struct).map(([k, v]) => [k, closeLists(v)]));
+    return Object.entries(fields).every(([k, v]) => v === t.struct[k]) ? t : { ...t, struct: fields };
+  }
+  if ("union" in t) return { ...t, union: t.union.map(closeLists) };
+  return t;
+}
+
 /** @param {Type} t @returns {Type} */
 const unwrap = (t) => (typeof t === "object" && "opt" in t ? unwrap(t.opt) : t);
 
@@ -134,7 +154,7 @@ function required(gives, inferred, numberType) {
 export function lowerUI(ui, record) {
   const dialect = ui.dialect;
   const def = /** @type {Record<string, any>} */ (dialect.def);
-  const state = /** @type {Type} */ (dialect.stateType);
+  const state = closeLists(/** @type {Type} */ (dialect.stateType));
   const numberType = dialect.numberType;
   const base = dialect.environment(record);
   /** @type {Record<string, Record<string, string>>} */
@@ -147,7 +167,8 @@ export function lowerUI(ui, record) {
   /** @type {Record<string, Member>} */
   const listMembers = { ...base.list };
   // The packet promises `s.bodies.length`; a Dialect whose Programs read no list length declares no list members.
-  if (!Object.hasOwn(listMembers, "length")) listMembers.length = { kind: "value", t: numberType };
+  // An f64 whatever the Dialect's numberType: the IR verifier types a list's length f64 (V002 otherwise), as defineUI's shapes do.
+  if (!Object.hasOwn(listMembers, "length")) listMembers.length = { kind: "value", t: "f64" };
 
   /** Each lambda's convention by id, filled before each pass. @type {Map<string, SlotDecl>} */
   const decls = new Map();

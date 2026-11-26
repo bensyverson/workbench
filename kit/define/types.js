@@ -36,7 +36,7 @@ export function checkKeys(obj, allowed, required, path, what, out) {
 /**
  * D002 (or D011 for a malformed compound) for each type in `t` that resolves to nothing.
  * @param {unknown} t @param {TypeScope} scope
- * @param {{ typeVars?: boolean, infer?: boolean }} allow
+ * @param {{ typeVars?: boolean, infer?: boolean, openList?: boolean }} allow  `openList`: a list may leave out its max (a Dialect's state only)
  * @param {Array<string | number>} path @param {string} where @param {Problem[]} out
  */
 export function checkType(t, scope, allow, path, where, out) {
@@ -56,7 +56,8 @@ export function checkType(t, scope, allow, path, where, out) {
   switch (h[TAG]) {
     case "list":
       checkType(h.of, scope, allow, path, where, out);
-      if (!(typeof h.max === "number" && Number.isInteger(h.max) && h.max > 0)) bad(`list() needs a positive whole max, got ${describe(h.max)}.`, `write list(type, max), e.g. list("f64", 1000)`);
+      if (h.max === undefined && allow.openList) return;
+      if (!(typeof h.max === "number" && Number.isInteger(h.max) && h.max > 0)) bad(`list() needs a positive whole max, got ${describe(h.max)}.`, allow.openList ? `write list(type, max), e.g. list("f64", 1000), or list(type) for no max` : `write list(type, max), e.g. list("f64", 1000); only a Dialect's state may leave the max out, as list(type)`);
       return;
     case "opt": checkType(h.of, scope, allow, path, where, out); return;
     case "struct":
@@ -167,7 +168,8 @@ export function resolveType(t, r) {
   const h = tagged(t);
   if (!h) throw new Error(`not a type: ${describe(t)}`);
   switch (h[TAG]) {
-    case "list": return { list: resolveType(h.of, r), max: /** @type {number} */ (h.max) };
+    // A list with no max (a Dialect's state only, see checkType) resolves with none: ir.d.ts says why it is typed as a number.
+    case "list": return /** @type {Type} */ ({ list: resolveType(h.of, r), ...(h.max === undefined ? {} : { max: h.max }) });
     case "opt": return optional(resolveType(h.of, r));
     case "struct": {
       const fields = /** @type {Record<string, unknown>} */ (h.fields);

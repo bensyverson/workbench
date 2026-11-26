@@ -1,6 +1,6 @@
 // What a UI reads of the run's state: the Dialect's declared state Type (kit/define/state.js), as paths ("bounds.width")
 // and as the member chains a lambda writes (`s.bodies.length`, `row.speed`). A path stops at a list; a chain may use a
-// list's `length` and items, a string's `length`, a struct's fields and a vector's components.
+// list's `length` and items, a struct's fields and a vector's components by name.
 
 import { didYouMean } from "../codes.js";
 
@@ -68,7 +68,8 @@ export function resolvePath(root, path, aliases) {
 
 /**
  * Resolves a member chain read in a lambda (`s.particles.length`, `row.live`): struct fields; on a list, `length`
- * (a number) or an index ("[]") into its item; on a string, `length`; on a vector, a component or an index.
+ * (a number) or an index ("[]") into its item; on a vector, a component by name. A string has no members and a vector no
+ * index, as in kit/lower (a type's members here are what lowering accepts, so a chain that passes here is never L002 there).
  * @param {Type} root @param {string} rootName @param {string[]} segs  "[]" for a computed member
  * @param {Record<string, Record<string, string>>} aliases
  * @returns {string | null}  the problem, or null
@@ -89,9 +90,7 @@ export function resolveChain(root, rootName, segs, aliases) {
       if (seg === "length") s = "f64";
       else if (seg === "[]") s = /** @type {any} */ (s).list;
       else return `${text} is a list; it has 'length' and items by index, not '${seg}'`;
-    } else if (k === "string" && seg === "length") {
-      s = "f64";
-    } else if (k === "vector" && (seg === "[]" || components(s, aliases).includes(seg))) {
+    } else if (k === "vector" && components(s, aliases).includes(seg)) {
       s = "f64";
     } else {
       return `${text} is ${describe(k)}, which has no member '${seg}'`;
@@ -99,4 +98,24 @@ export function resolveChain(root, rootName, segs, aliases) {
     text += seg === "[]" ? "[…]" : `.${seg}`;
   }
   return null;
+}
+
+/**
+ * Whether the member chain `segs` under `root` ends at a list the Dialect declared with no max (`list(type)` in state).
+ * A chain that does not resolve is not one: resolveChain says why.
+ * @param {Type} root @param {string[]} segs @param {Record<string, Record<string, string>>} aliases
+ * @returns {boolean}
+ */
+export function openListAt(root, segs, aliases) {
+  /** @type {Type} */
+  let s = root;
+  for (const [i, seg] of segs.entries()) {
+    if (resolveChain(s, "", [seg], aliases) !== null) return false;
+    s = unwrap(s);
+    const k = kindOf(s);
+    s = k === "object" ? /** @type {any} */ (s).struct[seg] : k === "list" ? (seg === "[]" ? /** @type {any} */ (s).list : "f64") : "f64";
+    if (i === segs.length - 1) break;
+  }
+  const end = unwrap(s);
+  return kindOf(end) === "list" && /** @type {any} */ (end).max === undefined;
 }

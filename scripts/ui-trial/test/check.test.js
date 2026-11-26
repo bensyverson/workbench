@@ -196,7 +196,7 @@ test("U007: more parameters than the convention, a lambda that does not parse, a
 });
 test("U007: a lambda may assign its own let locals and read the params and Dialect globals", async () => {
   // Math is a global, length an intrinsic, vec2 a declared vector (built in a lambda as vec2(x, y)).
-  const r = await check("particles", [["(s) => s.particles.length < s.maxParticles", "(s, $) => { let n = s.particles.length; n += 1; return n <= s.maxParticles + Math.abs($.rate) + length(vec2(0, 0)) * 0; }"]]);
+  const r = await check("particles", [["(s) => s.particles.length < s.maxParticles", "(s, $) => { let n = 0; n += 1; return n <= s.maxParticles + Math.abs($.rate) + length(vec2(0, 0)) * 0; }"]]);
   assert.deepEqual(r.diagnostics, []);
   // A const local is not assignable.
   only(await check("particles", [["(s) => s.particles.length < s.maxParticles", "(s) => { const n = 1; n = 2; return n < s.maxParticles; }"]]), "U007");

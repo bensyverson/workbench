@@ -78,7 +78,7 @@ test("every malformed state is D023 with a fix, beside the other problems in one
     [{ a: "nope" }, "state.a"],
     [{ a: { b: "f64" } }, "state.a"],
     [{ a: list("f64", 0) }, "state.a"],
-    [{ a: /** @type {any} */ (list)("f64") }, "state.a"],
+    [{ a: list("f64", 1.5) }, "state.a"], // list("f64") with no max is allowed in state now (leaf aNdksS)
     [{ a: struct({}) }, "state.a"],
     [{ a: struct({ b: { c: "f64" } }) }, "state.a.b"],
     [{ a: "Thing" }, "state.a"],

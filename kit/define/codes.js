@@ -28,7 +28,7 @@ export const DEFINE_CODES = Object.freeze({
   D020: "A Dialect without text(state), its text view (its screen and state as characters, sized for a model)",
   D021: "A malformed effect declaration: an unknown verb, object or member in may; a write, destroy or bump with no object; a non-read in a pure space's slot or in helpers; a bump outside an instance space or of a member that is not a total; a write of a member that is not writable; one slot that may both read and bump a total; write and bump on one member, or on a member that is not a value; bump on a non-f64; effects on an intrinsic",
   D022: "An instance a lambda could reach other than as its instance space's slot parameter (a member, method result, global, list item, struct field, intrinsic or call result of its type; a slot outside the space that takes one; a slot in it that takes none or two), or a write or destroy of an object in a slot whose space's instance is not that object",
-  D023: "A malformed state (the run's state a Dialect declares): not an object, no members, a member that is not a type or is a nested plain object (write struct({ … })), an object() or a declared object as a member, void or null as a type, a list without a positive whole max",
+  D023: "A malformed state (the run's state a Dialect declares): not an object, no members, a member that is not a type or is a nested plain object (write struct({ … })), an object() or a declared object as a member, void or null as a type, a list whose max is not a positive whole number (a state list may leave the max out: list(type))",
 });
 
 /** defineUI's codes: U… is a UI declaration refused when defineUI is called. U006 is retired (its job, a bad state, is D023's); its number is not reused. */
@@ -38,7 +38,7 @@ export const UI_CODES = Object.freeze({
   U003: "A place or annotate that names no view or tile, or tiles placed in a cycle",
   U004: "A place without exactly one direction, or a bad size",
   U005: "A path that names nothing in the Dialect's state, or names the wrong type for its key",
-  U007: "A lambda that does not parse, leaves the subset, takes too many parameters or a destructuring pattern as one, assigns anything but its own let locals, reads an undeclared state member or a free name the Dialect does not give",
+  U007: "A lambda that does not parse, leaves the subset, takes too many parameters or a destructuring pattern as one, assigns anything but its own let locals, reads an undeclared state member or a free name the Dialect does not give, starts a member chain anywhere but at a parameter or a Dialect global (a local, a conditional, a call, an array), holds in a local what a parameter gave it, or uses a list with no declared max other than by its length and an index",
   U008: "A custom element without the package prefix or a valid tag, without a module, with a module that is not a package file or does not define the tag, or a tag used twice",
   U009: "An emits event that is not pick, select or param, or emits without an element",
   U010: "Inputs whose object is not a Dialect object, whose buttons are not exactly its bool members, or with an unknown or repeated role",

@@ -37,7 +37,7 @@ Each has an id. You place tiles beside them and annotate some of them; you canno
 
 ## The state: declared in your Dialect
 
-The host computes the run's state after each tick and hands the same value to `text(state)`, the stage and every lambda below. Its shape is part of what the language means, so it is declared in **the Dialect**, as `state` beside `text`, in the Dialect's own types: `"f64"`, `"bool"`, `"str"`, a vector or scalar declared in `types`, `enumOf([...])`, `opt(type)`, `struct({ … })` for an object, and `list(type, max)` for a list of at most `max` items.
+The host computes the run's state after each tick and hands the same value to `text(state)`, the stage and every lambda below. Its shape is part of what the language means, so it is declared in **the Dialect**, as `state` beside `text`, in the Dialect's own types: `"f64"`, `"bool"`, `"str"`, a vector or scalar declared in `types`, `enumOf([...])`, `opt(type)`, `struct({ … })` for an object, `list(type, max)` for a list of at most `max` items, and `list(type)` for a list with no max (only in the state: a lambda reads its `length` and an item by index, and never loops over it).
 
 ```js
 // orbits.dialect.js
@@ -72,7 +72,7 @@ Wherever a component takes a value, give a path or a lambda. A **lambda** is a R
 | `value`, `y`, `expect`, `badIf`, `tone`, `badge` | `(s, $) => …`: `s` the state, `$` the params | per key, below |
 | a table column's `value` | `(row, s, $) => …`: `row` one item of the table's list | a number or string |
 
-A list's length is `s.bodies.length`. `$.name` reads a param; a package does not know which params a Program declares, so a lambda that reads `$.mass` shows nothing for a Program without `mass`.
+A list's length is `s.bodies.length`; its items are read by index (`s.bodies[0].mass`); a string has no `length`, and a vector is read by component name (`s.center.x`), not by index. Every member chain starts at a parameter (`s`, `$`, `row`) or a global such as `Math`: it never starts at a local, a conditional, a call or an array, and **a local may not hold anything read from a parameter** (`const b = s.bounds`, `const { w } = s.bounds`, `let n = 0; n = s.t` are U007): write `s.bounds.width` where you use it. A local holding a plain value (`const k = 2`) is fine. A UI lambda never loops over a list or filters one. A list index or an optional (`opt`) read is possibly empty, and the kit reports it as L008 unless it is checked with `!= null` first; the kit narrows only a local, which a lambda may not use for state, so such a read of the state is L008 for now: show items in a table (a column's `row` is never empty) and read lengths and required members. `$.name` reads a param; a package does not know which params a Program declares, so a lambda that reads `$.mass` shows nothing for a Program without `mass`.
 
 Where the components table below says a key takes "a number", "a boolean" or "a string", give a path to one or a lambda that gives one. A lambda computes numbers and booleans; the only strings it gives are literals (`"hot"`) or a string read from the state. It cannot join or format strings.
 
@@ -138,7 +138,7 @@ Each is an object with a `kind`. `label` is a string.
 
 | `kind` | Keys | Shows |
 |---|---|---|
-| `stat` | `label`, `value` (a number or string), `unit?`, `max?` (a number: a path or a lambda, like any value), `badIf?` (a boolean) | a readout; with `max`, shown as "value / max" and red once it goes past `max` (not at it: for "red when full", add `badIf`); red while `badIf` holds, so red if either does |
+| `stat` | `label`, `value` (a number or string), `unit?`, `max?` (a number: a path or a lambda, like any value), `badIf?` (a boolean) | a readout; with `max`, shown as "value / max" and red once `value >= max` (at max or past it); also red while `badIf` holds, so red if either does |
 | `check` | `label`, `expect` (a boolean) | pass or fail, live |
 | `table` | `label`, `rows` (a path to a list), `columns`, `limit?` (whole, 1 to 1000) | one row per item; `columns` lists row keys (`"name"`) or `{ label, value: (row, s, $) => … }` |
 | `plot` | `label`, `y` (a number), `window` (seconds, more than 0) | `y` over the last `window` seconds of the run |
@@ -199,9 +199,9 @@ export const orbitsUI = defineUI(orbits, {
 
 ## Pitfalls
 
-1. **The state lives in the Dialect.** `defineUI` takes no `state` key (U001); declare it in `defineDialect`, in the Dialect's types (`"f64"`, not `"number"`), with `struct` and `list(type, max)`.
+1. **The state lives in the Dialect.** `defineUI` takes no `state` key (U001); declare it in `defineDialect`, in the Dialect's types (`"f64"`, not `"number"`), with `struct` and `list(type, max)` (or `list(type)` when there is no max to declare).
 2. **A path stops at a list.** `"bodies.speed"` is U005: a table over `"bodies"` with the column `"speed"` is how you show it.
-3. **A lambda gets the whole state**, not a part: `(s) => s.bodies.length`, never `(bodies) => bodies.length`.
+3. **A lambda gets the whole state**, not a part: `(s) => s.bodies.length`, never `(bodies) => bodies.length`; and it reads through `s` each time, with no alias (`const b = s.bodies[0]`) or destructuring (`const { t } = s`).
 4. **Lambdas are pure.** `s.t = 0` or a `$` write is U007; a view never changes the run. A param edit is the `params` view's job, or a `wb-param` event.
 5. **The fallback is the component.** An `element` sits on a component (or the stage), never alone; the component's keys are still required.
 6. **Inputs are not key handlers.** Declare buttons; the host maps keys, the on-screen pad and a gamepad to them.
@@ -219,7 +219,7 @@ export const orbitsUI = defineUI(orbits, {
 | U003 | a `place` or `annotate` that names no view or tile, or tiles placed in a cycle |
 | U004 | a `place` without exactly one direction, or a bad `size` |
 | U005 | a path that names nothing in the state, or names the wrong type for its key (a table's `rows` that is not a list, a `badIf` that is not a boolean …) |
-| U007 | a lambda that does not parse, leaves the Runtime Subset, takes more parameters than its convention, assigns anything but its own locals, reads a member of the state that is not declared, or reads a free name the Dialect does not give |
+| U007 | a lambda that does not parse, leaves the Runtime Subset, takes more parameters than its convention, assigns anything but its own locals, reads a member of the state that is not declared, starts a member chain anywhere but at a parameter or a global, holds in a local what a parameter gave it, or reads a free name the Dialect does not give |
 | U008 | a custom element without the package prefix or not a valid tag, without a `module`, with a module that is not one of the package's files or does not define the tag, or one tag used twice |
 | U009 | an `emits` event that is not `pick`, `select` or `param`, or `emits` without an `element` |
 | U010 | `inputs` whose `object` is not a Dialect object, whose buttons are not exactly its members (each `"bool"`), or with an unknown or repeated `role` |

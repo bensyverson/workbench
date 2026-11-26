@@ -31,7 +31,7 @@ export function validateState(state, scope) {
     if (out.length > own) continue;
     /** @type {Problem[]} */
     const found = [];
-    checkType(t, noObjects, {}, path, `state member '${k}'`, found);
+    checkType(t, noObjects, { openList: true }, path, `state member '${k}'`, found);
     out.push(...found.map((p) => ({ ...p, code: "D023" })));
   }
   return out;
