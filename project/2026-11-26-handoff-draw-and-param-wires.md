@@ -29,7 +29,14 @@
 ## Review
 
 - **Reviewed and fixed:** 5e0813e, 950a948, 953e969, 5db1d27 and 3b26012. Probes are in `local/rev-5e0813e`, `rev-why-10`, `rev-pw-12` and `rev-draw-13`. The `rev-draw-13` probes call `runDraw` with the old `globals` argument, so they no longer run as written.
-- **In review at handoff:** `81657d6` and `a2dfa1d`, by reviewer-draw-16, which was still running when this was written. Its findings land below if it reported in time. If not, review that range first.
+- **`81657d6` and `a2dfa1d` were reviewed by reviewer-draw-16; the fixes are not yet made.** Probes are in `local/rev-draw-16`; the integrator confirmed both HIGH findings.
+  - **`9t99go`, fix first:**
+    - **F1 HIGH:** a stopped producer's lists vanish on rewind.
+    - **F2 HIGH:** rewind redraws with the current params rather than the params the lists were built with.
+    - **F3 MEDIUM:** kit/lower's new expected-list rule accepts what kit/ir/verify refuses (V002), in every Dialect.
+    - **F5 LOW:** a builder may read a global it never gets at run time.
+  - **`qciwpW`:** F4 MEDIUM, from before these commits. The Game Boy profile ignores painter's order and sprite x priority.
+  - The kit/run README's claim that a rewind to any checkpoint matches the straight run is false until `9t99go` lands.
 
 ## Prerelease
 
@@ -41,7 +48,7 @@
 
 ## Next
 
-0. **Reviewer-draw-16's findings**, if any (see Review).
+0. **`9t99go`** (Opus, because it touches the rewind contract and kit/lower), then **`qciwpW`** (Sonnet will do: the DMG rules are stated on the leaf). The reviewer's probes are the red tests.
 1. **`hca0YM`: the page draws the shown Draw list.** This covers the defineUI stage form, image sources, `drawCanvas` in the workbench page, and reporting the draw-time check. kit/compose's record should also keep the `profile` given to `check()`, so `pageView` callers don't pass it again.
 2. **`IhJ35P`: a workbench composed from two Dialects written in separate sessions**, once `hca0YM` lands. This closes M4.
 3. Small items, not filed:
