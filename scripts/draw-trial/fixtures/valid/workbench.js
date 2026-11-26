@@ -23,7 +23,7 @@ export default ($) => {
     .tick(1 / 30)
     .emitter("pop", { x: 0, y: 0, maxRate: 0, trigger: "burst", perEvent: 24 })
       .rate((t, live) => 0)
-      .spawn((p, rng, i) => { p.pos = ev.at; p.vel = vec2(rng() - 0.5, rng() - 0.5) * inp.speed * 2; p.life = 0.6; p.size = 2; });
+      .spawn((p, rng, i) => { if (ev != null) { p.pos = ev.at; } p.vel = vec2(rng() - 0.5, rng() - 0.5) * inp.speed * 2; p.life = 0.6; p.size = 2; });
   const cab = arcade("cab").screen({ width: 320, height: 240 });
   return compose("coin-arcade")
     .part(level).part(fx).part(cab)

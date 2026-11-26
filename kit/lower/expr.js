@@ -7,7 +7,7 @@ import { didYouMean, HELPER_OWNER } from "./codes.js";
 import { call, reachable } from "./call.js";
 import { assign, update } from "./assign.js";
 import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
-import { nullCheck, nullCheckOf, nullFacts } from "./nullcheck.js";
+import { nullCheck, nullCheckOf, nullFacts, optionalGlobal } from "./nullcheck.js";
 import { refuseHandle, refuseSampler } from "./handles.js";
 import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip, own } from "./numeric.js";
 
@@ -167,7 +167,11 @@ export function identifier(L, node) {
     return baked.k === "array" || baked.k === "struct" ? settleTree(L, baked) : baked;
   }
   const g = Object.hasOwn(L.environment.globals, node.name) ? L.environment.globals[node.name] : undefined;
-  if (g) return refuseHandle(L, node, g, "global") ? bad(node) : L.ex({ k: "global", name: node.name, t: g, span });
+  if (g) {
+    const key = optionalGlobal(L, node.name);
+    const t = key && L.narrowed.has(key) ? /** @type {{ opt: any }} */ (g).opt : g;
+    return refuseHandle(L, node, g, "global") ? bad(node) : L.ex({ k: "global", name: node.name, t, span });
+  }
   if (isNumericName(L, node.name)) {
     L.error("L003", node, `'${node.name}' is a function here.`, `Call it: ${node.name}(…).`);
     return bad(node);
@@ -534,6 +538,8 @@ export function facts(L, node) {
   if (node.type === "Identifier") {
     const b = L.lookup(node.name);
     if (b && b.kind === "const" && typeof b.t === "object" && "opt" in b.t) return { yes: [b.name], no: [] };
+    const key = b ? null : optionalGlobal(L, node.name);
+    if (key) return { yes: [key], no: [] };
   }
   const check = nullCheckOf(L, node);
   const known = check && nullFacts(L, check);

@@ -31,7 +31,7 @@ export default ($) => {
     .emitter("pop", { x: 160, y: 112, maxRate: 0, trigger: "burst", perEvent: 24 })
       .rate((t, live) => 0)
       .spawn((p, rng, i) => {
-        p.pos = ev.at;
+        if (ev != null) { p.pos = ev.at; }
         p.vel = vec2(rng() - 0.5, rng() - 0.5) * inp.speed * 2;
         p.life = 0.5;
       });

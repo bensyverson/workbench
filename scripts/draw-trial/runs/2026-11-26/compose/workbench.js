@@ -49,7 +49,7 @@ export default ($) => {
       .rate((t, live) => 0)
       .spawn((p, rng, i) => {
         const a = rng() * 2 * Math.PI;
-        p.pos = ev.at;
+        if (ev != null) { p.pos = ev.at; }
         p.vel = vec2(Math.cos(a), Math.sin(a)) * SPEED * (0.3 + rng());
         p.life = 0.6 + rng() * 0.5;
         p.size = 4;

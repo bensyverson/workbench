@@ -68,7 +68,7 @@ export function fxStep(s, ctx) {
   return { ...s, t: s.t + ctx.dt, seen, radius: ctx.inputs.radius };
 }
 
-export const SPAWN = "(p, rng) => { p.pos = ev.at; p.life = inp.radius; }";
+export const SPAWN = "(p, rng) => { if (ev == null) return; p.pos = ev.at; p.life = inp.radius; }";
 
 /**
  * The coin-bursts composition on the corridor: level → fx, "fit" (the corridor's 7 × 3 cells into 320 × 320 px:
@@ -89,7 +89,8 @@ export const rightAt = (T) => ({ kind: "control", T, part: "level", name: "pad",
 
 /**
  * A tiny Dialect and Grammar with the ports, state and frames given, and a runtime from `rt`.
- * @param {string} n @param {{ ports: any, state: any, frames?: any, inputs?: boolean }} d @param {any} rt
+ * `slots` adds construct slots beside param, k and size.
+ * @param {string} n @param {{ ports: any, state: any, frames?: any, inputs?: boolean, slots?: Record<string, any> }} d @param {any} rt
  */
 export function tiny(n, d, rt) {
   for (const side of ["out", "in"]) for (const p of Object.values(d.ports[side] ?? {})) p.note ??= "n";
@@ -115,7 +116,7 @@ export function tiny(n, d, rt) {
   }));
   const grammar = defineGrammar(dialect, {
     root: n, params: { slot: "param" },
-    constructs: { [n]: { opens: [name()], slots: { param: { kind: "decl", args: [name("param"), data({ value: "number" })], as: "params" }, k: { kind: "decl", args: [lambda("k")] }, size: { kind: "decl", args: [data("number")], once: true } } } },
+    constructs: { [n]: { opens: [name()], slots: { param: { kind: "decl", args: [name("param"), data({ value: "number" })], as: "params" }, k: { kind: "decl", args: [lambda("k")] }, size: { kind: "decl", args: [data("number")], once: true }, ...d.slots } } },
   });
   return { grammar, runtime: defineRuntime(grammar, rt) };
 }

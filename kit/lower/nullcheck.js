@@ -85,7 +85,18 @@ export function nullCheck(L, node, check) {
 export function nullFacts(L, check) {
   if (check.value.type !== "Identifier") return null;
   const b = L.lookup(check.value.name);
-  if (!b || b.kind !== "const" || typeof b.t !== "object" || !("opt" in b.t)) return { yes: [], no: [] };
-  if (!check.loose) return { yes: [], no: [] };
-  return check.present ? { yes: [b.name], no: [] } : { yes: [], no: [b.name] };
+  const key = b ? (b.kind === "const" && typeof b.t === "object" && "opt" in b.t ? b.name : null) : optionalGlobal(L, check.value.name);
+  if (key === null || !check.loose) return { yes: [], no: [] };
+  return check.present ? { yes: [key], no: [] } : { yes: [], no: [key] };
+}
+
+/**
+ * The narrowing key of an optional global (an Event input's record, null in a slot called without one: ruling 6,
+ * 2026-11-26), or null. A lambda cannot assign a global, so a check on one holds like one on a `const` local; the
+ * key cannot meet a local's name.
+ * @param {Lowerer} L @param {string} name @returns {string | null}
+ */
+export function optionalGlobal(L, name) {
+  const g = Object.hasOwn(L.environment.globals, name) ? L.environment.globals[name] : undefined;
+  return g && typeof g === "object" && "opt" in g ? `global ${name}` : null;
 }

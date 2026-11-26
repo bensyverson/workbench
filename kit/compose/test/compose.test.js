@@ -17,7 +17,7 @@ const GRID = ["##########", "#..c...c.#", "#.##.###.#", "#c.....c.#", "#.###.##.
 const steer = "(pl, pad) => { pl.dx = pad.left ? -1 : 0; }";
 const level = () => /** @type {any} */ (maze()("level").grid(GRID).control(steer));
 const fx = () => /** @type {any} */ (particles()("fx").bounds({ width: 320, height: 320 })
-  .emitter("pop", { x: 160, y: 160, trigger: "burst" }).rate("(t, live) => 0").spawn("(p, rng) => { p.pos = ev.at; p.life = inp.radius; }"));
+  .emitter("pop", { x: 160, y: 160, trigger: "burst" }).rate("(t, live) => 0").spawn("(p, rng) => { if (ev == null) return; p.pos = ev.at; p.life = inp.radius; }"));
 const packages = [{ name: "maze", version: "0.2.0" }, { name: "particles", version: "0.3.0" }];
 
 test("the coin-bursts composition checks clean and plans the burst's position ×32 +[16, 48]", () => {
@@ -258,7 +258,7 @@ const rt = (g, clock, events) => defineRuntime(g, { clock: () => clock, init: ()
 function bursts(/** @type {{ levelTick?: number, fxClock?: any, out?: number, inMax?: number, fxGrammar?: any }} */ o = {}) {
   const M = maze(), P = o.fxGrammar ?? particles();
   const l = /** @type {any} */ (M("level").grid(GRID).control(steer));
-  const f = /** @type {any} */ (P("fx").bounds({ width: 320, height: 320 }).emitter("pop", { x: 160, y: 160, trigger: "burst" }).rate("(t, live) => 0").spawn("(p, rng) => { p.pos = ev.at; p.life = inp.radius; }"));
+  const f = /** @type {any} */ (P("fx").bounds({ width: 320, height: 320 }).emitter("pop", { x: 160, y: 160, trigger: "burst" }).rate("(t, live) => 0").spawn("(p, rng) => { if (ev == null) return; p.pos = ev.at; p.life = inp.radius; }"));
   const c = compose("t").part(l).part(f).frame(l.frame.cell, f.frame.px, "fit").wire(l.out.picked, f.in.burst);
   const runtimes = [rt(M, { tick: o.levelTick ?? 1 / 8 }, { out: { picked: o.out ?? 8 } }), rt(P, o.fxClock ?? { tick: 1 / 30 }, { in: { burst: o.inMax ?? 8 } })];
   return { c, runtimes };

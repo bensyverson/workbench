@@ -21,7 +21,9 @@ import { lowerPorts } from "./port-lower.js";
 /**
  * @typedef {object} Lowered
  * @property {import("../lower/environment.js").Environment} environment
- * @property {Array<{ ref: T.DefineSlotRef, src: string, result: LowerResult }>} lambdas  in record order
+ * @property {Array<{ ref: T.DefineSlotRef, src: string, result: LowerResult, alias?: string }>} lambdas  in record order;
+ *   `alias` is `<instance>.<slot>.<name>` for the one lambda of a call whose slot declares a name (ruling 1, 2026-11-26),
+ *   unless an id is spelled that way
  * @property {HelperResult[]} helpers  the Library units used, then the Program's own
  * @property {Array<T.BuildDiagnostic | LowerDiagnostic>} diagnostics  state refusals (B003, B010, B011), then each lambda's and helper's, each tied to its call or lambda
  * @property {Record<string, unknown>} states  each stateful construct instance's final state, by name
@@ -162,7 +164,7 @@ export function lowerRecord(g, record) {
   const env = g.dialect.environment(record, states);
   const instances = instancesOf(g, record);
 
-  /** @type {Array<{ inst: RecInstance, call: RecCall, ref: T.DefineSlotRef, src: string, key?: string }>} */
+  /** @type {Array<{ inst: RecInstance, call: RecCall, ref: T.DefineSlotRef, src: string, key?: string, alias?: string }>} */
   const lambdas = [];
   /** @type {Map<RecCall, typeof lambdas>} */
   const byCall = new Map();
@@ -200,12 +202,15 @@ export function lowerRecord(g, record) {
         const peers = group(l.key);
         const place = peers.length > 1 ? `[${peers.indexOf(l)}]` : "";
         const id = unique(`${tags.get(inst)}.${call.slot}${call.once ? "" : `#${call.index}`}${l.key !== undefined ? `.${l.key}` : ""}${place}`);
-        return { inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}), ref: /** @type {T.DefineSlotRef} */ ({ id, kind: l.convention, on: inst.name, index: call.index, ...((l.key ?? declared) !== undefined ? { key: l.key ?? declared } : {}) }) };
+        const alias = declared !== undefined && l.key === undefined && found.length === 1 ? `${tags.get(inst)}.${call.slot}.${declared}` : undefined;
+        return { inst, call, src: l.src, ...(l.key !== undefined ? { key: l.key } : {}), ...(alias ? { alias } : {}), ref: /** @type {T.DefineSlotRef} */ ({ id, kind: l.convention, on: inst.name, index: call.index, ...((l.key ?? declared) !== undefined ? { key: l.key ?? declared } : {}) }) };
       });
       byCall.set(call, here);
       lambdas.push(...here);
     }
   }
+  // a declared name is unique in its namespace (B002); one an id already spells names nothing: the id is the stable one
+  for (const l of lambdas) if (l.alias && usedIds.has(l.alias)) delete l.alias;
   /** Lambdas the Dialect refused, by identity (never by message text). @type {Set<(typeof lambdas)[number]>} */
   const refused = new Set();
   // A stateOf loop re-runs the calls of the instances on it, once per instance told about the loop, and each
@@ -331,7 +336,7 @@ export function lowerRecord(g, record) {
   return {
     ...(ported ? { seams: { extents: ported.extents, edges: ported.edges, outputs: ported.outputs } } : {}),
     environment: env,
-    lambdas: live.map((l, i) => ({ ref: l.ref, src: l.src, result: results[i] })),
+    lambdas: live.map((l, i) => ({ ref: l.ref, src: l.src, result: results[i], ...(l.alias ? { alias: l.alias } : {}) })),
     helpers: helperResults,
     diagnostics,
     states: Object.fromEntries([...finals].map(([i, s]) => [i.name, s])),

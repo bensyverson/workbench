@@ -58,8 +58,10 @@ test("a value input is read through the inputs object as its local type", () => 
 });
 
 test("an Event input's record is read by its name in the slots it names, and nowhere else", () => {
-  assert.deepEqual(errors(lowerParticles("(p, rng) => { p.pos = ev.at; }").diagnostics), []);
-  assert.deepEqual(errors(lowerParticles("(p, rng) => { p.life = ev.where; }").diagnostics).map((x) => x.code), ["L002"]);
-  const rate = errors(lowerParticles("(p, rng) => { p.life = 1; }", "(t, live) => ev.at.x").diagnostics);
+  assert.deepEqual(errors(lowerParticles("(p, rng) => { if (ev != null) { p.pos = ev.at; } }").diagnostics), []);
+  // null in a listed slot called without a record (ruling 6, 2026-11-26): an unguarded read may be empty
+  assert.deepEqual(errors(lowerParticles("(p, rng) => { p.pos = ev.at; }").diagnostics).map((x) => x.code), ["L008"]);
+  assert.deepEqual(errors(lowerParticles("(p, rng) => { if (ev != null) { p.life = ev.where; } }").diagnostics).map((x) => x.code), ["L002"]);
+  const rate = errors(lowerParticles("(p, rng) => { p.life = 1; }", "(t, live) => (ev != null ? ev.at.x : 0)").diagnostics);
   assert.deepEqual(rate.map((x) => x.code), ["L004"]);
 });

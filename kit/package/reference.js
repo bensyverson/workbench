@@ -1,28 +1,32 @@
 // A package's generated reference: what a composer reads to decide what to wire, without running the package's
 // code (the seams draft's question 7). For now it holds the package's seams only: each output, input and frame,
-// with its seam type, note, default or required, and delivery. Constructs and slots are not printed yet.
+// with its seam type, note, default or required, and delivery; given the runtime, each Event port's most records
+// per step (so a composer can see S116 coming: ruling 7, 2026-11-26). Constructs and slots are not printed yet.
 
 /** @import { Seams, InPort } from "../define/define.js" */
+/** @import { Runtime } from "../define/runtime.js" */
 
 /** A sentence's end: the note with a final period. @param {string | null | undefined} note */
 const said = (note) => (note ? `: ${note.trim().replace(/[.;:,]?$/, ".")}` : ".");
 
-/** @param {InPort} p */
-function inputTerms(p) {
+/** @param {InPort} p @param {Runtime | null | undefined} runtime */
+function inputTerms(p, runtime) {
   /** @type {string[]} */
   const terms = [];
   if (p.seam.kind === "event") {
     const d = p.delivery ?? "reliable";
     terms.push(`delivery ${typeof d === "string" ? d : `{ keepLast: ${d.keepLast} }`}`);
+    const max = runtime?.events.in[p.name];
+    terms.push(max === undefined ? "max per step: its runtime's (not given here)" : `at most ${max} record${max === 1 ? "" : "s"} per step`);
     if (p.record) terms.push(`its record read as \`${p.record.name}\` in ${p.record.slots.join(", ")} lambdas`);
   } else terms.push(p.required ? "required" : `default ${JSON.stringify(p.default)}`);
   return terms;
 }
 
 /**
- * The reference of a loaded package (what kit/package's loadPackage returned, or `{ name, version, dialect }`), as
- * Markdown.
- * @param {{ name: string, version: string, dialect: { seams?: Seams } }} pkg
+ * The reference of a loaded package (what kit/package's loadPackage returned, or `{ name, version, dialect, runtime? }`),
+ * as Markdown.
+ * @param {{ name: string, version: string, dialect: { seams?: Seams }, runtime?: Runtime | null }} pkg
  * @returns {string}
  */
 export function packageReference(pkg) {
@@ -32,12 +36,16 @@ export function packageReference(pkg) {
   if (!out.length && !inp.length && !frames.length) return [...lines, "No ports or frames: nothing can be wired to this package.", ""].join("\n");
   if (out.length) {
     lines.push("## Outputs", "");
-    for (const p of out) lines.push(`- \`${p.name}\`: \`${p.seamText}\`${said(p.note)}${p.seam.kind === "event" ? " Its runtime pushes the records each step." : ""}`);
+    for (const p of out) {
+      const max = pkg.runtime?.events.out[p.name];
+      const pushes = p.seam.kind !== "event" ? "" : max === undefined ? " Its runtime pushes the records each step." : ` Its runtime pushes at most ${max} record${max === 1 ? "" : "s"} per step.`;
+      lines.push(`- \`${p.name}\`: \`${p.seamText}\`${said(p.note)}${pushes}`);
+    }
     lines.push("");
   }
   if (inp.length) {
     lines.push("## Inputs", "");
-    for (const p of inp) lines.push(`- \`${p.name}\`: \`${p.seamText}\`, ${inputTerms(p).join(", ")}${said(p.note)}`);
+    for (const p of inp) lines.push(`- \`${p.name}\`: \`${p.seamText}\`, ${inputTerms(p, pkg.runtime).join(", ")}${said(p.note)}`);
     lines.push("");
   }
   lines.push("## Frames", "");

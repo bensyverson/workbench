@@ -95,7 +95,7 @@ globals: { …, inp: "In" },
 - **A value input** (anything but an `Event`) has a `default`, read when nothing is wired, or `required: true` (the glue must wire it). A vector `default` is an array. Lambdas read value inputs through the one object `inputs` names, the way params are read through `$`: `inp.fade` is an `f64`. A point or vector input reads as your one `vector` type of its dims; if you have several, say which with `type: "vec2"`. Your runtime gets them too (`runtime.md`).
 - **An `Event` input** delivers, before each of your steps, the records produced since your last step, in order, already converted into your frames. It takes no `default` or `required`.
   - `delivery: "reliable"` (the default) keeps every record. The composition checks that the queue can't overflow (S116, from the maxes in `runtime.md`). `delivery: { keepLast: n }` keeps the newest `n` and drops older ones, counting the drops.
-  - `record: { name, slots }` lets lambdas read the record: lambdas of the listed slot conventions read its fields through the global `name` (`hit.strength`). No other lambda may read it (L004). Your runtime sets `name` before calling such a lambda, once per record (`runtime.md`). Without `record`, only your runtime sees the records.
+  - `record: { name, slots }` lets lambdas read the record: lambdas of the listed slot conventions read its fields through the global `name` (`hit.strength`). It is null when your runtime calls such a lambda without a record, so a lambda checks it first: `if (hit != null) { … hit.strength … }` or `if (hit == null) return;` (an unchecked read is L008). No other lambda may read it (L004). Your runtime sets `name` before calling such a lambda, once per record (`runtime.md`). Without `record`, only your runtime sees the records.
 - **A Grammar can name an input** with `ref("in")`, as an argument or inside a `data({ … })` shape, checked against the inputs you declare, with a did-you-mean (B003). `ref("in", { kind: "event" })` accepts only Event inputs and `ref("in", { kind: "value" })` only value inputs. Then a Program can say, for example, which of its parts an input drives: `.lamp("big", { on: "flash" })`. Your runtime reads the name from the record and the records from that input.
 - **One wire per input.** Two outputs cannot feed one input.
 
@@ -137,7 +137,7 @@ import { board } from "board";
 
 export default ($) => {
   const beat = drums("beat").length(16).tempo(8).lane("kick", [0, 4, 8, 12]).lane("snare", [4, 12]);
-  const strip = board("strip").lamps(32).glow((l) => { l.level = hit.strength; });
+  const strip = board("strip").lamps(32).glow((l) => { if (hit != null) { l.level = hit.strength; } });
 
   return compose("light-show")
     .part(beat)
@@ -158,7 +158,7 @@ A glue program is not a package. It may import `kit/compose`, `kit/define` and e
 | `.part(builder)` | adds a part: a Program built by one package's Grammar, exactly as it would be on its own. Its opening name (`drums("beat")`) is the part's name, unique in the workbench |
 | `.frame(a, b, edge)` | relates frame `a` of one part to frame `b` of another, by an edge `{ scale, offset }` from `a` to `b` |
 | `.frame(a, b, "fit")` | the same, with the edge computed so `a`'s extent fits inside `b`'s, centered, one scale for every axis. Both frames need an `extent`, and the same `dims` |
-| `.wire(out, in, options?)` | connects an output of one part to an input of another. Options: `rename`, `delay` (below) |
+| `.wire(out, in, options?)` | connects an output of one part to an input of another. Options: `rename`, `delay`, `overflow` (below) |
 | `.show(part)` | the part whose stage the page shows (one); the others still run |
 
 - **Handles.** Every builder has `.out.<port>`, `.in.<port>` and `.frame.<name>`. A handle only names a port or frame: pass it to `.wire` and `.frame`, and nothing else. Reading a property of one, using one in arithmetic, or testing one in a condition is S301.
@@ -166,6 +166,8 @@ A glue program is not a package. It may import `kit/compose`, `kit/define` and e
 - **`rename: { outputField: "inputField" }`** renames record fields on this wire, as data: above, the drums' `when` arrives as the board's `pos`. It works on an Event's records, a record value and a list of records. A wire cannot compute or transform a value; the glue has no lambdas.
 - **`delay: true`** makes the input read what the output held when the instant began, instead of what it holds after this instant's step. Two parts that feed each other make a loop, refused as S115 unless one wire in the loop is delayed. Above, the strip feeds the beat back, so that wire is delayed.
 - **The kit converts on the wire.** For each tagged field, the kit finds a path of frame edges from the output's frame to the input's (edges compose, and run backward too), and converts by kind. Above, `"fit"` puts 16 steps on 32 lamps: a step `s` lands on lamp `2s + 0.5`, and the tempo in steps per second arrives as lamps per second, ×2.
+- **`overflow: "keepLast"` or `overflow: "keepFirst"`** is for an Event wire whose records can outrun the input (S116). With it, each step of the input's part takes at most the input's max: the newest records, or the first, and the rest are dropped and counted (the run's `stats().overflow`, and one N001 warning per wire). S116 then is a warning that names the policy. The input's max never changes. Use it when losing records is fine (a held button, a burst of sparks); when every record matters, raise the max in the input's runtime instead. A package's `reference.md` gives each Event port's max per step and its delivery, so you can see S116 coming.
+- **The page's controls are a part.** `page` (`import { compose, page } from "kit/compose"`) is a built-in part whose Event outputs are the controls: `page.out.pad` (`Event<{ up: bool, down: bool, left: bool, right: bool }>`, a record each time the held directions change) and `page.out.a`, `page.out.b`, `page.out.start`, `page.out.select` (`Event<{ held: bool }>`, a record on press and on release). Wire one like any output: `.wire(page.out.<control>, <part>.in.<input>)`, with `rename` when the input's fields have other names. You don't `.part(page)`; a wire from it adds it. For S116 the page counts as sending at most one record per control per display frame, so an input that keeps only the latest state takes `{ overflow: "keepLast" }` or declares `delivery: { keepLast: 1 }`.
 - **Each part keeps its own params**, as it would on its own.
 
 ## Diagnostics
@@ -182,13 +184,13 @@ workbench.js:14: S202 beat.out.hit cannot feed strip.in.flash: the record has no
 | Code | When |
 |---|---|
 | S101 | two parts with one name |
-| S102 | a call given the wrong thing: an input where an output goes, a part not added with `.part`, a wire option other than `rename` and `delay`, a bad name |
+| S102 | a call given the wrong thing: an input where an output goes, a part not added with `.part`, a wire option other than `rename`, `delay` and `overflow` (or an `overflow` on a value input), a bad name |
 | S111 | an output, input or frame the part does not have (the message lists what it has) |
 | S112 | an input wired twice |
 | S113 | a required input with no wire |
 | S114 | a part wired to itself |
 | S115 | a loop of wires with no delayed wire in it |
-| S116 | a reliable Event wire whose queue could hold more records at one step than the input's runtime takes |
+| S116 | a reliable Event wire whose queue could hold more records at one step than the input's runtime takes; a warning, not an error, on a wire with `overflow` |
 | S201 | the kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate |
 | S202 | a field the input takes is missing from the output's record (after any rename), or is of another kind |
 | S203 | an enum value the input does not accept |

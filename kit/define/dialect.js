@@ -264,7 +264,8 @@ function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultip
   const recordReads = new Map();
   for (const rec of seamEnv.records) {
     objects[rec.name] = { label: `the ${rec.input} record (${rec.name})`, members: Object.fromEntries(Object.entries(rec.members).map(([m, t]) => [m, { kind: /** @type {const} */ ("value"), t: resolveType(t, r), effect: /** @type {import("../ir/ir.js").Effect} */ (`read ${rec.name}.${m}`) }])) };
-    globals[rec.name] = { obj: rec.name };
+    // null in a listed slot called without a record (ruling 6, 2026-11-26): a lambda tests `<name> != null`
+    globals[rec.name] = { opt: { obj: rec.name } };
     for (const s of rec.slots) recordReads.set(s, [...(recordReads.get(s) ?? []), `read ${rec.name}`]);
   }
   /** A convention, with the records its slot sees added to what it may read. @param {SlotDecl} d @param {string} kind @returns {SlotDecl} */

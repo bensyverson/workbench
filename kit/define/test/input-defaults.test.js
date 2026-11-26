@@ -27,7 +27,7 @@ test("an Event input's record field may take a default: the Dialect keeps it, an
   assert.deepEqual(p.seams.in.burst.seam.of.defaults, { speed: 40 });
   assert.equal(p.seams.in.burst.seamText, "Event<{ at: point2@px, speed: f64 = 40 }>");
   const env = p.environment({});
-  assert.deepEqual(Object.keys(env.objects[env.globals.ev.obj].members), ["at", "speed"]);
+  assert.deepEqual(Object.keys(env.objects[env.globals.ev.opt.obj].members), ["at", "speed"]);
 });
 
 test("D028: a default that does not fit its field's type", () => {

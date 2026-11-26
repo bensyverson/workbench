@@ -11,6 +11,7 @@ import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
 import { compareSeams, printValue, printSeam, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
 import { applyRename, undelayedLoops } from "./wires.js";
 import { queueProblems } from "./queues.js";
+import { withPage, pageRuntime } from "./page.js";
 
 /** @import { Loc } from "../parse/ast.js" */
 /** @import { Handle } from "../define/handles.js" */
@@ -20,15 +21,18 @@ import { queueProblems } from "./queues.js";
 
 /** @typedef {{ file: string, loc: Loc }} At */
 /** @typedef {{ name: string, program: any, dialect: any, seams: Seams, dialectName: string, version?: string, record: Record<string, any> | null, extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, at: At }} Part */
-/** @typedef {{ from: Handle, to: Handle, at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, delay: boolean, dropped: string[], fill: Record<string, unknown>, ok: boolean }} Wire */
+/** @typedef {{ from: Handle, to: Handle, at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, delay: boolean, overflow: Overflow | null, dropped: string[], fill: Record<string, unknown>, ok: boolean }} Wire */
+/** What a wire drops when its records outrun the consumer's max (ruling 7, 2026-11-26). @typedef {"keepLast" | "keepFirst"} Overflow */
 
-const WIRE_OPTIONS = ["rename", "delay"];
+const WIRE_OPTIONS = ["rename", "delay", "overflow"];
+const OVERFLOWS = ["keepLast", "keepFirst"];
 
 /**
- * @param {string} name @param {At} start @param {Array<GlueCall & { at: At }>} calls @param {ComposeOptions} options
+ * @param {string} name @param {At} start @param {Array<GlueCall & { at: At }>} given  the glue's calls (the page is added) @param {ComposeOptions} options
  * @returns {{ diagnostics: ComposeDiagnostic[], record: Composed, plan: string[] }}
  */
-export function analyze(name, start, calls, options) {
+export function analyze(name, start, given, options) {
+  const calls = withPage(given, start);
   /** @type {ComposeDiagnostic[]} */
   const out = [];
   /** @param {At} at @param {string} code @param {string} message @param {string} fix @param {{ from?: Side, to?: Side }} [sides] */
@@ -171,7 +175,7 @@ export function analyze(name, start, calls, options) {
     if (isHandle(c.to) && c.to.side === "in" && c.to.known && parts.has(c.to.program)) attempted.add(`${c.to.part}.${c.to.name}`);
     const both = callSides(c.from, c.to);
     const opts = wireOptions(c.options);
-    if (typeof opts === "string") { add(at, "S102", `.wire(…, …, ${describe(c.options)}): ${opts}`, ".wire(a.out.x, b.in.y, { rename: { pos: \"at\" }, delay: true }), each optional", both); continue; }
+    if (typeof opts === "string") { add(at, "S102", `.wire(…, …, ${describe(c.options)}): ${opts}`, ".wire(a.out.x, b.in.y, { rename: { pos: \"at\" }, delay: true, overflow: \"keepLast\" }), each optional", both); continue; }
     const pa = resolve(c.from, "out", at, ".wire", both), pb = resolve(c.to, "in", at, ".wire", both);
     if (!pa || !pb) continue;
     const ho = /** @type {Handle} */ (c.from), hi = /** @type {Handle} */ (c.to);
@@ -181,8 +185,9 @@ export function analyze(name, start, calls, options) {
     if (wired.has(hi)) { add(at, "S112", `${handleText(hi)} is already wired (line ${wired.get(hi)?.loc.start.line}); an input takes one wire`, "remove one of the two wires", sides); continue; }
     wired.set(hi, at);
     const po = pa.seams.out[ho.name], pi = pb.seams.in[hi.name];
+    if (opts.overflow && pi.seam.kind !== "event") { add(at, "S102", `.wire(${handleText(ho)}, ${handleText(hi)}, { overflow: "${opts.overflow}" }): ${handleText(hi)} is a value input, which reads the latest value; overflow is for an Event wire`, "remove overflow", sides); continue; }
     /** @type {Wire} */
-    const wire = { from: ho, to: hi, at, convert: [], rename: opts.rename, delay: opts.delay, dropped: [], fill: {}, ok: true };
+    const wire = { from: ho, to: hi, at, convert: [], rename: opts.rename, delay: opts.delay, overflow: opts.overflow, dropped: [], fill: {}, ok: true };
     wires.push(wire);
     const renamed = applyRename(po.seam, pi.seam, opts.rename);
     if (renamed.problems.length) {
@@ -250,9 +255,11 @@ export function analyze(name, start, calls, options) {
     const live = wires.filter((w) => w.ok);
     const sized = [...parts.values()].filter((p) => !broken.has(p) && p.record).map((p) => ({ name: p.name, dialect: p.dialectName, record: /** @type {Record<string, any>} */ (p.record) }));
     const ends = live.map((w) => ({ from: { part: w.from.part, name: w.from.name }, to: { part: w.to.part, name: w.to.name }, delivery: /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name].delivery }));
-    for (const pr of queueProblems(sized, ends, options.runtimes, { catchUp: options.catchUp })) {
+    for (const pr of queueProblems(sized, ends, [...options.runtimes, pageRuntime], { catchUp: options.catchUp })) {
       const w = live[pr.wire];
-      add(w.at, "S116", pr.message, pr.fix, { from: side(w.from), to: side(w.to) });
+      if (!w.overflow) { add(w.at, "S116", pr.message, `${pr.fix}; or, on this wire, { overflow: "keepLast" } (the newest ${pr.max} at each step) or { overflow: "keepFirst" } (the first ${pr.max})`, { from: side(w.from), to: side(w.to) }); continue; }
+      const kept = w.overflow === "keepLast" ? `the newest ${pr.max}` : `the first ${pr.max}`;
+      add(w.at, "S116", `${pr.message}; the wire's { overflow: "${w.overflow}" } keeps ${kept} at each step and drops the rest, counted in the run's stats().overflow`, `if every record matters, ${pr.fix}, and remove overflow; if dropping is intended, ignore this`, { from: side(w.from), to: side(w.to) }, "warning");
     }
   }
 
@@ -281,25 +288,26 @@ export function analyze(name, start, calls, options) {
     parts: [...parts.values()].filter((p) => !broken.has(p)).map((p) => ({ name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record) })),
     wires: wires.filter((w) => w.ok).map((w) => {
       const consumer = /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name];
-      return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(consumer.delivery ? { delivery: consumer.delivery } : {}) };
+      return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, ...(w.overflow ? { overflow: w.overflow } : {}), dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(consumer.delivery ? { delivery: consumer.delivery } : {}) };
     }),
     show: live ? live.name : null,
   };
-  const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${Object.keys(w.fill).length ? `; fills ${Object.entries(w.fill).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ")}` : ""}${w.delay ? "; delayed" : ""}`);
+  const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${Object.keys(w.fill).length ? `; fills ${Object.entries(w.fill).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ")}` : ""}${w.delay ? "; delayed" : ""}${w.overflow ? `; overflow ${w.overflow}` : ""}`);
   return { diagnostics: out, record, plan };
 }
 
-/** A wire's options, or why they are not `{ rename?, delay? }`. @param {unknown} o @returns {{ rename: Record<string, string>, delay: boolean } | string} */
+/** A wire's options, or why they are not `{ rename?, delay?, overflow? }`. @param {unknown} o @returns {{ rename: Record<string, string>, delay: boolean, overflow: Overflow | null } | string} */
 function wireOptions(o) {
-  if (o === undefined) return { rename: {}, delay: false };
-  if (o === null || typeof o !== "object" || Array.isArray(o)) return "a wire's options are { rename?, delay? }";
+  if (o === undefined) return { rename: {}, delay: false, overflow: null };
+  if (o === null || typeof o !== "object" || Array.isArray(o)) return "a wire's options are { rename?, delay?, overflow? }";
   const x = /** @type {Record<string, unknown>} */ (o);
   const extra = Object.keys(x).filter((k) => !WIRE_OPTIONS.includes(k));
-  if (extra.length) return `a wire takes only rename and delay, not ${extra.map((k) => `'${k}'`).join(", ")}.${didYouMean(extra[0], WIRE_OPTIONS)}`;
+  if (extra.length) return `a wire takes only rename, delay and overflow, not ${extra.map((k) => `'${k}'`).join(", ")}.${didYouMean(extra[0], WIRE_OPTIONS)}`;
   if (x.delay !== undefined && typeof x.delay !== "boolean") return `delay is true or false, not ${describe(x.delay)}`;
+  if (x.overflow !== undefined && !OVERFLOWS.includes(/** @type {string} */ (x.overflow))) return `overflow is "keepLast" (the newest records a step takes) or "keepFirst" (the first), not ${describe(x.overflow)}`;
   const r = x.rename;
   if (r !== undefined && (r === null || typeof r !== "object" || Array.isArray(r) || !Object.values(r).every((v) => typeof v === "string"))) return `rename is { producerField: "consumerField" }, not ${describe(r)}`;
-  return { rename: /** @type {Record<string, string>} */ ({ ...(r ?? {}) }), delay: x.delay === true };
+  return { rename: /** @type {Record<string, string>} */ ({ ...(r ?? {}) }), delay: x.delay === true, overflow: /** @type {Overflow | undefined} */ (x.overflow) ?? null };
 }
 
 /**

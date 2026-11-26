@@ -175,7 +175,7 @@ ports: {
   in: {
     <event-in>: { seam: "Event<{ <field>: point2@<frame2> }>", note: "<what receiving one does>",
               delivery: "reliable",                       // the default; or { keepLast: <n> }
-              record: { name: "<name>", slots: ["<slot>"] } }, // those slots' lambdas read the record as <name>.<field>; no other lambda may
+              record: { name: "<name>", slots: ["<slot>"] } }, // those slots' lambdas read the record as <name>.<field> after <name> != null; no other lambda may
     <event-in2>: { seam: "Event<{ <field>: point2@<frame2>, <field2>: f64 = <v> }>", note: "<…>" },   // <field2> has a default (below)
     <value-in>: { seam: "f64@<frame2>", default: <v>, note: "<what it controls>" },   // or required: true
   },
@@ -204,6 +204,7 @@ export const <runtime> = defineRuntime(<builder>, {
   init: (record, ctx) => ({ <field>: <initial>, … }),       // a state that fits your Dialect's state
   step(state, { dt, kernels, controls, inputs, events, rng }) {
     kernels.<slot>(<instance>, controls.<pad>);               // the part's own lambda by slot; any by id: kernels["<construct>.<slot>"]
+    kernels["<construct>.<slot>.<name>"](<instance>);         // a call that declares a name (.<slot>("<name>", …)), by that name
     // …
     for (const <rec> of <records>) events.<event-port>.push(<rec>);   // an Event output is pushed, never kept in state
     return { ...state, <field>: <next> };                     // a new state: never change the one you are handed
@@ -213,7 +214,8 @@ export const <runtime> = defineRuntime(<builder>, {
 ```
 
 - **`step` returns the next state** and keeps no other memory: no module-level variables, no `Math.random` (use `ctx.rng`), no clock. The state must fit your Dialect's `state`, with the fields the Program declares (N002). A field the Program does not declare in the extensible struct is N003, in any run. A development run also freezes the state and runs each step twice to check (N003). Read a Program's declarations from `record` (`record.<decls>`) to carry its fields from step to step.
-- **`ctx.inputs`** holds each value input converted into your frames, and each Event input's records since your last step, in order; `ctx.globals` is what your lambdas' globals read (set an Event record's name, `ctx.globals.<name> = record`, before calling a lambda that reads it).
+- **`ctx.inputs`** holds each value input converted into your frames, and each Event input's records since your last step, in order. Each record carries `<record>.$T`, the instant in seconds its producer sent it at: read-only, and not among its keys. `ctx.globals` is what your lambdas' globals read: set an Event record's name, `ctx.globals.<name> = <record>`, before calling a lambda that reads it, and `ctx.globals.<name> = null` before calling one of those slots without a record (a spawn by rate, say). A lambda in a slot listed in `record.slots` reads the name as possibly null, so it checks first, `if (<name> != null) { … <name>.<field> … }` or `if (<name> == null) return;`; an unchecked read is L008.
+- **`ctx.kernels`** holds each lambda by its id: `<instance>.<slot>`, with `#<n>` unless the slot is `once` (`<n>` counts the instance's calls). That id is the stable one. A call whose slot declares a name (`.<slot>("<name>", …)`) is also there as `kernels["<instance>.<slot>.<name>"]`, the same function. The part's own lambdas are there by slot name alone too (`kernels.<slot>`). `Object.keys(ctx.kernels)` lists the ids only.
 - **Every Event port needs its max** in `events` (D033). The composition sizes each queue from the maxes and the clocks, and refuses a reliable wire that could overflow (S116).
 
 ## A Program

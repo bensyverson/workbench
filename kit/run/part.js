@@ -63,9 +63,10 @@ function globalsFor(p, values) {
 const aliased = new WeakMap();
 
 /**
- * The kernels a part's init and step are handed: every lambda by its full id (`level.control`, `pop.spawn`), and
- * the part's own, its root instance's, by slot name too (`control`). A full id holds a dot, so the two never meet;
- * the aliases are not enumerable, so the keys stay the ids.
+ * The kernels a part's init and step are handed: every lambda by its full id (`level.control`, `pop.spawn`), the
+ * part's own, its root instance's, by slot name too (`control`), and a named call's by `<instance>.<slot>.<name>`
+ * (ruling 1, 2026-11-26). A full id holds a dot, so a slot name never meets one; the aliases are not enumerable, so
+ * the keys stay the ids.
  * @param {Part} p
  */
 export function kernelsFor(p) {
@@ -77,6 +78,7 @@ export function kernelsFor(p) {
   for (const [id, k] of Object.entries(p.compiled.kernels)) {
     if (id.startsWith(own) && !id.slice(own.length).includes(".")) Object.defineProperty(out, id.slice(own.length), { value: k, enumerable: false });
   }
+  for (const [alias, id] of Object.entries(p.compiled.aliases)) if (!Object.hasOwn(out, alias)) Object.defineProperty(out, alias, { value: p.compiled.kernels[id], enumerable: false });
   Object.freeze(out);
   aliased.set(p.compiled, out);
   return out;

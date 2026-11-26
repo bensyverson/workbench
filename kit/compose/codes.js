@@ -5,13 +5,13 @@
 /** Each code and what it means; the tests check that every one has a failing case. */
 export const COMPOSE_CODES = Object.freeze({
   S101: "Two parts with one name",
-  S102: "A composition call given the wrong thing: .part of something that is not a builder or twice, a handle of a part not passed to .part, .wire of anything but an output then an input, wire options other than { rename, delay }, .frame of anything but two frames, .show of a part not in the composition or a second .show, a composition name that is not lowercase letters, digits and -",
+  S102: "A composition call given the wrong thing: .part of something that is not a builder or twice, a handle of a part not passed to .part, .wire of anything but an output then an input, wire options other than { rename, delay, overflow } (or an overflow that is not keepLast or keepFirst, or one on a value wire), .frame of anything but two frames, .show of a part not in the composition or a second .show, a composition name that is not lowercase letters, digits and -",
   S111: "An output, input or frame the part does not have (lists what it has, with a did-you-mean)",
   S112: "An input wired twice",
   S113: "A required input with no wire",
   S114: "A part wired to itself",
   S115: "A cycle of wires with no wire in it marked { delay: true } (names the loop)",
-  S116: "A reliable Event wire whose queue can hold more records at one consumer step than the consumer's runtime takes (from the two clocks and the producer's per-step max; checked when .check or .build is given the runtimes): names both sides and the two fixes, raise the max or { keepLast: n }",
+  S116: "A reliable Event wire whose queue can hold more records at one consumer step than the consumer's runtime takes (from the two clocks and the producer's per-step max; checked when .check or .build is given the runtimes): names both sides and the fixes, raise the max, { keepLast: n } on the input, or { overflow } on the wire; with { overflow: \"keepLast\" | \"keepFirst\" } on the wire it is a warning naming the policy",
   S201: "Seam kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate",
   S202: "A record field the consumer takes and the producer lacks, or one of another kind (names the field, both sides); a field the producer has and the consumer does not take is dropped on the wire, not an error",
   S203: "An enum the consumer does not accept",

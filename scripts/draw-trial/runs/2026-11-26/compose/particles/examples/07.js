@@ -12,7 +12,7 @@ export default ($) => particles("sparks")
     .rate((t, live) => 0)
     .spawn((p, rng, i) => {
       const a = rng() * 2 * Math.PI;
-      p.pos = ev.at;
+      if (ev != null) { p.pos = ev.at; }
       p.vel = vec2(Math.cos(a), Math.sin(a)) * inp.speed * (0.5 + rng());
       p.life = 0.6;
     })

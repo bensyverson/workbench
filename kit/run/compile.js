@@ -1,8 +1,10 @@
 // One part's build for a run: its record lowered by its Grammar, every Runtime Lambda and helper compiled through
 // the JS backend, and a reader for each value output. A Kernel reads the Dialect's globals (`$`, the inputs object,
-// an Event record's name, anything else the Dialect declares) by name; here each name is bound to a forwarding
-// object that reads the part's current globals, which the scheduler sets before every init and step, so a Kernel
-// compiled once sees each step's values.
+// anything else the Dialect declares) by name; here each name is bound to a forwarding object that reads the part's
+// current globals, which the scheduler sets before every init and step, so a Kernel compiled once sees each step's
+// values. An Event input's record global (`record: { name, slots }`) is the exception: it is null when the runtime
+// calls a Kernel without a record (ruling 6, 2026-11-26), so it is a variable in the Kernel's closure, set from the
+// current globals as each call starts.
 
 import { emitKernel, instantiate } from "../emit/js/index.js";
 
@@ -12,8 +14,8 @@ import { emitKernel, instantiate } from "../emit/js/index.js";
 /**
  * A part compiled for one record. `kernels` by lambda id; `sources` their emitted text (what a build event compares);
  * `outputs` a reader per value output, `(state, params) => value`; `globals.current` what the Kernels' global names
- * read now.
- * @typedef {{ ok: true, kernels: Record<string, (...args: any[]) => any>, sources: Record<string, string>, outputs: Record<string, (state: any, params: any) => unknown>, globals: { current: Record<string, unknown> } }} Compiled
+ * read now; `aliases` each named call's `<instance>.<slot>.<name>` and the id it names.
+ * @typedef {{ ok: true, kernels: Record<string, (...args: any[]) => any>, sources: Record<string, string>, aliases: Record<string, string>, outputs: Record<string, (state: any, params: any) => unknown>, globals: { current: Record<string, unknown> } }} Compiled
  */
 
 /**
@@ -32,18 +34,23 @@ export function compilePart(runtime, record) {
   const intrinsics = {};
   for (const [n, i] of Object.entries(/** @type {Record<string, any>} */ (dialect.intrinsics))) if (i.js) intrinsics[n] = i;
   const globals = { current: /** @type {Record<string, unknown>} */ ({}) };
-  const scope = globalScope(dialect, globals);
+  const records = recordNames(dialect);
+  const scope = globalScope(dialect, globals, records);
   /** @type {Emitted[]} */
   const helperEmits = low.helpers.filter((/** @type {any} */ h) => h.kind === "fn" && h.result?.kernel).map((/** @type {any} */ h) => emitKernel(h.result.kernel, { intrinsics }));
-  const helpers = helperEmits.length ? helpersWith(helperEmits, scope) : {};
+  const linked = helperEmits.length ? helpersWith(helperEmits, scope, records) : { fns: {}, sync: null };
+  const helpers = linked.fns;
   /** @type {Compiled["kernels"]} */
   const kernels = {};
   /** @type {Record<string, string>} */
   const sources = {};
+  /** @type {Record<string, string>} */
+  const aliases = {};
   for (const l of low.lambdas) {
     if (!l.result.kernel) continue;
+    if (l.alias) aliases[l.alias] = l.ref.id;
     const e = emitKernel(l.result.kernel, { intrinsics });
-    kernels[l.ref.id] = /** @type {any} */ (instantiate(e, { ...scope, ...helpers }));
+    kernels[l.ref.id] = records.length ? withRecords(e, { ...scope, ...helpers }, records, globals, linked.sync) : /** @type {any} */ (instantiate(e, { ...scope, ...helpers }));
     sources[l.ref.id] = [...e.prelude, e.source].join("\n");
   }
   /** @type {Compiled["outputs"]} */
@@ -54,19 +61,44 @@ export function compilePart(runtime, record) {
     const k = low.seams?.outputs?.[p.name]?.kernel;
     if (k) outputs[p.name] = /** @type {any} */ (instantiate(emitKernel(k, { intrinsics }), helpers));
   }
-  return { ok: true, kernels, sources, outputs, globals };
+  return { ok: true, kernels, sources, aliases, outputs, globals };
+}
+
+/** The names an Event input's record is read by: null in a Kernel called without one. @param {any} dialect @returns {string[]} */
+const recordNames = (dialect) => Object.values(/** @type {Record<string, any>} */ (dialect.seams.in)).flatMap((i) => (i.record ? [i.record.name] : []));
+
+/**
+ * Sets each record name in a closure from the current globals: the record, or null when the runtime set none.
+ * @param {string[]} records @returns {string}
+ */
+const syncSource = (records) => `(g) => { ${records.map((n) => `${n} = g[${JSON.stringify(n)}] ?? null;`).join(" ")} }`;
+
+/**
+ * A Kernel whose closure holds the record names as variables, set as each call starts (and the helpers' too).
+ * @param {Emitted} e @param {Record<string, unknown>} scope @param {string[]} records
+ * @param {{ current: Record<string, unknown> }} globals @param {((g: Record<string, unknown>) => void) | null} helpersSync
+ */
+function withRecords(e, scope, records, globals, helpersSync) {
+  const body = `"use strict";\n${e.prelude.map((p) => `${p}\n`).join("")}let ${records.join(", ")};\nreturn [(${e.source}), ${syncSource(records)}];`;
+  const [k, sync] = new Function(...Object.keys(scope), body)(...Object.values(scope));
+  return /** @type {(...args: any[]) => any} */ ((/** @type {any[]} */ ...args) => {
+    sync(globals.current);
+    helpersSync?.(globals.current);
+    return k(...args);
+  });
 }
 
 /**
- * The Dialect's globals as names a Kernel can read: each a forwarding object over `globals.current[name]`. A name
- * the page already has (Math) is left to it unless the Dialect's runtime sets it.
- * @param {any} dialect @param {{ current: Record<string, unknown> }} globals
+ * The Dialect's globals as names a Kernel can read: each a forwarding object over `globals.current[name]`, but for
+ * the record names, which each closure holds itself. A name the page already has (Math) is left to it unless the
+ * Dialect's runtime sets it.
+ * @param {any} dialect @param {{ current: Record<string, unknown> }} globals @param {string[]} records
  * @returns {Record<string, unknown>}
  */
-function globalScope(dialect, globals) {
+function globalScope(dialect, globals, records) {
   const names = new Set(Object.keys(dialect.def.globals ?? {}));
   if (dialect.seams.inputs) names.add(dialect.seams.inputs.name);
-  for (const i of Object.values(/** @type {Record<string, any>} */ (dialect.seams.in))) if (i.record) names.add(i.record.name);
+  for (const n of records) names.delete(n);
   /** @type {Record<string, unknown>} */
   const scope = {};
   for (const n of names) {
@@ -86,12 +118,15 @@ function globalScope(dialect, globals) {
 }
 
 /**
- * A program's helpers, callable by name and able to call one another, with the globals in scope.
- * @param {Emitted[]} helpers @param {Record<string, unknown>} scope
- * @returns {Record<string, (...args: any[]) => unknown>}
+ * A program's helpers, callable by name and able to call one another, with the globals in scope, and the record
+ * names as variables of their closure (`sync` sets them; null when there are none).
+ * @param {Emitted[]} helpers @param {Record<string, unknown>} scope @param {string[]} records
+ * @returns {{ fns: Record<string, (...args: any[]) => unknown>, sync: ((g: Record<string, unknown>) => void) | null }}
  */
-function helpersWith(helpers, scope) {
+function helpersWith(helpers, scope, records) {
   const prelude = [...new Set(helpers.flatMap((h) => h.prelude))];
-  const body = `"use strict";\n${prelude.join("\n")}\n${helpers.map((h) => `const ${h.name} = (${h.source});`).join("\n")}\nreturn { ${helpers.map((h) => h.name).join(", ")} };`;
-  return new Function(...Object.keys(scope), body)(...Object.values(scope));
+  const vars = records.length ? `let ${records.join(", ")};\n` : "";
+  const body = `"use strict";\n${prelude.join("\n")}\n${vars}${helpers.map((h) => `const ${h.name} = (${h.source});`).join("\n")}\nreturn [{ ${helpers.map((h) => h.name).join(", ")} }, ${records.length ? syncSource(records) : "null"}];`;
+  const [fns, sync] = new Function(...Object.keys(scope), body)(...Object.values(scope));
+  return { fns, sync };
 }
