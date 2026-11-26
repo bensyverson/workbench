@@ -10,7 +10,7 @@ it. Findings: [project/2026-11-26-why-text-trial-findings.md](../../project/2026
 
 | Path | What |
 |---|---|
-| `why.js` | the draft formatter: `why(builds, log, { part?, since?, base? })` and `formatBuild(event, { log?, base?, inputs? })`, pure, from kit/build's build events and kit/run's input log (version 2: the findings' recommended format) |
+| `why.js` | a re-export of the kit formatter (kit/build/why.js), which began here: `why(builds, log, { part?, since?, base? })` and `formatBuild(event, { log?, base?, inputs? })`, pure, from kit/build's build events and kit/run's input log (version 2: the findings' recommended format) |
 | `scenario/` | *Glowworm Deep*, in two parts (details below) |
 | `run-scenario.js` | plays the session and writes its record: `log.json`, `builds.json`, `why.txt`, `states.json`, `replay.json`; `--scenario <dir>` plays another copy |
 | `verify.js` | plays four sessions against a scenario folder and checks the depth each ends at; this is how a fix is scored (rubric R4) |

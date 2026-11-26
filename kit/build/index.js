@@ -4,3 +4,4 @@
 export { sha256 } from "./sha256.js";
 export { canonical, partKey, compositionKey, nextRevision, stateHash } from "./key.js";
 export { buildEvent, paramTrigger, packageTrigger, glueTrigger } from "./event.js";
+export { why, formatBuild, timeText, readBase } from "./why.js";

@@ -33,6 +33,7 @@ const driver = createDriver(live);   // the page calls driver.frame(wallSeconds)
 | `run.revision`, `run.key(part)`, `run.compositionKey` | the composition's revision (bumps when a part's does); a part's content key; the composition's ([kit/build](../build/README.md)) |
 | `run.log` | `{ header: { name, seed, frames, catchUp, params }, inputs }`: the input log as data, each `T` as rational text |
 | `run.record()` | `{ log, hashes, builds, T }`: what `replay` compares, and the T the run reached (a replay runs to it, so it applies the inputs the run applied after its last instant) |
+| `run.why(part?, since?)` | the [why text](../build/README.md) for that part's builds (every part's when omitted) at or after `since` (seconds, a rational or its text), from the run's own build events and input log: `"why cave: 1 rebuild in the run log; cave@2 now\n\nbuild cave@2 after instant …"`. A function of the log and the events, so a replay gives the same text |
 | `run.hashes` | one `{ T, hash, parts: { name: hash } }` per instant (a fast hash of each state, not a content key) |
 | `run.builds`, `run.diagnostics` | the build events ([kit/build](../build/README.md)); every N diagnostic, `{ code, severity, message, part?, T, revision? }` |
 | `run.stats()` | `{ dropped: { "<wire>": n }, stopped: { "<wire>": n }, overflow: { "<wire>": n }, slowdowns: [{ from, to, wall, workbench, ratio }] }`: records a `keepLast` input dropped; records sent to a stopped part, dropped; records a wire's overflow policy dropped |
@@ -90,4 +91,4 @@ N is kit/run's letter, reserved in kit/define (a Dialect's own codes may not use
 
 ## Not built
 
-Sampling modes and `lerp` (latest only), Workers, a content-keyed cache, the human-facing `why` text (its data is in each build event), swapping a package's runtime code in a rebuild (a rebuild changes the record and the package key, with the runtime it started with), re-sizing queues after a rebuild changes a clock (the run-time intake check, N002, still refuses a step past its max), a workbench of demand parts only (nothing makes an instant), a bound on what a long run keeps (the input log, the per-instant hashes and the checkpoints grow with it; a replay and a rewind read them).
+Sampling modes and `lerp` (latest only), Workers, a content-keyed cache, swapping a package's runtime code in a rebuild (a rebuild changes the record and the package key, with the runtime it started with), re-sizing queues after a rebuild changes a clock (the run-time intake check, N002, still refuses a step past its max), a workbench of demand parts only (nothing makes an instant), a bound on what a long run keeps (the input log, the per-instant hashes and the checkpoints grow with it; a replay and a rewind read them).

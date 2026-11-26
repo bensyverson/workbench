@@ -10,7 +10,7 @@ import { needsRebuild } from "../define/params.js";
 import { clockOf } from "../define/runtime.js";
 import { queueProblems, catchUpOf } from "../compose/queues.js";
 import { PAGE, pageRuntime, pageInputProblem } from "../compose/page.js";
-import { partKey, compositionKey, canonical, stateHash, nextRevision, buildEvent, paramTrigger, packageTrigger, glueTrigger } from "../build/index.js";
+import { partKey, compositionKey, canonical, stateHash, nextRevision, buildEvent, paramTrigger, packageTrigger, glueTrigger, why as buildWhy } from "../build/index.js";
 import { compilePart } from "./compile.js";
 import { RunError } from "./codes.js";
 import { makePart, runInit, runStep, deepFreeze, PART_FIELDS } from "./part.js";
@@ -342,6 +342,14 @@ export function createRun(composed, options) {
     get log() { return { header: { name: composed.name, seed, frames, catchUp: qText(catchUp), params: options.params ?? {} }, inputs: inputs.map((e) => ({ ...e, T: qText(e.T) })) }; },
     /** What a replay compares: the log, each instant's state hashes, the build events; and the T it reached. */
     record() { return { log: run.log, hashes: [...hashes], builds: [...builds], T: qText(now) }; },
+    /**
+     * Why parts rebuilt, as text an agent reads cold (kit/build/why.js): the builds of `part` (every part's when
+     * omitted) at or after `since` (seconds, a rational or its text), from the run's own build events and input log.
+     * @param {string} [part] @param {number | Q | string} [since]
+     */
+    why(part, since) {
+      return buildWhy(builds, run.log, { part, since: since === undefined ? undefined : qText(toQ(since)) });
+    },
     /** The next instant a part is due at, not run; null when none is. */
     nextInstant() { return nextInstant(); },
     /** The next instant, run; null when no part has a clock. */
