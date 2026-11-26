@@ -15,6 +15,7 @@
 >   - *Delivery policy per input, as in ROS 2 / DDS:* `"reliable"` (the default for Events) or `{ keepLast: n }`, lossy by the consumer's choice and counted in the run record.
 >   - *Wall time: a capped fixed-timestep loop.* The page runs at most K steps per display frame. When a machine can't keep up, `T` falls behind wall time (slow motion) and no Event is lost. The capped frames are in the input log, so replay matches.
 >   - R001 changes meaning: a run statistic ("ran at 0.8× for 2 s"), not "records dropped".
+> - **A stopped part takes no Events (Ben, 2026-11-26, from reviewer-run-2's review of `acc5434`; leaf `4WMA0R`).** Records sent to a part while it is stopped (its init or step failed) are not queued: they are dropped and counted, and the count is reported as a run statistic, as N001 is. A rebuild that restarts the part starts it with empty queues. "Reliable" promises delivery to a running part. Keeping the backlog would have the restarted part refuse it at once (N002) or take stale Events late, with a queue that grows without bound while the part is stopped.
 
 ## The problem in one paragraph
 
