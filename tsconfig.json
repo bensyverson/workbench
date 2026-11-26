@@ -14,5 +14,5 @@
     "noImplicitReturns": true
   },
   "include": ["kit/**/*", "scripts/**/*.js", "scripts/**/*.d.ts", "examples/**/*.js", "test/**/*.js"],
-  "exclude": ["node_modules", "kit/vendor", "examples/rings.js", "scripts/m0-probe", "scripts/m0-probe-ui", "scripts/m0-probe-pkg", "scripts/define-trial/fixtures", "scripts/define-trial/runs", "scripts/compose-trial/fixtures", "scripts/compose-trial/runs", "scripts/api-pilot/reference", "scripts/api-pilot/hidden", "scripts/api-pilot/runs", "scripts/particles/hidden", "scripts/particles/reference", "scripts/particles/h5/runs", "scripts/ui-trial/fixtures", "scripts/ui-trial/packages", "scripts/ui-trial/runs", "scripts/pkg-trial/fixtures", "scripts/pkg-trial/runs","**/out/**"]
+  "exclude": ["node_modules", "kit/vendor", "examples/rings.js", "scripts/m0-probe", "scripts/m0-probe-ui", "scripts/m0-probe-pkg", "scripts/define-trial/fixtures", "scripts/define-trial/runs", "scripts/compose-trial/fixtures", "scripts/compose-trial/runs", "scripts/api-pilot/reference", "scripts/api-pilot/hidden", "scripts/api-pilot/runs", "scripts/particles/hidden", "scripts/particles/reference", "scripts/particles/h5/runs", "scripts/ui-trial/fixtures", "scripts/ui-trial/packages", "scripts/ui-trial/runs", "scripts/pkg-trial/fixtures", "scripts/pkg-trial/runs", "scripts/seams-trial/fixtures", "scripts/seams-trial/runs","**/out/**"]
 }

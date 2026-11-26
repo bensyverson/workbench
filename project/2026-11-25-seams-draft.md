@@ -129,13 +129,13 @@ A **frame** is a coordinate space or unit a dialect measures in. Each dialect de
 
 ```js
 frames: {
-  cell: { dims: 2, note: "…", extent: (record) => [record.grid[0].length, record.grid.length] },
+  cell: { dims: 2, note: "…", extent: (record) => ({ min: [-0.5, -0.5], max: [record.grid[0].length - 0.5, record.grid.length - 0.5] }) },
   s:    { dims: 1, note: "seconds" },
 },
 ```
 
 - `dims` is 1 (a unit: seconds, metres) or 2 or 3 (a space). A 2-D or 3-D frame's quantity (`f64@cell`) is a length in it.
-- `extent` (optional) gives the frame's size from the record at build time: what `"fit"` uses.
+- `extent` (optional) gives the box the frame's content fills, `{ min, max }`, from the record at build time: what `"fit"` uses.
 
 **Edges** relate two frames: `{ scale, offset }`, per axis, so an edge is a diagonal affine map. A negative scale flips an axis (y up against y down). Rotation is not in v0; no pair of ours needs it.
 
@@ -169,7 +169,7 @@ frames: {
 Every S diagnostic about a wire or an edge carries **both sides**: for each, the part, its dialect and package version, the port or frame, and its seam type. It prints at the glue program's line, then one line per side, then the fix:
 
 ```
-workbench.js:14: S202 level.out.picked cannot feed fx.in.burst: the record field 'at' is a point in maze.cell; burst expects a point in particles.px, and no frame path joins them
+workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the record field 'at' is a point in maze.cell; burst expects a point in particles.px, and no frame path joins them
   from: level.out.picked  Event<{ at: point2@cell }>  (maze 0.2.0)
   to:   fx.in.burst       Event<{ at: point2@px }>    (particles 0.3.0)
   fix: write .frame(level.frame.cell, fx.frame.px, { scale: 32, offset: 16 }), or .frame(level.frame.cell, fx.frame.px, "fit")
@@ -185,7 +185,7 @@ The object form (for the page and the agent) is `{ code, message, file, line, fr
 | S113 | a required input with no wire |
 | S114 | a part wired to itself (a cycle inside a part is that dialect's business) |
 | S201 | seam kinds differ: an Event into a value input, a record into a scalar |
-| S202 | a record field missing, extra or of another kind (names the field, both sides) |
+| S202 | a field the consumer takes is missing from the producer's record, or of another kind (names the field, both sides); extra producer fields are dropped on the wire |
 | S203 | an enum the consumer does not accept (`'key'` is not one of `'coin'`) |
 | S204 | a list longer than the consumer's max |
 | S251 | tagged on both sides, no frame path |
@@ -214,6 +214,8 @@ Two package-trial items belong to the host, not the seams: two versions of one p
 - **Direct reads of another part's output in a lambda** (the composition trial's model). Un-park when two dialects designed together want it, and the kit can type a foreign output in a reader's lambda through the reader's seam pairing.
 - **Glue lambdas** (a wire that transforms: `wire(a, b, (p) => p + vec2(0, -1))`). They need a kit-owned seam subset for lambdas. Un-park when a relay trial's composer needs one that a frame edge cannot express.
 - **`Grid`, `Image`, `Mesh`, `Field`, `Ids`**, rotations in frame edges, and merging event streams: each when a dialect pair needs it.
+
+> **Revised 2026-11-25, from building the relay trial's checker (leaf `C0nNGy`):** a producer record's extra fields are dropped on the wire rather than refused (strict matching left a composer of strangers' packages no way forward); `extent` returns a box `{ min, max }`, not a size, since a grid of cell centers spans half a cell past them; an input may name its local type with `type` when the Dialect has several vector types of its dims; an Event output's `from` is a path; and S102 (a glue call given the wrong thing) and S257 (a malformed or same-part edge) are added. The example diagnostic above was mislabeled S202; it is S251.
 
 ## Questions for Ben
 

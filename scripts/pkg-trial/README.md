@@ -9,7 +9,7 @@ The dogfood trial of the Dialect package format (M4; the format is [the package 
 | `check.js` | the checker as a command: `node scripts/pkg-trial/check.js <dir>`, a thin CLI over `checker/` |
 | `checker/index.js` | `checkPackageDir(dir)`: reads the folder into a `{ path: text }` map, runs `loadPackage` with a Node importer, builds every example and refusal (`checkExamples`; `checker/scope.js` gives each its module scope), runs the defineUI checks of the UI trial's checker (`scripts/ui-trial/checker`, called with the UI and Grammar paths the manifest names) and the upload check (an import cycle, K009) |
 | `run.sh` | sets up one agent's directory and runs `claude -p` there, blind to the repository (the same directory guards as the [UI trial's](../ui-trial/README.md)) |
-| `docs/packaging.md`, `rules.md`, `task.md`, `brief.md` | the agent-facing documents. **Placeholders** (one TODO line each) until the integrator writes them |
+| `docs/packaging.md`, `rules.md`, `task.md`, `brief.md` | the agent-facing documents: the draft packaging reference, the rules R1–R7, the task and its three questions, and the brief |
 | `checker/scope.js` | the Node side of the examples: a load hook that appends the define trial's scope export to each example and refusal, and `buildOptions` that turns it into `run()`'s module scope |
 | `fixtures/valid/{particles,maze}/` | both packages built correctly by hand, hashed with `scripts/pkg/hash.js`; particles' `refusals/r01.js` to `r06.js` are listed in its `refusals` with the codes of their `// REFUSED:` lines |
 | `test/` | the checker's tests (a failing copy of a fixture per K code, the CLI, the log) and the guard of `run.sh` |
@@ -35,4 +35,4 @@ What it does not do: run a host, or sandbox the package (it does import and buil
 
 ## Running the trial
 
-Not run yet. Per the plan: fresh agents (a spread of models) each `run.sh <fresh dir under /private/tmp> <model>`; copy each directory to `runs/<date>/agent-x/` afterwards, record what each guessed, which codes it hit and how much its output needed changing, and write the findings as a dated doc under `project/`.
+Run 2026-11-25 ([the findings](../../project/2026-11-25-package-trial-findings.md); records in `runs/2026-11-25/`). To rerun: fresh agents (a spread of models) each `run.sh <fresh dir under /private/tmp> <model>`; copy each directory to `runs/<date>/agent-x/` afterwards, record what each guessed, which codes it hit and how much its output needed changing, and write the findings as a dated doc under `project/`.
