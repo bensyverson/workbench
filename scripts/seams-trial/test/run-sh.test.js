@@ -22,10 +22,12 @@ mkdirSync(join(fakeHome, ".claude"), { recursive: true });
 writeFileSync(join(fakeBin, "claude"), '#!/bin/sh\npwd -P > "$CLAUDE_CWD_FILE"\nprintf %s "$2" > "$CLAUDE_CWD_FILE.brief"\n');
 chmodSync(join(fakeBin, "claude"), 0o755);
 
-/** Runs the launcher with the stand-in claude. @param {string[]} args */
-function launch(args) {
+/** Runs the launcher with the stand-in claude. @param {string[]} args @param {Record<string, string>} [env] */
+function launch(args, env = {}) {
   const cwdFile = join(scratch, `cwd-${Math.random().toString(36).slice(2)}`);
-  const r = spawnSync("sh", [SCRIPT, ...args], { cwd: scratch, encoding: "utf8", env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, HOME: fakeHome, CLAUDE_CWD_FILE: cwdFile } });
+  const base = { ...process.env };
+  delete base.PACKET;
+  const r = spawnSync("sh", [SCRIPT, ...args], { cwd: scratch, encoding: "utf8", env: { ...base, PATH: `${fakeBin}:${process.env.PATH}`, HOME: fakeHome, CLAUDE_CWD_FILE: cwdFile, ...env } });
   return { status: r.status, stderr: r.stderr, started: existsSync(cwdFile) ? readFileSync(cwdFile, "utf8").trim() : null, brief: existsSync(`${cwdFile}.brief`) ? readFileSync(`${cwdFile}.brief`, "utf8") : "" };
 }
 
@@ -62,6 +64,38 @@ test("a compose leg copies both authors' packages and gets reference.md, and its
   const c = spawnSync("sh", [join(dir, "check.sh")], { encoding: "utf8" });
   assert.equal(c.status, 0, c.stdout + c.stderr);
   assert.match(c.stdout, /run: burst of 24 particles/);
+});
+
+test("the packet switch: the default is docs/, PACKET=placeholder copies docs-placeholder/'s seams.md and runtime.md", () => {
+  const docs = join(REPO, "scripts/seams-trial/docs"), placeholder = join(REPO, "scripts/seams-trial/docs-placeholder");
+  const plain = join(scratch, "p-default");
+  assert.equal(launch(["maze", plain, "model-x"]).status, 0);
+  const swapped = join(scratch, "p-placeholder");
+  const r = launch(["maze", swapped, "model-x"], { PACKET: "placeholder" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.started, swapped);
+  for (const f of ["seams.md", "runtime.md"]) {
+    assert.equal(readFileSync(join(plain, f), "utf8"), readFileSync(join(docs, f), "utf8"), f);
+    assert.equal(readFileSync(join(swapped, f), "utf8"), readFileSync(join(placeholder, f), "utf8"), f);
+    assert.notEqual(readFileSync(join(swapped, f), "utf8"), readFileSync(join(docs, f), "utf8"), f);
+  }
+  for (const f of ["packaging.md", "rules.md", "task.md", "check.sh", "hash.sh", "maze/wb-package.json"]) assert.ok(existsSync(join(swapped, f)), f);
+  assert.match(r.brief, new RegExp(`Work only in \`${swapped}\``));
+  // an unknown packet is refused before anything is made or started
+  const bad = join(scratch, "p-bad");
+  const b = launch(["maze", bad, "model-x"], { PACKET: "nonesuch" });
+  assert.equal(b.status, 2);
+  assert.equal(b.started, null);
+  assert.equal(existsSync(bad), false);
+  assert.match(b.stderr, /PACKET/);
+});
+
+test("the guards hold with PACKET=placeholder too", () => {
+  for (const dir of ["rel/x", join(REPO, "local", "KTrmEL-x"), join(fakeHome, ".claude", "x")]) {
+    const r = launch(["maze", dir, "model-x"], { PACKET: "placeholder" });
+    assert.equal(r.status, 2, dir);
+    assert.equal(r.started, null);
+  }
 });
 
 test("the guards: a relative directory, one inside the repository and one inside ~/.claude are refused", () => {

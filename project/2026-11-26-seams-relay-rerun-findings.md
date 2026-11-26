@@ -30,7 +30,11 @@ A smoke leg (particles, Haiku, run by relay-1 while it built the packet; `/priva
 | A | `pickup: Event<{ pos: point2@cell, vel: vec2@cell/s, score: f64, left: f64 }>` | `burst: Event<{ pos: point2@box }>` | met as written; `vel`, `score`, `left` dropped |
 | B | `pickup: Event<{ at: point2@cell, left: f64, when: point1@s }>` | `burst: Event<{ pos: point2@box }>` | `{ rename: { at: "pos" } }`; `left`, `when` dropped |
 
-A caution on relay A: all three particles authors (both relays and the smoke leg) and the Sonnet maze author chose `pos`, which is the field the docs' board example uses (`flash: Event<{ pos: point1@lamp, … }>`). The unrelated example still taught a field name. That isn't bad in itself, since a shared habit makes names meet, but it means relay A's match is weak evidence that strangers converge unaided. Every author also kept its Event record to the position alone on the input side, for the reason given below.
+A caution on relay A: all three particles authors (both relays and the smoke leg) and the Sonnet maze author chose `pos`, which is the field the docs' board example uses (`flash: Event<{ pos: point1@lamp, … }>`). The unrelated example still taught a field name. That isn't bad in itself, since a shared habit makes names meet, but it means relay A's match is weak evidence that strangers converge unaided.
+
+> **Correction (2026-11-26, leaf `KTrmEL`):** the cause above is wrong for the particles side. The particles package already has a built-in per-particle field `pos` (`BUILTIN_FIELDS` in `particles.dialect.js`; lambdas write `p.pos`), and relay C's particles author, given docs with no worked example, still chose `pos` and said why: "It matches the particle's own `p.pos`". Only the Sonnet maze author's `pos` and the Haiku composer's `light-show` trace to the docs' example. See [the placeholder-docs findings](2026-11-26-placeholder-docs-findings.md).
+
+Every author also kept its Event record to the position alone on the input side, for the reason given below.
 
 **Was `rename` found and used?** Yes. B's composer compared the two records in `reference.md`, wrote `rename: { at: "pos" }` from seams.md's `.wire` section, and passed on its first check. S202 never fired. Nobody needed `delay`, because neither glue made a loop. A's composer explained correctly why not.
 

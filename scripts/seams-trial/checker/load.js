@@ -139,7 +139,9 @@ export async function loadCompose(dir, names, { glue: gluePath = "workbench.js" 
       return { diagnostics: [thrown(e, dirUrl, gluePath)], ...none };
     }
     if (!isComposition(c)) return { diagnostics: [{ file: gluePath, line: 1, code: "LOAD", message: "the default export is not a function ($) => composition", fix: 'export default ($) => compose("name").part(…)…' }], ...none };
-    const options = { packages: loaded, build: buildOptions(gluePath, mod) };
+    // with every runtime to hand, check sees their Event maxes, so S116 is a diagnostic here and not a build's throw
+    const runtimes = loaded.every((p) => p.runtime) ? { runtimes: loaded.map((p) => p.runtime) } : {};
+    const options = { packages: loaded, build: buildOptions(gluePath, mod), ...runtimes };
     for (const d of c.check(options)) {
       const lines = formatDiagnostic(d, dirUrl).split("\n");
       const m = /^(.*?)(?:\?run=\d+)?:(\d+): /.exec(lines[0]);

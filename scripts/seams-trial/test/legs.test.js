@@ -114,6 +114,13 @@ test("a composition refused by the kit stops before the run, with the kit's code
   assert.deepEqual(c, ["S202"]);
 });
 
+test("S116 (from the runtimes' Event maxes) is a diagnostic at the glue's line, not a checker failure", async () => {
+  const { codes: c, r } = await codes("compose", (d) => { sub(d, "maze/maze.runtime.js", "const MAX_STEPS = 4;", "const MAX_STEPS = 64;"); });
+  assert.deepEqual(c, ["S116"]);
+  assert.equal(r.diagnostics[0].file, "workbench.js");
+  assert.match(r.diagnostics[0].message, /takes at most 8 per step/);
+});
+
 test("G005: the state the checker reads, by role", () => {
   assert.deepEqual(stateProblems({ player: { x: 1, y: 2 }, grid: ["#"] }, "maze"), []);
   assert.match(stateProblems({ hero: { x: 1, y: 2 }, grid: ["#"] }, "maze").join(), /player\.x/);
