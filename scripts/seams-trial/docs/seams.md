@@ -1,198 +1,206 @@
-# Seams: how languages written apart are used together (draft)
+# Seams: using languages written apart, together
 
-*Draft reference. A **workbench** can use several small languages at once, each from its own **package**. The packages are usually written by different people at different times, and none knows the others exist. This page covers what crosses between them: what a language **offers** (its outputs), what it **accepts** (its inputs), the coordinate spaces it measures in (its **frames**), and the **glue program** that connects two packages. Packaging itself is in `packaging.md`; a language's own definition is in its package's files.*
+*A **workbench** can run several small languages at once, each from its own **package**. The packages are usually written by different people, and none knows the others exist. This page covers what crosses between them: what a language **offers** (its outputs), what it **accepts** (its inputs), the spaces and units it measures in (its **frames**), and the **glue program** that joins packages. How a package runs is in `runtime.md`; the package format is in `packaging.md`.*
+
+The examples on this page come from two made-up packages. `drums` is a step sequencer: lanes of notes struck on the steps of a looping pattern. `board` is a scoreboard's strip of lamps that light up and fade. Their glue makes each drum hit light the lamps under its step.
 
 ## The idea
 
-Each language describes its own world and nothing else. To be usable with strangers, it declares **ports** in a small shared vocabulary, the **seam types**:
+Each language describes its own world and nothing else. To be usable by strangers, it declares **ports** in a shared vocabulary, the **seam types**:
 
-- an **output** is a value or a stream of events the language offers, read from its run's state;
-- an **input** is a value or a stream of events it accepts, and what it does with it is its own business.
+- an **output** is a value or a stream of events the language offers;
+- an **input** is a value or a stream of events it accepts. What it does with them is its own business.
 
-A **glue program** builds one part from each package, **wires** an output of one to an input of the other, and says how their **frames** relate. Every fact that involves two languages lives in the glue program. A package never mentions another package.
+A **glue program** builds one part from each package, **wires** an output of one to an input of another, and says how their frames relate. Every fact that involves two languages lives in the glue. A package never mentions another package, so its author can't know what its ports will be wired to.
 
-The kit converts values on the wire. If the glue program says how one language's grid cells relate to another's pixels, a position crossing the wire is converted for you. You never write the conversion by hand, and you never multiply by a cell size.
+The kit converts values on the wire. If the glue says how drum steps relate to lamps, a position crossing the wire is converted for you. Nobody multiplies by a step width by hand.
 
 ## Seam types
 
 | Seam type | Written | Means |
 |---|---|---|
 | scalar | `f64`, `bool`, `str` | a plain number, truth value or string |
-| quantity | `f64@<frame>` | a number measured in a frame's unit: a length, a radius, a duration |
-| point | `point2@<frame>`, `point3@<frame>` | a position in a frame |
-| vector | `vec2@<frame>`, `vec3@<frame>`; or untagged `vec2`, `vec3` | a displacement, a velocity, a size: a difference of two points |
-| enum | `'coin' \| 'key'` | one string from a closed set |
-| record | `{ at: point2@cell, kind: 'coin' \| 'key' }` | named fields, each a seam type |
+| quantity | `f64@<frame>` | an amount measured in a frame's unit: a length, a radius, a duration (`f64@s`) |
+| point | `point1@<frame>`, `point2@<frame>`, `point3@<frame>` | a position in a frame. `point1` is a position on one axis: an instant `point1@s`, a temperature, a step of a pattern |
+| vector | `vec2@<frame>`, `vec3@<frame>`; untagged `vec2`, `vec3` | a displacement, a size: a difference of two points |
+| rate | `f64@<frame>/s`, `vec2@<frame>/s`, `vec3@<frame>/s` | a quantity or vector per second: a speed, a velocity |
+| enum | `'kick' \| 'snare'` | one string from a closed set |
+| record | `{ when: point1@step, loud: f64 }` | named fields, each a seam type |
 | list | `list<T, 8>` | at most 8 values of type `T` |
-| `Event<R>` | `Event<{ at: point2@cell }>` | records of type `R` produced during one step; usually none |
+| `Event<R>` | `Event<{ when: point1@step }>` | the records of type `R` that one step produced; usually none. Only at a port's top |
 
-`<frame>` is the name of one of **your own** frames (Frames, below).
+`<frame>` is one of **your own** frames (below), or `s`.
 
-- Every output that is not an `Event` is a **signal**: a value of its type that is fresh after each step.
-- **A point and a vector are different.** A point is a place; a vector is a difference between places (a velocity, an offset, a size). A point converts between frames with a scale and an offset; a vector and a quantity with the scale only. Choose the one that says what the value is: the player's position is a `point2`, its velocity a `vec2`, a blast radius an `f64@px`.
+- **Seconds are the kit's.** The frame `s` (1-D, seconds) exists in every package without being declared: `f64@s` is a duration, `point1@s` an instant, `f64@px/s` a speed. Don't declare a frame named `s`. Rates are written per second only.
+- Every output that is not an `Event` is a **signal**: a value that is fresh after each step.
+- **Points, vectors and quantities are different kinds.** A point converts with a scale and an offset; a vector, a quantity and a rate with the scale only. A point never feeds a vector, and a rate never feeds a non-rate. Choose the kind that says what the value is: a position is a point, a velocity a rate, a size a vector, a radius a quantity.
 - **Untagged numbers never convert.** `f64` and `vec2` cross unchanged, and only into an untagged port.
 
 ### Pairing with your own types
 
-Your language has its own types (`vec2: vector(2, "f64")`, `struct({ … })`). At each port the kit checks that your type has the seam type's shape:
+At each port the kit checks that your Dialect's own type has the seam type's shape:
 
-| Seam type | Your type must be |
+| Seam type | Your type |
 |---|---|
-| `f64`, `f64@frame`, `bool`, `str` | `"f64"`, `"f64"`, `"bool"`, `"str"` |
-| `point2@frame`, `vec2@frame`, `vec2` | a `vector(2, "f64")` type (`point3`, `vec3`: `vector(3, "f64")`) |
+| `f64`, `f64@frame`, a rate of a quantity, `point1@frame`, `bool`, `str` | `"f64"` (`"bool"`, `"str"`) |
+| `point2@frame`, `vec2@frame`, `vec2`, `vec2@frame/s` | a `vector(2, "f64")` type (the 3-D kinds: `vector(3, "f64")`) |
 | an enum | `enumOf([...])` with the same strings |
 | a record | `struct({ … })` with the same field names, each paired by these rules |
 | `list<T, max>` | `list(T, max)` with the same max or less |
-| `Event<R>` | a `list` of `R`'s struct in your run's `state` (any max: it bounds one step's events) |
 
-A type that does not fit is refused when the Dialect is defined, with the port's name.
+A type that does not fit is refused when the Dialect is defined, naming the port (a D code).
 
 ## Ports, for a language's author
 
-Ports go in `defineDialect`, beside `state`.
+Ports go in `defineDialect`, beside `state`. Every tagged port and every `Event` port needs a `note` (D024): what the value is, in which frame, and when it changes. The note is what a stranger reads to decide what to wire.
 
 ### Outputs
 
 ```js
-types: { cell2: vector(2, "f64") },
-state: {
-  t: "f64",
-  player: struct({ at: "cell2" }),
-  picked: list(struct({ at: "cell2" }), 8),   // the host refills it each step
-},
+// drums.dialect.js
+state: { step: "f64", tempo: "f64", playing: "bool" },
 ports: {
   out: {
-    picked: { seam: "Event<{ at: point2@cell }>", from: "picked", note: "a coin picked up during this step, at its cell" },
-    player: { seam: "point2@cell", from: (s) => s.player.at, note: "the player's cell" },
-    t:      { seam: "f64", from: "t" },
+    hit: { seam: "Event<{ lane: str, when: point1@step, loud: f64 }>", note: "one record per note struck this step: its lane's name, the step it falls on, and how loud it is, 0 to 1" },
+    tempo: { seam: "f64@step/s", from: "tempo", note: "how fast the pattern plays, in steps per second" },
+    playing: { seam: "bool", from: "playing", note: "false while muted" },
   },
 },
 ```
 
-- **An output reads your run's state** (the `state` your Dialect declares): `from` is a path into it (`"player.at"`) or a lambda `(s) => …` written as a UI value lambda is (no loops over lists). An `Event` output's `from` is always a path. The kit reads outputs from the state your host commits after each step.
-- **An `Event` output is a state list your host refills each step** with what happened during that step, and empties at the start of the next. Say so where your host's behavior is described.
-- **`note`** is required for a tagged port and an `Event` port. Write what a stranger needs to wire it: what the value is, in which frame, and when it changes.
+- **A value output reads your run's `state`**: `from` is a path (`"tempo"`, `"player.x"`) or a lambda `(s) => …`, written as a UI value lambda is. A lambda may build a point or vector from scalars as an array literal of exactly its dims: `from: (s) => [s.ball.x, s.ball.y]` for a `point2`.
+- **An `Event` output has no `from`** (D026). Your runtime pushes its records during a step (`runtime.md`), so nothing about it lives in your state.
 
 ### Inputs
 
 ```js
+// board.dialect.js
 ports: {
   in: {
-    burst:  { seam: "Event<{ at: point2@px }>", note: "fires every emitter whose trigger is 'burst', once per record, at the record's position" },
-    radius: { seam: "f64@px", default: 40, note: "how far a burst spreads" },
-    aim:    { seam: "point2@px", required: true, note: "where the jets point" },
+    flash: {
+      seam: "Event<{ pos: point1@lamp, strength: f64 }>",
+      note: "lights the lamp nearest pos; glow lambdas read the record as hit, and strength is 0 to 1",
+      delivery: "reliable",                       // the default; or { keepLast: 8 }
+      record: { name: "hit", slots: ["glow"] },   // glow lambdas read hit.pos and hit.strength
+    },
+    drift: { seam: "f64@lamp/s", default: 0, note: "how fast the lit pattern scrolls right, in lamps per second" },
+    fade: { seam: "f64@s", default: 0.5, note: "how long a lit lamp takes to go dark" },
   },
 },
-inputs: { object: "In", name: "inp" },          // value inputs read in lambdas as inp.radius
-objects: { …, In: { label: "the inputs (inp)", members: {} } },   // filled from ports.in by the kit
+inputs: { object: "In", name: "inp" },            // value inputs, read in lambdas as inp.drift
+objects: { …, In: { label: "the inputs (inp)", members: {} } },   // declared empty: the kit fills it
 globals: { …, inp: "In" },
 ```
 
-- **A value input** (anything but an `Event`) is read in your lambdas through one object you name, the way params are read through `$`. Declare it with `inputs: { object, name }`, an empty object of that name and a global. Each member's type is your type paired with the port's seam type, so `inp.radius` is an `f64`. When your Dialect has more than one vector type of a point's or vector's dims, say which with `type` on the port (`aim: { seam: "point2@px", type: "vec2", … }`). A value input has a `default` (read when nothing is wired) or `required: true` (the glue program must wire it).
-- **An `Event` input goes to your host**, not your lambdas: before each step your host receives the records produced since its last step, already converted into your frames. What it does with them is up to your language.
-- **Your Grammar can name an input** with `ref("in")`: for example, an emitter's `{ trigger: ref("in") }` option is checked against the inputs you declared, with a did-you-mean.
-- **An input takes one wire.** `note` is required for a tagged input and an `Event` input.
+- **A value input** (anything but an `Event`) has a `default`, read when nothing is wired, or `required: true` (the glue must wire it). A vector `default` is an array. Lambdas read value inputs through the one object `inputs` names, the way params are read through `$`: `inp.fade` is an `f64`. A point or vector input reads as your one `vector` type of its dims; if you have several, say which with `type: "vec2"`. Your runtime gets them too (`runtime.md`).
+- **An `Event` input** delivers, before each of your steps, the records produced since your last step, in order, already converted into your frames. It takes no `default` or `required`.
+  - `delivery: "reliable"` (the default) keeps every record. The composition checks that the queue can't overflow (S116, from the maxes in `runtime.md`). `delivery: { keepLast: n }` keeps the newest `n` and drops older ones, counting the drops.
+  - `record: { name, slots }` lets lambdas read the record: lambdas of the listed slot conventions read its fields through the global `name` (`hit.strength`). No other lambda may read it (L004). Your runtime sets `name` before calling such a lambda, once per record (`runtime.md`). Without `record`, only your runtime sees the records.
+- **A Grammar can name an input** with `ref("in")`, as an argument or inside a `data({ … })` shape, checked against the inputs you declare, with a did-you-mean (B003). `ref("in", { kind: "event" })` accepts only Event inputs and `ref("in", { kind: "value" })` only value inputs. Then a Program can say, for example, which of its parts an input drives: `.lamp("big", { on: "flash" })`. Your runtime reads the name from the record and the records from that input.
+- **One wire per input.** Two outputs cannot feed one input.
 
 ## Frames
 
 A **frame** is a coordinate space or a unit your language measures in.
 
 ```js
+// board.dialect.js
 frames: {
-  cell: { dims: 2, note: "grid cells; x right, y down; (0, 0) is the center of the top-left cell",
-          extent: (record) => ({ min: [-0.5, -0.5], max: [record.grid[0].length - 0.5, record.grid.length - 0.5] }) },
-},
-edges(record) {                       // optional: edges between your own frames, from the built Program
-  return [{ from: "cell", to: "px", scale: 16, offset: 8 }];
+  lamp: {
+    dims: 1,
+    note: "lamps from left to right; lamp 0's center is at 0, lamp 1's at 1",
+    extent: (record) => ({ min: [-0.5], max: [record.lamps - 0.5] }),
+  },
 },
 ```
 
-- `dims`: 1 for a unit (seconds), 2 or 3 for a space. In a 2-D or 3-D frame, a quantity (`f64@cell`) is a length.
-- `note` (required): which way the axes point and where the origin is. A composer reads this to relate your frame to someone else's.
-- `extent(record)` (optional): the box your frame's content fills for a built Program, as `{ min: [x, y], max: [x, y] }` (three numbers each in 3-D). For grid cells centered on whole numbers, a 10 × 8 grid is `{ min: [-0.5, -0.5], max: [9.5, 7.5] }`. It lets a composer write `"fit"`.
-- `edges(record)` (optional) relates your own frames to each other. You cannot relate your frame to another package's: you don't know it.
+- `dims`: 1, 2 or 3. A 1-D frame holds positions (`point1@lamp`) and amounts (`f64@lamp`).
+- `note` (required): which way each axis points, where the origin is and what one unit is. A composer reads it to relate your frame to someone else's.
+- `extent(record)` (optional): the box your frame's content fills in a built Program (the record `.build()` returns), as `{ min, max }`, one number per dim each. A 2-D box is `{ min: [0, 0], max: [record.width, record.height] }`. It lets a composer write `"fit"`.
+- `edges(record)` (optional): `[{ from, to, scale, offset }]` between **your own** frames. You can't relate your frame to another package's: you don't know it.
 
-Frames of different packages are different frames, even when they have the same name: `maze.cell` and `tiles.cell` are unrelated until a glue program relates them.
+Frames of different packages are different frames, even with the same name: `drums.step` and `board.lamp` are unrelated until a glue program relates them.
 
-An **edge** is `{ scale, offset }`: a value in `from` becomes `value * scale + offset` in `to`, for a point (a vector or quantity: `value * scale`). `scale` and `offset` are numbers (every axis) or arrays (per axis). A negative scale flips an axis, as between y down and y up. There is no rotation.
+An **edge** `{ scale, offset }` takes a point `v` in one frame to `v * scale + offset` in the other (a vector, quantity or rate to `v * scale`). `scale` and `offset` are a number (every axis) or an array (one per axis). A negative scale flips an axis, as between y down and y up. There is no rotation.
 
 ## The glue program, for a composer
 
 ```js
 // workbench.js
 import { compose } from "kit/compose";
-import { maze } from "maze";              // a package's name: its Grammar entry module, so this is its Grammar export
-import { particles } from "particles";
-
-const GRID = ["#####", "#c..#", "#.#c#", "#####"];
-const steer = (pl, pad) => { … };
+import { drums } from "drums";        // a package by its name: its Grammar's export
+import { board } from "board";
 
 export default ($) => {
-  const level = maze("level").grid(GRID).start({ x: 1, y: 1 }).control(steer);
-  const fx = particles("fx").bounds({ width: 320, height: 256 }) /* … */;
+  const beat = drums("beat").length(16).tempo(8).lane("kick", [0, 4, 8, 12]).lane("snare", [4, 12]);
+  const strip = board("strip").lamps(32).glow((l) => { l.level = hit.strength; });
 
-  return compose("coin-bursts")
-    .part(level)
-    .part(fx)
-    .frame(level.frame.cell, fx.frame.px, "fit")
-    .wire(level.out.picked, fx.in.burst)
-    .show(fx);
+  return compose("light-show")
+    .part(beat)
+    .part(strip)
+    .frame(beat.frame.step, strip.frame.lamp, "fit")
+    .wire(beat.out.hit, strip.in.flash, { rename: { when: "pos", loud: "strength" } })
+    .wire(beat.out.tempo, strip.in.drift)
+    .wire(strip.out.full, beat.in.mute, { delay: true })
+    .show(strip);
 };
 ```
 
-A glue program is not a package: it may import `kit/compose`, `kit/define` and each package it composes by the package's `name`, which resolves to the module the manifest's `entry.grammar` names.
+A glue program is not a package. It may import `kit/compose`, `kit/define` and each package it composes by the package's `name`, which resolves to the module the manifest's `entry.grammar` names. Nothing else: no relative path, no other bare name, no dynamic import (K007).
 
 | Call | Does |
 |---|---|
-| `compose(name)` | starts the composition; `name` is the workbench's name |
-| `.part(builder)` | adds a part: a Program built with one package's Grammar, exactly as it would be on its own. Its opening name (`maze("level")`) is the part's name, unique in the workbench |
-| `.frame(a, b, edge)` | relates frame `a` of one part to frame `b` of another, with an edge `{ scale, offset }` from `a` to `b` |
-| `.frame(a, b, "fit")` | the same, with the edge computed so `a`'s extent box fits inside `b`'s, centered, with one scale for every axis. Both frames must declare `extent` |
-| `.wire(out, in)` | connects an output of one part to an input of another |
-| `.show(part)` | the part whose stage the page shows; the others still run |
+| `compose(name)` | starts the composition; `name` is lowercase letters, digits and `-` |
+| `.part(builder)` | adds a part: a Program built by one package's Grammar, exactly as it would be on its own. Its opening name (`drums("beat")`) is the part's name, unique in the workbench |
+| `.frame(a, b, edge)` | relates frame `a` of one part to frame `b` of another, by an edge `{ scale, offset }` from `a` to `b` |
+| `.frame(a, b, "fit")` | the same, with the edge computed so `a`'s extent fits inside `b`'s, centered, one scale for every axis. Both frames need an `extent`, and the same `dims` |
+| `.wire(out, in, options?)` | connects an output of one part to an input of another. Options: `rename`, `delay` (below) |
+| `.show(part)` | the part whose stage the page shows (one); the others still run |
 
-**Handles.** Every part's builder has `.out.<port>`, `.in.<port>` and `.frame.<name>`. A handle is not a value: pass it only to `.wire` and `.frame`. Using one in arithmetic or a condition is S301.
-
-**Records meet by field name.** An output's record may have fields the input does not take; they are dropped on the wire. Every field the input takes must be in the output, with a matching kind.
-
-**The kit converts on the wire.** For each tagged field of the output's type, the kit finds a path of edges from its frame to the input's frame (edges compose, and run backward too) and converts by kind: a point with scale and offset, a vector and a quantity with the scale.
-
-**Each part keeps its own params**, named after the part in the page (`level.$.speed`).
+- **Handles.** Every builder has `.out.<port>`, `.in.<port>` and `.frame.<name>`. A handle only names a port or frame: pass it to `.wire` and `.frame`, and nothing else. Reading a property of one, using one in arithmetic, or testing one in a condition is S301.
+- **Records meet by field name.** Every field the input takes must be in the output's record, with a matching kind. The output's other fields are dropped on the wire (above, `lane`).
+- **`rename: { outputField: "inputField" }`** renames record fields on this wire, as data: above, the drums' `when` arrives as the board's `pos`. It works on an Event's records, a record value and a list of records. A wire cannot compute or transform a value; the glue has no lambdas.
+- **`delay: true`** makes the input read what the output held when the instant began, instead of what it holds after this instant's step. Two parts that feed each other make a loop, refused as S115 unless one wire in the loop is delayed. Above, the strip feeds the beat back, so that wire is delayed.
+- **The kit converts on the wire.** For each tagged field, the kit finds a path of frame edges from the output's frame to the input's (edges compose, and run backward too), and converts by kind. Above, `"fit"` puts 16 steps on 32 lamps: a step `s` lands on lamp `2s + 0.5`, and the tempo in steps per second arrives as lamps per second, ×2.
+- **Each part keeps its own params**, as it would on its own.
 
 ## Diagnostics
 
-Each diagnostic about a wire or a frame names both sides:
+Each diagnostic about a wire or a frame names both sides. Without its `rename`, the light show's first wire prints:
 
 ```
-workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the field 'at' is a point in maze.cell, burst takes a point in particles.px, and no frame path joins them
-  from: level.out.picked  Event<{ at: point2@cell }>  (maze 0.2.0)
-  to:   fx.in.burst       Event<{ at: point2@px }>    (particles 0.3.0)
-  fix: write .frame(level.frame.cell, fx.frame.px, "fit"), or give the edge: .frame(level.frame.cell, fx.frame.px, { scale: 32, offset: 16 })
+workbench.js:14: S202 beat.out.hit cannot feed strip.in.flash: the record has no field 'pos', which the input takes (pos: point1@lamp)
+  from: beat.out.hit    Event<{ lane: str, when: point1@step, loud: f64 }>  (drums 1.0.0)
+  to:   strip.in.flash  Event<{ pos: point1@lamp, strength: f64 }>          (board 1.0.0)
+  fix: wire an output whose seam is Event<{ pos: point1@lamp, strength: f64 }>, or an input that takes Event<{ lane: str, when: point1@step, loud: f64 }>; a wire may rename record fields ({ rename: { from: "to" } }) but does not transform values
 ```
 
 | Code | When |
 |---|---|
 | S101 | two parts with one name |
-| S102 | a glue call given the wrong thing: an input where an output goes, a part not added with `.part`, a bad name |
+| S102 | a call given the wrong thing: an input where an output goes, a part not added with `.part`, a wire option other than `rename` and `delay`, a bad name |
 | S111 | an output, input or frame the part does not have (the message lists what it has) |
 | S112 | an input wired twice |
 | S113 | a required input with no wire |
 | S114 | a part wired to itself |
-| S201 | the kinds differ: an `Event` into a value input, a record into a scalar |
-| S202 | a field the input takes is missing from the output's record, or is of another kind |
+| S115 | a loop of wires with no delayed wire in it |
+| S116 | a reliable Event wire whose queue could hold more records at one step than the input's runtime takes |
+| S201 | the kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate |
+| S202 | a field the input takes is missing from the output's record (after any rename), or is of another kind |
 | S203 | an enum value the input does not accept |
 | S204 | a list longer than the input's max |
+| S205 | a rename naming a field either side lacks, two fields into one, or a rename on a wire with no record |
 | S251 | both sides tagged, and no frame path joins them |
 | S252 | one side tagged, the other not |
 | S253 | two frame paths between the same frames disagree |
 | S254 | a quantity across an edge whose scale differs per axis |
 | S255 | a point into a vector, or a vector into a point |
-| S256 | `"fit"` with a frame that has no `extent`, or with frames of different `dims` |
-| S257 | a malformed edge, a `.frame` between two frames of one part, or an edge between frames of different `dims` |
-| S301 | a handle used as a value at build time |
+| S256 | `"fit"` with a frame that has no `extent`, or frames of different `dims` |
+| S257 | a malformed edge, a `.frame` between two frames of one part, or frames of different `dims` |
+| S301 | a handle used as a value in the glue |
 
-A port or frame your Dialect declares badly is refused when it is defined, with the port's name (a D code; the message says what is wrong).
+A port or frame your Dialect declares badly is a D code when the Dialect is defined (D024 to D032); the message says what is wrong.
 
-## What does not exist yet
+## What does not exist
 
-There is no way to read another part's output inside a lambda, to transform a value on a wire, to merge two wires into one input, or to pass grids, images or meshes. If you need one, report it as a gap; don't invent it.
+There is no way to read another part's output inside a lambda, to compute or transform a value on a wire (other than renaming fields and converting frames), to merge two wires into one input, to draw one part's stage over another's, or to pass grids, images or meshes. If you need one, report it as a gap; don't invent it.

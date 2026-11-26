@@ -1,0 +1,124 @@
+// The rerun's checker (leaf WnmLua): each leg's hand-in checked on the real kit and run on kit/run. The reference
+// hand-ins (fixtures/valid-2, written from docs/ only) pass; each rule the checker holds refuses a copy broken in
+// exactly that way, and still passes what it should.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { checkLeg, stateProblems, portProblems } from "../checker/legs.js";
+import { handIn, remove, sub, FIXTURES_2 } from "../fixture-copy.js";
+
+/** The codes a broken copy of the reference hand-in gets. @param {"maze" | "particles" | "compose"} role @param {(d: string) => void} [edit] */
+async function codes(role, edit) {
+  const dir = await handIn(role, edit, { from: FIXTURES_2 });
+  try {
+    const r = await checkLeg(dir, role);
+    return { codes: r.diagnostics.map((d) => d.code), r };
+  } finally { remove(dir); }
+}
+
+test("the reference maze hand-in passes: loaded, its runtime run on both examples, a coin record pushed", async () => {
+  const { codes: c, r } = await codes("maze");
+  assert.deepEqual(r.diagnostics, []);
+  assert.deepEqual(c, []);
+  assert.ok(r.notes.some((n) => /examples\/01\.js: coin at \(1, 3\) picked at T = 0\.125; coin: \[\{"cell":\[1,3\]\}\]/.test(n)), r.notes.join("\n"));
+});
+
+test("the reference particles hand-in passes: a probe record on burst makes particles appear at it", async () => {
+  const { r } = await codes("particles");
+  assert.deepEqual(r.diagnostics, []);
+  assert.ok(r.notes.some((n) => /examples\/07\.js: a burst record at \(160, 120\) at T = 0\.5: \d+ particles within/.test(n)), r.notes.join("\n"));
+});
+
+test("the reference composition passes: checked, planned with a rename, run to a burst at the pickup, replayed", async () => {
+  const { r } = await codes("compose");
+  assert.deepEqual(r.diagnostics, []);
+  assert.deepEqual(r.plan, ["level.out.coin → fx.in.burst: at: maze.cell → particles.px, point, ×32 +16"]);
+  assert.ok(r.notes.some((n) => /^run: coin at \(1, 3\) picked at T = 0\.125/.test(n)), r.notes.join("\n"));
+  assert.ok(r.notes.some((n) => /^run: burst of 24 particles within 32 of \(48, 112\) in particles\.px at T = 0\.133/.test(n)), r.notes.join("\n"));
+  assert.ok(r.notes.includes("run: replayed, same state hashes at every instant"), r.notes.join("\n"));
+});
+
+test("G001: an author's package with no runtime", async () => {
+  const { codes: c } = await codes("maze", (d) => { sub(d, "wb-package.json", ',\n    "runtime": "maze.runtime.js"', ""); sub(d, "maze.runtime.js", "export const mazeRuntime", "const mazeRuntime"); });
+  assert.ok(c.includes("G001"), c.join(" "));
+});
+
+test("G002: the version is not raised", async () => {
+  const { codes: c } = await codes("maze", (d) => { sub(d, "wb-package.json", '"version": "0.2.0"', '"version": "0.1.0"'); });
+  assert.deepEqual(c, ["G002"]);
+});
+
+test("G003: no new example", async () => {
+  const { codes: c } = await codes("maze", (d) => { sub(d, "wb-package.json", ',\n    "examples/02.js"', ""); sub(d, "examples/02.js", "maze(", "maze("); });
+  assert.ok(c.includes("G003"), c.join(" "));
+});
+
+test("G006: a runtime that reads the D-pad under another name never reaches a coin", async () => {
+  const { codes: c } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "controls.pad", "controls.dpad"); });
+  assert.ok(c.length > 0 && c.every((x) => x === "G006"), c.join(" "));
+});
+
+test("G007: a runtime that picks the coin but pushes no record", async () => {
+  const { codes: c } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "events.coin.push({ cell: [x, y] });", ""); });
+  assert.ok(c.length > 0 && c.every((x) => x === "G007"), c.join(" "));
+});
+
+test("N codes: a runtime that changes the state it is handed stops with N003, at the runtime's file", async () => {
+  const { codes: c, r } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "return { ...state, t: state.t + dt,", "state.t = 1; return { ...state, t: state.t + dt,"); });
+  assert.ok(c.includes("N003"), c.join(" "));
+  assert.ok(r.diagnostics.filter((x) => x.code === "N003").every((x) => x.file === "maze.runtime.js"));
+});
+
+test("G008: a particles runtime that ignores its Event input", async () => {
+  const { codes: c } = await codes("particles", (d) => { sub(d, "particles.runtime.js", "if (e.opts.trigger)", "if (e.opts.trigger === 'never')"); });
+  assert.deepEqual(c, ["G008"]);
+});
+
+test("G010: a glue with no wire from the maze to the particles", async () => {
+  const { codes: c } = await codes("compose", (d) => { sub(d, "workbench.js", '    .wire(level.out.coin, fx.in.burst, { rename: { cell: "at" } })\n', ""); });
+  assert.deepEqual(c, ["G010"]);
+});
+
+test("G011: a glue that shows the maze", async () => {
+  const { codes: c } = await codes("compose", (d) => { sub(d, "workbench.js", ".show(fx)", ".show(level)"); });
+  assert.deepEqual(c, ["G011"]);
+});
+
+test("G012: a glue whose player never walks", async () => {
+  const { codes: c } = await codes("compose", (d) => { sub(d, "workbench.js", "pl.steps = 1;", "pl.steps = 0;"); });
+  assert.deepEqual(c, ["G012"]);
+});
+
+test("G013: a glue whose frame edge puts the burst off the box", async () => {
+  const { codes: c } = await codes("compose", (d) => { sub(d, "workbench.js", '.frame(level.frame.cell, fx.frame.px, "fit")', ".frame(level.frame.cell, fx.frame.px, { scale: 32, offset: 1000 })"); });
+  assert.deepEqual(c, ["G013"]);
+});
+
+test("a composition refused by the kit stops before the run, with the kit's code", async () => {
+  const { codes: c } = await codes("compose", (d) => { sub(d, "workbench.js", ', { rename: { cell: "at" } }', ""); });
+  assert.deepEqual(c, ["S202"]);
+});
+
+test("G005: the state the checker reads, by role", () => {
+  assert.deepEqual(stateProblems({ player: { x: 1, y: 2 }, grid: ["#"] }, "maze"), []);
+  assert.match(stateProblems({ hero: { x: 1, y: 2 }, grid: ["#"] }, "maze").join(), /player\.x/);
+  assert.match(stateProblems({ player: { x: 1, y: 2 } }, "maze").join(), /grid/);
+  assert.deepEqual(stateProblems({ particles: [{ x: 1, y: 2 }] }, "particles"), []);
+  assert.deepEqual(stateProblems({ particles: [] }, "particles"), []);
+  assert.match(stateProblems({ particles: [{ pos: [1, 2] }] }, "particles").join(), /x and y/);
+  assert.match(stateProblems({ dots: [] }, "particles").join(), /particles/);
+});
+
+test("G004: the ports each author's task asks for", () => {
+  const ev = { seam: { kind: "event", of: { kind: "record", fields: {} } } };
+  const val = { seam: { kind: "scalar", of: "f64" } };
+  const dialect = (/** @type {any} */ out, /** @type {any} */ inn, inputs = { name: "inp" }) => ({ seams: { out, in: inn, inputs } });
+  assert.deepEqual(portProblems(dialect({ a: ev }, {}), "maze", { grammar: "", examples: [] }), []);
+  assert.match(portProblems(dialect({ a: val }, {}), "maze", { grammar: "", examples: [] }).join(), /Event output/);
+  const good = { grammar: 'trigger: ref("in", { kind: "event" })', examples: ["p.vel = inp.speed"] };
+  assert.deepEqual(portProblems(dialect({}, { b: ev, s: val }), "particles", good), []);
+  assert.match(portProblems(dialect({}, { s: val }), "particles", good).join(), /Event input/);
+  assert.match(portProblems(dialect({}, { b: ev }), "particles", good).join(), /value input/);
+  assert.match(portProblems(dialect({}, { b: ev, s: val }), "particles", { ...good, examples: ["p.vel = vec2(0, 1)"] }).join(), /reads/);
+  assert.match(portProblems(dialect({}, { b: ev, s: val }), "particles", { ...good, grammar: "" }).join(), /ref\("in"/);
+});

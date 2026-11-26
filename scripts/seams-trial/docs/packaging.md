@@ -1,6 +1,6 @@
-# Packaging a Dialect (draft)
+# Packaging a Dialect
 
-*A draft for review, v0. A **Dialect package** is a folder holding everything a small domain language needs: its Dialect, its Grammar, its UI, its examples, and the code they use. A workbench page loads it from a repository, from a path, or from a file someone uploads, and composes it with packages its author never saw. So a package must be self-contained, and a host must be able to read it before running any of its code.*
+*A **Dialect package** is a folder holding everything a small domain language needs: its Dialect, its Grammar, its UI, its runtime, its examples, and the code they use. A workbench page loads it from a repository, from a path, or from a file someone uploads, and composes it with packages its author never saw. So a package must be self-contained, and a host must be able to read it before running any of its code.*
 
 ## A package is a folder
 
@@ -10,6 +10,7 @@ tiles/
   tiles.dialect.js    the Dialect (defineDialect)
   tiles.grammar.js    the Grammar (defineGrammar)
   tiles.ui.js         the UI (defineUI), optional
+  tiles.runtime.js    the runtime (defineRuntime), optional: what makes the package run
   tiles-board.js      a custom element the UI names, optional
   lib/…               helper modules the package's own files import, optional
   foreign/…           declared foreign modules, optional (see below)
@@ -18,7 +19,7 @@ tiles/
   README.md           for people, optional
 ```
 
-Only the manifest's name is fixed. The other names follow a convention (`<name>.dialect.js`, `<name>.grammar.js`, `<name>.ui.js`), and the manifest says where each part is. Subfolders are allowed. Every file in the folder belongs to the package and is listed in the manifest with its hash, including the README. The exception is a **dotfile**: a file or folder whose name starts with `.` (`.DS_Store`, `.git`) is not part of a package. The tools and the checker skip it, so it is neither listed nor hashed, and a manifest that lists one is an error.
+Only the manifest's name is fixed. The other names follow a convention (`<name>.dialect.js`, `<name>.grammar.js`, `<name>.ui.js`, `<name>.runtime.js`), and the manifest says where each part is. Subfolders are allowed. Every file in the folder belongs to the package and is listed in the manifest with its hash, including the README. The exception is a **dotfile**: a file or folder whose name starts with `.` (`.DS_Store`, `.git`) is not part of a package. The tools and the checker skip it, so it is neither listed nor hashed, and a manifest that lists one is an error.
 
 The package's **modules** are exactly its files whose names end in `.js` (lowercase). Every path the manifest names as code (`entry`, `lib`, `elements`, `examples`, `refusals` and each `foreign` module) must be such a file, and so must every file a module imports. Other files (a README, a data file) are listed and hashed but can't be imported.
 
@@ -30,7 +31,7 @@ The package's **modules** are exactly its files whose names end in `.js` (lowerc
   "version": "0.1.0",
   "kit": "0.4",
   "description": "A grid of tiles with actors that walk it.",
-  "entry": { "dialect": "tiles.dialect.js", "grammar": "tiles.grammar.js", "ui": "tiles.ui.js" },
+  "entry": { "dialect": "tiles.dialect.js", "grammar": "tiles.grammar.js", "ui": "tiles.ui.js", "runtime": "tiles.runtime.js" },
   "lib": ["lib/noise.js"],
   "elements": ["tiles-board.js"],
   "examples": ["examples/01.js", "examples/02.js"],
@@ -45,7 +46,7 @@ The package's **modules** are exactly its files whose names end in `.js` (lowerc
 | `version` | yes | the package's version, semver (`0.1.0`). |
 | `kit` | yes | the Definition API version the package is written for, `major.minor`. This kit is `"0.4"`. Before 1.0, a kit loads only packages written for exactly its own version. |
 | `description` | no | one sentence for people. |
-| `entry` | yes | the path of each definition file. `dialect` and `grammar` are required; `ui` is optional. |
+| `entry` | yes | the path of each definition file. `dialect` and `grammar` are required; `ui` and `runtime` are optional. A package without a runtime can be checked but not run. |
 | `lib` | no | the helper modules the definition files import. |
 | `elements` | no | the custom element modules the UI names: exactly that set, no more and no fewer. If the UI names `./tiles-board.js` and `elements` doesn't list `tiles-board.js`, or lists a module the UI doesn't name, that is an error. |
 | `foreign` | no | declared foreign modules: `{ "module": path, "targets": ["js"], "why": "one sentence" }`. A foreign module is plain JavaScript the kit trusts and does not lower. It is the only way to bring in code outside the language's subset, so declaring one is a claim to justify. |
@@ -83,6 +84,7 @@ The loader finds each definition **by its value, not by its export name**:
 - The Dialect file has exactly one export that is a `defineDialect(…)` result.
 - The Grammar file has exactly one export that is a `defineGrammar(…)` builder, and that builder is built on the package's Dialect.
 - The UI file, if there is one, has exactly one export that is a `defineUI(…)` value, built on the package's Grammar.
+- The runtime file, if there is one, has exactly one export that is a `defineRuntime(…)` result, built on the package's Grammar (`runtime.md`).
 
 Other exports are fine (a list of constants the Grammar shares with the Dialect, say). You choose the export names.
 
@@ -92,7 +94,7 @@ When a host loads a package, it does this, in order. The checker you are given d
 
 1. Read `wb-package.json` and check it: its shape, its `kit` version, every listed path present, and every file hashed.
 2. Scan every `.js` file's imports, without running anything.
-3. Import the Dialect, the Grammar and the UI, and check that they belong together and to this package.
+3. Import the Dialect, the Grammar, the UI and the runtime, and check that they belong together and to this package.
 4. Check that `elements` is the set of modules the UI's custom elements name.
 5. Build every example, and require that each is accepted. Build every refusal, and require that each is refused with its code.
 
@@ -101,5 +103,5 @@ Each problem is printed with a code and a fix. A problem in step 1 or 2 stops th
 ## What a package does not have (yet)
 
 - **No dependencies, no lock file.** Pinning a package's source and revision belongs to the workbench that uses it, not to the package.
-- **Ports and seams are in `seams.md`**, a separate draft: they are declared in the Dialect, not the manifest.
-- **No generated reference.** A package's API reference will be generated from its definitions, so don't hand-write one. A README for people is fine.
+- **Ports and frames are in `seams.md`**: they are declared in the Dialect, not the manifest.
+- **No hand-written reference.** The kit generates a package's reference of ports and frames from its Dialect (a composer gets it as `reference.md`), so don't hand-write one. A README for people is fine.

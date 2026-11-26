@@ -10,17 +10,20 @@ import assert from "node:assert/strict";
 import { hashDir } from "../pkg/dir.js";
 
 export const FIXTURES = fileURLToPath(new URL("./fixtures/valid", import.meta.url));
+/** The rerun's reference hand-ins (leaf WnmLua), written from the rerun's docs. */
+export const FIXTURES_2 = fileURLToPath(new URL("./fixtures/valid-2", import.meta.url));
 
 /**
  * A copy of the hand-in for `role` with `edit(dir)` applied, then each package in it re-hashed unless `stale`.
- * @param {"maze" | "particles" | "compose"} role @param {(dir: string) => void | Promise<void>} [edit] @param {{ stale?: boolean }} [o]
+ * @param {"maze" | "particles" | "compose"} role @param {(dir: string) => void | Promise<void>} [edit] @param {{ stale?: boolean, from?: string }} [o]
+ *   `from`: the fixtures folder (default fixtures/valid)
  */
-export async function handIn(role, edit = () => {}, { stale = false } = {}) {
+export async function handIn(role, edit = () => {}, { stale = false, from = FIXTURES } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "C0nNGy-st-"));
   if (role === "compose") {
-    cpSync(join(FIXTURES, "compose"), dir, { recursive: true });
-    for (const p of ["maze", "particles"]) cpSync(join(FIXTURES, p), join(dir, p), { recursive: true });
-  } else cpSync(join(FIXTURES, role), dir, { recursive: true });
+    cpSync(join(from, "compose"), dir, { recursive: true });
+    for (const p of ["maze", "particles"]) cpSync(join(from, p), join(dir, p), { recursive: true });
+  } else cpSync(join(from, role), dir, { recursive: true });
   await edit(dir);
   if (!stale) {
     if (role === "compose") for (const p of ["maze", "particles"]) await hashDir(join(dir, p));

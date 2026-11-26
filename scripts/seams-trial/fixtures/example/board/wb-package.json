@@ -1,0 +1,20 @@
+{
+  "name": "board",
+  "version": "1.0.0",
+  "kit": "0.4",
+  "description": "A scoreboard's strip of lamps that light up and fade.",
+  "entry": {
+    "dialect": "board.dialect.js",
+    "grammar": "board.grammar.js",
+    "runtime": "board.runtime.js"
+  },
+  "examples": [
+    "examples/01.js"
+  ],
+  "files": {
+    "board.dialect.js": "sha256-0aaZa/tT8TuHhaOPMy1SNlde9jVBE1O5yBnct/Kmz7Y=",
+    "board.grammar.js": "sha256-mdTaifQ2qNP5mFVp5Q6yYdoueG6FGGPBlx4yiA5lC+A=",
+    "board.runtime.js": "sha256-7iLsIDS/bTGXlXkMw/1hkHVTCg3jamHGNl7vko0ouo8=",
+    "examples/01.js": "sha256-vYlE4y+p3zeuoGa2YP2UjXvi8K0+BLK1nv6Zn0iisC0="
+  }
+}

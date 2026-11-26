@@ -5,22 +5,15 @@
 // with kit/compose's scanGlue, imports it with each bare package name resolved to that package's Grammar entry,
 // and checks the composition it returns.
 
-import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, realpathSync, readdirSync, statSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { registerHooks } from "node:module";
-import { KIT_VERSION } from "../../kit/define/index.js";
-import { loadPackage, checkExamples, MANIFEST_PATH } from "../../kit/package/index.js";
-import { scanGlue, isComposition, formatDiagnostic } from "../../kit/compose/index.js";
-import { installHooks } from "../ui-trial/checker/hooks.js";
-import { session, begin } from "../ui-trial/checker/session.js";
-import { readPackageDir, hashDir } from "../pkg/dir.js";
+import { fileURLToPath } from "node:url";
+import { hashDir } from "../pkg/dir.js";
 import { checkPackageDir } from "../pkg-trial/checker/index.js";
-import { scopeModules, buildOptions } from "../pkg-trial/checker/scope.js";
+import { loadCompose } from "./checker/load.js";
 
 const RUNS_DIR = fileURLToPath(new URL("./runs/2026-11-25/", import.meta.url));
-const COMPOSE_URL = new URL("../../kit/compose/index.js", import.meta.url).href;
 
 /** An Event output's `from`, removed: a runtime pushes its records (the clocks draft's question 3, ruled 2026-11-26). */
 const EVENT_FROM = "an Event output's from removed";
@@ -104,27 +97,10 @@ export async function checkRunReal(run) {
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 }
 
-/** The glue's bare package names, resolved for the glue only. */
-/** @type {{ url: string, packages: Record<string, string> }} */
-const glue = { url: "", packages: {} };
-let hooked = false;
-function installGlueHooks() {
-  installHooks();
-  if (hooked) return;
-  hooked = true;
-  registerHooks({
-    resolve(specifier, context, next) {
-      if (!glue.url || (context.parentURL ?? "").replace(/\?.*$/, "") !== glue.url) return next(specifier, context);
-      if (specifier === "kit/compose") return { url: COMPOSE_URL, format: "module", shortCircuit: true };
-      if (Object.hasOwn(glue.packages, specifier)) return { url: glue.packages[specifier], format: "module", shortCircuit: true };
-      return next(specifier, context);
-    },
-  });
-}
 
 /**
- * A compose leg: both packages loaded and their examples checked by kit/package, the glue's imports scanned, the
- * glue run with an empty frozen `$`, and its composition checked with each part's module scope.
+ * A compose leg of the first relay: its maze and particles packages and workbench.js, checked by
+ * checker/load.js's `loadCompose`.
  * @param {string} dir  holds workbench.js, maze/ and particles/
  * @returns {Promise<{ diagnostics: Found[], plan: string[] }>}
  */
@@ -134,52 +110,7 @@ export async function checkComposeReal(dir) {
 }
 
 /**
- * What checkComposeReal checks, with what a run needs besides: the loaded packages (each with its runtime when its
- * manifest names one), the composition and the options it was checked with. `composition` is null when a package
- * or the glue was refused before the glue ran.
+ * What checkComposeReal checks, with what a run needs besides (checker/load.js's `loadCompose`).
  * @param {string} dir  holds workbench.js, maze/ and particles/
- * @returns {Promise<{ diagnostics: Found[], plan: string[], loaded: any[], composition: any, options: any }>}
  */
-export async function loadComposeReal(dir) {
-  installGlueHooks();
-  const dirUrl = pathToFileURL(realpathSync(dir)).href + "/";
-  begin(dirUrl);
-  /** @type {Found[]} */
-  const found = [];
-  /** @type {any[]} */
-  const loaded = [];
-  for (const name of ["maze", "particles"]) {
-    const files = readPackageDir(join(dir, name));
-    const base = `${dirUrl}${name}/`;
-    // what the defineUI stand-in reads a UI's element modules from: this package's files
-    session.moduleText = (path) => files[path.replace(/^\.\//, "")] ?? null;
-    const importModule = (/** @type {string} */ path) => import(`${base}${path}?run=${session.run}`);
-    const pkg = await loadPackage(files, { kitVersion: KIT_VERSION, importModule });
-    for (const d of pkg.diagnostics) found.push({ file: `${name}/${d.file ?? MANIFEST_PATH}`, line: d.line ?? 1, code: d.code, message: d.message, fix: d.fix });
-    if (pkg.diagnostics.length) continue;
-    scopeModules(base, [...pkg.examples, ...pkg.refusals.map((r) => r.module)], files);
-    for (const d of await checkExamples(pkg, { importModule, buildOptions })) found.push({ file: `${name}/${d.file ?? MANIFEST_PATH}`, line: d.line ?? 1, code: d.code, message: d.message, fix: d.fix });
-    const manifest = JSON.parse(files[MANIFEST_PATH]);
-    glue.packages[name] = `${base}${manifest.entry.grammar}?run=${session.run}`;
-    loaded.push(pkg);
-  }
-  if (found.length) return { diagnostics: found, plan: [], loaded, composition: null, options: null };
-  const text = readFileSync(join(dir, "workbench.js"), "utf8");
-  const scanned = scanGlue(text, ["maze", "particles"]);
-  for (const d of scanned.diagnostics) found.push({ file: "workbench.js", line: d.line ?? 1, code: d.code, message: d.message, fix: d.fix });
-  if (found.length) return { diagnostics: found, plan: [], loaded, composition: null, options: null };
-  glue.url = `${dirUrl}workbench.js`;
-  try {
-    scopeModules(dirUrl, ["workbench.js"], { "workbench.js": text });
-    const mod = await import(`${glue.url}?run=${session.run}`);
-    const c = mod.default(Object.freeze({}));
-    if (!isComposition(c)) return { diagnostics: [{ file: "workbench.js", line: 1, code: "LOAD", message: "the default export does not return a composition" }], plan: [], loaded, composition: null, options: null };
-    const options = { packages: loaded, build: buildOptions("workbench.js", mod) };
-    for (const d of c.check(options)) {
-      const [file, line] = formatDiagnostic(d, dirUrl).split("\n")[0].split(":");
-      const sides = formatDiagnostic(d, dirUrl).split("\n").slice(1).join(" / ");
-      found.push({ file, line: Number(line), code: d.code, message: sides ? `${d.message} [${sides}]` : d.message });
-    }
-    return { diagnostics: found, plan: found.length ? [] : c.plan(options), loaded, composition: c, options };
-  } finally { glue.url = ""; glue.packages = {}; }
-}
+export const loadComposeReal = (dir) => loadCompose(dir, ["maze", "particles"]);

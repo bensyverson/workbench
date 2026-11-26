@@ -1,0 +1,120 @@
+# Runtimes: how a package runs
+
+*A package that runs, alone or composed with others, has a **runtime module**: plain JavaScript over the run's `state` your Dialect declares. The kit's scheduler calls it once per step, hands it everything the step needs, and checks what it returns. The same runtime runs headless (in a test, a checker) and in a page. The examples come from `seams.md`'s two packages, `drums` and `board`.*
+
+## The module
+
+The manifest names it in `entry.runtime` (`packaging.md`). It exports one `defineRuntime` result, built on the package's Grammar, and may import only `kit/define` and the package's own files.
+
+```js
+// board.runtime.js
+import { defineRuntime } from "kit/define";
+import { board } from "./board.grammar.js";
+
+export const boardRuntime = defineRuntime(board, {
+  clock: () => ({ frame: true }),                              // steps with the display
+  init: (record) => ({ lamps: record.lamps, lit: 0, shift: 0, levels: new Array(record.lamps).fill(0) }),
+  step(state, { dt, inputs, kernels, globals }) {
+    const levels = state.levels.map((v) => Math.max(0, v - dt / inputs.fade));
+    for (const hit of inputs.flash) {                          // this step's records, in order, in lamps
+      const i = Math.round(hit.pos);
+      if (i < 0 || i >= levels.length) continue;
+      const lamp = { index: i, level: levels[i] };
+      globals.hit = hit;                                       // what glow reads as `hit`
+      kernels.glow(lamp);                                      // changes lamp in place
+      levels[i] = Math.min(1, Math.max(0, lamp.level));
+    }
+    const lit = levels.filter((v) => v > 0.5).length;
+    return { ...state, levels, lit, shift: state.shift + inputs.drift * dt };
+  },
+  events: { in: { flash: 8 } },                                // the most records one step may take
+});
+```
+
+```js
+// drums.runtime.js
+export const drumsRuntime = defineRuntime(drums, {
+  clock: (record) => ({ tick: 1 / record.tempo }),             // one step of the pattern per tick
+  init: (record) => ({ step: 0, tempo: record.tempo, playing: true }),
+  step(state, { record, inputs, kernels, events }) {
+    const playing = !inputs.mute;
+    if (playing) {
+      for (const lane of record.lane) {
+        if (!lane.steps.includes(state.step)) continue;
+        const loud = kernels.accent ? kernels.accent(state.step) : 1;
+        events.hit.push({ lane: lane.name, when: state.step, loud });
+      }
+    }
+    return { ...state, step: (state.step + 1) % record.length, playing };
+  },
+  events: { out: { hit: 4 } },                                  // one per lane, and a pattern has at most 4
+});
+```
+
+| Key | What |
+|---|---|
+| `clock(record)` | when the part steps: `{ tick: seconds }` (every so many seconds of workbench time), `{ frame: true }` (once per display frame; 60 a second headless) or `{ demand: true }` (only when an input changes or an Event arrives) |
+| `init(record, ctx)` | the run's first state, from the built record |
+| `step(state, ctx)` | the state after one step: a **new** object |
+| `events` | `{ out: { port: max }, in: { port: max } }`: for **every** Event port, the most records one step may push (`out`) or take (`in`), a whole number of at least 1 (D033). An input with `keepLast: n` takes at least `n` |
+
+A declaration that is wrong (a missing max, a max on a value port or on a port the Dialect lacks, an unknown key) is D033 when the module loads.
+
+## What a step is handed
+
+| `ctx.` | What |
+|---|---|
+| `record` | the built Program, as `.build()` returns it (read-only) |
+| `part` | the part's name: the Program's opening name |
+| `T`, `dt` | the instant in seconds, and the step's length: a tick part's period, a frame part's time since its last frame (0 at its first), 0 for a demand part |
+| `inputs` | each value input, converted into your frames (its `default` when unwired), and each Event input's records since your last step, converted, in order (`[]` when none) |
+| `events` | an empty list per Event output: push records into `ctx.events.<port>` (step only) |
+| `kernels` | the Program's compiled lambdas (below) |
+| `globals` | what your lambdas' global names read in this step (below) |
+| `controls` | the outside inputs addressed to this part (below) |
+| `rng` | the part's seeded random stream: `rng()` gives a number in [0, 1) |
+| `params` | the Program's params, as lambdas read `$` |
+
+`init` gets the same, without `T`, `dt`, `inputs` and `events`.
+
+## Calling the Program's lambdas
+
+`ctx.kernels` holds each lambda the Program wrote, compiled, by id: `<instance>.<slot>`, where the instance is the construct's opening name (`kernels["big.glow"]` for a `.lamp("big", …)` construct's `glow`). The root construct's own lambdas are also there by slot name alone (`kernels.glow`, `kernels.accent`); an optional slot the Program did not write is `undefined`.
+
+A slot a construct may call more than once (one without `once`) has one lambda per call, and its id adds the call's place among **all** that instance's calls, counting from 0: a Program `kit("k").size(3).tone("lo", …).tone("hi", …)` has `k.tone#1` and `k.tone#2`. The record keeps such calls by the name each declares (`record.tones.lo`), not by place, so list the ids (`Object.keys(ctx.kernels)`, which lists ids only) and match them to the record's names in order.
+
+- **A kernel takes its slot convention's params, in order**, and returns what the convention returns. Call it with plain values: a number, a string, a vector as an array `[x, y]`.
+- **An instance param** (an object a lambda may change, such as `Lamp`) is a plain object you make, holding each member the lambda may read or write. The kernel changes it in place; read the members back afterwards. A member that is a function (a `kill()`, say) is one you supply.
+- **A random-stream param** is `ctx.rng`.
+- **Globals.** Before a step, the kit sets `globals.$` (the params) and the inputs object (`globals.inp`). You set the others your Dialect declares before calling a kernel that reads them: an Event record's name (`globals.hit = record`, once per record), or any object your language shares between lambdas (`globals.counters`). Changes a kernel makes through a global land in the object you set. A kernel that reads a global you have not set throws (N004), so when you call a slot listed in a `record`'s `slots` without a record to hand it, set the name to a record of your own first.
+
+## The rules a step keeps
+
+- **Return a new state; never change the one you are handed.** Copy what changes (`{ ...state, levels }`).
+- **Keep no other memory:** no module-level variables, no `Math.random` (use `ctx.rng`), no clock or date. A run is a function of the record, the params and the inputs, so it can be replayed exactly.
+- **The state fits your Dialect's `state`**, after `init` and after every step (N002, naming the paths that don't).
+- **Push no more Events than `events.out` declares**, and expect no more than `events.in` (N002).
+- An Event output is **pushed, never kept in state**.
+
+In a development run (the default, and the checker's) every state is frozen and each step runs twice on the same state and inputs; the two must agree (N003). A step that throws is N004. Any of these stops that part; the others run on.
+
+## Time
+
+- **One workbench time, exact.** Instants are fractions of a second, from 0: a part with `tick: 1/8` steps at 0, 1/8, 2/8, …; one with `tick: 1/30` at 0, 1/30, 2/30, …; the two meet exactly at 0, 1/2, 1, …. Headless, frame parts step at multiples of 1/60.
+- **Within one instant**, the parts due step in wire order: an output's part before the input's (ties in `.part` order). So a value input reads what its producer committed this instant, if the producer stepped at this instant; otherwise its latest value. A delayed wire reads what the producer held when the instant began.
+- **Events.** A record pushed at instant T reaches the input's part at its first step at or after T: at T itself when both step then (the producer goes first), else at the consumer's next step. Each record arrives exactly once, in order. A consumer that steps less often than its producer gets several steps' records at once, which is why `events.in` is a max and `S116` checks it: for a reliable input, the producer's `events.out` max times the most producer steps one consumer step can see must not exceed the consumer's `events.in`.
+
+## Controls
+
+An outside input, such as a D-pad the person presses, reaches the part it is addressed to as `ctx.controls.<name>`: the latest value at or before the instant, a whole new value each time (not merged). It is absent until the first one arrives, so read it with a fallback. The name is the host's: nothing in the kit links it to your UI's `inputs`. In this workbench the page sends a D-pad as `controls.pad`, `{ up, down, left, right, a, b }`, each `true` while held.
+
+## Run codes
+
+| Code | When |
+|---|---|
+| N001 | the run fell behind real time and slowed (a warning), or a `keepLast` input dropped records (counted) |
+| N002 | a state that does not fit the Dialect's `state`; more Events pushed or taken than `events` declares |
+| N003 | in a development run, a step changed the state it was handed, or kept memory outside it |
+| N004 | an `init` or `step` threw |
+| N005 | a replay diverged from the recorded run |
+| N006 | `clock(record)` returned something that is not a clock |
