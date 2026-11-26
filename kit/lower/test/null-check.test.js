@@ -98,11 +98,10 @@ test("a strict check against undefined is refused, since null is the empty value
   }
 });
 
-test("truthiness, equality of two values and the refusals stay as they were", () => {
-  // Truthiness still lowers to `truthy` on an optional number, so 0 reads as absent there.
-  const t = ok(`${P} { const x = m; if (x) return x > 0; return false; }`);
-  assert.match(printKernel(t), /truthy\(x\)/);
-  assert.equal(run(t, [1, null, 0]), false);
+test("equality of two values and the refusals stay as they were; truthiness of an optional is refused", () => {
+  // A bare optional is not a condition (the tip names the null check).
+  assert.deepEqual(lower(`${P} { const x = m; if (x) return x > 0; return false; }`).diagnostics.map((d) => d.code), ["L003"]);
+  assert.equal(run(ok(`${P} { const x = m; if (x != null) return x > 0; return false; }`), [1, null, 0]), false);
   // Two optionals compared to each other are an equality, not a null check.
   assert.match(printKernel(ok(`${P} o === o`)), /eq\(o, o\)/);
   // A value that is never empty can never equal null.

@@ -8,7 +8,6 @@ const RNG_MSG = "randomness comes only from spawn's rng(); draw it in spawn and 
 export const particlesDialect = defineDialect({
   name: "particles",
   numberType: "f64",
-  conditions: "bool",
   types: {
     vec2: vector(2, "f64", { multiply: "scalar" }),
   },

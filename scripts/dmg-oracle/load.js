@@ -1,6 +1,7 @@
-// Loads the DMG Workbench's DSL core and presets straight out of its HTML, so the
-// repo never holds a copy of that code. The DSL core ends by assigning itself to
-// `module.exports`, which is what makes it loadable headless.
+// Loads the DMG Workbench's DSL core straight out of its archived HTML, so the repo never holds a copy of that
+// code (the core ends by assigning itself to `module.exports`, which makes it loadable headless), and its presets
+// from the maintained `presets.json`. The HTML keeps the original presets as the dated record: `originalPresets`
+// reads them, for checking a rewrite against the original on the same runtime.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -8,15 +9,41 @@ import vm from "node:vm";
 /** @import { DmgDSL, DmgBuild, DmgPreset } from "./dmg.js" */
 
 const DEFAULT_HTML = fileURLToPath(new URL("../../project/2026-11-23-dmg-workbench.html", import.meta.url));
+const DEFAULT_PRESETS = fileURLToPath(new URL("./presets.json", import.meta.url));
 const CORE_START = "var DSL = (function";
 const CORE_END = 'if (typeof module !== "undefined") module.exports = DSL;';
 const PRESETS_PREFIX = "window.DMG_PRESETS = ";
 
 /**
- * Reads the DMG Workbench at `htmlPath` and returns its DSL with helpers to build presets.
+ * The presets the archived HTML ships, as they were written.
  * @param {string} [htmlPath]
+ * @returns {DmgPreset[]}
  */
-export function loadDmg(htmlPath = DEFAULT_HTML) {
+export function originalPresets(htmlPath = DEFAULT_HTML) {
+  const html = readFileSync(htmlPath, "utf8");
+  const presetLine = html.split("\n").find((l) => l.includes(PRESETS_PREFIX));
+  if (!presetLine) throw new Error(`${htmlPath}: cannot find "${PRESETS_PREFIX}"`);
+  const json = presetLine.slice(presetLine.indexOf(PRESETS_PREFIX) + PRESETS_PREFIX.length).replace(/;?\s*(<\/script>)?\s*$/, "");
+  return /** @type {DmgPreset[]} */ (JSON.parse(json));
+}
+
+/**
+ * The maintained presets: a JSON array of the HTML's preset objects, except that `code` is an array of lines
+ * (joined with a newline here), so a rewrite shows in a diff line by line.
+ * @param {string} [presetsPath]
+ * @returns {DmgPreset[]}
+ */
+export function maintainedPresets(presetsPath = DEFAULT_PRESETS) {
+  const rows = /** @type {Array<Omit<DmgPreset, "code"> & { code: string | string[] }>} */ (JSON.parse(readFileSync(presetsPath, "utf8")));
+  return rows.map((p) => ({ ...p, code: Array.isArray(p.code) ? p.code.join("\n") : p.code }));
+}
+
+/**
+ * Reads the DMG Workbench's DSL at `htmlPath` and returns it with helpers to build the maintained presets.
+ * @param {string} [htmlPath]
+ * @param {DmgPreset[]} [presets]  Defaults to the maintained presets.
+ */
+export function loadDmg(htmlPath = DEFAULT_HTML, presets = maintainedPresets()) {
   const html = readFileSync(htmlPath, "utf8");
   const start = html.indexOf(CORE_START);
   const end = html.indexOf(CORE_END);
@@ -27,11 +54,6 @@ export function loadDmg(htmlPath = DEFAULT_HTML) {
   const fn = vm.compileFunction(core, ["module"], { filename: "dmg-dsl-core.js" });
   fn(mod);
   const DSL = /** @type {DmgDSL} */ (mod.exports);
-
-  const presetLine = html.split("\n").find((l) => l.includes(PRESETS_PREFIX));
-  if (!presetLine) throw new Error(`${htmlPath}: cannot find "${PRESETS_PREFIX}"`);
-  const json = presetLine.slice(presetLine.indexOf(PRESETS_PREFIX) + PRESETS_PREFIX.length).replace(/;?\s*(<\/script>)?\s*$/, "");
-  const presets = /** @type {DmgPreset[]} */ (JSON.parse(json));
 
   /** @param {string} id */
   const preset = (id) => {

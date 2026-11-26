@@ -3,7 +3,6 @@ import { defineDialect, vector, exact } from "kit/define";
 export const particlesLang = defineDialect({
   name: "particles",
   numberType: "f64",
-  conditions: "bool",
   types: {
     vec2: vector(2, "f64", { multiply: "scalar" }),
   },

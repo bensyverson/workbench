@@ -26,7 +26,7 @@ registerHooks({
 });
 
 const dialect = defineDialect(/** @type {any} */ ({
-  name: "orbits", numberType: "f64", conditions: "bool",
+  name: "orbits", numberType: "f64",
   types: { vec2: vector(2, "f64"), meters: scalar("f64") },
   spaces: { s: { pure: true } },
   objects: {
@@ -179,7 +179,7 @@ test("a list in the state has a length though the Dialect declares no list membe
 
 test("for a Dialect that declares no params, $ is an object with no members", () => {
   const plain = defineDialect(/** @type {any} */ ({
-    name: "plain", numberType: "f64", conditions: "bool", spaces: { s: { pure: true } },
+    name: "plain", numberType: "f64", spaces: { s: { pure: true } },
     targets: { js: { accepts: "*", compare: exact() } }, slots: { v: { params: [], returns: "f64", space: "s" } },
     state: { t: "f64" }, text: () => "",
   }));

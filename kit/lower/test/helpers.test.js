@@ -184,11 +184,11 @@ test("emitted helpers run, and a caller sees them through its scope", () => {
 const lambdaErrors = (r) => r.results.map((x) => x.diagnostics.filter((d) => d.severity === "error").map((d) => d.code));
 
 test("a pure helper may be called inside a query callback; one with an effect may not", () => {
-  const pure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(x) => x * 2")]);
+  const pure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (m == null) return; self.ttl = 1; }")], [fn("f", "(x) => x * 2")]);
   assert.deepEqual(lambdaErrors(pure)[0], []);
-  const impure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(o) => { o.ttl = 1; return 1; }")]);
+  const impure = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e) > 2); if (m == null) return; self.ttl = 1; }")], [fn("f", "(o) => { o.ttl = 1; return 1; }")]);
   assert.deepEqual(lambdaErrors(impure)[0], ["L006"]);
-  const unknown = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (!m) return; self.ttl = 1; }")], [fn("f", "(x) => nope")]);
+  const unknown = lowerProgram(environment, [frame("(self, w) => { const m = w.board.find((e) => f(e.ttl) > 2); if (m == null) return; self.ttl = 1; }")], [fn("f", "(x) => nope")]);
   // Changed 2026-11-25 (leaf 8vQJOw): was L014 at the caller; the helper's own L001 is the one diagnostic now.
   assert.deepEqual(lambdaErrors(unknown)[0], [], "the helper reports its own mistake");
   assert.equal(unknown.results[0].kernel, null, "a caller of a helper that does not lower has no kernel");

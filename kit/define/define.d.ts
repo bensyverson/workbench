@@ -104,8 +104,6 @@ export interface DialectDef {
   /** What a constant may call: `"pure"` lets it call a pure helper; `"none"`, the default, forbids every call. */
   constants?: { calls: ConstantCalls };
   environment?: (program: Record<string, any>) => EnvironmentAddition;
-  /** `"bool"`: a condition (an if or ternary test, an operand of ! && ||) must be a bool; a number there is an L error. Absent, any value is truthy. */
-  conditions?: "bool";
   /** What a helper may do: reads only. Absent, a read of each instance space's object. */
   helpers?: { may?: string[]; check?: HelperCheck };
   /** The text view: the Dialect's screen and state as characters, sized for a model. What `state` is, the Dialect says. Required (D020). */

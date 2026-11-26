@@ -30,15 +30,15 @@ const EVENT_FROM = "an Event output's from removed";
  * @type {Array<{ leg: string, role: "maze" | "particles" | "compose", massage: string[] }>}
  */
 export const RUNS = [
-  { leg: "r1-maze", role: "maze", massage: ["maze.dialect.js:82: " + EVENT_FROM, "maze.dialect.js:83: " + EVENT_FROM, "maze.dialect.js:84: " + EVENT_FROM, "maze.dialect.js:85: " + EVENT_FROM] },
+  { leg: "r1-maze", role: "maze", massage: ["maze.dialect.js:81: " + EVENT_FROM, "maze.dialect.js:82: " + EVENT_FROM, "maze.dialect.js:83: " + EVENT_FROM, "maze.dialect.js:84: " + EVENT_FROM] },
   { leg: "r1-particles", role: "particles", massage: [] },
-  { leg: "r1-compose", role: "compose", massage: ["maze/maze.dialect.js:82: " + EVENT_FROM, "maze/maze.dialect.js:83: " + EVENT_FROM, "maze/maze.dialect.js:84: " + EVENT_FROM, "maze/maze.dialect.js:85: " + EVENT_FROM] },
-  { leg: "r2-maze", role: "maze", massage: ["maze.dialect.js:72: " + EVENT_FROM] },
+  { leg: "r1-compose", role: "compose", massage: ["maze/maze.dialect.js:81: " + EVENT_FROM, "maze/maze.dialect.js:82: " + EVENT_FROM, "maze/maze.dialect.js:83: " + EVENT_FROM, "maze/maze.dialect.js:84: " + EVENT_FROM] },
+  { leg: "r2-maze", role: "maze", massage: ["maze.dialect.js:71: " + EVENT_FROM] },
   { leg: "r2-particles", role: "particles", massage: [] },
-  { leg: "r2-compose", role: "compose", massage: ["maze/maze.dialect.js:72: " + EVENT_FROM] },
-  { leg: "r3-maze", role: "maze", massage: ["maze.dialect.js:80: " + EVENT_FROM, "maze.dialect.js:85: " + EVENT_FROM, "maze.dialect.js:90: " + EVENT_FROM] },
+  { leg: "r2-compose", role: "compose", massage: ["maze/maze.dialect.js:71: " + EVENT_FROM] },
+  { leg: "r3-maze", role: "maze", massage: ["maze.dialect.js:79: " + EVENT_FROM, "maze.dialect.js:84: " + EVENT_FROM, "maze.dialect.js:89: " + EVENT_FROM] },
   { leg: "r3-particles", role: "particles", massage: [] },
-  { leg: "r3-compose", role: "compose", massage: ["maze/maze.dialect.js:80: " + EVENT_FROM, "maze/maze.dialect.js:85: " + EVENT_FROM, "maze/maze.dialect.js:90: " + EVENT_FROM] },
+  { leg: "r3-compose", role: "compose", massage: ["maze/maze.dialect.js:79: " + EVENT_FROM, "maze/maze.dialect.js:84: " + EVENT_FROM, "maze/maze.dialect.js:89: " + EVENT_FROM] },
 ];
 
 /** Every *.dialect.js under `dir`, relative to it. @param {string} dir @returns {string[]} */

@@ -61,7 +61,7 @@ test("statements record their effects and the kernel sums them", () => {
 });
 
 test("every node carries a type and a span inside the source", () => {
-  const src = "(self, w) => {\n  if (self.rise) self.rise--;\n  if (!self.up && (w.frame + self.stay) % 150 === 0) self.pop();\n}";
+  const src = "(self, w) => {\n  if (self.rise !== 0) self.rise--;\n  if (!self.up && (w.frame + self.stay) % 150 === 0) self.pop();\n}";
   const k = ok(src, "onFrame", "Mole", { sigs: { events: {}, methods: { "Mole.pop": { arity: 0, params: [], returns: "void", effects: ["write Mole.up"] } } } });
   const all = nodes(k.body);
   assert.ok(all.length > 10);
@@ -73,7 +73,7 @@ test("every node carries a type and a span inside the source", () => {
 });
 
 test("a statement-position update stores without a temporary", () => {
-  const k = ok("(self) => { if (self.rise) self.rise--; }");
+  const k = ok("(self) => { if (self.rise !== 0) self.rise--; }");
   const s = k.body[0];
   if (s.k !== "if") return assert.fail();
   assert.equal(s.test.k, "op");
@@ -112,7 +112,7 @@ test("a world attribute store carries the attribute's bounds", () => {
 });
 
 test("a filter callback inlines as a bounded loop that runs only in its branch", () => {
-  const src = "(w) => {\n  const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up));\n  if (!m) return;\n  m.up = true;\n}";
+  const src = "(w) => {\n  const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up));\n  if (m == null) return;\n  m.up = true;\n}";
   const k = ok(src, "timer", "World");
   const [decl, cond] = k.body;
   assert.equal(decl.k, "let", "the ternary's result is declared ahead of its branches");
@@ -140,7 +140,7 @@ test("a callback reads the enclosing lambda's locals", () => {
 });
 
 test("a canonical for loop bounded by a param lowers with its bound named", () => {
-  const k = ok("(w, e) => { for (let i = 0; i < w.param(\"burst\"); i++) { const s = w.spawn(\"sparks\", { x: 1 }); if (!s) break; s.life = 20 + w.rand(20); } }", "on", "World", { key: "burst", sigs: { events: { burst: { struct: { x: "f64" } } }, methods: {} } });
+  const k = ok("(w, e) => { for (let i = 0; i < w.param(\"burst\"); i++) { const s = w.spawn(\"sparks\", { x: 1 }); if (s == null) break; s.life = 20 + w.rand(20); } }", "on", "World", { key: "burst", sigs: { events: { burst: { struct: { x: "f64" } } }, methods: {} } });
   const f = k.body[0];
   if (f.k !== "for") return assert.fail();
   assert.equal(f.bound, "param burst");
@@ -186,10 +186,10 @@ test("a method call on an entity records the call and the callee's effects", () 
   assert.ok(k.effects.includes("write Mole.up"));
 });
 
-test("narrowing: if (m) and if (!m) return make an optional usable", () => {
-  ok("(w) => { const m = w.rng.pick(w.board.filter((m) => !m.up)); if (m) { m.up = true; m.ttl = 90; } }", "timer", "World");
-  ok("(w) => { const m = w.rng.pick(w.board); if (!m) return; m.up = true; }", "timer", "World");
-  ok("(w) => { const m = w.rng.pick(w.board); if (m && m.up) w.sfx(\"pop\"); }", "timer", "World");
+test("narrowing: if (m != null) and if (m == null) return make an optional usable", () => {
+  ok("(w) => { const m = w.rng.pick(w.board.filter((m) => !m.up)); if (m != null) { m.up = true; m.ttl = 90; } }", "timer", "World");
+  ok("(w) => { const m = w.rng.pick(w.board); if (m == null) return; m.up = true; }", "timer", "World");
+  ok("(w) => { const m = w.rng.pick(w.board); if (m != null && m.up) w.sfx(\"pop\"); }", "timer", "World");
 });
 
 test("a lambda with a parse or subset error reports those and no kernel", () => {

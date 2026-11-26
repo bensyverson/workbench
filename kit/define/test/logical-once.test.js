@@ -14,20 +14,17 @@ const mk = (/** @type {Record<string, unknown>} */ extra = {}) => {
   return (/** @type {string} */ src) => g.lower(g("x").k(src).build({})).diagnostics.map((x) => `${x.code} ${x.message}`);
 };
 
-for (const conditions of [undefined, "bool"]) {
-  const run = mk(conditions ? { conditions } : {});
-  const tag = `conditions: ${conditions ?? "default"}`;
-  test(`a number operand of || in a value is one L003 (${tag})`, () => {
-    const out = run("(p) => { const x = p.n || 2; return x; }");
-    assert.equal(out.length, 1, out.join("\n"));
-    assert.match(out[0], /^L003 '\|\|' in a value needs bools on both sides/);
-  });
-  test(`a number operand of && in a value is one L003 (${tag})`, () => {
-    const out = run("(p) => { const x = p.b && p.n; return 1; }");
-    assert.equal(out.length, 1, out.join("\n"));
-    assert.match(out[0], /^L003 '&&' in a value needs bools/);
-  });
-  test(`bool operands still lower (${tag})`, () => {
-    assert.deepEqual(run("(p) => { const x = p.b || p.b; return 1; }"), []);
-  });
-}
+const run = mk();
+test(`a number operand of || in a value is one L003`, () => {
+  const out = run("(p) => { const x = p.n || 2; return x; }");
+  assert.equal(out.length, 1, out.join("\n"));
+  assert.match(out[0], /^L003 '\|\|' in a value needs bools on both sides/);
+});
+test(`a number operand of && in a value is one L003`, () => {
+  const out = run("(p) => { const x = p.b && p.n; return 1; }");
+  assert.equal(out.length, 1, out.join("\n"));
+  assert.match(out[0], /^L003 '&&' in a value needs bools/);
+});
+test(`bool operands still lower`, () => {
+  assert.deepEqual(run("(p) => { const x = p.b || p.b; return 1; }"), []);
+});

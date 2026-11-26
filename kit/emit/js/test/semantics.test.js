@@ -120,22 +120,22 @@ test("logical operators and ternaries evaluate only what JavaScript evaluates", 
 });
 
 test("queries: find stops at the first match and yields undefined for none; empty some and every", () => {
-  assert.equal(same("(self, w) => { const m = w.board.find((m) => m.ttl > 3); if (m) w.score = m.ttl; }").state.score, 4);
+  assert.equal(same("(self, w) => { const m = w.board.find((m) => m.ttl > 3); if (m != null) w.score = m.ttl; }").state.score, 4);
   assert.equal(same("(self, w) => { const m = w.board.find((m) => m.ttl > 99); w.score = m === null ? 1 : 2; }").state.score, 2);
   assert.equal(same("(self, w) => { w.score = w.board.filter((m) => false).every((m) => m.up) ? 1 : 2; }").state.score, 1);
   assert.equal(same("(self, w) => { w.score = w.board.filter((m) => false).some((m) => true) ? 1 : 2; }").state.score, 2);
   same("(self, w) => { w.score = w.board.filter((m) => m.up).length; }");
   same("(self, w) => { w.score = w.board.reduce((a, m) => a + m.ttl, 10); }");
-  same("(self, w) => { const free = w.board.filter((m) => !m.up); const m = w.rng.pick(free); if (m) m.pop(); }");
+  same("(self, w) => { const free = w.board.filter((m) => !m.up); const m = w.rng.pick(free); if (m != null) m.pop(); }");
   same("(self, w) => { w.score = w.board.reduce((acc, m) => acc + m.ttl, w.rng.int(5)); }");
   same("(self, w) => { const k = 4; w.score = w.board.filter((m) => m.ttl >= k).length; }");
 });
 
-test("truthiness is JavaScript's: zero, the empty string and NaN are false", () => {
-  same("(self, w) => { if (self.rise) w.score = 1; else w.score = 2; }");
-  same("(self, w) => { w.score = !self.rise ? 3 : 4; }");
-  assert.equal(same("(self, w) => { if (self.group) w.score = 1; else w.score = 2; }").state.score, 2);
-  assert.equal(same("(self, w) => { if (self.rise / self.rise) w.score = 1; else w.score = 2; }").state.score, 2);
+test("explicit comparisons stand in for truthiness: zero, the empty string and NaN are false", () => {
+  same("(self, w) => { if (self.rise !== 0) w.score = 1; else w.score = 2; }");
+  same("(self, w) => { w.score = self.rise === 0 ? 3 : 4; }");
+  assert.equal(same("(self, w) => { if (self.group !== \"\") w.score = 1; else w.score = 2; }").state.score, 2);
+  assert.equal(same("(self, w) => { if (self.rise / self.rise > 0) w.score = 1; else w.score = 2; }").state.score, 2);
 });
 
 test("loops honor <, <=, break and continue", () => {

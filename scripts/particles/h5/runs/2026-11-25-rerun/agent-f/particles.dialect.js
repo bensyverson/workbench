@@ -103,7 +103,6 @@ export const particlesDialect = defineDialect({
 
   helpers: { check: "all" },                    // every top-level function is checked, called or not
 
-  conditions: "bool",
 
   params: { object: "Params", name: "$" },
 

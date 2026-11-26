@@ -21,7 +21,7 @@ Import only from `"kit/define"` and your own files. If other packages will be wi
 2. **Write the Dialect, then the Grammar**, starting from API.md's examples.
 3. **Run the check** your task names (for example `./check.sh`). It builds every example with the real kit and type-checks every lambda. Each problem prints as `<file>:<line>: <code> <message>`, then a `fix:` line.
 4. **Fix the first error, then rerun.** Definition errors (`D…`) come first, then builder errors (`B…`, including your own checks), then lambda errors (`L…`). **Lambda errors appear only once a Program builds clean.**
-5. **Prove the refusals.** For each mistake your spec says the language must refuse, write a Program with that one mistake, check that it fails with a clear message, then delete it (or keep it where your task says). Most lambda strictness is off by default: see API.md's first bullet under `defineDialect`.
+5. **Prove the refusals.** For each mistake your spec says the language must refuse, write a Program with that one mistake, check that it fails with a clear message, then delete it (or keep it where your task says). Most lambda strictness is off by default: see API.md's pitfalls under `defineDialect`. Conditions are the exception: a Program's tests must be bools in every Dialect (an optional is `m == null` / `m != null`, a number `n !== 0`, a string `s !== ""`), or L003.
 
 ## When the API can't express something
 

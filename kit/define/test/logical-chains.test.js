@@ -18,38 +18,35 @@ const mk = (/** @type {Record<string, unknown>} */ extra = {}) => {
   };
 };
 
-for (const conditions of [undefined, "bool"]) {
-  const run = mk(conditions ? { conditions } : {});
-  const tag = `(${conditions ?? "default"})`;
-  test(`left non-bool, right an unknown member: both reported ${tag}`, () => {
-    const out = run("(p) => { const x = p.n || p.zz; return 1; }");
-    assert.equal(out.length, 2, out.join("\n"));
-    assert.match(out.join("\n"), /L003/); assert.match(out.join("\n"), /L002/);
-  });
-  test(`left non-bool, right writes a member outside may: L004 still reported ${tag}`, () => {
-    const out = run("(p) => { const x = p.n || ((p.m = 1) > 0); return 1; }");
-    assert.ok(out.some((d) => d.startsWith("L004")), out.join("\n"));
-  });
-  test(`left an unknown member, right bool: one L002 ${tag}`, () => {
-    const out = run("(p) => { const x = p.zz || p.b; return 1; }");
-    assert.deepEqual(out.map((d) => d.slice(0, 4)), ["L002"]);
-  });
-  test(`nested chains give one L003 ${tag}`, () => {
-    for (const src of ["(p) => { const x = (p.n || 2) || p.b; return 1; }", "(p) => { const x = p.b && (p.n || 1); return 1; }", "(p) => { const x = p.b && p.b || p.n; return 1; }", "(p) => { const x = p.n && p.n && p.n; return 1; }"]) {
-      const out = run(src);
-      assert.equal(out.length, 1, `${src}\n${out.join("\n")}`);
-    }
-  });
-  test(`bool chains still lower ${tag}`, () => {
-    for (const src of ["(p) => { const x = p.b && (p.n > 1 || p.b); return x ? 1 : 0; }", "(p) => { const x = !(p.b || p.b) && p.n < 2; return x ? 1 : 0; }", "(p) => { const x = p.b ? (p.b || p.b) : false; return x ? 1 : 0; }", "(p) => (p.b && p.b) ? 1 : 2"]) {
-      assert.deepEqual(run(src), [], src);
-    }
-  });
-  test(`right side's effect inside && lowers when operands are bool ${tag}`, () => {
-    assert.deepEqual(run("(p) => { const x = p.b && ((p.n = 1) > 0); return x ? 1 : 0; }"), []);
-  });
-  test(`a test of a non-bool || is one diagnostic or none ${tag}`, () => {
-    const out = run("(p) => { if (p.n || p.b) return 1; return 2; }");
-    assert.equal(out.length, conditions ? 1 : 0, out.join("\n"));
-  });
-}
+const run = mk();
+test(`left non-bool, right an unknown member: both reported`, () => {
+  const out = run("(p) => { const x = p.n || p.zz; return 1; }");
+  assert.equal(out.length, 2, out.join("\n"));
+  assert.match(out.join("\n"), /L003/); assert.match(out.join("\n"), /L002/);
+});
+test(`left non-bool, right writes a member outside may: L004 still reported`, () => {
+  const out = run("(p) => { const x = p.n || ((p.m = 1) > 0); return 1; }");
+  assert.ok(out.some((d) => d.startsWith("L004")), out.join("\n"));
+});
+test(`left an unknown member, right bool: one L002`, () => {
+  const out = run("(p) => { const x = p.zz || p.b; return 1; }");
+  assert.deepEqual(out.map((d) => d.slice(0, 4)), ["L002"]);
+});
+test(`nested chains give one L003`, () => {
+  for (const src of ["(p) => { const x = (p.n || 2) || p.b; return 1; }", "(p) => { const x = p.b && (p.n || 1); return 1; }", "(p) => { const x = p.b && p.b || p.n; return 1; }", "(p) => { const x = p.n && p.n && p.n; return 1; }"]) {
+    const out = run(src);
+    assert.equal(out.length, 1, `${src}\n${out.join("\n")}`);
+  }
+});
+test(`bool chains still lower`, () => {
+  for (const src of ["(p) => { const x = p.b && (p.n > 1 || p.b); return x ? 1 : 0; }", "(p) => { const x = !(p.b || p.b) && p.n < 2; return x ? 1 : 0; }", "(p) => { const x = p.b ? (p.b || p.b) : false; return x ? 1 : 0; }", "(p) => (p.b && p.b) ? 1 : 2"]) {
+    assert.deepEqual(run(src), [], src);
+  }
+});
+test(`right side's effect inside && lowers when operands are bool`, () => {
+  assert.deepEqual(run("(p) => { const x = p.b && ((p.n = 1) > 0); return x ? 1 : 0; }"), []);
+});
+test(`a test of a non-bool || is one diagnostic`, () => {
+  const out = run("(p) => { if (p.n || p.b) return 1; return 2; }");
+  assert.equal(out.length, 1, out.join("\n"));
+});

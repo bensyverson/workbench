@@ -49,7 +49,7 @@ test("an empty array literal is still not lowered: it has no item type", () => {
 });
 
 test("array literals nest, and the items of a checked item are known, since each nested literal has a length", () => {
-  const k = ok("(self, w) => { const pts = [[3, 2], [12, 2], [3, 11]]; const p = pts[w.next]; if (!p) return; const [x, y] = p; if (x && y) w.score = x + y; }");
+  const k = ok("(self, w) => { const pts = [[3, 2], [12, 2], [3, 11]]; const p = pts[w.next]; if (p == null) return; const [x, y] = p; if (x !== 0 && y !== 0) w.score = x + y; }");
   assert.deepEqual(localType(k, "pts"), { list: { list: "f64", max: 2, len: 2 }, max: 3, len: 3 });
   assert.equal(localType(k, "x"), "f64");
   assert.deepEqual(localType(k, "p"), { opt: { list: "f64", max: 2, len: 2 } });
@@ -70,7 +70,7 @@ test("an array literal's items are evaluated in order, and their effects count",
 });
 
 test("an array literal prints and emits as an array literal, and runs like the source", () => {
-  const k = ok("(self, w) => { const a = [5, 0, 7]; const v = a[w.next]; w.score = v ? v : 99; }");
+  const k = ok("(self, w) => { const a = [5, 0, 7]; const v = a[w.next]; w.score = v != null && v > 0 ? v : 99; }");
   assert.match(printKernel(k), /\[5, 0, 7\]/);
   const emitted = emitKernel(k);
   const js = emitted.source;
@@ -97,7 +97,7 @@ test("an array literal in a constant is baked into each use", () => {
 });
 
 test("a constant of numbers can be a loop's bound by its length", () => {
-  const src = "(self, w) => { for (let i = 0; i < OFFS.length; i++) w.score += OFFS[i] ? 1 : 0; }";
+  const src = "(self, w) => { for (let i = 0; i < OFFS.length; i++) w.score += OFFS[i] != null ? 1 : 0; }";
   const r = lowerProgram(environment, [{ src, slot: { id: "Hammer.onFrame#0", kind: "onFrame", on: "Hammer" } }], [{ name: "OFFS", kind: "const", src: "[1, 2, 3]" }]);
   assert.deepEqual(r.results[0].diagnostics.map((d) => `${d.code} ${d.message}`), []);
 });
@@ -138,7 +138,7 @@ test("lists with no known length stay possibly empty", () => {
   assert.deepEqual(board, { opt: { ref: "Mole" } });
   const filtered = localType(ok("(self, w) => { const f = w.board.filter((m) => m.up); const x = f[0]; }"), "x");
   assert.deepEqual(filtered, { opt: { ref: "Mole" } });
-  const r = lower("(self, w) => { const [m] = w.board; if (m) w.score = 1; }", "onFrame", "Hammer");
+  const r = lower("(self, w) => { const [m] = w.board; if (m != null) w.score = 1; }", "onFrame", "Hammer");
   assert.deepEqual(codes(r), []);
   const k = ok("(self, w) => { const [m] = w.board; }");
   assert.deepEqual(localType(k, "m"), { opt: { ref: "Mole" } });

@@ -56,7 +56,7 @@ test("operators keep JavaScript's precedence and meaning", () => {
 });
 
 test("a ternary evaluates only the branch taken, and queries inline as loops", () => {
-  const src = "(w) => { const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up)); w.next = (w.next + 1) % 9; if (!m) return; m.up = true; }";
+  const src = "(w) => { const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up)); w.next = (w.next + 1) % 9; if (m == null) return; m.up = true; }";
   const { out, fn } = emit(src, "timer", "World");
   assert.doesNotMatch(out.source, /=>/, "no closure exists at run time");
   assert.match(out.source, /^ {2}if \(w\.param\("order"\) === "sweep"\) \{$/m, "a statement's own expression drops its outer parentheses");
@@ -75,7 +75,7 @@ test("a ternary evaluates only the branch taken, and queries inline as loops", (
 });
 
 test("find yields undefined when nothing matches; some, every and reduce", () => {
-  const { fn } = emit("(w) => { const a = w.board.find((m) => m.ttl > 5); const b = w.board.some((m) => m.up); const c = w.board.every((m) => m.up); const d = w.board.reduce((n, m) => n + m.ttl, 0); return (a ? a.ttl * 1000 : 0) + (b ? 100 : 0) + (c ? 10 : 0) + d; }", "every", "World");
+  const { fn } = emit("(w) => { const a = w.board.find((m) => m.ttl > 5); const b = w.board.some((m) => m.up); const c = w.board.every((m) => m.up); const d = w.board.reduce((n, m) => n + m.ttl, 0); return (a != null ? a.ttl * 1000 : 0) + (b ? 100 : 0) + (c ? 10 : 0) + d; }", "every", "World");
   const board = Object.assign([{ up: true, ttl: 1 }, { up: false, ttl: 2 }], { at: () => null });
   assert.equal(fn({ board }), 100 + 3);
   board[1].ttl = 9;
@@ -89,7 +89,7 @@ test("find yields undefined when nothing matches; some, every and reduce", () =>
 test("a counted loop with break, spawn, struct literals and a postfix value", () => {
   /** @type {Signatures} */
   const sigs = { events: { burst: { struct: { x: "f64", y: "f64" } } }, methods: {} };
-  const { fn } = emit("(w, e) => { for (let i = 0; i < w.param(\"burst\"); i++) { const s = w.spawn(\"sparks\", { x: e.x, y: e.y }); if (!s) break; s.life = 20 + w.rand(20); } }", "on", "World", { key: "burst", sigs });
+  const { fn } = emit("(w, e) => { for (let i = 0; i < w.param(\"burst\"); i++) { const s = w.spawn(\"sparks\", { x: e.x, y: e.y }); if (s == null) break; s.life = 20 + w.rand(20); } }", "on", "World", { key: "burst", sigs });
   /** @type {Array<Record<string, unknown>>} */
   const spawned = [];
   const w = { param: () => 5, rand: () => 3, spawn: (/** @type {string} */ _p, /** @type {Record<string, unknown>} */ init) => (spawned.length < 2 ? (spawned.push({ ...init }), spawned[spawned.length - 1]) : null) };

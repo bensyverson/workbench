@@ -8,7 +8,7 @@ import { defineDialect, defineGrammar, defineUI, run, exact, vector, list, struc
 const make = (numberType) => {
   const types = numberType === "f32" ? { vec2: vector(2, "f32") } : { vec2: vector(2, "f64") };
   const d = defineDialect({
-    name: "m" + numberType, numberType, conditions: "bool", types,
+    name: "m" + numberType, numberType, types,
     spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
     slots: { v: { params: [], returns: numberType, space: "s" } }, text: () => "",
     state: { label: "str", center: "vec2", bodies: list(struct({ mass: numberType }), 5), names: list("str", 5) },

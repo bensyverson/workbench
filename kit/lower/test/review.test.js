@@ -82,7 +82,7 @@ test("an indexed list item is possibly empty (L008) until checked; a dynamic nam
   assert.deepEqual(codes(r), ["L008"]);
   assert.deepEqual(codes(lower("(self, w) => { w.score = w.board[1].ttl; }")), ["L008"]);
   assert.deepEqual(codes(lower("(self, w) => { w.board[0].pop(); }")), ["L008"]);
-  assert.deepEqual(codes(lower("(self, w) => { const m = w.board[0]; if (m) m.pop(); }")), []);
+  assert.deepEqual(codes(lower("(self, w) => { const m = w.board[0]; if (m != null) m.pop(); }")), []);
   assert.deepEqual(codes(lower("(self) => { const k = \"up\"; self[k] = false; }")), ["L009"]);
   assert.deepEqual(codes(lower("(self) => { const k = \"pop\"; self[k](); }")), ["L009"]);
 });
@@ -108,16 +108,16 @@ test("a void call returned from a void slot lowers; a value still does not", () 
   assert.deepEqual(codes(lower("(self, w) => { return self.ttl; }")), ["L003"]);
 });
 
-test("present tests a possibly-empty entity; any other value tests truthiness", () => {
+test("a null check tests a possibly-empty entity as present; truthiness of any other value is refused", () => {
   const ops = (/** @type {Kernel} */ k) => printKernel(k).match(/\b(present|truthy)\b/g) ?? [];
-  assert.deepEqual(ops(ok("(self, w) => { const m = w.rng.pick(w.board); if (m) m.pop(); }")), ["present"]);
-  assert.deepEqual(ops(ok("(self, w) => { const v = self.up ? 0 : null; if (v) w.score = 1; }")), ["truthy"]);
-  assert.deepEqual(ops(ok("(self, w) => { if (self.ttl) w.score = 1; }")), ["truthy"]);
+  assert.deepEqual(ops(ok("(self, w) => { const m = w.rng.pick(w.board); if (m != null) m.pop(); }")), ["present"]);
+  assert.deepEqual(codes(lower("(self, w) => { const v = self.up ? 0 : null; if (v) w.score = 1; }")), ["L003"]);
+  assert.deepEqual(codes(lower("(self, w) => { if (self.ttl) w.score = 1; }")), ["L003"]);
   const prog = lowerProgram(environment, [
     { src: "(self) => { if (self.up) return false; }", slot: { id: "Mole.method(whack)", kind: "method", on: "Mole", key: "whack" } },
     { src: "(self, w) => { if (self.whack()) w.score = 1; }", slot: { id: "Mole.onFrame#0", kind: "onFrame", on: "Mole" } },
   ]);
-  assert.deepEqual(ops(/** @type {Kernel} */ (prog.results[1].kernel)), ["truthy"]);
+  assert.deepEqual(prog.results[1].diagnostics.map((d) => d.code), ["L003"], "a method that may return nothing is not a bool");
 });
 
 test("a name read in its own temporal dead zone is rejected, where it would read the outer name", () => {
@@ -138,7 +138,7 @@ test("a name read in its own temporal dead zone is rejected, where it would read
 
 test("a callback parameter or a later declaration may reuse a name that is still being declared", () => {
   for (const src of [
-    "(self, w) => { const m = w.board.find((m) => m.up); if (!m) return; self.ttl = m.ttl; }",
+    "(self, w) => { const m = w.board.find((m) => m.up); if (m == null) return; self.ttl = m.ttl; }",
     "(self, w) => { const x = 1; const y = x + 1; self.ttl = y; }",
     "(self, w) => { const x = 1; { const x = 2; self.ttl = x; } }",
     "(self, w) => { for (const m of w.board) { self.ttl = m.ttl; } }",
@@ -149,7 +149,7 @@ test("the dead zone runs from the start of the block: a read before a later decl
   for (const src of [
     "(self, w) => { const x = 1; { const y = x + 1; const x = 2; self.ttl = y + x; } }",
     "(self, w) => { const b = 5; { const a = b, b = 1; self.ttl = a + b; } }",
-    "(self, w) => { const n = 3; { const m = w.board.find((e) => e.ttl > n); const n = 1; if (!m) return; self.ttl = n; } }",
+    "(self, w) => { const n = 3; { const m = w.board.find((e) => e.ttl > n); const n = 1; if (m == null) return; self.ttl = n; } }",
     "(self, w) => { const x = 1; { { self.ttl = x; } const x = 2; } }",
     "(self, w) => { const x = 1; { for (const m of w.board) { self.ttl = x + m.ttl; } const x = 2; } }",
     "(self, w) => { self.ttl = x; const x = 1; }",
@@ -167,7 +167,7 @@ test("blocks keep their own names: siblings do not interfere, later reads are fi
     "(self, w) => { const x = 1; { const x = 2; self.ttl = x; } self.ttl = self.ttl + x; }",
     "(self, w) => { { const x = 1; self.ttl = x; } const x = 2; self.ttl = self.ttl + x; }",
     "(self, w) => { let x = 0; if (self.up) { x = 5; } self.ttl = x; }",
-    "(self, w) => { const m = w.rng.pick(w.board); if (!m) return; const y = m.ttl; self.ttl = y; }",
+    "(self, w) => { const m = w.rng.pick(w.board); if (m == null) return; const y = m.ttl; self.ttl = y; }",
   ]) {
     assert.deepEqual(codes(lower(src)), [], src);
   }

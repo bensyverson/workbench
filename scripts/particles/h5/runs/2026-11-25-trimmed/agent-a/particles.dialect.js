@@ -28,7 +28,6 @@ function textView(state) {
 export const particlesDialect = defineDialect({
   name: "particles",
   numberType: "f64",
-  conditions: "bool",
   helpers: { check: "all", may: ["read Particle"] },
   types: {
     vec2: vector(2, "f64", { multiply: "scalar" }),

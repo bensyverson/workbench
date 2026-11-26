@@ -63,7 +63,7 @@ test("a scalar is passed, stored in a local, returned and chosen as itself", () 
   assert.deepEqual(ok(`${P} a < b ? a : b`, "pick").returns, DATE);
   assert.deepEqual(ok(`${P} r.due`, "pick").returns, DATE);
   // As an optional number does, an optional scalar narrows by its truthiness (JavaScript's: one stored as 0 reads as absent).
-  assert.equal(ok(`${P} { const x = o; if (x && x < a) return true; return false; }`).returns, "bool");
+  assert.equal(ok(`${P} { const x = o; if (x != null && x < a) return true; return false; }`).returns, "bool");
 });
 
 test("a scalar never meets an arithmetic, sign, bitwise or update operator", () => {

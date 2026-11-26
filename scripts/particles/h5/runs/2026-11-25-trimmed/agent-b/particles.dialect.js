@@ -18,7 +18,6 @@ export const particlesDialect = defineDialect({
   name: "particles",
   numberType: "f64",
   types: { vec2: vector(2, "f64", { multiply: "scalar" }) },
-  conditions: "bool",
   spaces: { pure: { pure: true }, particle: { instance: "Particle" } },
   objects: {
     Math: {

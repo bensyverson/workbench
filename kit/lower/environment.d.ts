@@ -115,8 +115,6 @@ export interface Environment {
   vectorMultiply?: Record<string, "scalar">;
   /** True when every top-level helper is lowered, called or not (`helpers: { check: "all" }`): one nothing calls has no call site to type its parameters, which then stay unknown and quiet instead of L014. */
   checkAllHelpers?: true;
-  /** `"bool"`: a condition must be a bool, so a number as an if or ternary test or a ! && || operand is L003. */
-  conditions?: "bool";
   /**
    * The type of a number literal where nothing else gives it one: a let's initializer, a helper's
    * argument, a ternary of literals, a for counter. Defaults to `f64`. A literal elsewhere takes the

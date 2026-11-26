@@ -70,8 +70,8 @@ test("npm test and npm run test:prerelease preload the module that turns the swi
 test("with the switch on, valid lambdas lower as before", () => {
   for (const src of [
     "(self) => { if (self.up && --self.ttl === 0) self.up = false; }",
-    "(self, w) => { for (let i = 0; i < w.param(\"burst\"); i++) { const s = w.spawn(\"sparks\"); if (s) s.vx = i; } }",
-    "(self, w) => { const m = w.board.filter((b) => !b.up).find((b) => b.ttl > 0); if (m) m.up = true; }",
+    "(self, w) => { for (let i = 0; i < w.param(\"burst\"); i++) { const s = w.spawn(\"sparks\"); if (s != null) s.vx = i; } }",
+    "(self, w) => { const m = w.board.filter((b) => !b.up).find((b) => b.ttl > 0); if (m != null) m.up = true; }",
   ]) {
     const r = lowerWith(true, src);
     assert.deepEqual(codes(r), [], src);

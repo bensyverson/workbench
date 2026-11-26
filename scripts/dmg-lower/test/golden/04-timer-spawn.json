@@ -251,37 +251,37 @@
             "k": "op",
             "op": "present",
             "args": [
-              { "k": "local", "name": "m", "t": { "opt": { "ref": "Mole" } }, "span": [157, 158] }
+              { "k": "local", "name": "m", "t": { "opt": { "ref": "Mole" } }, "span": [156, 157] }
             ],
             "t": "bool",
-            "span": [157, 158]
+            "span": [156, 165]
           }
         ],
         "t": "bool",
-        "span": [156, 158]
+        "span": [156, 165]
       },
-      "then": [{ "k": "return", "value": null, "span": [160, 167], "effects": [] }],
+      "then": [{ "k": "return", "value": null, "span": [167, 174], "effects": [] }],
       "else": [],
-      "span": [152, 167],
+      "span": [152, 174],
       "effects": []
     },
     {
       "k": "store",
       "place": {
-        "recv": { "k": "local", "name": "m", "t": { "ref": "Mole" }, "span": [172, 173] },
+        "recv": { "k": "local", "name": "m", "t": { "ref": "Mole" }, "span": [179, 180] },
         "owner": "Mole",
         "name": "up",
         "t": "bool",
         "store": { "type": "bool" }
       },
-      "value": { "k": "bool", "v": true, "t": "bool", "span": [179, 183] },
-      "span": [172, 183],
+      "value": { "k": "bool", "v": true, "t": "bool", "span": [186, 190] },
+      "span": [179, 190],
       "effects": ["write Mole.up"]
     },
     {
       "k": "store",
       "place": {
-        "recv": { "k": "local", "name": "m", "t": { "ref": "Mole" }, "span": [189, 190] },
+        "recv": { "k": "local", "name": "m", "t": { "ref": "Mole" }, "span": [196, 197] },
         "owner": "Mole",
         "name": "ttl",
         "t": "f64",
@@ -294,18 +294,18 @@
           {
             "k": "call",
             "fn": "World.param",
-            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [197, 198] },
-            "args": [{ "k": "str", "v": "linger", "t": { "enum": ["linger"] }, "span": [205, 213] }],
+            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [204, 205] },
+            "args": [{ "k": "str", "v": "linger", "t": { "enum": ["linger"] }, "span": [212, 220] }],
             "effects": ["read param linger"],
             "t": "f64",
-            "span": [197, 214]
+            "span": [204, 221]
           },
-          { "k": "num", "v": 60, "t": "f64", "span": [217, 219] }
+          { "k": "num", "v": 60, "t": "f64", "span": [224, 226] }
         ],
         "t": "f64",
-        "span": [197, 219]
+        "span": [204, 226]
       },
-      "span": [189, 219],
+      "span": [196, 226],
       "effects": ["read param linger", "write Mole.ttl"]
     },
     {
@@ -313,11 +313,11 @@
       "test": {
         "k": "call",
         "fn": "World.param",
-        "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [229, 230] },
-        "args": [{ "k": "str", "v": "sound", "t": { "enum": ["sound"] }, "span": [237, 244] }],
+        "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [236, 237] },
+        "args": [{ "k": "str", "v": "sound", "t": { "enum": ["sound"] }, "span": [244, 251] }],
         "effects": ["read param sound"],
         "t": "bool",
-        "span": [229, 245]
+        "span": [236, 252]
       },
       "then": [
         {
@@ -325,18 +325,18 @@
           "value": {
             "k": "call",
             "fn": "World.sfx",
-            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [247, 248] },
-            "args": [{ "k": "str", "v": "pop", "t": { "enum": ["pop"] }, "span": [253, 258] }],
+            "recv": { "k": "local", "name": "w", "t": { "obj": "World" }, "span": [254, 255] },
+            "args": [{ "k": "str", "v": "pop", "t": { "enum": ["pop"] }, "span": [260, 265] }],
             "effects": ["sfx pop"],
             "t": "void",
-            "span": [247, 259]
+            "span": [254, 266]
           },
-          "span": [247, 259],
+          "span": [254, 266],
           "effects": ["sfx pop"]
         }
       ],
       "else": [],
-      "span": [225, 260],
+      "span": [232, 267],
       "effects": ["read param sound"]
     }
   ],
@@ -352,6 +352,6 @@
     "read param sound",
     "sfx pop"
   ],
-  "src": "(w) => {\n    const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up));\n    w.next = (w.next + 1) % 9;\n    if (!m) return;\n    m.up = true;\n    m.ttl = w.param(\"linger\") * 60;\n    if (w.param(\"sound\")) w.sfx(\"pop\");\n  }",
-  "span": [0, 264]
+  "src": "(w) => {\n    const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up));\n    w.next = (w.next + 1) % 9;\n    if (m == null) return;\n    m.up = true;\n    m.ttl = w.param(\"linger\") * 60;\n    if (w.param(\"sound\")) w.sfx(\"pop\");\n  }",
+  "span": [0, 271]
 }

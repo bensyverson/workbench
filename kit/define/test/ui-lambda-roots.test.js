@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, defineUI, exact, vector, enumOf, opt, struct, list, name, DefinitionError } from "../index.js";
 
 const dialectSrc = () => ({
-  name: "orbits", numberType: "f64", conditions: "bool",
+  name: "orbits", numberType: "f64",
   types: { vec2: vector(2, "f64", { aliases: { u: "x", v: "y" } }) },
   spaces: { s: { pure: true } },
   objects: {

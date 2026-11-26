@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, defineUI, run, exact, struct, list, opt, name, data, lambda, DefinitionError } from "../index.js";
 
 const base = (extra = {}) => ({
-  name: "open", numberType: "f64", conditions: "bool",
+  name: "open", numberType: "f64",
   spaces: { s: { pure: true } }, targets: { js: { accepts: "*", compare: exact() } },
   slots: { v: { params: [], returns: "f64", space: "s" } }, text: () => "", ...extra,
 });

@@ -487,7 +487,7 @@ export function binary(L, operator, a, b, node) {
 }
 
 /**
- * Lowers `node` where only its truthiness matters, returning a bool.
+ * Lowers `node` as a condition: it must be a bool, and anything else is L003.
  * @param {Lowerer} L
  * @param {AST.Expression} node
  * @returns {Expr}
@@ -498,25 +498,22 @@ export function test(L, node) {
   const e = expr(L, node);
   if (e.t === "bool" || e.t === "unknown") return e;
   if (scalarTest(L, node, e.t)) return bad(node);
-  if (L.environment.conditions === "bool") {
-    const text = L.src.slice(node.range[0], node.range[1]);
-    L.error("L003", node, `${describe(e.t)} is not a condition: this Dialect takes only a bool there.`, typeof e.t === "object" && "vec" in e.t ? `Test a component: ${text}.x !== 0.` : `Compare it: ${text} !== 0, ${text} > 0, or whatever you mean.`);
-    return bad(node);
-  }
-  if (typeof e.t === "object" && "vec" in e.t) L.error("L003", node, "A vector is always true as a condition.", `Test a component instead: if (${L.src.slice(node.range[0], node.range[1])}.x !== 0).`);
-  const op =typeof e.t === "object" && "opt" in e.t && isEntity(e.t.opt) ? "present" : "truthy";
-  return L.ex({ k: "op", op, args: [e], t: "bool", span: e.span });
+  const text = L.src.slice(node.range[0], node.range[1]);
+  L.error("L003", node, `${describe(e.t)} is not a condition: a condition is a bool.`, conditionTip(e.t, text));
+  return bad(node);
 }
 
 /**
- * Whether every value of `t` is an entity reference, which is never falsy.
+ * The explicit form of a test of `text`, whose type is `t`.
  * @param {Type} t
- * @returns {boolean}
+ * @param {string} text
+ * @returns {string}
  */
-function isEntity(t) {
-  if (typeof t !== "object") return false;
-  if ("ref" in t) return true;
-  return "union" in t && t.union.every(isEntity);
+function conditionTip(t, text) {
+  if (typeof t === "object" && "opt" in t) return `Test for absence explicitly: ${text} == null (absent) or ${text} != null (present); it also narrows a const.`;
+  if (typeof t === "object" && "vec" in t) return `Test a component: ${text}.x !== 0.`;
+  if (t === "str" || (typeof t === "object" && "enum" in t)) return `Compare it: ${text} !== "" (not empty).`;
+  return `Compare it: ${text} !== 0, ${text} > 0, or whatever you mean.`;
 }
 
 /**
@@ -526,6 +523,7 @@ function isEntity(t) {
  * @returns {{ yes: string[], no: string[] }}
  */
 export function facts(L, node) {
+  // A bare optional is refused as a condition (L003), but it still narrows, so the one mistake is not reported again where the value is used.
   if (node.type === "Identifier") {
     const b = L.lookup(node.name);
     if (b && b.kind === "const" && typeof b.t === "object" && "opt" in b.t) return { yes: [b.name], no: [] };

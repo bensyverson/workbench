@@ -9,7 +9,6 @@ import { defineDialect, defineGrammar, exact, list, struct, vector, name, ref, d
 export const mazeDecl = () => ({
   name: "maze",
   numberType: "f64",
-  conditions: "bool",
   types: { cell2: vector(2, "f64") },
   spaces: { player: { instance: "Player" } },
   objects: {
@@ -50,7 +49,6 @@ export const mazeDecl = () => ({
 export const particlesDecl = () => ({
   name: "particles",
   numberType: "f64",
-  conditions: "bool",
   types: { vec2: vector(2, "f64", { multiply: "scalar" }) },
   spaces: { emitter: { pure: true }, particle: { instance: "Particle" } },
   objects: {

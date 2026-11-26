@@ -5,7 +5,6 @@ import { defineDialect, exact, struct, list } from "kit/define";
 export const mazeDialect = defineDialect({
   name: "maze",
   numberType: "f64",
-  conditions: "bool",
   spaces: {
     // control runs once per tick, handed the player, and may change only the player's intent.
     player: { instance: "Player" },

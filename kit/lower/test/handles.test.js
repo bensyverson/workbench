@@ -109,7 +109,7 @@ test("L018: a helper's parameter that receives a handle, aliased inside the help
 });
 
 test("DMG: a value of object type bound to a local stays legal, as before (w.spawn, for…of over the board)", () => {
-  assert.deepEqual(errs(lower("(self, w) => { const m = w.spawn(\"sparks\"); if (m) m.life = 3; for (const k of w.board) k.up = false; }")), []);
+  assert.deepEqual(errs(lower("(self, w) => { const m = w.spawn(\"sparks\"); if (m != null) m.life = 3; for (const k of w.board) k.up = false; }")), []);
 });
 
 test("a non-callable handle passed whole to a Dialect method lowers, as to a helper (coordinator, 2026-11-25)", () => {

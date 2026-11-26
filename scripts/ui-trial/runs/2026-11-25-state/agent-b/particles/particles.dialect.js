@@ -7,7 +7,6 @@ export const particlesDialect = defineDialect({
   name: "particles",
   numberType: "f64",
   // Sheet: every condition is a boolean; vectors multiply by a number only.
-  conditions: "bool",
   types: {
     vec2: vector(2, "f64", { multiply: "scalar" }),
   },

@@ -230,7 +230,6 @@ function environmentOf(def, { vectors, scalars }, componentAliases, vectorMultip
     vectors,
     componentAliases,
     ...(Object.keys(vectorMultiply).length ? { vectorMultiply } : {}),
-    ...(def.conditions ? { conditions: def.conditions } : {}),
     ...(def.helpers?.check === "all" ? { checkAllHelpers: true } : {}),
     numberType: def.numberType,
     conversions: { ...(def.conversions ?? {}) },

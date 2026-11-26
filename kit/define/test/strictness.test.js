@@ -1,6 +1,6 @@
-// The Definition API's lowering strictness (decision MpZZsU, items 2, 3, 4, 6, 7): `conditions: "bool"`, a vector's
+// The Definition API's lowering strictness (decision MpZZsU, items 2, 3, 4, 6, 7): boolean-only conditions (always on), a vector's
 // `multiply: "scalar"`, a value must be returned on every path (on by default), a convention's `body: "block"`, and
-// one diagnostic after a parameter-count error. Each new strictness is opt-in except the returns check.
+// one diagnostic after a parameter-count error. Each strictness is opt-in except the returns check and boolean-only conditions.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, exact, vector, opt, name, lambda, DefinitionError } from "../index.js";
@@ -29,10 +29,8 @@ const harness = (o = {}) => {
   };
 };
 
-const BOOL = { dialect: { conditions: "bool" } };
-
 test("conditions: a number as an if, ternary or ! operand is one L003; a bool still works", () => {
-  const run = harness({ ...BOOL, conv: { returns: "void" } });
+  const run = harness({ conv: { returns: "void" } });
   assert.deepEqual(run("(p) => { if (p.n) { p.n; } }"), ["L003"]);
   assert.deepEqual(run("(p) => { const x = p.n ? 1 : 2; }"), ["L003"]);
   assert.deepEqual(run("(p) => { if (!p.n) { p.n; } }"), ["L003"]);
@@ -41,24 +39,18 @@ test("conditions: a number as an if, ternary or ! operand is one L003; a bool st
 });
 
 test("conditions: a number operand of && or || in a condition is one L003 each", () => {
-  const run = harness({ ...BOOL, conv: { returns: "void" } });
+  const run = harness({ conv: { returns: "void" } });
   assert.deepEqual(run("(p) => { if (p.n > 1 && p.n) { p.n; } }"), ["L003"]);
   assert.deepEqual(run("(p) => { if (p.n || p.n < 0.5) { p.n; } }"), ["L003"]);
 });
 
 test("conditions: a vector as a condition is one diagnostic, not two", () => {
-  const run = harness({ ...BOOL, conv: { returns: "void" } });
+  const run = harness({ conv: { returns: "void" } });
   assert.deepEqual(run("(p) => { if (p.v) { p.n; } }"), ["L003"]);
 });
 
-test("conditions: the default still takes a number as a condition", () => {
-  const run = harness({ conv: { returns: "void" } });
-  assert.deepEqual(run("(p) => { if (p.n) { p.n; } }"), []);
-  assert.deepEqual(run("(p) => { const x = p.n ? 1 : 2; }"), []);
-});
-
-test("conditions: only \"bool\" is a value", () => {
-  assert.throws(() => harness({ dialect: { conditions: "number" } }), (e) => e instanceof DefinitionError && e.diagnostics.some((d) => d.code === "D011" && d.path[0] === "conditions"));
+test("conditions: the option is gone, so naming it is an unknown key", () => {
+  assert.throws(() => harness({ dialect: { conditions: "bool" } }), (e) => e instanceof DefinitionError);
 });
 
 test("multiply: \"scalar\" refuses vector * vector (one L003), and keeps vector * number, number * vector and vector + vector", () => {

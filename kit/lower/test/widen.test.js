@@ -113,7 +113,7 @@ test("indexing a list gives a possibly-empty item that must be checked", () => {
 });
 
 test("an indexed item narrows once checked", () => {
-  const k = ok("(self, w) => { const m = w.board[w.next]; if (m) m.up = true; if (!m) return; m.ttl = 3; }", "onFrame", "Hammer");
+  const k = ok("(self, w) => { const m = w.board[w.next]; if (m != null) m.up = true; if (m == null) return; m.ttl = 3; }", "onFrame", "Hammer");
   const decl = k.body[0];
   if (decl.k !== "let") return assert.fail("let");
   assert.deepEqual(decl.t, { opt: { ref: "Mole" } });
@@ -131,7 +131,7 @@ test("the index must be a number", () => {
 });
 
 test("the last item: list[list.length - 1]", () => {
-  const k = ok("(self, w) => { const up = w.board.filter((m) => m.up); const last = up[up.length - 1]; if (last) last.up = false; }", "onFrame", "Hammer");
+  const k = ok("(self, w) => { const up = w.board.filter((m) => m.up); const last = up[up.length - 1]; if (last != null) last.up = false; }", "onFrame", "Hammer");
   assert.ok(k);
 });
 
@@ -141,7 +141,7 @@ test("storing into a list element is still rejected, and a computed name off a l
 });
 
 test("tuple destructuring takes items by index, each possibly empty", () => {
-  const k = ok("(self, w) => { const [a, b] = w.board; if (a && b) { a.up = b.up; } }", "onFrame", "Hammer");
+  const k = ok("(self, w) => { const [a, b] = w.board; if (a != null && b != null) { a.up = b.up; } }", "onFrame", "Hammer");
   const lets = kinds(k.body, "let");
   assert.deepEqual(lets.map((s) => (s.k === "let" ? s.name : "")).slice(0, 3).filter((n) => n === "a" || n === "b"), ["a", "b"]);
   const a = lets.find((s) => s.k === "let" && s.name === "a");
@@ -153,7 +153,7 @@ test("tuple destructuring takes items by index, each possibly empty", () => {
 test("an unchecked tuple item is L008, and a hole skips an item", () => {
   const r = lower("(self, w) => { const [, b] = w.board; b.up = true; }", "onFrame", "Hammer");
   assert.deepEqual(codes(r), ["L008"]);
-  const checked = lower("(self, w) => { const [, b] = w.board; if (b) b.up = true; }", "onFrame", "Hammer");
+  const checked = lower("(self, w) => { const [, b] = w.board; if (b != null) b.up = true; }", "onFrame", "Hammer");
   assert.deepEqual(codes(checked), []);
   const b = checked.kernel?.body.find((s) => s.k === "let" && s.name === "b");
   assert.ok(b?.k === "let" && b.value?.k === "index" && b.value.index.k === "num" && b.value.index.v === 1, "b is the item at index 1: the hole skipped index 0");
@@ -164,7 +164,7 @@ test("tuple destructuring of something that is not a list is L003", () => {
 });
 
 test("each, index and destructuring emit JavaScript that runs like the source", () => {
-  const k = ok("(self, w) => { let n = 0; for (const m of w.board) { if (m.up) n += 1; } const [a, b] = w.board; const { cell } = { cell: n }; w.score = n + cell + (w.board[1] ? 100 : 0) + (a && b ? 1000 : 0); }", "onFrame", "Hammer");
+  const k = ok("(self, w) => { let n = 0; for (const m of w.board) { if (m.up) n += 1; } const [a, b] = w.board; const { cell } = { cell: n }; w.score = n + cell + (w.board[1] != null ? 100 : 0) + (a != null && b != null ? 1000 : 0); }", "onFrame", "Hammer");
   const fn = instantiate(emitKernel(k));
   const board = [{ up: true }, { up: false }, { up: true }];
   /** @type {Record<string, number>} */

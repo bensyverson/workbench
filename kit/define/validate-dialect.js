@@ -11,10 +11,8 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "conditions", "state", "ports", "frames", "edges", "inputs"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "state", "ports", "frames", "edges", "inputs"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
-/** What `conditions` may say: only bool values are conditions. */
-export const CONDITIONS = Object.freeze(["bool"]);
 /** What a vector's `multiply` may say: componentwise (the default), or only a vector times a scalar. */
 export const VECTOR_MULTIPLY = Object.freeze(["componentwise", "scalar"]);
 /** What a convention's `body` may say: a block, never an expression. */
@@ -119,7 +117,6 @@ export function validateDialect(def) {
       if ("calls" in def.constants && !CONSTANT_CALLS.includes(/** @type {any} */ (def.constants.calls))) out.push({ code: "D011", path: ["constants", "calls"], message: `constants.calls must be ${listed([...CONSTANT_CALLS])}, not ${describe(def.constants.calls)}.`, tip: `calls: "pure" lets a constant call a pure helper` });
     }
   }
-  if (def.conditions !== undefined && !CONDITIONS.includes(/** @type {any} */ (def.conditions))) out.push({ code: "D011", path: ["conditions"], message: `conditions must be ${listed([...CONDITIONS])}, not ${describe(def.conditions)}.`, tip: `conditions: "bool" makes a number as an if, ternary, ! && or || operand an error` });
   // Every Dialect has a text view: what a model reads of its screen and state (architecture synthesis §3.3).
   if (typeof def.text !== "function") out.push({ code: "D020", path: ["text"], message: def.text === undefined ? "a Dialect needs text(state), its text view: its screen and state as characters, sized for a model." : `text must be a function of the Dialect's state, not ${describe(def.text)}.`, tip: "text(state) { return `…`; }, where state is what your Dialect's host shows (fields: a frame; data: a table)" });
   if (def.environment !== undefined && typeof def.environment !== "function") out.push({ code: "D011", path: ["environment"], message: "environment must be a function of the program record.", tip: "environment(program) { return { objects, globals }; }" });
