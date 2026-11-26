@@ -1,6 +1,6 @@
 # scripts/pkg: package tools
 
-Thin command-line tools over [kit/package](../../kit/package/README.md): the first writes a package's hashes, the second packs a package into one bundle file. Both take a package folder and ignore dotfiles (any path part starting with `.`). The folder reader and `hashDir` are in `dir.js`, which the trial checker and tests also use.
+Thin command-line tools over [kit/package](../../kit/package/README.md): the first writes a package's hashes, the second packs a package into one bundle file. Both take a package folder and ignore dotfiles (any path part starting with `.`, which is never part of a package; `checkPackage` ignores them too). The folder reader and `hashDir` are in `dir.js`, which the trial checker and tests also use.
 
 ```sh
 node scripts/pkg/hash.js <dir>                 # rewrite <dir>/wb-package.json's "files": every file under <dir> but the manifest, sorted, each with its sha256-<base64>

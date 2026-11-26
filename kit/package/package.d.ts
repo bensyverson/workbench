@@ -13,6 +13,9 @@ export interface PackageDiagnostic {
 
 export interface ForeignModule { module: string; targets: string[]; why: string }
 
+/** A module that must be refused, and the diagnostic code it must be refused with. */
+export interface Refusal { module: string; code: string }
+
 export interface Manifest {
   name: string;
   version: string;
@@ -23,6 +26,7 @@ export interface Manifest {
   foreign?: ForeignModule[];
   elements?: string[];
   examples?: string[];
+  refusals?: Refusal[];
   /** Every file but the manifest: path to `sha256-<base64>`. */
   files: Record<string, string>;
 }
@@ -41,13 +45,15 @@ export interface ModuleImport {
 export interface LoadedPackage {
   name: string | null;
   version: string | null;
-  /** The content key: the hash over the manifest's `files`. */
+  /** The content key: the hash over the manifest's `files` and the manifest text (see contentKey). */
   content: string | null;
   dialect: unknown;
   grammar: unknown;
   ui: unknown;
   /** The manifest's example paths, for the host to import. */
   examples: string[];
+  /** The manifest's refusals, for checkExamples. */
+  refusals: Refusal[];
   foreign: ForeignModule[];
   diagnostics: PackageDiagnostic[];
 }

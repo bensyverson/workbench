@@ -10,6 +10,7 @@ import { isUI } from "../define/ui.js";
 import { KIT_VERSION } from "../define/version.js";
 import { checkPackage } from "./check.js";
 import { diag } from "./codes.js";
+import { checkElements } from "./elements.js";
 import { contentKey } from "./hash.js";
 import { MANIFEST_PATH } from "./manifest.js";
 
@@ -32,7 +33,7 @@ const KINDS = {
 export async function loadPackage(files, { importModule, kitVersion = KIT_VERSION }) {
   const { manifest, diagnostics } = await checkPackage(files, { kitVersion });
   /** @type {import("./package.js").LoadedPackage} */
-  const out = { name: manifest?.name ?? null, version: manifest?.version ?? null, content: null, dialect: null, grammar: null, ui: null, examples: [], foreign: [], diagnostics };
+  const out = { name: manifest?.name ?? null, version: manifest?.version ?? null, content: null, dialect: null, grammar: null, ui: null, examples: [], refusals: [], foreign: [], diagnostics };
   if (!manifest || diagnostics.length) return out;
   /** @type {Record<string, unknown>} */
   const found = {};
@@ -56,8 +57,9 @@ export async function loadPackage(files, { importModule, kitVersion = KIT_VERSIO
   if (dialect && dialect.name !== manifest.name) diagnostics.push(diag("K008", `the Dialect in ${manifest.entry.dialect} is named "${dialect.name}", but the manifest names the package "${manifest.name}"`, `make defineDialect's name and the manifest's "name" the same`, manifest.entry.dialect));
   if (dialect && grammar && grammar.dialect !== dialect) diagnostics.push(diag("K008", `the Grammar in ${manifest.entry.grammar} is not built on the Dialect in ${manifest.entry.dialect}`, `build it with defineGrammar(<the Dialect imported from ./${manifest.entry.dialect}>, …)`, manifest.entry.grammar));
   if (grammar && ui && ui.builder !== grammar) diagnostics.push(diag("K008", `the UI in ${manifest.entry.ui} is not built on the Grammar in ${manifest.entry.grammar}`, `build it with defineUI(<the Grammar builder imported from ./${manifest.entry.grammar}>, …)`, manifest.entry.ui));
+  if (!diagnostics.length) diagnostics.push(...checkElements(manifest.elements ?? [], ui ?? null));
   if (diagnostics.length) return out;
-  return { ...out, content: await contentKey(manifest.files), dialect, grammar, ui: ui ?? null, examples: manifest.examples ?? [], foreign: manifest.foreign ?? [] };
+  return { ...out, content: await contentKey(manifest.files, files[MANIFEST_PATH]), dialect, grammar, ui: ui ?? null, examples: manifest.examples ?? [], refusals: manifest.refusals ?? [], foreign: manifest.foreign ?? [] };
 }
 
 export { MANIFEST_PATH };

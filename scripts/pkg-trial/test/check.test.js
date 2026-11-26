@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -135,6 +135,59 @@ test("K011: an entry that throws when it loads, with the file and line it threw 
   assert.equal(r.diagnostics[0].file, "maze.dialect.js");
   assert.match(r.diagnostics[0].message, /boom/);
   assert.equal(r.diagnostics[0].line, 5);
+});
+
+test("K012: an example the kit refuses when it builds it, naming the example and the first diagnostic", async () => {
+  const r = await check("particles", (d) => cpSync(join(d, "refusals/r01.js"), join(d, "examples/01.js")));
+  assert.deepEqual(codes(r), ["K012"]);
+  assert.equal(r.diagnostics[0].file, "examples/01.js");
+  assert.match(r.diagnostics[0].message, /L004/);
+});
+
+test("K012: an example whose default export is not a function of the params", async () => {
+  const r = await check("maze", (d) => sub(d, "examples/01.js", "export default", "export const program ="));
+  assert.deepEqual(codes(r), ["K012"]);
+  assert.equal(r.diagnostics[0].file, "examples/01.js");
+});
+
+test("K011: an example that throws when it loads, with the file and line it threw at", async () => {
+  const r = await check("maze", (d) => sub(d, "examples/01.js", "export default", "throw new Error(\"boom\");\nexport default"));
+  assert.deepEqual(codes(r), ["K011"]);
+  assert.equal(r.diagnostics[0].file, "examples/01.js");
+  assert.match(r.diagnostics[0].message, /boom/);
+  assert.ok(r.diagnostics[0].line > 1);
+});
+
+test("K013: a refusal that builds clean", async () => {
+  const r = await check("particles", (d) => cpSync(join(d, "examples/01.js"), join(d, "refusals/r01.js")));
+  assert.deepEqual(codes(r), ["K013"]);
+  assert.equal(r.diagnostics[0].file, "refusals/r01.js");
+  assert.match(r.diagnostics[0].message, /L004/);
+});
+
+test("K014: a refusal refused with another code, naming both", async () => {
+  const r = await check("particles", (d) => manifest(d, (m) => { m.refusals[0].code = "L013"; }));
+  assert.deepEqual(codes(r), ["K014"]);
+  assert.match(r.diagnostics[0].message, /L013/);
+  assert.match(r.diagnostics[0].message, /L004/);
+});
+
+test("K015: a UI element module the manifest's elements does not list", async () => {
+  const r = await check("particles", (d) => manifest(d, (m) => { delete m.elements; }));
+  assert.deepEqual(codes(r), ["K015"]);
+  assert.match(r.diagnostics[0].message, /particles-field\.js/);
+});
+
+test("K016: an elements entry no UI element names", async () => {
+  const r = await check("particles", (d) => manifest(d, (m) => { m.elements.push("examples/01.js"); }));
+  assert.deepEqual(codes(r), ["K016"]);
+  assert.match(r.diagnostics[0].message, /examples\/01\.js/);
+});
+
+test("a dotfile in the folder is not part of the package", async () => {
+  const r = await check("maze", (d) => { writeFileSync(join(d, ".DS_Store"), "junk"); mkdirSync(join(d, ".cache")); writeFileSync(join(d, ".cache/x.js"), 'import "node:fs";\n'); }, { stale: true });
+  assert.deepEqual(r.diagnostics, []);
+  assert.ok(!r.files.some((p) => p.includes(".DS_Store") || p.startsWith(".cache")));
 });
 
 test("the defineUI checks run on a package's UI: a bad path is a U005 with its line", async () => {

@@ -14,9 +14,9 @@ export const EXIT = Object.freeze({ ok: 0, violations: 1, usage: 2, crash: 3, ta
 const SELF = relative(process.cwd(), fileURLToPath(import.meta.url)) || "check.js";
 const PRIMER = `usage: node ${SELF} <dir> [--json]
 
-Checks the Dialect package in <dir> (a folder with a wb-package.json): the manifest, the kit version, that every file
+Checks the Dialect package in <dir> (a folder with a wb-package.json; dotfiles are ignored): the manifest, the kit version, that every file
 is listed and matches its hash, every file's imports, that the entry modules load and export one Dialect, one Grammar
-built on it and (if named) one UI built on that Grammar, that the modules can be uploaded (no import cycle), and the
+built on it and (if named) one UI built on that Grammar, that every example builds clean and every refusal is refused with its code, that the modules can be uploaded (no import cycle), and the
 defineUI checks of the UI. Prints every violation as
   <file>:<line>: <code> <message>
     fix: <what to write instead>

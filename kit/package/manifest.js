@@ -1,12 +1,13 @@
 // The manifest, `wb-package.json`: data a host reads before it runs any of the package's code.
 
 import { diag } from "./codes.js";
-import { isPackagePath } from "./paths.js";
+import { isDotPath, isModulePath, isPackagePath } from "./paths.js";
 
 export const MANIFEST_PATH = "wb-package.json";
 
-const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "elements", "examples", "files"];
+const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "elements", "examples", "refusals", "files"];
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+const DIAGNOSTIC_CODE = /^[A-Z][0-9]{3}$/;
 const HASH = /^sha256-[A-Za-z0-9+/]{43}=$/;
 
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
@@ -30,11 +31,12 @@ export function checkManifest(text) {
   for (const k of Object.keys(m)) {
     if (!KEYS.includes(k)) bad(`${MANIFEST_PATH} has an unknown key "${k}"${k === "dependencies" ? "; a package depends on nothing but the kit and its own files" : ""}`, `remove "${k}"; the keys are ${KEYS.join(", ")}`);
   }
-  /** A path field: a normalized relative path, no glob. */
+  /** A path field: a normalized relative path to a module (`.js`), no glob. */
   const path = (/** @type {unknown} */ v, /** @type {string} */ where) => {
     if (typeof v !== "string") { bad(`${where} must be a path string`, `write ${where} as a path such as "lib/noise.js"`); return false; }
     if (v.includes("*") || v.includes("?")) { bad(`${where} is "${v}": a glob; v0 lists exact paths`, `list each file by its exact path`); return false; }
     if (!isPackagePath(v)) { bad(`${where} is "${v}", not a normalized relative path (no leading "/", ".", "..", empty part or backslash)`, `write it relative to the package folder, with "/", such as "lib/noise.js"`); return false; }
+    if (!isModulePath(v)) { bad(`${where} is "${v}", which does not end in ".js"; a package's modules are exactly its .js files`, `name a file whose name ends in ".js" (lowercase), such as "lib/noise.js"`); return false; }
     return true;
   };
   if (typeof m.name !== "string" || !/^[a-z][a-z0-9]*$/.test(m.name)) bad(`"name" must be lowercase letters and digits, starting with a letter${typeof m.name === "string" ? ` (got "${m.name}")` : ""}`, `write "name": "tiles"; it is the Dialect's name and the prefix of the UI's custom elements`);
@@ -57,6 +59,19 @@ export function checkManifest(text) {
     if (!Array.isArray(v)) { bad(`"${k}" must be an array of file paths`, `write "${k}": ["${k}/a.js"]`); continue; }
     v.forEach((p, i) => { if (path(p, `"${k}[${i}]"`)) named.push(p); });
   }
+  if (m.refusals !== undefined) {
+    if (!Array.isArray(m.refusals)) bad(`"refusals" must be an array of { module, code }`, `write "refusals": [{ "module": "refusals/r01.js", "code": "L004" }]`);
+    else m.refusals.forEach((r, i) => {
+      const at = `"refusals[${i}]"`;
+      if (!isObject(r)) { bad(`${at} must be { module, code }`, `write { "module": "refusals/r01.js", "code": "L004" }`); return; }
+      for (const k of Object.keys(r)) if (!["module", "code"].includes(k)) bad(`${at} has an unknown key "${k}"`, `refusals takes module and code`);
+      if (path(r.module, `${at}.module`)) {
+        named.push(/** @type {string} */ (r.module));
+        if (Array.isArray(m.examples) && m.examples.includes(r.module)) bad(`${at}.module "${r.module}" is also in "examples"; an example must build clean and a refusal must be refused`, `list the file in one of the two`);
+      }
+      if (typeof r.code !== "string" || !DIAGNOSTIC_CODE.test(r.code)) bad(`${at}.code must be a diagnostic code: a capital letter and three digits${typeof r.code === "string" ? ` (got "${r.code}")` : ""}`, `write "code": "L004", the code the kit refuses the module with`);
+    });
+  }
   if (m.foreign !== undefined) {
     if (!Array.isArray(m.foreign)) bad(`"foreign" must be an array of { module, targets, why }`, `write "foreign": [{ "module": "foreign/x.js", "targets": ["js"], "why": "what it is for" }]`);
     else m.foreign.forEach((f, i) => {
@@ -72,6 +87,7 @@ export function checkManifest(text) {
   else {
     for (const [p, h] of Object.entries(m.files)) {
       if (!isPackagePath(p)) bad(`"files" lists "${p}", not a normalized relative path`, `list each file by its path relative to the package folder`);
+      else if (isDotPath(p)) bad(`"files" lists "${p}", a dotfile: a path with a part starting with "." is not part of a package`, `remove it from "files"`);
       if (typeof h !== "string" || !HASH.test(h)) bad(`"files" gives "${p}" the hash ${JSON.stringify(h)}, not "sha256-<base64>"`, `run node scripts/pkg/hash.js <dir> to write it`);
     }
     if (!ds.length) for (const p of new Set(named)) if (!Object.hasOwn(m.files, p)) bad(`${p} is named in the manifest but is not in "files"`, `run node scripts/pkg/hash.js <dir> after adding the file, or remove the name`, "K004");

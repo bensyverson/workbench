@@ -9,6 +9,6 @@ Copy the files you need into each package and lay them out as you think best. Yo
 
 Then answer these in your report:
 
-1. **Refusals.** How did you handle the particles refusal examples? Does the manifest have a place for them? If not, what would you want?
+1. **Refusals.** How did you carry the particles refusal examples, and did the checker confirm each one is refused with the code its first line names?
 2. **Two packages together.** Someone wants to use both packages in one workbench, so that a particle burst plays where the maze actor reaches the goal. From what `packaging.md` says, what would they write, and where? What does the format leave them unable to say?
 3. **An upload.** A viewer uploads your `out/maze/` folder into a page. What would they see if one file changed after you hashed it? Is that what you would want?

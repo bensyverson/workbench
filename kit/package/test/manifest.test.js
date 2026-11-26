@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { checkManifest, PACKAGE_CODES } from "../index.js";
 
 const H = "sha256-" + "A".repeat(43) + "=";
+/** @returns {Record<string, any>} */
 const good = () => ({
   name: "tiles", version: "0.4.0", kit: "0.4", description: "A grid.",
   entry: { dialect: "tiles.dialect.js", grammar: "tiles.grammar.js", ui: "tiles.ui.js" },
@@ -110,4 +111,60 @@ test("a file the manifest names but does not list in files is K004", () => {
     const m = good(); edit(m);
     assert.deepEqual(codes(m), ["K004"]);
   }
+});
+
+test("entry, lib, elements, examples and foreign.module must name .js files: anything else is K002", () => {
+  /** @type {Array<(m: any, p: string) => void>} */
+  const places = [
+    (m, p) => { m.entry.dialect = p; },
+    (m, p) => { m.entry.grammar = p; },
+    (m, p) => { m.entry.ui = p; },
+    (m, p) => { m.lib = [p]; },
+    (m, p) => { m.elements = [p]; },
+    (m, p) => { m.examples = [p]; },
+    (m, p) => { m.foreign[0].module = p; },
+  ];
+  for (const bad of ["m.mjs", "M.JS", "data.json", "a.js.txt", "lib/noise"]) {
+    for (const put of places) {
+      const m = good();
+      put(m, bad);
+      m.files[bad] = H;
+      assert.ok(codes(m).includes("K002"), `${bad}: ${put}`);
+    }
+  }
+  assert.deepEqual(codes(good()), []);
+});
+
+test("a files key may be any normalized path, a non-.js file included", () => {
+  const m = good();
+  m.files["data/table.json"] = H;
+  assert.deepEqual(codes(m), []);
+});
+
+test("refusals is an array of { module, code }: a .js path in files, and a kit diagnostic code", () => {
+  const m = good();
+  m.refusals = [{ module: "refusals/r01.js", code: "L004" }];
+  m.files["refusals/r01.js"] = H;
+  assert.deepEqual(codes(m), []);
+  assert.deepEqual(checkManifest(JSON.stringify(m)).manifest?.refusals, [{ module: "refusals/r01.js", code: "L004" }]);
+});
+
+test("refusals: a wrong shape, an unknown key, a bad code or path are K002", () => {
+  /** @param {unknown} refusals */
+  const withR = (refusals) => { const m = good(); m.files["r.js"] = H; return codes({ ...m, refusals }); };
+  for (const bad of ["x", {}, [1], [{}], [{ module: "r.js" }], [{ code: "L004" }], [{ module: "r.js", code: "l004" }], [{ module: "r.js", code: "L04" }], [{ module: "r.js", code: "LL004" }], [{ module: "r.js", code: 4 }], [{ module: "r.js", code: "L004", why: "x" }], [{ module: "../r.js", code: "L004" }], [{ module: "r.mjs", code: "L004" }], [{ module: "r.js", code: "L004\n" }]]) {
+    assert.ok(withR(bad).includes("K002"), JSON.stringify(bad));
+  }
+});
+
+test("a refusal not in files is K004", () => {
+  const m = good();
+  m.refusals = [{ module: "refusals/missing.js", code: "L004" }];
+  assert.deepEqual(codes(m), ["K004"]);
+});
+
+test("a module that is both an example and a refusal is K002", () => {
+  const m = good();
+  m.refusals = [{ module: "examples/01.js", code: "L004" }];
+  assert.deepEqual(codes(m), ["K002"]);
 });

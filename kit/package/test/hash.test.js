@@ -12,14 +12,24 @@ test("hashText hashes UTF-8 bytes", async () => {
   assert.notEqual(await hashText("é"), await hashText("e"));
 });
 
-test("contentKey depends on paths and hashes, not on the order the map was written in", async () => {
-  const a = await contentKey({ "a.js": "sha256-1", "b.js": "sha256-2" });
-  const b = await contentKey({ "b.js": "sha256-2", "a.js": "sha256-1" });
+const M = "{}";
+
+test("contentKey depends on paths, hashes and the manifest, not on the order the map was written in", async () => {
+  const a = await contentKey({ "a.js": "sha256-1", "b.js": "sha256-2" }, M);
+  const b = await contentKey({ "b.js": "sha256-2", "a.js": "sha256-1" }, M);
   assert.equal(a, b);
-  assert.notEqual(a, await contentKey({ "a.js": "sha256-1", "b.js": "sha256-3" }));
-  assert.notEqual(a, await contentKey({ "a.js": "sha256-1", "c.js": "sha256-2" }));
+  assert.notEqual(a, await contentKey({ "a.js": "sha256-1", "b.js": "sha256-3" }, M));
+  assert.notEqual(a, await contentKey({ "a.js": "sha256-1", "c.js": "sha256-2" }, M));
 });
 
-test("contentKey is the hash of the sorted `path\\0hash\\n` lines", async () => {
-  assert.equal(await contentKey({ "b": "H2", "a": "H1" }), await hashText("a\0H1\nb\0H2\n"));
+test("contentKey changes with the manifest's text, byte for byte", async () => {
+  const files = { "a.js": "sha256-1" };
+  const a = await contentKey(files, '{"entry":1}');
+  assert.notEqual(a, await contentKey(files, '{"entry":2}'));
+  assert.notEqual(a, await contentKey(files, '{ "entry":1}'));
+  assert.equal(a, await contentKey(files, '{"entry":1}'));
+});
+
+test("contentKey is the hash of the sorted `path\\0hash\\n` lines, then the manifest's line: its path, \\0 and the hash of its text", async () => {
+  assert.equal(await contentKey({ "b": "H2", "a": "H1" }, "text"), await hashText("a\0H1\nb\0H2\nwb-package.json\0" + await hashText("text") + "\n"));
 });

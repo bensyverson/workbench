@@ -4,6 +4,7 @@
 
 import { diag } from "./codes.js";
 import { scanImports, KIT_SPECIFIER } from "./imports.js";
+import { isModulePath } from "./paths.js";
 
 /**
  * The package's .js files as modules in dependency order. `modules` is a generator: for each file it calls
@@ -15,7 +16,7 @@ import { scanImports, KIT_SPECIFIER } from "./imports.js";
  * @returns {{ diagnostics: import("./package.js").PackageDiagnostic[], modules: Generator<{ path: string, text: string }> }}
  */
 export function rewriteSpecifiers(files, urlFor, kitUrl) {
-  const js = Object.keys(files).filter((p) => p.endsWith(".js")).sort();
+  const js = Object.keys(files).filter(isModulePath).sort();
   /** @type {Map<string, ReturnType<typeof scanImports>>} */
   const scans = new Map();
   /** @type {import("./package.js").PackageDiagnostic[]} */

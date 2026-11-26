@@ -29,19 +29,25 @@ The manifest (`MANIFEST_PATH = "wb-package.json"`), checked by `checkManifest(te
 | `kit` | required; the Definition API version as `"major.minor"` (`KIT_VERSION` from `kit/define`, now `"0.4"`) |
 | `description` | optional string |
 | `entry` | required: `{ dialect, grammar }` and optionally `ui`, each an exact path |
-| `lib`, `elements`, `examples` | optional arrays of exact paths. **No globs in v0** (K002) |
+| `lib`, `elements`, `examples` | optional arrays of exact paths. **No globs in v0** (K002). `elements` must be exactly the modules the UI's custom elements name (K015, K016) |
+| `refusals` | optional array of `{ module, code }`: a module that the kit must refuse, and the diagnostic code (a capital letter and three digits, such as `"L004"`) it must refuse it with. The module is also in `files`, and is not also in `examples` (K002) |
 | `foreign` | optional array of `{ module, targets, why }`; each is a path in the package |
 | `files` | required: `{ path: "sha256-<base64>" }` for every file but the manifest |
 
-Every path is normalized and relative: `/`-separated, no leading `/`, no `.`, `..` or empty part, no backslash. Every path the manifest names must be in `files` (K004). `scripts/pkg/hash.js <dir>` writes `files`.
+Every path is normalized and relative: `/`-separated, no leading `/`, no `.`, `..` or empty part, no backslash, no `:` (so no drive letter), no control character, no space at the start or end of a part. Every path the manifest names must be in `files` (K004). `scripts/pkg/hash.js <dir>` writes `files`.
+
+**A package's modules are exactly its files whose names end in `.js`** (lowercase). `entry`, `lib`, `elements`, `examples`, `refusals` and `foreign.module` must name such files (K002), and a relative import must target one (K007). `files` may also list other files (data, text); they are hashed but cannot be imported.
+
+**Dotfiles are not part of a package.** A path with any part starting with `.` (`.DS_Store`, `.git/config`) is ignored: `checkPackage` drops such keys from the map (an upload may carry them), `scripts/pkg/dir.js` skips them when it reads a folder, and a manifest that lists one is K002.
 
 ## API
 
 - `checkManifest(text)`: above.
-- `hashText(text)` → `Promise<"sha256-<base64>">` over `globalThis.crypto.subtle` (Node and the page); `contentKey(filesHashes)` → the hash over the sorted `path\0hash\n` lines, the package's **content key**: two packages with the same bytes have one key whatever their source or version said.
+- `hashText(text)` → `Promise<"sha256-<base64>">` over `globalThis.crypto.subtle` (Node and the page); `contentKey(filesHashes, manifestText)` → the package's **content key**: the hash (`hashText`) of the sorted `path\0hash\n` lines of `files`, followed by one line for the manifest, `wb-package.json\0<hashText(manifest text)>\n`. The manifest text is taken byte for byte, so a changed `entry`, `version` or even spacing is a different key. The hashes catch accidental change (a file edited or damaged after hashing); they are not a signature and do not show who made a package. Pinning against tampering is the workbench lock's job, which is not built.
 - `scanImports(path, text, files)` → `{ imports, diagnostics }`. See "What imports may do".
-- `checkPackage(files, { kitVersion })` → `Promise<{ manifest, diagnostics }>`, no I/O: the manifest; `manifest.kit === kitVersion` (K003, the message names both); every file in `files` present (K004); every file in the map but the manifest listed (K005); hashes (K006); imports of every `.js` file (K007).
-- `loadPackage(files, { importModule, kitVersion? })` → `Promise<{ name, version, content, dialect, grammar, ui, examples, foreign, diagnostics }>`. Runs `checkPackage`; if clean, calls `importModule(path)` (the host's) for `entry.dialect`, `entry.grammar`, then `entry.ui`, stopping at the first one that throws (K011: the later ones would only repeat it). Then it checks the pieces fit (K008). On any diagnostic the loaded parts are null. `content` is the content key; `examples` the manifest's example paths for the host to import; `ui` is null if the manifest names none. `kitVersion` defaults to `KIT_VERSION`.
+- `checkPackage(files, { kitVersion })` → `Promise<{ manifest, diagnostics }>`, no I/O: the manifest; `manifest.kit === kitVersion` (K003, the message names both); every file in `files` present (K004); every file in the map but the manifest listed (K005); hashes (K006); imports of every `.js` file (K007). Paths with a part starting with `.` are ignored first.
+- `loadPackage(files, { importModule, kitVersion? })` → `Promise<{ name, version, content, dialect, grammar, ui, examples, refusals, foreign, diagnostics }>`. Runs `checkPackage`; if clean, calls `importModule(path)` (the host's) for `entry.dialect`, `entry.grammar`, then `entry.ui`, stopping at the first one that throws (K011: the later ones would only repeat it). Then it checks the pieces fit (K008) and that the manifest's `elements` equal the set of modules the UI's custom elements name (`uiModules(ui)` reads them from the UI's stage, inputs and tiles, normalizing `./x.js` to `x.js`): a module the UI names that `elements` omits is K015, one `elements` lists that the UI does not name is K016. On any diagnostic the loaded parts are null. `content` is the content key; `examples` and `refusals` the manifest's, for `checkExamples`; `ui` is null if the manifest names none. `kitVersion` defaults to `KIT_VERSION`.
+- `checkExamples(loaded, { importModule, buildOptions? })` → `Promise<diagnostics>`: **the examples are the package's regression suite.** For `loaded` (what `loadPackage` returned; nothing is checked when it did not load), it imports each `examples` module through the host's `importModule`, builds its default export, `($) => Program`, with `kit/define`'s `run()` at the params' declared values, then lowers the record with the Grammar's `lower()`. It must come out with no error: otherwise K012 names the example and the first diagnostic. It does the same for each `refusals` module, which must be refused, with exactly its `code` (the code of the first diagnostic of `run()` or `lower()`): accepted is K013, refused with another code is K014 and names both. A module that fails to import is K011; a default export that is not a function of the params, or one that throws, is K012. It is a separate call so a host that does not run examples (the page, for now) does not pay for them. `buildOptions(path, module)` may return run()'s options for a module (its module scope: `scope`, `sources`, …); a host passes it when its examples' lambdas read top-level helpers of their file, which only the host can read. The folder checker does ([scripts/pkg-trial](../../scripts/pkg-trial/README.md)).
 - `rewriteSpecifiers(files, urlFor, kitUrl)` → `{ diagnostics, modules }`, for uploads. See "Uploads".
 - `readBundle(text)` → `{ files, diagnostics }` (`files` null on K010); `writeBundle(files)` → the text, paths sorted. A bundle is `{ "format": "wb-bundle", "files": { path: text } }`; `scripts/pkg/bundle.js` writes one.
 - `PACKAGE_CODES`; types in [`package.d.ts`](package.d.ts).
@@ -54,7 +60,7 @@ What `loadPackage` checks across the entries, with what it can see: the Dialect'
 
 ## What imports may do
 
-A package module may import `"kit/define"` and files of its own package by relative path, and nothing else: no other package, no bare name, no Node built-in, no URL, no dynamic `import()` (always refused, even of an allowed file). Every `.js` file is scanned, foreign modules and elements included. K007 names the file and line.
+A package module may import `"kit/define"` and files of its own package by relative path, and nothing else: no other package, no bare name, no Node built-in, no URL, no dynamic import expression (always refused, even of an allowed file, and also as an operand: after a spread, `...`, a call is still one), and no `import.source` or `import.defer` (only `import.meta` follows `import.`). A relative specifier must be normalized (no trailing `/`, no empty part) and name an existing `.js` file. Every `.js` file is scanned, foreign modules and elements included. K007 names the file and line.
 
 `scanImports` is **lexical**. It uses `kit/parse`'s `blank` to turn comments, strings, regexes and template text into spaces, finds `import "x"`, `import … from "x"`, `export * from "x"`, `export * as n from "x"`, `export { … } from "x"`, and every `import(`, and reads the specifier from the original text. A specifier inside a comment, a string or a template is not an import. Its limits, honestly: it is not a parser, so an odd layout it does not recognize (an `import` clause with a `}` or `;` inside a default-value expression, attributes such as `with { type: "json" }` are read only as far as `from "x"`) is skipped, not refused; it cannot see code built at run time (`eval`, `new Function`, `globalThis["imp" + "ort"]`, a worker or script tag built from a string) or a dynamic `import()` spelled with a comment between `import` and `(` only because that does parse as one. It stops a package that **names** something it may not import; it is not a sandbox, and a package's code runs with the page's privileges once loaded.
 
@@ -75,18 +81,23 @@ An import cycle is K009 (no order of blobs can resolve it; it names the cycle), 
 | Code | Meaning |
 |---|---|
 | K001 | No `wb-package.json`, or one that is not a JSON object |
-| K002 | A manifest field missing, unknown or the wrong shape (a glob, a bad path, name, version, kit or hash) |
+| K002 | A manifest field missing, unknown or the wrong shape (a glob, a bad path, a dotfile, a module path not ending in `.js`, a bad name, version, kit, hash or refusal code, a module both example and refusal) |
 | K003 | The package's `kit` is not the kit's version |
 | K004 | A file the manifest names that the package does not hold |
 | K005 | A file in the package the manifest does not list |
-| K006 | A file whose hash is not the listed one |
-| K007 | An import other than `kit/define` or an existing own file, or any `import()` |
+| K006 | A file whose hash is not the listed one: it changed after the package was hashed |
+| K007 | An import other than `kit/define` or an existing own `.js` file, any dynamic import, `import.source` or `import.defer` |
 | K008 | An entry without exactly one definition of its kind, or definitions that do not fit (name, Grammar on Dialect, UI on Grammar) |
 | K009 | Modules that import each other in a cycle |
 | K010 | A malformed bundle |
-| K011 | An entry module that failed to import |
+| K011 | An entry, example or refusal module that failed to import |
+| K012 | An example refused when built or lowered, or an example or refusal whose default export is not a function that builds a Program |
+| K013 | A refusal that is accepted |
+| K014 | A refusal refused with another code than its `code` |
+| K015 | A module the UI's elements name that `elements` does not list |
+| K016 | A module `elements` lists that no UI element names |
 
-Each diagnostic is `{ code, severity: "error", message, fix, file?, line? }`. Every code is exercised by the tests; K009 and K010 are not reachable from a folder check except K009 through `scripts/pkg-trial/check.js`.
+Each diagnostic is `{ code, severity: "error", message, fix, file?, line? }`. Every code is exercised by the tests; K009 and K010 are not reachable from a folder check except K009 through `scripts/pkg-trial/check.js`. K012 to K014 come from `checkExamples`, not `loadPackage`.
 
 ## Not here
 

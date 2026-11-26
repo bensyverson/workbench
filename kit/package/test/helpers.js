@@ -8,7 +8,7 @@ export const SRC = {
   "examples/01.js": `import { x } from "../x.grammar.js";\nexport default ($) => x("a");\n`,
 };
 
-/** A valid package's files, with the manifest's `files` hashed. @param {Record<string, unknown>} [over] manifest overrides */
+/** A valid package's files, with the manifest's `files` hashed. @param {Record<string, unknown>} [over] manifest overrides @returns {Promise<Record<string, string>>} */
 export async function validFiles(over = {}) {
   /** @type {Record<string, string>} */
   const hashes = {};

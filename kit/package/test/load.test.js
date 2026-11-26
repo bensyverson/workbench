@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defineDialect, defineGrammar, defineUI, exact, struct, list } from "../../define/index.js";
-import { loadPackage, hashText } from "../index.js";
+import { loadPackage, hashText, contentKey } from "../index.js";
 
 /** A one-state Dialect, its Grammar, and a UI, as a package would define them. */
 function defs(name) {
@@ -29,7 +29,11 @@ const SRC = {
   "alpha.grammar.js": `import { defineGrammar } from "kit/define";\nimport "./alpha.dialect.js";\n`,
   "alpha.ui.js": `import { defineUI } from "kit/define";\nimport "./alpha.grammar.js";\n`,
   "examples/01.js": `import "../alpha.grammar.js";\nexport default () => 1;\n`,
+  "refusals/r01.js": `import "../alpha.grammar.js";\nexport default () => 2;\n`,
+  "alpha-field.js": `customElements.define("alpha-field", class extends HTMLElement {});\n`,
+  "alpha-pad.js": `customElements.define("alpha-pad", class extends HTMLElement {});\n`,
 };
+const UI_ELEMENTS = defineUI(A.grammar, { stage: { element: "alpha-field", module: "./alpha-field.js" }, tiles: {} });
 async function files(over = {}, ui = true) {
   const src = ui ? SRC : Object.fromEntries(Object.entries(SRC).filter(([k]) => k !== "alpha.ui.js"));
   const hashes = {};
@@ -55,10 +59,43 @@ test("a valid package loads: found by value, whatever the export names are", asy
   assert.deepEqual(r.foreign, [{ module: "examples/01.js", targets: ["js"], why: "test" }]);
 });
 
-test("the content key is the manifest's files hashed, so the same bytes give the same key", async () => {
+test("the content key covers the files and the manifest text: the same package gives the same key, a changed manifest another", async () => {
   const a = await load(await files());
-  const b = await load(await files({ version: "9.9.9" }));
-  assert.equal(a.content, b.content);
+  assert.equal(a.content, (await load(await files())).content);
+  assert.notEqual(a.content, (await load(await files({ version: "9.9.9" }))).content);
+  assert.notEqual(a.content, (await load(await files({ description: "other" }))).content);
+  const f = await files();
+  const { files: hashes } = JSON.parse(f["wb-package.json"]);
+  assert.equal(a.content, await contentKey(hashes, f["wb-package.json"]));
+});
+
+test("refusals come back as the manifest wrote them", async () => {
+  const r = await load(await files({ refusals: [{ module: "refusals/r01.js", code: "L004" }] }));
+  assert.deepEqual(r.diagnostics, []);
+  assert.deepEqual(r.refusals, [{ module: "refusals/r01.js", code: "L004" }]);
+  assert.deepEqual((await load(await files())).refusals, []);
+});
+
+test("the UI's custom element modules must be exactly the manifest's elements: one K code each way", async () => {
+  const modules = { ...MODULES, "alpha.ui.js": { u: UI_ELEMENTS } };
+  const ok = await load(await files({ elements: ["alpha-field.js"] }), modules);
+  assert.deepEqual(ok.diagnostics, []);
+  const missing = await load(await files(), modules);
+  assert.deepEqual(codes(missing), ["K015"]);
+  assert.match(missing.diagnostics[0].message, /alpha-field\.js/);
+  assert.equal(missing.diagnostics[0].file, "wb-package.json");
+  const extra = await load(await files({ elements: ["alpha-field.js", "alpha-pad.js"] }), modules);
+  assert.deepEqual(codes(extra), ["K016"]);
+  assert.match(extra.diagnostics[0].message, /alpha-pad\.js/);
+  // a UI with no custom elements, or no UI at all, leaves nothing for elements to list
+  assert.deepEqual(codes(await load(await files({ elements: ["alpha-pad.js"] }))), ["K016"]);
+  assert.deepEqual(codes(await load(await files({ elements: ["alpha-pad.js"] }, false))), ["K016"]);
+});
+
+test("the elements check normalizes the UI's ./ paths and counts a module used twice once", async () => {
+  const ui = defineUI(A.grammar, { stage: { element: "alpha-field", module: "./alpha-field.js" }, tiles: {} });
+  const r = await load(await files({ elements: ["alpha-field.js"] }), { ...MODULES, "alpha.ui.js": { u: ui } });
+  assert.deepEqual(r.diagnostics, []);
 });
 
 test("the ui entry is optional: ui is null", async () => {

@@ -9,3 +9,5 @@ export { checkPackage } from "./check.js";
 export { loadPackage } from "./load.js";
 export { rewriteSpecifiers } from "./rewrite.js";
 export { readBundle, writeBundle, BUNDLE_FORMAT } from "./bundle.js";
+export { checkExamples } from "./examples.js";
+export { uiModules } from "./elements.js";

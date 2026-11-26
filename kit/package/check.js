@@ -4,15 +4,18 @@ import { diag } from "./codes.js";
 import { hashText } from "./hash.js";
 import { scanImports } from "./imports.js";
 import { checkManifest, MANIFEST_PATH } from "./manifest.js";
+import { isDotPath, isModulePath } from "./paths.js";
 
 /**
  * Checks a package held as a { path: text } map: the manifest, the kit version, that the files and the manifest's
  * `files` list the same set, each file's hash, and the imports of every .js file.
- * @param {Record<string, string>} files
+ * @param {Record<string, string>} allFiles  the package files; a path with a part starting with "." is ignored
  * @param {{ kitVersion: string }} options  the Definition API version this kit has (KIT_VERSION)
  * @returns {Promise<{ manifest: import("./package.js").Manifest | null, diagnostics: import("./package.js").PackageDiagnostic[] }>}
  */
-export async function checkPackage(files, { kitVersion }) {
+export async function checkPackage(allFiles, { kitVersion }) {
+  // A path with a part starting with "." is never part of a package (an upload may carry .DS_Store and the like).
+  const files = Object.fromEntries(Object.entries(allFiles).filter(([p]) => !isDotPath(p)));
   if (!Object.hasOwn(files, MANIFEST_PATH)) {
     return { manifest: null, diagnostics: [diag("K001", `the package has no ${MANIFEST_PATH}`, `add ${MANIFEST_PATH} (node scripts/pkg/hash.js <dir> rewrites its "files")`)] };
   }
@@ -25,13 +28,13 @@ export async function checkPackage(files, { kitVersion }) {
     if (!Object.hasOwn(files, p)) diagnostics.push(diag("K004", `${p} is listed in ${MANIFEST_PATH} but the package does not hold it`, `add the file, or run node scripts/pkg/hash.js <dir> to rewrite "files"`, p));
     else {
       const h = await hashText(files[p]);
-      if (h !== manifest.files[p]) diagnostics.push(diag("K006", `${p} does not match its hash in ${MANIFEST_PATH} (the file is ${h}, the manifest says ${manifest.files[p]})`, `run node scripts/pkg/hash.js <dir> if the change is intended; otherwise restore the file`, p));
+      if (h !== manifest.files[p]) diagnostics.push(diag("K006", `${p} does not match its hash in ${MANIFEST_PATH} (the file is ${h}, the manifest says ${manifest.files[p]})`, `the file changed after the package was hashed: get a fresh copy of the package, or, as its author, rehash it`, p));
     }
   }
   const paths = Object.keys(files).filter((p) => p !== MANIFEST_PATH).sort();
   for (const p of paths) {
     if (!Object.hasOwn(manifest.files, p)) diagnostics.push(diag("K005", `${p} is in the package but not listed in ${MANIFEST_PATH}`, `run node scripts/pkg/hash.js <dir> to list it, or remove the file`, p));
   }
-  for (const p of paths) if (p.endsWith(".js")) diagnostics.push(...scanImports(p, files[p], paths).diagnostics);
+  for (const p of paths) if (isModulePath(p)) diagnostics.push(...scanImports(p, files[p], paths).diagnostics);
   return { manifest, diagnostics };
 }

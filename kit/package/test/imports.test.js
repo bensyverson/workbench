@@ -80,3 +80,36 @@ test("the offsets of each specifier locate it in the text", () => {
   const text = `import a from "./lib/b.js";\nimport k from 'kit/define';\n`;
   for (const i of scan("a.js", text).imports) assert.equal(text.slice(i.start, i.end), i.specifier);
 });
+
+test("a dynamic import after a spread is K007: only a single dot makes a property access", () => {
+  for (const t of [`f(...import("node:fs"))`, `[...import("node:fs")]`, `x = {...import("node:fs")}`, `f(... import("node:fs"))`, `f(...\nimport("x"))`]) {
+    assert.deepEqual(codes("a.js", t), ["K007"], t);
+  }
+});
+
+test("a property named import is not an import, with whitespace or a line break around the dot", () => {
+  for (const t of [`a . import("fs")`, `a\n.import("fs")`, `a?.\nimport("fs")`, `a.\n  import ("fs")`, `a. /* c */ import("fs")`]) {
+    assert.deepEqual(codes("a.js", t), [], t);
+  }
+});
+
+test("only import.meta may follow import.: import.source( and import.defer( are K007", () => {
+  for (const t of [`import.defer("node:fs")`, `import.source("node:fs")`, `import . source("x")`, `import.foo`, `x = import.\nsource("y")`]) {
+    assert.deepEqual(codes("a.js", t), ["K007"], t);
+  }
+  assert.deepEqual(codes("a.js", `const u = import.meta.url; const v = import . meta;`), []);
+  assert.deepEqual(codes("a.js", `const u = import.metax;`), ["K007"]);
+});
+
+test("a relative import must name a file ending in .js, exactly", () => {
+  const files = new Set(["a.js", "m.mjs", "M.JS", "data.json", "b.js.txt"]);
+  for (const s of ["./m.mjs", "./M.JS", "./data.json", "./b.js.txt"]) {
+    const r = scanImports("a.js", `import "${s}";`, files);
+    assert.deepEqual(r.diagnostics.map((d) => d.code), ["K007"], s);
+    assert.match(r.diagnostics[0].message, /\.js/);
+  }
+});
+
+test("a specifier with a trailing slash or an empty part is K007, even when it would name a file", () => {
+  for (const s of ["./lib/b.js/", "./lib//b.js", ".//a.js", "./lib/"]) assert.deepEqual(codes("a.js", `import "${s}";`), ["K007"], s);
+});
