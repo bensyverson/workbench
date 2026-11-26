@@ -6,7 +6,8 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames, buildTimeBindings, buildTimeShadows, topLevelBindings, topLevelFunctions, ScanError, blank } from "../../../kit/parse/toplevel.js";
+import { buildTimeNames, buildTimeBindings, buildTimeShadows, topLevelBindings, topLevelFunctions, ScanError } from "../../../kit/parse/toplevel.js";
+import { blank } from "../../../kit/parse/module.js";
 import { LOAD } from "./codes.js";
 
 /** @import { CheckDiagnostic } from "./codes.js" */

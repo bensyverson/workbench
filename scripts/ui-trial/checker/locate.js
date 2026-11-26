@@ -5,7 +5,7 @@
 // (the nth element of the array literal after its key). A lambda is found by its own text, in
 // code, after the key that holds it.
 
-import { blank } from "../../../kit/parse/blank.js";
+import { blank } from "../../../kit/parse/module.js";
 
 /** @param {string} s */
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -2,7 +2,7 @@
 // refused, so what the check cannot read never runs.
 
 import { diag } from "./codes.js";
-import { parseModule, walkNodes } from "./parse-module.js";
+import { parseModule, walkNodes } from "../parse/module.js";
 import { isModulePath, resolveRelative } from "./paths.js";
 
 export const KIT_SPECIFIER = "kit/define";

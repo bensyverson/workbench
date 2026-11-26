@@ -1,6 +1,6 @@
 // The custom element rules (U008): what a tag may look like, and whether a module's code defines it.
 
-import { blank } from "../../parse/blank.js";
+import { blank } from "../../parse/module.js";
 
 /**
  * A custom element tag under the package prefix: lowercase, with a hyphen, a non-empty name after `<package>-`
@@ -12,6 +12,9 @@ import { blank } from "../../parse/blank.js";
 export function tagOk(tag, prefix) {
   return typeof tag === "string" && tag.startsWith(prefix) && tag.length > prefix.length && /^[a-z][-._0-9a-z]*$/.test(tag);
 }
+
+/** A string literal's opening quote, as `blank` leaves it in code. */
+const QUOTES = "\"'`";
 
 /** The text of a string literal starting at `at` in `text` (a quote of `"`, `'` or `` ` ``; no escapes), or null. @param {string} text @param {number} at */
 function literalAt(text, at) {
@@ -38,13 +41,13 @@ export function definesTag(text, tag) {
   };
   for (const m of code.matchAll(/(?<![\w$])customElements\s*\.\s*define\s*\(\s*/g)) {
     const arg = m.index + m[0].length;
-    if (literalAt(text, arg) === tag && '"`'.includes(code[arg])) return true;
+    if (literalAt(text, arg) === tag && QUOTES.includes(code[arg])) return true;
     const id = /^[A-Za-z_$][\w$]*/.exec(code.slice(arg));
     if (!id || !/^\s*,/.test(code.slice(arg + id[0].length))) continue;
     const decl = new RegExp(`(?<![\\w$.])const\\s+${id[0].replace(/\$/g, "\\$")}\\s*=\\s*`, "g");
     for (const d of code.matchAll(decl)) {
       const at = d.index + d[0].length;
-      if (depthAt(d.index) === 0 && literalAt(text, at) === tag && '"`'.includes(code[at])) return true;
+      if (depthAt(d.index) === 0 && literalAt(text, at) === tag && QUOTES.includes(code[at])) return true;
     }
   }
   return false;

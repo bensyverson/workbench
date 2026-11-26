@@ -106,7 +106,7 @@ The review of `c189880` found that the scan in `kit/parse/blank.js` and `topleve
 
 > **Ruled again (Ben, 2026-11-25):** still parked, after three review rounds in two days on the method-key scan (`kRYm3Y`, `wLPEcG`, `ocy5OI`) all found by adversarial reviewers, none by an agent's Program. Reviews will keep finding holes in either design, so they are not the trigger; a misread in practice is. Known gaps are listed in kit/parse/README.md.
 >
-> **Un-parked (Ben, 2026-11-25):** acorn is now vendored for the package import check (see [the package trial findings](2026-11-25-package-trial-findings.md)), so the scan in `blank.js` and `toplevel.js` is rebuilt on acorn's tree (leaf `VsPb2e`). The lambda parser (`lexer.js`, `parser.js`) stays, because it is sound and its diagnostics are tuned for agents. Watch for a reason to replace it too: a soundness bug, a feature acorn would give for free, or maintenance cost.
+> **Un-parked (Ben, 2026-11-25):** acorn is now vendored for the package import check (see [the package trial findings](2026-11-25-package-trial-findings.md)), so the scan in `blank.js` and `toplevel.js` is rebuilt on acorn's tree (leaf `VsPb2e`, done 2026-11-25: blank.js and the lexical scan are gone, `ocy5OI` is fixed, and `JYmuWM` stays open because a Runtime Lambda holding a query callback and a build-time callback holding a lambda have the same tree shape). The lambda parser (`lexer.js`, `parser.js`) stays, because it is sound and its diagnostics are tuned for agents. Watch for a reason to replace it too: a soundness bug, a feature acorn would give for free, or maintenance cost.
 
 ## 2026-11-25: narrowing the Runtime Subset per Dialect, or deriving it from the targets
 

@@ -13,9 +13,9 @@ A JavaScript parser (MIT; see `LICENSE`), copied unmodified from the npm package
 
 ## Why it is here
 
-`kit/package` checks a Dialect package's imports before any of its code runs. A lexical scan of JavaScript cannot be sound (the review of the package trial found several ways to hide an import from it), so the check parses. Ben approved vendoring a parser for this check (2026-11-25, recorded in `project/2026-11-25-package-trial-findings.md`). Nothing else in the kit uses it, and it is not an npm dependency: the kit has none.
+`kit/package` checks a Dialect package's imports before any of its code runs. A lexical scan of JavaScript cannot be sound (the review of the package trial found several ways to hide an import from it), so the check parses. Ben approved vendoring a parser for this check (2026-11-25, recorded in `project/2026-11-25-package-trial-findings.md`). kit/parse's whole-file scan (`toplevel.js`) reads its trees too (Ben, 2026-11-25: it replaced a lexical scan that could not be made sound). It is not an npm dependency: the kit has none.
 
-Only `kit/package/parse-module.js` imports it. It imports no Node built-in (`kit/package/test/vendor.test.js` checks this, since the browser-safe scan in `kit/test` reads `.js` files and this build is `.mjs`). `tsconfig.json` excludes `kit/vendor`.
+Only `kit/parse/module.js` imports it; `kit/package` and `kit/parse/toplevel.js` take their trees from there. It imports no Node built-in (`kit/package/test/vendor.test.js` checks this, since the browser-safe scan in `kit/test` reads `.js` files and this build is `.mjs`). `tsconfig.json` excludes `kit/vendor`.
 
 ## Updating
 

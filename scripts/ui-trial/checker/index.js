@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { installHooks } from "./hooks.js";
 import { session, begin } from "./session.js";
 import { locatePos, lambdaLine, lineAt } from "./locate.js";
-import { blank } from "../../../kit/parse/blank.js";
+import { blank } from "../../../kit/parse/module.js";
 import { LOAD } from "./codes.js";
 
 /** @import { UIDiagnostic } from "./codes.js" */

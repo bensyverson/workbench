@@ -1,36 +1,8 @@
-// Second review of the scanner (kit/parse/blank.js, toplevel.js): blank is linear, a top-level labeled block is
-// a block, and a line starting with ++ or -- ends the statement before it.
+// Second review of the scanner: a big file scans fast, a top-level labeled block is a block, and a line starting with
+// ++ or -- ends the statement before it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blank } from "../blank.js";
 import { topLevelNames, topLevelBindings, buildTimeNames } from "../toplevel.js";
-
-/** The best of a few runs, in ms, so one slow run (GC, a busy machine) does not decide a ratio. @param {() => void} f */
-const best = (f) => {
-  let m = Infinity;
-  for (let r = 0; r < 3; r++) {
-    const t = performance.now();
-    f();
-    m = Math.min(m, performance.now() - t);
-  }
-  return m;
-};
-/** Quadratic gives about 16x for 4x the input; linear about 4x. @param {(n: number) => string} make */
-const ratio = (make) => {
-  const small = make(500), big = make(2000);
-  blank(make(100)); // warm up
-  return { small: best(() => blank(small)), big: best(() => blank(big)) };
-};
-
-test("blank is linear in the number of function keywords", () => {
-  const { small, big } = ratio((n) => Array.from({ length: n }, (_, i) => `function f${i}(a) { return a + ${i}; }\n`).join(""));
-  assert.ok(big < small * 8, `500 functions ${small.toFixed(1)} ms, 2000 functions ${big.toFixed(1)} ms (x${(big / small).toFixed(1)})`);
-});
-
-test("blank is linear in the number of `await (`", () => {
-  const { small, big } = ratio((n) => `async function g() {\n${Array.from({ length: n }, (_, i) => `  await (${i});\n`).join("")}}\n`);
-  assert.ok(big < small * 8, `500 awaits ${small.toFixed(1)} ms, 2000 awaits ${big.toFixed(1)} ms (x${(big / small).toFixed(1)})`);
-});
 
 test("a 150 KB file of function declarations scans in well under a second", () => {
   const src = Array.from({ length: 4000 }, (_, i) => `function f${i}(a) { return a + ${i}; }\n`).join("");

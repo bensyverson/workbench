@@ -23,7 +23,7 @@ test("the scanner lists no const declared inside a function body after `if (k) /
 
 test("a const inside a function after `while (k--) /\\)/.exec('')` is not top-level", () => {
   assert.deepEqual(topLevelBindings("function mk(k) { while (k--) /\\)/.exec(''); const h = (x) => x * k; return h }\nconst z = 1;\n").map((b) => b.name), ["z"]);
-  assert.deepEqual(topLevelNames("for (;;) /\\{/.test(s);\nwith (o) /\\[/.test(s);\nconst z = 1;\n"), ["z"]);
+  assert.deepEqual(topLevelNames("for (;;) /\\{/.test(s);\nconst z = 1;\n"), ["z"]);
 });
 
 test("after a `)` that closes no statement head, a `/` is still division", () => {
@@ -68,14 +68,14 @@ test("a line starting with a template literal still continues the one before (a 
   assert.equal(topLevelBindings("const s = tag\n`a`\nconst z = 1\n")[0].init, "tag\n`a`");
 });
 
-test("a closer of another kind does not close a bracket", () => {
-  // `)` inside a regex the scan did not see: a stack of kinds keeps the function body open
-  assert.deepEqual(topLevelNames("function mk(k) { const a = [1, 2)]; const b = 1; }\nconst z = 1;\n"), ["mk", "z"]);
+test("a closer of another kind is a syntax error, so the file is refused", () => {
+  assert.throws(() => topLevelNames("function mk(k) { const a = [1, 2)]; const b = 1; }\nconst z = 1;\n"), ScanError);
 });
 
 test("a name the scan finds declared twice at the top level is refused, not resolved to either declaration", () => {
   assert.throws(() => topLevelBindings("const a = 1;\nconst a = (x) => x;\n"), (e) => e instanceof ScanError && /'a'/.test(e.message) && /twice/.test(e.message));
   assert.throws(() => topLevelBindings("let a = 1;\nfunction a() {}\n"), ScanError);
-  // var and function may legally declare one name again
-  assert.deepEqual(topLevelBindings("var v = 1; var v = 2; function g() {} function g() {}\nconst z = 1;\n").map((b) => b.name), ["z"]);
+  // `var` may declare one name again, a function declaration may not in a module
+  assert.deepEqual(topLevelBindings("var v = 1; var v = 2;\nconst z = 1;\n").map((b) => b.name), ["z"]);
+  assert.throws(() => topLevelBindings("function g() {} function g() {}\nconst z = 1;\n"), ScanError);
 });

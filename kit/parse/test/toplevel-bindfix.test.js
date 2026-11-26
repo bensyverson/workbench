@@ -5,7 +5,7 @@
 // division, not the start of a regex.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { topLevelBindings, topLevelNames, blank } from "../toplevel.js";
+import { topLevelBindings, topLevelNames, ScanError } from "../toplevel.js";
 
 /** Declarations of `f`, each a real module: the scanner's init must equal String(f) as the engine gives it. */
 const HELPERS = {
@@ -52,13 +52,14 @@ test("a constant's init ends at its last character of code, before a trailing co
 
 test("a `/` after a postfix ++ is a division, so the scan sees the declarations after it", () => {
   const src = "let i = 0; i++ / 2; const Q = '/'; const B = 1;\n";
-  assert.equal(blank(src).length, src.length);
   assert.deepEqual(topLevelNames(src), ["i", "Q", "B"]);
   assert.deepEqual(topLevelNames("let j = 0; j-- / 2; const R = '/'; const C = 1;\n"), ["j", "R", "C"]);
 });
 
 test("a `/` after a keyword used as a property name is a division; after the keyword itself it still starts a regex", () => {
   assert.deepEqual(topLevelNames("const A = { typeof: 1 }.typeof / 2; const C = '/'; const B = 1;\n"), ["A", "C", "B"]);
-  assert.deepEqual(topLevelNames("const A = o?.return / 2; const C = '/'; const B = 1;\n"), ["A", "C", "B"]);
+  assert.deepEqual(topLevelNames("const A = o.return / 2; const C = '/'; const B = 1;\n"), ["A", "C", "B"]);
+  // acorn 8.19 reads the `/` after `?.` and a keyword-named property as a regex (V8 as division): the file is refused
+  assert.throws(() => topLevelNames("const A = o?.return / 2; const C = '/'; const B = 1;\n"), ScanError);
   assert.deepEqual(topLevelNames("const f = (s) => { return /}/.test(s); };\nconst B = 1;\n"), ["f", "B"]);
 });

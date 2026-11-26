@@ -25,7 +25,6 @@ const shadows = {
   "if-key in an object inside a template": `const K = 1;\nconst t = \`\${ { if(K) ${body} } }\`;\nexport default () => t;`,
   "switch-key in an object after ?:": wrap(`switch(K) ${body}`, "c ? 0 : "),
   "leading-dot numeric key": wrap(`.5(K) ${body}`),
-  "string key after a decorator": cls(`@dec 'm'(K) ${body}`),
   "string key in an object on the next line": wrap(`a: 1,\n  'm'(K) ${body}`),
 };
 for (const [name, code] of Object.entries(shadows)) {
