@@ -82,3 +82,21 @@ test("a step's ctx.error carries its fix", () => {
 test("didYouMean is exported from kit/define", () => {
   assert.match(didYouMean("monht", ["month", "year"]), /month/);
 });
+
+test("a ref in an opening argument is checked against the construct's names too (WBd36m)", () => {
+  const g2 = makeGrammar({ opens: [name(), ref("table"), ref("column", { as: "col" })] });
+  const make = (/** @type {string} */ col) => g2("p").source("s", { a: "f64", b: "str" }).table("t", "s").add("c").chart("k", "t", col).x("c");
+  assert.deepEqual(g2.lower(make("c").build()).diagnostics, []);
+  const ds = g2.lower(make("cc").build()).diagnostics;
+  assert.deepEqual(ds.map((d) => d.code), ["B003"]);
+  assert.match(ds[0].message, /'cc'.*did you mean 'c'/i);
+});
+
+test("a stateful construct's opening ref is checked against its state when it opens, before any step (WBd36m)", () => {
+  const g3 = makeGrammar({}, { opens: [name(), ref("table", { as: "from" }), ref("column", { as: "key" })] });
+  const make = (/** @type {string} */ key) => g3("p").source("s", { a: "f64", b: "str" }).table("t", "s", key).add("c");
+  assert.deepEqual(g3.lower(make("a").build()).diagnostics, []);
+  const ds = g3.lower(make("c").build()).diagnostics;
+  assert.deepEqual(ds.map((d) => d.code), ["B003"], "c is added by a step, so it is not there when the table opens");
+  assert.match(ds[0].message, /no column 'c' when it opens/);
+});

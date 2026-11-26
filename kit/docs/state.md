@@ -30,7 +30,7 @@ state: {
     if (call.slot === "derive") return { columns: { ...state.columns, [call.args[0]]: inferred } };
     return state;
   },
-  names: { column: (state) => Object.keys(state.columns) },   // ref("column") resolves here, per step
+  names: { column: (state) => Object.keys(state.columns) },   // ref("column") resolves here, per step (in the opening arguments: against init's state)
 },
 ```
 

@@ -7,7 +7,7 @@
 import { lowerProgram } from "../lower/index.js";
 import { didYouMean, dialectError } from "./codes.js";
 import { enumOf, opt, list, struct, union, kindOf } from "./tags.js";
-import { rematch, single, nameOf, setOwn, LOCS } from "./record.js";
+import { rematch, single, nameOf, openKey, setOwn, LOCS } from "./record.js";
 import { bindings } from "./params.js";
 
 /** @import * as T from "./define.js" */
@@ -34,7 +34,7 @@ import { bindings } from "./params.js";
  */
 
 /** @typedef {{ slot: string, args: unknown[], index: number, once: boolean, at: { file: string, loc: Loc } }} RecCall */
-/** @typedef {{ construct: Construct, rec: Record<string, any>, name: string, calls: RecCall[], at: { file: string, loc: Loc } }} RecInstance */
+/** @typedef {{ construct: Construct, rec: Record<string, any>, name: string, opens: RecCall, calls: RecCall[], at: { file: string, loc: Loc } }} RecInstance */
 
 const NOWHERE = { file: "", loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 0 } } };
 
@@ -84,6 +84,13 @@ function inferredOf(here, types) {
   return out;
 }
 
+/** The slot name of an instance's opening arguments, as a RecCall. */
+const OPENS = "(opens)";
+/** A call as a message names it: `, .x` for a slot, nothing for the opening. @param {RecCall} call */
+const slotText = (call) => (call.slot === OPENS ? "" : `, .${call.slot}`);
+/** A call's argument specs: a slot's, or the construct's opening specs. @param {Construct} c @param {RecCall} call */
+const argSpecs = (c, call) => (call.slot === OPENS ? /** @type {any[]} */ (c.def.opens ?? []) : c.def.slots?.[call.slot]?.kind === "decl" ? c.def.slots[call.slot].args : null);
+
 /**
  * The instances of a record, by the grammar: each with its calls in order (a by-slot record's calls are
  * replayed in slot order, so `index` there counts in declaration order, not call order).
@@ -113,7 +120,10 @@ function instancesOf(g, record) {
         else for (const x of v) calls.push({ slot: sn, args: list(s.args, x), index: calls.length, once: false, at: here(calls.filter((y) => y.slot === sn).length) });
       }
     }
-    out.push({ construct: c, rec, name: nameOf(c, rec), calls, at: at(rec) });
+    const specs = /** @type {any[]} */ (c.def.opens ?? []);
+    /** @type {RecCall} the opening arguments, as a call: its refs are checked against a construct's names too */
+    const opens = { slot: OPENS, args: specs.map((sp, i) => rec[openKey(sp, i)]), index: -1, once: true, at: at(rec) };
+    out.push({ construct: c, rec, name: nameOf(c, rec), opens, calls, at: at(rec) });
     for (const child of c.children) for (const r of rec[child.name] ?? []) walk(child, r);
   };
   walk(g.root, record);
@@ -243,6 +253,12 @@ export function lowerRecord(g, record) {
       const opened = Object.fromEntries(Object.entries(inst.rec).filter(([k]) => k !== "calls" && !inst.construct.children.some((c) => c.name === k)));
       const stateOf = (/** @type {string} */ n) => { const i = stateful.find((x) => x.name === n); return i ? finalState(i) : undefined; };
       let state = st.init(opened, { program: record, stateOf });
+      for (const r of rematch(argSpecs(inst.construct, inst.opens) ?? [], inst.opens.args).refs) {
+        const names = st.names?.[r.ns];
+        if (!names) continue;
+        const known = /** @type {string[]} */ (names(state));
+        if (!known.includes(r.value)) report(inst.opens, { code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}': there is no ${r.ns} '${r.value}' when it opens.${didYouMean(r.value, known)}`, tip: known.length ? `name one of: ${known.join(", ")}` : `this ${inst.construct.name} has no ${r.ns} yet`, ...inst.opens.at, range: [0, 0] });
+      }
       for (const call of inst.calls) {
         const s = inst.construct.def.slots?.[call.slot];
         if (!s || s.kind !== "decl") continue;
@@ -290,14 +306,14 @@ export function lowerRecord(g, record) {
     };
     /** @type {Map<string, string[]>} */
     const known = new Map();
-    for (const call of inst.calls) {
-      const s = inst.construct.def.slots?.[call.slot];
-      if (!s || s.kind !== "decl") continue;
-      for (const r of rematch(s.args, call.args).refs) {
+    for (const call of [inst.opens, ...inst.calls]) {
+      const specs = argSpecs(inst.construct, call);
+      if (!specs) continue;
+      for (const r of rematch(specs, call.args).refs) {
         if (!ns[r.ns]) continue;
         if (!known.has(r.ns)) known.set(r.ns, ns[r.ns](inst.rec, { program: record, stateOf }));
         const names = /** @type {string[]} */ (known.get(r.ns));
-        if (!names.includes(r.value)) report(call, { code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}', .${call.slot}: there is no ${r.ns} '${r.value}'.${didYouMean(r.value, names)}`, tip: names.length ? `name one of: ${names.join(", ")}` : `this ${inst.construct.name} has no ${r.ns}`, ...call.at, range: [0, 0] });
+        if (!names.includes(r.value)) report(call, { code: "B003", severity: "error", message: `${inst.construct.name} '${inst.name}'${slotText(call)}: there is no ${r.ns} '${r.value}'.${didYouMean(r.value, names)}`, tip: names.length ? `name one of: ${names.join(", ")}` : `this ${inst.construct.name} has no ${r.ns}`, ...call.at, range: [0, 0] });
       }
     }
   }
