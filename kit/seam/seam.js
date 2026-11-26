@@ -15,7 +15,8 @@
  *   | { kind: "enum", values: string[] }
  *   | { kind: "record", fields: Record<string, Seam>, defaults?: Record<string, SeamValue> }
  *   | { kind: "list", of: Seam, max: number }
- *   | { kind: "event", of: Seam }} Seam
+ *   | { kind: "event", of: Seam }
+ *   | { kind: "draw", max: number, frame: string }} Seam
  */
 
 /**
@@ -76,6 +77,19 @@ export function parseSeam(text) {
       expect(">");
       if (!top) throw new SeamSyntax("an Event is a whole port's type; it cannot sit inside a record or a list");
       return { kind: "event", of };
+    }
+    if (t === "Draw") {
+      // a draw list (the draw-list draft, as ruled 2026-11-26): at most max ops, measured in one 2-D frame
+      next(); expect("<");
+      const n = next();
+      if (!/^[1-9]\d*$/.test(n)) throw new SeamSyntax(`a draw list's max is a positive whole number, not '${n}'`);
+      expect(">");
+      if (peek() !== "@") throw new SeamSyntax(`a draw list is measured in a frame: write Draw<${n}>@<frame>`);
+      next();
+      const f = next();
+      if (!IDENT.test(f) || f === "__proto__") throw new SeamSyntax(`a frame after @ is a name, not '${f || "the end"}'`);
+      if (!top) throw new SeamSyntax("a draw list is a whole port's type; it cannot sit inside a record or a list");
+      return { kind: "draw", max: Number(n), frame: f };
     }
     if (t.startsWith("'")) {
       /** @type {string[]} */
@@ -206,6 +220,7 @@ export function printSeam(s) {
     }
     case "list": return `list<${printSeam(s.of)}, ${s.max}>`;
     case "event": return `Event<${printSeam(s.of)}>`;
+    case "draw": return `Draw<${s.max}>@${s.frame}`;
   }
 }
 
@@ -217,7 +232,7 @@ export function printValue(v) {
 }
 
 /** The frame a leaf is tagged with, or null. @param {Seam} s */
-export const frameOf = (s) => (s.kind === "quantity" || s.kind === "point" || s.kind === "vector" ? s.frame : null);
+export const frameOf = (s) => (s.kind === "quantity" || s.kind === "point" || s.kind === "vector" || s.kind === "draw" ? s.frame : null);
 
 /** Every frame a seam type names, in order, once each. @param {Seam} s @returns {string[]} */
 export function framesOf(s) {
@@ -270,6 +285,7 @@ export function pairLocal(seam, local) {
       if (seam.of === "bool") return local === "bool" ? null : want('"bool"');
       return local === "str" || (typeof local === "object" && "enum" in local) ? null : want('"str"');
     case "quantity": return isF64(local) ? null : want('"f64"');
+    case "draw": return `${printSeam(seam)} is read whole by a draw builder and pairs with no local type`;
     case "point": case "vector":
       if (seam.kind === "point" && seam.dims === 1) return isF64(local) ? null : want('"f64"');
       return typeof local === "object" && "vec" in local && local.vec === seam.dims && local.of === "f64" ? null : want(`a vector(${seam.dims}, "f64") type`);
@@ -308,11 +324,11 @@ export function pairLocal(seam, local) {
  */
 /**
  * A tagged leaf both sides have: where it is (`at`, `items[].at`, "" for the whole value), what kind, and its frames.
- * @typedef {{ field: string, kind: "point" | "vector" | "quantity", dims: number | null, from: string, to: string, rate?: true }} TaggedLeaf
+ * @typedef {{ field: string, kind: "point" | "vector" | "quantity" | "draw", dims: number | null, from: string, to: string, rate?: true }} TaggedLeaf
  */
 
 /** @param {Seam} s */
-const kindWord = (s) => (s.kind === "event" ? "an Event" : s.kind === "record" ? "a record" : s.kind === "list" ? "a list" : s.kind === "enum" ? "an enum" : s.kind === "point" ? "a point" : s.kind === "vector" ? (s.rate ? "a vector per second" : "a vector") : s.kind === "quantity" ? (s.rate ? "a quantity per second" : "a quantity") : `${s.of === "f64" ? "an" : "a"} ${s.of}`);
+const kindWord = (s) => (s.kind === "event" ? "an Event" : s.kind === "record" ? "a record" : s.kind === "list" ? "a list" : s.kind === "enum" ? "an enum" : s.kind === "point" ? "a point" : s.kind === "vector" ? (s.rate ? "a vector per second" : "a vector") : s.kind === "quantity" ? (s.rate ? "a quantity per second" : "a quantity") : s.kind === "draw" ? "a draw list" : `${s.of === "f64" ? "an" : "a"} ${s.of}`);
 
 /**
  * Compares what a producer's port gives with what a consumer's port takes. Frames are compared by name only as
@@ -358,6 +374,13 @@ export function compareSeams(from, to) {
     }
     switch (a.kind) {
       case "event": walk(a.of, /** @type {any} */ (b).of, field, false); return;
+      case "draw": {
+        // a whole list converts along one frame path, op by op (kit/draw's convertOp)
+        const db = /** @type {{ max: number, frame: string }} */ (/** @type {any} */ (b));
+        if (a.max > db.max) add("S204", `the draw list holds up to ${a.max} ops and the input takes at most ${db.max}`);
+        tagged.push({ field, kind: "draw", dims: 2, from: a.frame, to: db.frame });
+        return;
+      }
       case "record": {
         const bf = /** @type {any} */ (b).fields;
         const sub = (/** @type {string} */ k) => (field ? `${field}.${k}` : k);

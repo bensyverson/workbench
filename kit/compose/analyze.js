@@ -9,6 +9,7 @@ import { lowerRecord } from "../define/lower.js";
 import { instanceName } from "../define/record.js";
 import { didYouMean } from "../define/codes.js";
 import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
+import { withDrawMaxes, shownDraw } from "./draw.js";
 import { compareSeams, printValue, printSeam, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
 import { applyRename, applySet, undelayedLoops } from "./wires.js";
 import { paramWireProblems, paramLoops, rateOf } from "./param-wires.js";
@@ -73,6 +74,7 @@ export function analyze(name, start, given, options) {
     if (errors.length) { broken.add(part); continue; }
     part.extents = lowered.seams?.extents ?? {};
     part.edges = lowered.seams?.edges ?? [];
+    part.seams = withDrawMaxes(part.seams, lowered.seams?.draws);
   }
 
   /** A part's side, with no port. @param {Part} p @returns {Side} */
@@ -81,7 +83,8 @@ export function analyze(name, start, given, options) {
   const side = (h) => {
     const p = /** @type {Part} */ (parts.get(h.program));
     if (h.side === "frame") return { ...partSide(p), frame: h.name, ...(h.dims !== undefined ? { dims: h.dims } : {}) };
-    return { ...partSide(p), port: `${h.side}.${h.name}`, ...(h.seam ? { seam: h.seam } : {}) };
+    const seam = (h.side === "out" ? p.seams.out : p.seams.in)[h.name]?.seamText ?? h.seam; // a Draw output's at its Program's max
+    return { ...partSide(p), port: `${h.side}.${h.name}`, ...(seam ? { seam } : {}) };
   };
   /** Whatever side a value is, as far as it is known: null for anything but a handle of a part. @param {unknown} h @returns {Side | null} */
   const anySide = (h) => {
@@ -318,6 +321,8 @@ export function analyze(name, start, given, options) {
   }
 
   const live = /** @type {Part | null} */ (shown);
+  const drawn = shownDraw(live, wires, parts, options);
+  for (const d of drawn.problems) add(calls.find((c) => c.kind === "show")?.at ?? start, d.code, d.message, d.fix, d.sides);
   /** @type {Composed} */
   const record = {
     name,
@@ -328,6 +333,7 @@ export function analyze(name, start, given, options) {
       return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, ...(w.overflow ? { overflow: w.overflow } : {}), dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(Object.keys(w.set).length ? { set: structuredClone(w.set) } : {}), ...(consumer?.delivery ? { delivery: consumer.delivery } : {}) };
     }),
     show: live ? live.name : null,
+    ...(drawn.view ? { view: drawn.view } : {}),
   };
   /** @param {Record<string, unknown>} o */
   const values = (o) => Object.entries(o).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ");
@@ -413,10 +419,10 @@ function describe(v) {
  * A conversion's numbers as the record keeps them: a point's scale and offset per axis, a vector's scale per axis
  * (sign kept, no offset), a quantity's one magnitude (a length is a size: a flip does not make it negative). A rate
  * converts as its kind: the kit's s is the same in every part.
- * @param {"point" | "vector" | "quantity"} kind @param {Edge} edge
+ * @param {"point" | "vector" | "quantity" | "draw"} kind @param {Edge} edge
  * @returns {{ scale: number[], offset: number[] }}
  */
 function planOf(kind, edge) {
   if (kind === "quantity") return { scale: [Math.abs(edge.scale[0])], offset: [0] };
-  return { scale: edge.scale, offset: kind === "point" ? edge.offset : edge.offset.map(() => 0) };
+  return { scale: edge.scale, offset: kind === "point" || kind === "draw" ? edge.offset : edge.offset.map(() => 0) };
 }

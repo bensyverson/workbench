@@ -19,12 +19,12 @@ import { formatDiagnostic } from "./format.js";
  * One diagnostic of a composition: at the glue's line (or a part's own, for a part's diagnostic), with the sides.
  * @typedef {{ code: string, severity: "error" | "warning", message: string, file: string, loc: Loc, from?: Side, to?: Side, fix: string }} ComposeDiagnostic
  */
-/** @typedef {{ field: string, kind: "point" | "vector" | "quantity", rate?: true, from: string, to: string, scale: number[], offset: number[] }} Conversion */
+/** @typedef {{ field: string, kind: "point" | "vector" | "quantity" | "draw", rate?: true, from: string, to: string, scale: number[], offset: number[] }} Conversion */
 /**
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
  * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants
  * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`.
- * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null }} Composed
+ * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null, view?: string }} Composed
  */
 /**
  * What `.check` and `.build` take: the loaded packages (for each part's version: kit/package's loadPackage results,
@@ -32,7 +32,7 @@ import { formatDiagnostic } from "./format.js";
  * With `runtimes` (kit/define's defineRuntime results, matched to parts by Dialect name), each reliable Event wire's queue
  * is sized (S116), a frame consumer's by `catchUp`, the most workbench time one display frame may cover (seconds,
  * default 1/15).
- * @typedef {{ packages?: Array<{ name: string, version: string, dialect?: unknown }>, build?: import("../define/define.js").BuildOptions, runtimes?: import("../define/runtime.js").Runtime[], catchUp?: number }} ComposeOptions
+ * @typedef {{ packages?: Array<{ name: string, version: string, dialect?: unknown }>, build?: import("../define/define.js").BuildOptions, runtimes?: import("../define/runtime.js").Runtime[], catchUp?: number, profile?: import("../draw/profiles.js").Profile | string }} ComposeOptions
  */
 /** @typedef {{ kind: "part", value: unknown } | { kind: "frame", a: unknown, b: unknown, edge: unknown } | { kind: "wire", from: unknown, to: unknown, options: unknown } | { kind: "show", value: unknown }} GlueCall */
 

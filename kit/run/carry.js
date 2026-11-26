@@ -5,6 +5,7 @@
 // axis (a point1 is one number), a vector (or a rate of one) by scale, a quantity by its one magnitude.
 
 /** @import { Conversion } from "../compose/compose.js" */
+import { convertDraw } from "./draw.js";
 
 /**
  * One leaf converted. @param {unknown} v @param {Conversion} c @returns {unknown}
@@ -65,7 +66,7 @@ export function carry(v, wire) {
   let out = Object.keys(wire.rename).length ? renamed(v, wire.rename) : v;
   // kit/compose lists dropped fields by their paths after the rename
   for (const d of wire.dropped) out = dropAt(out, segments(d));
-  for (const c of wire.convert) out = convertAt(out, segments(c.field), c);
+  for (const c of wire.convert) out = c.kind === "draw" ? convertDraw(out, /** @type {any} */ (c)) : convertAt(out, segments(c.field), c);
   if ((wire.fill || wire.set) && out !== null && typeof out === "object" && !Array.isArray(out)) {
     const o = /** @type {Record<string, unknown>} */ (out);
     const entries = [...Object.entries(wire.fill ?? {}), ...Object.entries(wire.set ?? {})];

@@ -6,6 +6,7 @@ import { clockOf } from "../define/runtime.js";
 import { canonical, stateHash } from "../build/index.js";
 import { stateErrorMessage } from "../define/state.js";
 import { seedRng, next } from "./rng.js";
+import { drawAfter } from "./draw.js";
 
 /** @import { Runtime, Clock } from "../define/runtime.js" */
 /** @import { Q } from "../define/rational.js" */
@@ -116,9 +117,9 @@ function stateProblem(p, s, what) {
 
 /**
  * Runs a part's init on its record: the state, or an error message (N004 when it threw, N002 or N003 when it does
- * not fit).
+ * not fit; a J code when a Draw output does not build).
  * @param {Part} p @param {boolean} dev
- * @returns {{ state: any } | { code: "N002" | "N003" | "N004", message: string }}
+ * @returns {{ state: any } | { code: string, message: string }}
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
@@ -128,7 +129,8 @@ export function runInit(p, dev) {
   try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "N004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
   const bad = stateProblem(p, s, "init returned");
   if (bad) return bad;
-  return { state: dev ? deepFreeze(s) : s };
+  const state = dev ? deepFreeze(s) : s;
+  return drawAfter(p, state, defaults(p.runtime)) ?? { state };
 }
 
 /**
@@ -170,7 +172,7 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     }
     deepFreeze(r.state);
   }
-  return r;
+  return drawAfter(p, r.state, values) ?? r;
 }
 
 /**

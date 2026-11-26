@@ -190,6 +190,25 @@ inputs: { object: "<Inputs>", name: "<name>" },   // value inputs, read as <name
 - **Triggers.** A Grammar names an input with `ref("in")`, checked by name (B003, with a did-you-mean); `ref("in", { kind: "event" })` takes only Event inputs, `{ kind: "value" }` only value inputs.
 - **Handles.** Every builder has read-only `.out.<port>`, `.in.<port>`, `.frame.<frame>` and `.param.<param>` (a param the Program declares), which a composer passes to kit/compose ([compose/README.md](compose/README.md)). So no slot or child construct may be named `out`, `in` or `frame` (D031). A param slot named `param` stays callable: `.param("<param>", { value: <value> })` declares one, and `.param.<param>` names it.
 - An output lambda's result, `extent(record)` and `edges(record)` are checked when an example lowers (D027, D030), at your `defineDialect` line.
+- **A picture on the wire.** A package offers its picture as a draw list, an output with a `Draw<<max>>@<frame>` seam (a 2-D frame), built from the state by one builder, and may name `colors` and declare `images` beside `frames` ([draw/README.md](draw/README.md) has the op table and the rules):
+
+  ```js
+  colors: { <color>: "#rrggbb" },
+  images: { <image>: { size: [<w>, <h>], cell: [<cw>, <ch>], note: "<what each cell is>" } },
+  ports: {
+    out: {
+      <port>: { seam: "Draw<<max>>@<frame>", note: "<what is drawn>", max: (record) => <n>,   // max: this Program's, at most <max>
+        layers: [
+          { from: (s, record) => [{ op: "<op>", at: [<x>, <y>], <…> }, ...<name>.<draw-in>] },   // a whole list; spread a Draw input
+          { each: "<state list>", from: (<item>, s, record) => <op or null> },                // one op per item
+          { pen: (s, <pen>, record) => { <pen>.<op>({ <fields> }); }, max: <n> },             // one call per op
+        ] },
+    },
+    in: { <draw-in>: { seam: "Draw<<max>>@<frame>", note: "<what it should hold>" } },   // no default: unwired, it is []
+  },
+  ```
+
+  A port takes `from`, `each` with `from`, `pen` or `layers`. There is no `map` (J002). A builder reads value and Draw inputs through your inputs global, never by copying them into state.
 - **Composing** packages is a glue program's job, with `kit/compose`: read [compose/README.md](compose/README.md) when you wire parts, relate frames, rename record fields or break a cycle. A wire's options, each optional and all data: `.wire(<part>.out.<port>, <part>.in.<port>, { rename: { <producerField>: "<consumerField>" }, set: { <consumerField>: <value> }, delay: true, overflow: "keepLast" })`. `set` gives a field the producer does not send (S207, S208). A wire into a param, `.wire(<part>.out.<port>, <part>.param.<param>)`, takes no options: the run sets the param from a value output between instants, and the part rebuilds when its build-time code reads it.
 
 ## A runtime: `defineRuntime`

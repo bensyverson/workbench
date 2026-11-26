@@ -31,4 +31,7 @@ export const COMPOSE_CODES = Object.freeze({
   S256: "\"fit\" with a frame that has no extent, or with dims that differ",
   S257: "A malformed edge: not { scale, offset }, a scale of 0, the wrong number of axes; or two frames of different dims, or of one part, related by .frame",
   S301: "A handle read as a value at build time: arithmetic, an ordering comparison or a string (caught as the glue runs), or tested or compared (`if (h)`, `h ? a : b`, `!h`, `h && x` where the logical is itself tested, `h !== undefined`, `h == null`; found by scanGlue in the glue's text), or a property a handle does not define read (`a.out.x.y`; the handle throws an Error carrying code S301, file and loc)",
+  S401: "The shown draw list can hold an op kind the renderer profile does not draw (check({ profile })), read from the builders and followed through the Draw inputs they spread; names the output whose builder writes it",
+  S402: "The shown part has several Draw outputs and none is named view, so the page cannot tell which to show",
+  S403: "check({ profile }) names no renderer profile",
 });

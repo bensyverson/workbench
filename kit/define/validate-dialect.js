@@ -11,7 +11,7 @@ import { parseLambda, checkSubset } from "../parse/index.js";
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "state", "ports", "frames", "edges", "inputs"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "state", "ports", "frames", "edges", "inputs", "colors", "images"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
 /** What a vector's `multiply` may say: componentwise (the default), or only a vector times a scalar. */
 export const VECTOR_MULTIPLY = Object.freeze(["componentwise", "scalar"]);

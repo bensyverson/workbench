@@ -8,13 +8,14 @@ import { didYouMean } from "./codes.js";
 import { TAG, kindOf, enumOf, struct, list } from "./tags.js";
 import { resolvePath } from "./ui/shapes.js";
 import { checkLambda } from "./ui/lambda.js";
+import { drawOutput, drawInput, declarePaint, looksDraw, DRAW_OUT_KEYS } from "./draw-ports.js";
 
 /** @import { Seam } from "../seam/seam.js" */
 /** @import { Type } from "../ir/ir.js" */
 /** @import { Problem } from "./types.js" */
 /** @import { InPort, Frame, Seams, EventRecord } from "./define.js" */
 
-export const SEAM_KEYS = Object.freeze(["ports", "frames", "edges", "inputs"]);
+export const SEAM_KEYS = Object.freeze(["ports", "frames", "edges", "inputs", "colors", "images"]);
 const OUT_KEYS = ["seam", "from", "note"];
 const IN_KEYS = ["seam", "note", "default", "required", "type", "delivery", "record"];
 const FRAME_KEYS = ["dims", "note", "extent"];
@@ -35,7 +36,7 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v) &&
 const show = (v) => { try { return typeof v === "function" ? "a function" : JSON.stringify(v) ?? String(v); } catch { return String(v); } };
 
 /** No seams: what a Dialect without ports or frames has. @returns {Seams} */
-export const noSeams = () => ({ out: {}, in: {}, frames: {}, edges: null, inputs: null });
+export const noSeams = () => ({ out: {}, in: {}, frames: {}, edges: null, inputs: null, colors: {}, images: {} });
 
 /**
  * Reads and judges the seams of a declaration.
@@ -84,6 +85,7 @@ export function declareSeams(def) {
     if (typeof def.edges !== "function") add("D030", ["edges"], `edges is a function of the built record, (record) => [{ from, to, scale, offset }], not ${show(def.edges)}`, 'edges(record) { return [{ from: "cell", to: "px", scale: 16, offset: 8 }]; }');
     else seams.edges = def.edges;
   }
+  Object.assign(seams, declarePaint(def, add));
 
   /** Parses a port's seam and checks its frames. @param {any} p @param {Array<string | number>} at @param {string} what @returns {Seam | null} */
   const seamOf = (p, at, what) => {
@@ -130,7 +132,7 @@ export function declareSeams(def) {
         if (!IDENT.test(n)) { add("D024", at, `the port name '${n}' is not an identifier`, "rename the port"); continue; }
         if (UNNAMEABLE.includes(n)) { add("D024", at, `the port name '${n}' ${unnameableWhy(n)}`, "rename the port"); continue; }
         if (!isObj(p)) { add("D024", at, `${what} is { seam, … }, not ${show(p)}`, `${n}: { seam: "f64"${side === "out" ? `, from: "${n}"` : ", default: 0"} }`); continue; }
-        keys(p, side === "out" ? OUT_KEYS : IN_KEYS, at, what, "D024");
+        keys(p, side === "in" ? IN_KEYS : looksDraw(p.seam) ? [...DRAW_OUT_KEYS] : OUT_KEYS, at, what, "D024");
         const seam = seamOf(p, at, what);
         if (seam === null) continue;
         defaultsOf(seam, side, at, what);
@@ -170,6 +172,7 @@ export function declareSeams(def) {
 
   /** @param {string} n @param {any} p @param {Seam} seam @param {string | null} nt @param {Array<string | number>} at @param {string} what */
   function outputOf(n, p, seam, nt, at, what) {
+    if (seam.kind === "draw") { const draw = drawOutput(def, p, seam, frameNamed(seam.frame), at, what, add); if (draw) seams.out[n] = { name: n, seam, seamText: printSeam(seam), note: nt, draw }; return; }
     if (seam.kind === "event") {
       // ruled 2026-11-26 (the clocks draft, question 3): a runtime pushes an Event output's records in its step
       if (p.from !== undefined) { add("D026", [...at, "from"], `${what} is an Event output, so it has no from: a runtime pushes its records in its step, and the kit reads nothing from the run's state for it`, "remove from"); return; }
@@ -185,6 +188,7 @@ export function declareSeams(def) {
   function inputOf(n, p, seam, nt, at, what) {
     /** @type {InPort} */
     const port = { name: n, seam, seamText: printSeam(seam), note: nt, required: p.required === true };
+    if (seam.kind === "draw") { drawInput(p, seam, frameNamed(seam.frame), at, what, add); seams.in[n] = { ...port, required: false, default: [] }; return; }
     if (seam.kind === "event") {
       if (p.default !== undefined || p.required !== undefined) add("D028", at, `${what} is an Event input: its records arrive each step, so it takes neither a default nor required`, "remove default and required");
       port.delivery = deliveryOf(p.delivery, at, what);

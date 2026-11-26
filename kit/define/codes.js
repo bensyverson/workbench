@@ -82,7 +82,7 @@ export const BUILD_CODES = Object.freeze({
 export const an = (w) => `${(/^[aeiou]/i.test(w) && !/^(uni(?![nm])|us[aeu]|uti|eu|one|once|ubiq)/i.test(w)) || /^(hour|honest|honor|heir)/i.test(w) ? "an" : "a"} ${w}`;
 
 /** Letters a Dialect's own check codes may not start with. */
-export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "L", "N", "P", "S", "U", "V"]);
+export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "J", "L", "N", "P", "S", "U", "V"]);
 
 /**
  * The fields of a Dialect's own refusal, as a check's or a step's `ctx.error` makes it: the message with a

@@ -7,6 +7,7 @@
 // current globals as each call starts.
 
 import { emitKernel, instantiate } from "../emit/js/index.js";
+import { drawReader } from "./draw.js";
 
 /** @import { Runtime } from "../define/runtime.js" */
 /** @import { Emitted } from "../emit/js/emit.js" */
@@ -57,6 +58,7 @@ export function compilePart(runtime, record) {
   const outputs = {};
   for (const p of Object.values(/** @type {Record<string, any>} */ (dialect.seams.out))) {
     if (p.seam.kind === "event") continue;
+    if (p.draw) { outputs[p.name] = drawReader(p.name); continue; }
     if (typeof p.from === "string") { const path = p.from.split("."); outputs[p.name] = (s) => path.reduce((/** @type {any} */ v, /** @type {string} */ k) => v?.[k], s); continue; }
     const k = low.seams?.outputs?.[p.name]?.kernel;
     if (k) outputs[p.name] = /** @type {any} */ (instantiate(emitKernel(k, { intrinsics }), helpers));

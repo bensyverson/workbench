@@ -4,6 +4,7 @@
 import { cmp, qText, toNumber } from "../define/rational.js";
 import { carry } from "./carry.js";
 import { defaults, deepFreeze } from "./part.js";
+import { imagesOf } from "./draw.js";
 
 /** @import { Q } from "../define/rational.js" */
 /** @import { Composed } from "../compose/compose.js" */
@@ -25,7 +26,7 @@ export function makeWires(composed, byName) {
     const consumer = /** @type {Part} */ (byName.get(to.part));
     const event = consumer.runtime.dialect.seams.in[to.port].seam.kind === "event";
     const keepLast = w.delivery && typeof w.delivery === "object" ? w.delivery.keepLast : null;
-    return { index, from, to, event, delay: w.delay, keepLast, overflow: w.overflow ?? null, convert: w.convert, rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
+    return { index, from, to, event, delay: w.delay, keepLast, overflow: w.overflow ?? null, convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images: imagesOf(from.part, byName.get(from.part)?.runtime) } : c)), rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
   });
 }
 

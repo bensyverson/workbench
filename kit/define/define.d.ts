@@ -140,13 +140,13 @@ export type Delivery = "reliable" | { keepLast: number };
 export interface FrameDef { dims: 1 | 2 | 3; note: string; extent?: (record: Record<string, any>) => { min: number[]; max: number[] } }
 
 /** One output port, parsed. */
-export interface OutPort { name: string; seam: import("../seam/seam.js").Seam; seamText: string; from?: string | Function; note: string | null }
+export interface OutPort { name: string; seam: import("../seam/seam.js").Seam; seamText: string; from?: string | Function; note: string | null; draw?: import("../draw/builders.js").DrawDecl }
 /** One input port, parsed. */
 export interface InPort { name: string; seam: import("../seam/seam.js").Seam; seamText: string; note: string | null; default?: unknown; required: boolean; delivery?: Delivery; record?: { name: string; slots: string[] } }
 /** One frame, parsed. */
 export interface Frame { name: string; dims: 1 | 2 | 3; note: string; extent: Function | null }
 /** What a Dialect declares at its seams, parsed. */
-export interface Seams { out: Record<string, OutPort>; in: Record<string, InPort>; frames: Record<string, Frame>; edges: Function | null; inputs: { object: string; name: string } | null }
+export interface Seams { out: Record<string, OutPort>; in: Record<string, InPort>; frames: Record<string, Frame>; edges: Function | null; inputs: { object: string; name: string } | null; colors: Record<string, string>; images: Record<string, import("../draw/ops.js").Image> }
 /** An Event input's record as lambdas read it: the global's name, the slot conventions that see it, its fields' local types. */
 export interface EventRecord { input: string; name: string; slots: string[]; members: Record<string, unknown> }
 

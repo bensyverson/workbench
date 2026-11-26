@@ -88,7 +88,7 @@ const num = (x) => String(Math.round(x * 1e9) / 1e9);
 
 /**
  * A planned conversion as the draft prints it: `at: maze.cell → particles.px, point, ×32 +16`.
- * @param {{ field: string, kind: "point" | "vector" | "quantity", rate?: true, from: string, to: string, edge: Edge }} c
+ * @param {{ field: string, kind: "point" | "vector" | "quantity" | "draw", rate?: true, from: string, to: string, edge: Edge }} c
  */
 export function convertText(c) {
   /** @param {number[]} v */

@@ -8,4 +8,5 @@ export { createDriver } from "./driver.js";
 export { replay } from "./replay.js";
 export { RUN_CODES, RunError } from "./codes.js";
 export { carry } from "./carry.js";
+export { pageView } from "./draw.js";
 export { slowdowns, INPUT_KINDS } from "./log.js";
