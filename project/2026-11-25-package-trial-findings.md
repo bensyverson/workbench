@@ -41,3 +41,5 @@ Single mentions:
   - The format stays text-only: files are hashed as UTF-8 text, and the reference says so.
   - `elements` must be exactly the set of modules the UI names, so the two cannot drift.
 - **Parked:** the element's `emits` mismatch (a fixture issue, not a format one) and a `customElements.define` guard (it belongs to composition, `hjdIRt`).
+
+> **Ruled 2026-11-25 (Ben): the import check uses a real parser.** Three reviews found ways past kit/package's lexical import scan (`d8b20fd` fixed the second round; issue `OBLXnA` holds the third round's four routes). Acorn (MIT, no dependencies, runs in the page) is vendored into kit/. Each package module is parsed as ESM, a module that does not parse is refused, and every import form is found in the tree. This is the repo's first runtime dependency, approved by Ben for this purpose only.

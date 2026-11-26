@@ -53,3 +53,7 @@ Claude Code sends periodic reminders to use TaskCreate/TaskUpdate, and on 2026-1
 ## 2026-11-25: browser-safe.test.js flags the text `import(` anywhere in kit/ outside comments
 
 The kit's browser-safety test scans kit/ sources for dynamic imports with a regex, so the spelling inside a string or template literal (a diagnostic message, say) fails it too. kit/package words its message as "a dynamic import expression". Write it that way, or fix the test to skip strings.
+
+## 2026-11-25: the scan-time test in kit/parse can fail under load
+
+`kit/parse/test/toplevel-shadow-members.test.js` ("scan time grows near-linearly with calls and subscripts") compares wall times at two sizes. With trial agents and other suites running on the machine at the same time, one pre-commit run failed it (1500: 3.3 ms, 6000: 38.2 ms), and the rerun passed. Before you suspect your change, rerun it on a quiet machine. The quadratic walk-backs behind it are issue `ocy5OI`.
