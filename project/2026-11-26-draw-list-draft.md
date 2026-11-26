@@ -158,3 +158,11 @@ Dogfood before building: a small trial on paper, from this draft alone. One fres
 > - `tiles` converting `at` only breaks under a scaling wire.
 >
 > See the findings' recommendations.
+
+> **Ruled 2026-11-26 (leaf `pSo5YA`), on the trial's recommendations.** Ben accepted 1, 4 and 5 as recommended. 2 is the integrator's call, made while Ben was away. He confirmed the composer owns the budget, and the call can be reversed. Ben left 3 to the integrator.
+> 1. **A `Draw` max comes from the built record**, as `extent(record)` does, checked per composition, under a Dialect-level ceiling for the type.
+> 2. **At composition a renderer profile checks op kinds only. Counts are checked exactly at draw time.** The composer owns the budget. A seam therefore carries the op kinds it can hold, derived from its builder where the kit can see them (the op tags a builder writes are literals), so the check needs no per-kind counts from the author. An op over a count is a draw-time diagnostic naming the profile and the limit, never a silent drop.
+> 3. **`tiles` scales its cell size by the edge across a scaling wire.** A renderer that can't scale tiles refuses a non-unit scale, as the Game Boy refuses a scaled image.
+> 4. **Builders read the record and value inputs.** Draw inputs arrive through the `inputs` global, like value inputs. A root no longer mirrors inputs into state.
+> 5. **Per-item over non-entity state:** document that an entity-style Dialect keeps an entity list in state, and add a `tiles` op the grid can feed (with 3). `each` gets no index.
+> 6. **The small items** (how a `from` layer counts toward the max; a negative `size` or `r`; alpha on a 4-shade renderer; text formatting; whether a Draw input wakes a `demand` part; which of several Draw outputs the page shows) are spelled out in a doc pass during the build. They need no ruling.
