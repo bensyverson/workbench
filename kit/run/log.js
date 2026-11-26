@@ -2,7 +2,8 @@
 // at or after it). A D-pad's state (`control`), a param change (`param`), a rebuild with its new record (`rebuild`),
 // and each display frame the real-time driver ran (`frame`, with `capped` when the frame was longer than the
 // catch-up cap). A param wire's input is a `param` input with `wire`, the output it came from (param-wires.js): the
-// run makes it, and the log keeps it like any other. A run is a pure function of the composed record, the params and
+// run makes it, stamped with the instant that made it, and applies it right after that instant; the log keeps it
+// like any other. A run is a pure function of the composed record, the params and
 // this log.
 
 import { q, qText, sub, toNumber } from "../define/rational.js";

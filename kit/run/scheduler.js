@@ -128,12 +128,18 @@ export function createRun(composed, options) {
   const report = (d) => { diagnostics.push({ severity: "error", ...d }); };
   const delivery = createDelivery(wires, byName, report);
   const { dropStopped } = delivery;
-  const params = createParamFeed(composed, byName, report);
+  const params = createParamFeed(composed, byName, report, options.params);
   /**
-   * After the last instant run: each param wire's input, stamped at the next instant (when none is due, the first
-   * millisecond after), so it takes effect there ahead of the steps (R2). Idempotent: what the log holds is not added twice.
+   * After the instant `T`, just run: each param wire's input, stamped `T`. The log's inputs stamped `T` not yet
+   * applied go with it (a run from a log), so what the log holds is not added twice. @param {Q} T
    */
-  const feedParams = () => { if (params.any && at.lastT) params.feed(at.lastT, nextInstant() ?? afterMs(at.lastT), inputs, insert); };
+  const feedParams = (T) => {
+    if (!params.any) return;
+    /** @type {Entry[]} */
+    const logged = [];
+    for (let k = cursor; k < inputs.length && cmp(inputs[k].T, T) === 0; k++) logged.push(inputs[k]);
+    params.feed(T, logged, insert);
+  };
   /**
    * Stops a part: a stopped part takes no Events (Ben, 2026-11-26), so the records waiting for it are dropped and
    * counted, as are those sent to it until a rebuild restarts it with empty queues.
@@ -175,11 +181,13 @@ export function createRun(composed, options) {
 
   /**
    * Applies the log's inputs stamped at or before `T`, between instants: just before the instant `before` (null: at
-   * their own stamp, ahead of the next instant), which is where a rebuild's event says it landed.
+   * their own stamp, ahead of the next instant), which is where a rebuild's event says it landed. A param wire's
+   * input stamped `before` was made by that instant, so it and the log after it wait until the instant has run.
    * @param {Q} T @param {Q | null} before
    */
   function applyInputs(T, before) {
     while (cursor < inputs.length && cmp(inputs[cursor].T, T) <= 0) {
+      if (before && inputs[cursor].wire && cmp(inputs[cursor].T, before) === 0) return;
       const e = inputs[cursor++];
       if (e.kind === "frame") { slowdown.frame(e); continue; }
       // a page input is the page part's Event: one record on each wire from that control, at the input's stamp; a
@@ -191,6 +199,7 @@ export function createRun(composed, options) {
       else if (e.kind === "param") {
         const name = /** @type {string} */ (e.name), was = p.params[name];
         p.params = { ...p.params, [name]: e.value };
+        params.noteSet(p.name, name);
         if (needsRebuild(p.record, [name])) {
           if (!options.build) throw new Error(`the param ${p.name}.$.${name} is read at build time, so changing it rebuilds the part, and the run was given no build(part, params)`);
           rebuild(p, options.build(p.name, { ...p.params }), paramTrigger(p.record, name, was, e.value), null, before ?? e.T);
@@ -224,9 +233,10 @@ export function createRun(composed, options) {
     const content = pkg && pkg.content !== undefined ? pkg.content : p.content;
     const key = partKey({ package: content, record });
     const after = { key, record, kernels: compiled.sources };
-    if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input })); return; }
+    // the record's declared values reach $ for the params nothing has set (a new default, a new param)
+    if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input })); p.params = params.after(p, record); return; }
     // init runs on a trial copy, so a throw or a state that does not fit leaves the running part as it was
-    const next = { record, compiled, clock: clock.clock, key, content, revision: nextRevision({ key: was.key, revision: was.revision }, key), rng: /** @type {Part["rng"]} */ ([...p.rng]) };
+    const next = { record, compiled, clock: clock.clock, key, content, revision: nextRevision({ key: was.key, revision: was.revision }, key), rng: /** @type {Part["rng"]} */ ([...p.rng]), params: params.after(p, record) };
     const r = runInit({ ...p, ...next }, dev);
     if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }], input })); return; }
     builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input }));
@@ -275,7 +285,7 @@ export function createRun(composed, options) {
     at.lastT = T;
     if (cmp(now, T) < 0) now = T;
     hashes.push({ T: qText(T), hash: stateHash(parts.map((p) => [p.name, p.revision, p.stopped, p.hash])), parts: Object.fromEntries(parts.map((p) => [p.name, p.hash])) });
-    feedParams();
+    feedParams(T);
     const lastCp = checkpoints.at(-1);
     if (!lastCp.T || cmp(sub(T, lastCp.T), every) >= 0) checkpoint();
     return { T: qText(T), stepped };
@@ -425,8 +435,6 @@ export function createRun(composed, options) {
       for (let k = inputs.length - 1; k >= cursor; k--) if (cmp(inputs[k].T, target) > 0) inputs.splice(k, 1);
       frameLog.dropAfter(target);
       advance(target);
-      // a param wire's input after the last instant is that instant's doing, not an outside input: made again
-      feedParams();
       return run;
     },
   };

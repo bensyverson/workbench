@@ -14,9 +14,9 @@
  * start; left out, no inputs line. `span`: the log positions to list instead (after, through), when the events say
  * them (`input`). `readBefore`: the revision the consumers last read, when it is not `revision.before` (an earlier
  * build at the same stamp was superseded). `landed`: when the part's previous changed build landed, if it did at an
- * earlier stamp. `superseded`: the revision of the next changed build at the same stamp. `later`: the next changed
- * build, at a later stamp, as `{ revision, before }`.
- * @typedef {{ log?: RunLog, base?: string, inputs?: string | null, span?: { after: number, through: number }, readBefore?: number, landed?: string, superseded?: number, later?: { revision: number, before: string } }} FormatOptions
+ * earlier stamp (`landedRight`: right after the instant at it). `superseded`: the revision of the next changed build
+ * at the same boundary. `later`: the next changed build, at a later boundary, as `{ revision, before, right }`.
+ * @typedef {{ log?: RunLog, base?: string, inputs?: string | null, span?: { after: number, through: number }, readBefore?: number, landed?: string, landedRight?: boolean, superseded?: number, later?: { revision: number, before: string, right: boolean } }} FormatOptions
  */
 
 /** A rational's text ("1/3", "6/5", "2") as a number. @param {string} t */
@@ -86,7 +86,9 @@ const line = (label, text) => `  ${(label ? `${label}:` : "").padEnd(13)}${text}
  */
 export function formatBuild(e, o = {}) {
   const { after, before } = e.boundary;
-  const at = after === null ? `before the first instant, ${timeText(before)}` : `after instant ${timeText(after)}, at ${timeText(before)} (before the next instant)`;
+  // a boundary whose two sides are one instant is the one right after it (a param wire's input: kit/run)
+  const right = rightAfter(e);
+  const at = after === null ? `before the first instant, ${timeText(before)}` : right ? `right after instant ${timeText(after)} (before the next instant)` : `after instant ${timeText(after)}, at ${timeText(before)} (before the next instant)`;
   const out = [];
   const [first, ...more] = because(e, o);
   if (!e.ok) {
@@ -106,7 +108,7 @@ export function formatBuild(e, o = {}) {
   out.push(line("consumers", !e.consumers.length ? "none"
     : !e.changed ? `${who} keep reading ${rev} (no new revision)`
     : o.superseded !== undefined ? `${who} never read ${rev}: superseded by ${e.part}@${o.superseded} before any consumer step`
-    : `${who} read ${e.part}@${o.readBefore ?? e.revision.before} ${o.landed === undefined ? "at every step before" : `at every step from ${timeText(o.landed)} until`} ${timeText(before)}, and ${rev} ($rev ${e.revision.after}) ${o.later ? `at any step from ${timeText(before)} until ${e.part}@${o.later.revision} landed at ${timeText(o.later.before)}` : "from their first step at or after it"}`));
+    : `${who} read ${e.part}@${o.readBefore ?? e.revision.before} ${o.landed === undefined ? `at every step ${right ? "through" : "before"}` : `at every step ${o.landedRight ? "after" : "from"} ${timeText(o.landed)} ${right ? "through" : "until"}`} ${timeText(before)}, and ${rev} ($rev ${e.revision.after}) ${o.later ? `at any step ${right ? "after" : "from"} ${timeText(before)} until ${e.part}@${o.later.revision} landed ${o.later.right ? "right after" : "at"} ${timeText(o.later.before)}` : right ? "from their first step after it" : "from their first step at or after it"}`));
   if (o.inputs !== undefined) out.push(line("inputs", inputsText(o.log, o.inputs, before, o.span)));
   return out.join("\n");
 }
@@ -166,6 +168,16 @@ export function why(builds, log, o = {}) {
 }
 
 /**
+ * Whether two builds landed on one boundary, with no instant between them: the same stamp is not enough, since a
+ * build right after an instant (a param wire's) shares its stamp with one just before it.
+ * @param {BuildEvent} a @param {BuildEvent} b
+ */
+const same = (a, b) => a.boundary.before === b.boundary.before && a.boundary.after === b.boundary.after;
+
+/** Whether a build landed right after an instant: its boundary's two sides are that one instant. @param {BuildEvent} e */
+const rightAfter = (e) => e.boundary.after === e.boundary.before;
+
+/**
  * What one build's text needs of the part's other builds: the inputs since its previous build (by log position when
  * the events carry it), and, for a changed build, what its consumers read before and after it. Builds at one stamp
  * land before any consumer step, so all but the last of them are superseded.
@@ -182,12 +194,12 @@ function context(builds, e) {
   if (!changed(e)) return out;
   const next = mine.slice(k + 1).find(changed);
   if (next) {
-    if (next.boundary.before === e.boundary.before) out.superseded = next.revision.after;
-    else out.later = { revision: next.revision.after, before: next.boundary.before };
+    if (same(next, e)) out.superseded = next.revision.after;
+    else out.later = { revision: next.revision.after, before: next.boundary.before, right: rightAfter(next) };
   }
   const earlier = mine.slice(0, k).filter(changed);
   let at = earlier.length - 1;
-  while (at >= 0 && earlier[at].boundary.before === e.boundary.before) out.readBefore = earlier[at--].revision.before;
-  if (at >= 0) out.landed = earlier[at].boundary.before;
+  while (at >= 0 && same(earlier[at], e)) out.readBefore = earlier[at--].revision.before;
+  if (at >= 0) Object.assign(out, { landed: earlier[at].boundary.before, landedRight: rightAfter(earlier[at]) });
   return out;
 }

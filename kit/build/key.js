@@ -29,11 +29,16 @@ function text(x) {
   return `{${parts.join(",")}}`;
 }
 
+/** A param value's type as the key keeps it: `number`, `boolean`, `string`, `null`, `array` or `object`. @param {unknown} v */
+const typeText = (v) => (Array.isArray(v) ? "array" : v === null ? "null" : typeof v);
+
 /**
- * A built record as its content key sees it: without its `reads`, and each param declaration under `params` without
- * its `value`. The reads say where build-time code read a param (a file and line, which move when the glue's lines
- * do), and what each read produced is already in the record; a value only Kernels read reaches them through `$`
- * each step, never compiled in (ruled 2026-11-26, leaf x3iG6D). The declaration's other fields stay.
+ * A built record as its content key sees it: without its `reads`, and each param declaration under `params` with
+ * its `value` replaced by the value's type (`valueType`). The reads say where build-time code read a param (a file
+ * and line, which move when the glue's lines do), and what each read produced is already in the record; a value only
+ * Kernels read reaches them through `$` each step, never compiled in (ruled 2026-11-26, leaf x3iG6D). A
+ * declaration's type comes only from its value, and a Dialect may compile it in (a uniform's type), so the type
+ * stays; so do the declaration's other fields.
  * @param {Record<string, any>} record @returns {Record<string, any>}
  */
 export function keyed(record) {
@@ -43,14 +48,14 @@ export function keyed(record) {
   /** @type {Record<string, unknown>} */
   const decls = {};
   for (const [n, d] of Object.entries(params)) {
-    if (d !== null && typeof d === "object" && !Array.isArray(d)) { const { value: _value, ...decl } = d; decls[n] = decl; } else decls[n] = d;
+    if (d !== null && typeof d === "object" && !Array.isArray(d)) { const { value, ...decl } = d; decls[n] = "value" in d ? { ...decl, valueType: typeText(value) } : decl; } else decls[n] = d;
   }
   return { ...rest, params: decls };
 }
 
 /**
  * A part's content key: the hash of the kit version, the package's content key (kit/package's; "" when the host
- * has none) and the built record in canonical form, as `keyed` gives it (no reads, no param values).
+ * has none) and the built record in canonical form, as `keyed` gives it (no reads; a param's value only as its type).
  * @param {{ package: string | null | undefined, record: Record<string, any>, kitVersion?: string }} o
  * @returns {string}
  */

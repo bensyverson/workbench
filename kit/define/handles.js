@@ -131,8 +131,8 @@ const paramHandles = new WeakMap();
 /**
  * A Program's param side: `<part>.param.<name>` for each param it declares (`declared()`, read at each access, since
  * the chain declares them as it goes), and a `known: false` handle for any other name. With `method` (the Grammar's
- * param slot is itself named `param`), the side is that method too: calling it declares a param, and the method's
- * own properties (`call`, `bind` …) answer as a function's unless a param of that name is declared.
+ * param slot is itself named `param`), the side is that method too: calling it declares a param, and every name, the method's own
+ * properties (`call`, `bind`, `length` …) among them, answers as a param handle: a call never reads them.
  * @param {{ declared(): Map<string, unknown> }} program @param {string} part @param {string} dialect @param {Function} [method]
  * @returns {object}
  */
@@ -152,7 +152,6 @@ export function paramSideOf(program, part, dialect, method) {
     get(t, prop, receiver) {
       if (typeof prop === "symbol") return method ? Reflect.get(t, prop, receiver) : undefined;
       if (program.declared().has(prop)) return handle(prop);
-      if (method && prop in t) return Reflect.get(t, prop, receiver);
       if (!method && prop === "then") return undefined;
       return handle(prop);
     },

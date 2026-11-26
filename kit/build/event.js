@@ -15,7 +15,8 @@ import { canonical, keyed } from "./key.js";
  */
 /**
  * A build event, as the run log keeps it. `boundary` is the instant boundary it landed on: after the instant
- * `after` (null before the first) and before `before`, each as rational text. `changed` is whether the key did;
+ * `after` (null before the first) and before `before`, each as rational text; the two equal is the boundary right
+ * after that instant (a param wire's input). `changed` is whether the key did;
  * `record` lists the record's top-level keys that differ; `consumers` the inputs fed by this part's outputs; `input`
  * (kit/run sets it) the position in the run log's inputs of the one that applied the rebuild, so the why text can
  * split inputs between builds at one stamp.

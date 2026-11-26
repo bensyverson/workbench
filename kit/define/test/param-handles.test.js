@@ -27,6 +27,17 @@ test("a Grammar whose param slot is named param still declares params with it", 
   assert.equal(chained.param.depth.known, true);
 });
 
+test("an undeclared name on a param side that is the slot method is a known: false handle, never the function's own property", () => {
+  const level = /** @type {any} */ (maze()("level").param("depth", { value: 0 }).grid(GRID).control(steer));
+  for (const n of ["call", "bind", "apply", "length", "name", "toString"]) {
+    const h = level.param[n];
+    assert.ok(isHandle(h), `${n} is a handle`);
+    assert.deepEqual([h.side, h.name, h.known], ["param", n, false]);
+  }
+  // the method still declares a param when called
+  assert.equal(level.param("speed", { value: 1 }).param.speed.known, true);
+});
+
 test("a part whose Grammar declares no params has a param side that knows none", () => {
   const fx = /** @type {any} */ (particles()("fx").bounds({ width: 9, height: 9 }));
   assert.equal(fx.param.rate.known, false);

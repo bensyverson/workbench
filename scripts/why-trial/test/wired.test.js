@@ -35,6 +35,7 @@ test("the composition warns that the game ticks (S118), and the why text names t
   const ds = wiredGlue(caveProgram({ seed: 7, depth: 0, roughness: 45 }), gameProgram({})).check({ runtimes });
   assert.deepEqual(ds.map((d) => [d.code, d.severity]), [["S118", "warning"]]);
   const text = session({ n: 1, d: 10 }).why("cave");
-  assert.match(text, /param cave\.\$\.depth changed 0 → 1, set by the wire game\.out\.depth → cave\.param\.depth, in a param input stamped T=4\/15/);
+  assert.match(text, /param cave\.\$\.depth changed 0 → 1, set by the wire game\.out\.depth → cave\.param\.depth, in a param input stamped T=7\/30/);
+  assert.match(text, /build cave@2 right after instant T=7\/30 \(0\.233 s\) \(before the next instant\)/);
   assert.match(text, /cave\.\$\.depth = 1 \(wire game\.out\.depth\)/);
 });

@@ -42,6 +42,15 @@ test("a param's value is not in the content key; its declaration is (ruled 2026-
   assert.notEqual(partKey({ package: null, record: { ...rec({ value: 3 }), grid: ["###"] } }), k);
 });
 
+test("a param's type is in the content key: its declaration's type comes only from its value", () => {
+  const rec = (/** @type {unknown} */ value) => ({ name: "cave", params: { x: { value } } });
+  const k = partKey({ package: null, record: rec(1) });
+  assert.equal(partKey({ package: null, record: rec(2) }), k, "another value of the same type keeps the key");
+  assert.notEqual(partKey({ package: null, record: rec(true) }), k);
+  assert.notEqual(partKey({ package: null, record: rec("a") }), k);
+  assert.notEqual(partKey({ package: null, record: rec(true) }), partKey({ package: null, record: rec("a") }));
+});
+
 test("a build event's record fields are compared as the key sees them: a param's new value alone is no field", () => {
   const before = { key: "k1", revision: 1, record: { grid: ["#.#"], params: { depth: { value: 0 } } }, kernels: {} };
   const after = { key: "k2", record: { grid: ["###"], params: { depth: { value: 3 } } }, kernels: {} };
