@@ -10,6 +10,7 @@ export const RUN_CODES = Object.freeze({
   N004: "A step or init threw: the part stops, and the others run on with its last snapshot",
   N005: "A replay diverged from its record: a state hash differs at an instant, so something is not deterministic",
   N006: "A runtime's clock(record) is not { tick: seconds }, { frame: true } or { demand: true }",
+  N007: "A composed record's wire has an overflow that is neither \"keepLast\" nor \"keepFirst\" (a hand-edited record: compose's S102 refuses it at the glue)",
 });
 
 /**

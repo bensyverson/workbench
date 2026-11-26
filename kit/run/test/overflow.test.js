@@ -43,7 +43,7 @@ test("keepLast: each step takes the newest records up to the max; the drops are 
   assert.equal(notes.length, 1);
   assert.equal(notes[0].severity, "warning");
   assert.match(notes[0].message, /keepLast/);
-  assert.equal(replay(composed, { runtimes }, run.record()).ok, true);
+  assert.equal(replay(composed, { runtimes }, JSON.parse(JSON.stringify(run.record()))).ok, true);
 });
 
 test("keepFirst: each step takes the first records up to the max, and the rest are dropped", () => {

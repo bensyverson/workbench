@@ -103,6 +103,22 @@ test("S116: a composition whose reliable queue can overflow is refused before an
   });
 });
 
+test("N007: a composed record whose wire overflow is neither keepLast nor keepFirst is refused, and both policies still run", () => {
+  const { composed } = bursts({ fx: fxKit({ clock: { tick: 1 / 4 } }), wire: { overflow: "keepLast" } });
+  const runtimes = [mazeKit().runtime, fxKit({ clock: { tick: 1 / 4 } }).runtime];
+  const withOverflow = (/** @type {any} */ overflow) => ({ ...composed, wires: composed.wires.map((w) => (w.overflow ? { ...w, overflow } : w)) });
+  for (const overflow of ["keepLast", "keepFirst"]) assert.doesNotThrow(() => createRun(withOverflow(overflow), { runtimes }));
+  for (const overflow of ["drop", true, 1, ""]) {
+    assert.throws(() => createRun(withOverflow(overflow), { runtimes }), (/** @type {any} */ e) => {
+      assert.ok(e instanceof RunError);
+      assert.ok(e.diagnostics.some((/** @type {any} */ d) => d.code === "N007"), `${JSON.stringify(overflow)}`);
+      assert.match(e.message, /keepLast.*keepFirst/);
+      return true;
+    });
+  }
+  seen.add("N007");
+});
+
 test("a part with no runtime is refused when the run is created", () => {
   const { composed } = bursts();
   assert.throws(() => createRun(composed, { runtimes: [mazeKit().runtime] }), /part 'fx' \(particles\) has no runtime/);

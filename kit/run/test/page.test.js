@@ -39,7 +39,7 @@ test("a page control wired to a part reaches it as an Event in a headless run, a
   assert.deepEqual(run.diagnostics, []);
   assert.equal(run.state("hero").x, 2);
   assert.deepEqual(run.state("hero").seen, [0.1, 0.3, 0.6], "each record's $T is its input's stamp");
-  assert.equal(replay(composed, { runtimes: [W.runtime] }, run.record()).ok, true);
+  assert.equal(replay(composed, { runtimes: [W.runtime] }, JSON.parse(JSON.stringify(run.record()))).ok, true);
   assert.equal(run.log.inputs.filter((e) => e.part === "page").length, 3, "the page inputs are in the log");
 });
 
@@ -52,7 +52,7 @@ test("a page input added live is logged and delivered the same as a scripted one
   run.input({ kind: "control", part: "page", name: "pad", value: { up: false, down: false, left: false, right: true } });
   run.runUntil(1);
   assert.equal(run.state("hero").x, 1);
-  assert.equal(replay(composed, { runtimes: [W.runtime] }, run.record()).ok, true);
+  assert.equal(replay(composed, { runtimes: [W.runtime] }, JSON.parse(JSON.stringify(run.record()))).ok, true);
 });
 
 test("a page wire takes the usual seam checks: a field the page lacks is S202, a rename fixes it", () => {

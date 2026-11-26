@@ -80,8 +80,13 @@ export function createRun(composed, options) {
    */
   const at = { lastT: null, floor: null, frames, log: frameLog };
 
+  /** Whether the composition has the built-in page part; a user part that happens to be named "page" is not it. */
+  const hasPage = composed.parts.some((cp) => cp.dialect === PAGE && cp.name === PAGE);
   /** @type {Array<{ code: string, message: string }>} */
   const refused = [];
+  for (const w of composed.wires) {
+    if (w.overflow !== undefined && w.overflow !== null && w.overflow !== "keepLast" && w.overflow !== "keepFirst") refused.push({ code: "N007", message: `wire ${w.from} → ${w.to}: overflow is ${JSON.stringify(w.overflow)}, not "keepLast" or "keepFirst"` });
+  }
   /** @type {Part[]} */
   const parts = [];
   composed.parts.forEach((cp, index) => {
@@ -96,7 +101,7 @@ export function createRun(composed, options) {
     parts.push(p);
   });
   const sized = composed.parts.map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
-  const sizedWires = composed.wires.filter((w) => !w.overflow); // a policy trims what a step takes (ruling 7)
+  const sizedWires = composed.wires.filter((w) => w.overflow !== "keepLast" && w.overflow !== "keepFirst"); // a policy trims what a step takes (ruling 7)
   for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntime], { catchUp })) {
     refused.push({ code: "S116", message: `${pr.message}\n  fix: ${pr.fix}` });
   }
@@ -151,7 +156,12 @@ export function createRun(composed, options) {
       if (lastT && cmp(e.T, lastT) <= 0) throw new Error(`an input stamped ${qText(e.T)} would change instants already run (the last ran at ${qText(lastT)})`);
       throw new Error(`an input stamped ${qText(e.T)} comes before one already applied, at ${qText(inputs[cursor - 1].T)} (the run is at ${qText(now)})`);
     }
-    if (e.kind === "control" && e.part === PAGE) { const bad = pageInputProblem(/** @type {string} */ (e.name), e.value); if (bad) throw new Error(bad); }
+    if (e.kind === "control" && e.part === PAGE && hasPage) {
+      // the log holds its own copy, checked as it is copied: a host that reuses or changes its object changes nothing
+      e = { ...e, value: structuredClone(e.value) };
+      const bad = pageInputProblem(/** @type {string} */ (e.name), e.value);
+      if (bad) throw new Error(bad);
+    }
     inputs.splice(i, 0, e);
     if (e.kind === "frame") frameLog.add(e.T);
   }
@@ -165,8 +175,9 @@ export function createRun(composed, options) {
     while (cursor < inputs.length && cmp(inputs[cursor].T, T) <= 0) {
       const e = inputs[cursor++];
       if (e.kind === "frame") { slowdown.frame(e); continue; }
-      // a page input is the page part's Event: one record on each wire from that control, at the input's stamp
-      if (e.kind === "control" && e.part === PAGE) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T); continue; }
+      // a page input is the page part's Event: one record on each wire from that control, at the input's stamp; a
+      // record its consumer has not yet taken is replaced, so a page wire holds the latest value per control per instant
+      if (e.kind === "control" && e.part === PAGE && hasPage) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T, true); continue; }
       const p = byName.get(e.part ?? "");
       if (!p) throw new Error(`an input names no part '${e.part}': the parts are ${parts.map((x) => x.name).join(", ")}`);
       if (e.kind === "control") p.controls = { ...p.controls, [/** @type {string} */ (e.name)]: deepFreeze(structuredClone(e.value)) };

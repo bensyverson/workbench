@@ -64,7 +64,7 @@ test("a run that reads $T replays clean", () => {
   const run = createRun(composed, { runtimes });
   run.runUntil(2);
   assert.equal(run.state("b").Ts.length, 9, "the state holds every $T it read");
-  assert.equal(replay(composed, { runtimes }, run.record()).ok, true);
+  assert.equal(replay(composed, { runtimes }, JSON.parse(JSON.stringify(run.record()))).ok, true);
 });
 
 test("a delayed wire's records carry the producer's instant, not the consumer's", () => {

@@ -52,12 +52,16 @@ export function wireOrder(parts, wires) {
 
 /**
  * A record as it crosses a wire, stamped with its producer's instant (ruling 3, 2026-11-26): `$T`, in seconds as ctx.T
- * is, read-only and not enumerable, so a record's keys stay its fields; frozen, so a step cannot change it.
+ * is, read-only and not enumerable, so a record's keys stay its fields; frozen, so a step cannot change it. The
+ * record is copied first: the producer's or host's object may be frozen, kept in state, or pushed again, and is
+ * never changed.
  * @param {unknown} record @param {Q} T
  */
 export function stamped(record, T) {
-  if (record !== null && typeof record === "object" && !Object.isFrozen(record)) Object.defineProperty(record, "$T", { value: toNumber(T), enumerable: false, writable: false });
-  return deepFreeze(record);
+  if (record === null || typeof record !== "object") return record;
+  const copy = structuredClone(record);
+  Object.defineProperty(copy, "$T", { value: toNumber(T), enumerable: false, writable: false });
+  return deepFreeze(copy);
 }
 
 /** The records a consumer stepping at T may take: stamped at or before T (before T on a delayed wire). @param {Wire} w @param {Q} T */

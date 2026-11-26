@@ -37,10 +37,13 @@ export function createDelivery(wires, byName, report) {
   /**
    * Sends a producer's records (raw: converted here) across a wire at T: dropped when the consumer is stopped, else
    * queued, stamped, and trimmed to a keepLast input's n.
-   * @param {Wire} w @param {unknown[]} recs @param {Q} T
+   * With `latest` (a page input), a record still waiting on the wire is replaced: the page sends the latest value of a
+   * control per instant, the bound compose sized it for.
+   * @param {Wire} w @param {unknown[]} recs @param {Q} T @param {boolean} [latest]
    */
-  function deliver(w, recs, T) {
+  function deliver(w, recs, T, latest = false) {
     if (!running(/** @type {Part} */ (byName.get(w.to.part)))) { if (recs.length) dropStopped(w, recs.length, T); return; }
+    if (latest && recs.length) w.queue.length = 0;
     for (const rec of recs) w.queue.push({ T, record: stamped(carry(rec, w), T) });
     if (w.keepLast === null || w.queue.length <= w.keepLast) return;
     const n = w.queue.length - w.keepLast;
