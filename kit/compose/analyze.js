@@ -200,7 +200,9 @@ export function analyze(name, start, given, options) {
     wire.fill = cmp.filled;
     if (cmp.problems.length) wire.ok = false;
     for (const p of cmp.problems) add(at, p.code, `${text}: ${p.message}`, fixFor(p.code, po.seamText, pi.seamText), sides);
-    for (const m of maskedRenames(renamed.seam, pi.seam, cmp)) {
+    /** A tagged leaf plans when a frame path joins its frames (and a quantity's path scales its axes alike): the test S251 and S254 apply below. @param {{ from: string, to: string, kind: string }} leaf */
+    const plans = (leaf) => { const path = graph.path(node(pa, leaf.from), node(pb, leaf.to)); return !!path && (leaf.kind !== "quantity" || uniform(path.edge)); };
+    for (const m of maskedRenames(renamed.seam, pi.seam, cmp, plans)) {
       add(at, "S206", `${text}: the wire drops ${m.from}, which the input does not take, and fills ${m.to} (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) with its default; ${m.from} is the same kind of field`, `if ${m.from} was meant to feed ${m.to}, rename it: .wire(${handleText(ho)}, ${handleText(hi)}, { rename: { ${m.from}: "${m.to}" } }); if the default is intended, ignore this`, sides, "warning");
     }
     for (const leaf of cmp.tagged) {
@@ -313,11 +315,12 @@ function wireOptions(o) {
 /**
  * Each producer field a wire drops that could stand in for a consumer field the wire fills with a default: the
  * seams compare clean field to field, so the glue likely forgot a rename. Top-level record fields only, which is
- * where a default can be.
- * @param {any} from @param {any} to @param {{ dropped: string[], filled: Record<string, unknown> }} cmp
+ * where a default can be. A rename is offered only when it would plan: `plans` says whether a tagged leaf has a
+ * frame path.
+ * @param {any} from @param {any} to @param {{ dropped: string[], filled: Record<string, unknown> }} cmp @param {(leaf: any) => boolean} plans
  * @returns {Array<{ from: string, to: string, type: string }>}
  */
-function maskedRenames(from, to, cmp) {
+function maskedRenames(from, to, cmp, plans) {
   const rec = (/** @type {any} */ s) => (s.kind === "event" ? s.of : s);
   const a = rec(from), b = rec(to);
   if (a.kind !== "record" || b.kind !== "record") return [];
@@ -327,7 +330,8 @@ function maskedRenames(from, to, cmp) {
     if (!Object.hasOwn(a.fields, d)) continue;
     for (const f of Object.keys(cmp.filled)) {
       if (Object.hasOwn(a.fields, f) || !Object.hasOwn(b.fields, f)) continue;
-      if (compareSeams(a.fields[d], b.fields[f]).problems.length === 0) found.push({ from: d, to: f, type: printSeam(b.fields[f]) });
+      const pair = compareSeams(a.fields[d], b.fields[f]);
+      if (pair.problems.length === 0 && pair.tagged.every(plans)) found.push({ from: d, to: f, type: printSeam(b.fields[f]) });
     }
   }
   return found;

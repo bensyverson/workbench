@@ -187,6 +187,23 @@ test("S206: a wire that drops a producer field and fills a compatible consumer f
   assert.deepEqual(codes(check(pair(ev("Event<{ velocity: f64 }>"), ev("Event<{ n: f64, vel: f64 = 0 }>")))), ["S202", "S206"]);
 });
 
+test("S206 still warns when the two fields' frames are joined, and the suggested rename plans cleanly", () => {
+  const o = ev("Event<{ n: f64, radius: f64@px }>"), i = ev("Event<{ n: f64, size: f64@px = 1 }>");
+  const ds = check(pair(o, i, { rel: { scale: 1 } }));
+  assert.deepEqual(codes(ds), ["S206"]);
+  assert.match(ds[0].fix, /rename: \{ radius: "size" \}/);
+  assert.deepEqual(check(pair(o, i, { rel: { scale: 1 }, opts: { rename: { radius: "size" } } })), []);
+});
+
+test("S206 stays silent when the rename it would suggest is S251: no frame path joins the two fields' frames", () => {
+  const o = ev("Event<{ n: f64, radius: f64@px }>"), i = ev("Event<{ n: f64, duration: f64@s = 2 }>");
+  assert.deepEqual(codes(check(pair(o, i))), [], "different dims: the rename would be S251, so no warning");
+  assert.deepEqual(codes(check(pair(o, i, { opts: { rename: { radius: "duration" } } }))), ["S251"], "the rename really is refused");
+  // same dims but no edge between the frames: also no warning
+  const j = ev("Event<{ n: f64, size: f64@px = 1 }>");
+  assert.deepEqual(codes(check(pair(o, j, { fb: { px: { dims: 2, note: "p" }, other: { dims: 2, note: "o" } } }))), []);
+});
+
 test("S251: tagged on both sides and no frame path, with the draft's fix", () => {
   const ds = printed(pair(ev("Event<{ at: point2@px }>"), ev("Event<{ at: point2@px }>")));
   assert.equal(ds.length, 1);

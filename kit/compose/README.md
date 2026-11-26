@@ -86,7 +86,7 @@ workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the field 'at' i
 | S203 | an enum the consumer does not accept |
 | S204 | a list longer than the consumer's max |
 | S205 | a rename naming a field either side lacks (with a did-you-mean), two fields into one, into a field the producer has, or on a wire with no record (an Event, a record, or a list of records) |
-| S206 | a warning (`severity: "warning"`), not an error: a wire drops a producer field the consumer does not take and fills a consumer field with its default, and the two fields' seams are compatible, so a rename was probably meant; the fix names `rename: { <dropped>: "<filled>" }` (ignore it when the default is intended) |
+| S206 | a warning (`severity: "warning"`), not an error: a wire drops a producer field the consumer does not take and fills a consumer field with its default, and the two fields' seams are compatible and any frames they are measured in are joined by a frame path (so the rename would plan), so a rename was probably meant; the fix names `rename: { <dropped>: "<filled>" }` (ignore it when the default is intended) |
 | S251 | tagged on both sides, no frame path (the fix suggests `.frame`, says frames of different dims cannot join, or, when one side is the kit's `s`, that `s` relates to no package frame) |
 | S252 | tagged on one side only |
 | S253 | two frame paths disagree (both, with their edges) |
