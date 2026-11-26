@@ -125,7 +125,7 @@ export function expr(L, node, expected) {
     case "ArrowFunctionExpression":
       L.error("L005", node, "A callback is allowed only as the argument of a declared query.", `Callbacks are allowed only in ${L.environment.queries.join(", ")}.`);
       return bad(node);
-    case "ArrayExpression": return array(L, node);
+    case "ArrayExpression": return array(L, node, expected);
     default:
       L.error("L012", node, `${node.type} is not lowered yet.`, "Rewrite it with the constructs in the runtime subset.");
       return bad(node);
@@ -628,12 +628,14 @@ export function cond(L, node, branch) {
 /**
  * An array literal: a bounded list as long as the literal, of the strict join of its items.
  * An empty one has no item type, so it is rejected; there is no tuple type, so items of
- * different types are too (L003, at the first item that does not join).
+ * different types are too (L003, at the first item that does not join). Where a list of a union is expected (a
+ * draw list's ops), items of several types that each fit its item type make a list of that type.
  * @param {Lowerer} L
  * @param {AST.ArrayExpression} node
+ * @param {Type} [expected]
  * @returns {Expr}
  */
-function array(L, node) {
+function array(L, node, expected) {
   const elements = /** @type {AST.Expression[]} */ (node.elements);
   if (elements.some((el) => el === null)) {
     L.error("L012", node, "An array literal has a hole, an empty slot between its commas.", "Write every item out: [1, 0, 2].");
@@ -643,13 +645,14 @@ function array(L, node) {
     L.error("L012", node, "An empty array literal has no item type.", "Use a declared list (w.board, w.pool(name)), or write the items out.");
     return bad(node);
   }
-  if (node.elements.some((el) => el?.type === "SpreadElement")) return concat(L, node, /** @type {Array<AST.Expression | AST.SpreadElement>} */ (node.elements));
+  if (node.elements.some((el) => el?.type === "SpreadElement")) return concat(L, node, /** @type {Array<AST.Expression | AST.SpreadElement>} */ (node.elements), expected);
   // A baked constant's numbers stay untyped until each use (see `settleTree`).
   const keep = L.slot.kind === "const";
-  const items = seq(L, elements.map((el) => () => (keep ? expr(L, el) : settle(L, expr(L, el)))));
+  const want = wantedItem(expected);
+  const items = seq(L, elements.map((el) => () => (keep ? expr(L, el, want) : settle(L, expr(L, el, want)))));
   /** @type {Type} */
-  let item = "unknown";
-  items.forEach((e, i) => {
+  let item = fitsWanted(want, items.map((e) => e.t)) ?? "unknown";
+  if (item === "unknown") items.forEach((e, i) => {
     const joined = strictJoin(item, e.t);
     if (joined === null) {
       L.error("L003", elements[i], `An array's items share one type, but this is ${describe(e.t)} and the items before it are ${describe(item)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
@@ -668,20 +671,22 @@ function array(L, node) {
  * @param {Lowerer} L
  * @param {AST.ArrayExpression} node
  * @param {Array<AST.Expression | AST.SpreadElement>} elements
+ * @param {Type} [expected]  as for an array literal: parts of several item types that each fit it
  * @returns {Expr}
  */
-function concat(L, node, elements) {
+function concat(L, node, elements, expected) {
   if (L.slot.kind === "const") {
     L.error("L012", node, "A baked constant cannot spread a list: its items have no type until each use.", "List the items of the constant out, or spread in the lambda that reads it.");
     return bad(node);
   }
+  const want = wantedItem(expected);
   /** @type {Array<() => Expr>} */
   const thunks = [];
   /** @type {AST.Expression[]} */
   const at = [];
   for (let i = 0; i < elements.length; ) {
     const el = elements[i];
-    if (el.type === "SpreadElement") { thunks.push(() => expr(L, el.argument)); at.push(el.argument); i++; continue; }
+    if (el.type === "SpreadElement") { thunks.push(() => expr(L, el.argument, expected)); at.push(el.argument); i++; continue; }
     /** @type {AST.Expression[]} */
     const run = [];
     for (; i < elements.length; i++) {
@@ -690,10 +695,10 @@ function concat(L, node, elements) {
       run.push(x);
     }
     thunks.push(() => {
-      const items = seq(L, run.map((x) => () => settle(L, expr(L, x))));
+      const items = seq(L, run.map((x) => () => settle(L, expr(L, x, want))));
       /** @type {Type | null} */
-      let item = "unknown";
-      for (const [j, e] of items.entries()) {
+      let item = fitsWanted(want, items.map((e) => e.t)) ?? "unknown";
+      if (item === "unknown") for (const [j, e] of items.entries()) {
         const joined = strictJoin(item, e.t);
         if (joined === null) {
           L.error("L003", run[j], `An array's items share one type, but this is ${describe(e.t)} and the items before it are ${describe(item)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
@@ -706,8 +711,10 @@ function concat(L, node, elements) {
     at.push(run[0]);
   }
   const parts = seq(L, thunks);
+  const partItems = parts.map((p) => (typeof p.t === "object" && "list" in p.t ? p.t.list : "unknown"));
   /** @type {Type} */
-  let item = "unknown";
+  let item = parts.every((p) => typeof p.t === "object" && "list" in p.t) ? fitsWanted(want, partItems) ?? "unknown" : "unknown";
+  const fitted = item !== "unknown";
   let max = 0;
   /** @type {number | undefined} */
   let len = 0;
@@ -717,7 +724,7 @@ function concat(L, node, elements) {
       L.error("L003", at[i], `Only a list can be spread into an array, but this is ${describe(p.t)}.`, "Spread a list (w.board, a list parameter), and check a possibly-empty one for null first.");
       return bad(node);
     }
-    const joined = strictJoin(item, p.t.list);
+    const joined = fitted ? item : strictJoin(item, p.t.list);
     if (joined === null) {
       L.error("L003", at[i], `A concatenated list's parts share one item type, but this is ${describe(p.t.list)} and the parts before it are ${describe(item)}.`, "Use parts of one item type; a pair of different things is an object: { name: \"up\", dx: 0 }.");
       return bad(node);
@@ -738,10 +745,15 @@ function concat(L, node, elements) {
  * @returns {Expr}
  */
 function object(L, node, expected) {
-  const members = expected && typeof expected === "object" && "union" in expected ? expected.union : expected ? [expected] : [];
-  const shape = /** @type {Extract<Type, { struct: unknown }> | undefined} */ (members.find((m) => typeof m === "object" && "struct" in m));
   const props = /** @type {AST.Property[]} */ (node.properties);
   const names = props.map((p) => (p.key.type === "Identifier" ? p.key.name : String(/** @type {AST.Literal} */ (p.key).value)));
+  const structs = /** @type {Array<Extract<Type, { struct: unknown }>>} */ (membersOf(expected).filter((m) => typeof m === "object" && "struct" in m));
+  // a union of structs is checked against the member whose one-string tags (`op: "rect"`) the literal writes
+  const tagged = structs.find((m) => names.some((n, i) => {
+    const want = m.struct[n], v = props[i].value;
+    return typeof want === "object" && "enum" in want && want.enum.length === 1 && v.type === "Literal" && v.value === want.enum[0];
+  }));
+  const shape = tagged ?? structs[0];
   const vals = seq(L, props.map((p, i) => () => {
     const want = shape?.struct[names[i]];
     return want ? check(L, p.value, want, `field '${names[i]}'`) : L.slot.kind === "const" ? expr(L, p.value) : settle(L, expr(L, p.value));
@@ -750,7 +762,37 @@ function object(L, node, expected) {
   const fields = {};
   /** @type {Record<string, Type>} */
   const struct = {};
-  names.forEach((n, i) => { fields[n] = vals[i]; struct[n] = vals[i].t; });
+  // a field already reported as a mismatch takes the type it needed, so the struct adds no second diagnostic
+  names.forEach((n, i) => { const want = shape?.struct[n]; fields[n] = vals[i]; struct[n] = want && !assignable(vals[i].t, want) ? "unknown" : vals[i].t; });
   return L.ex({ k: "struct", fields, t: { struct }, span: spanOf(node) });
 }
 
+
+/** The types a value of `t` may be: through a possibly-empty value and a union, flat. @param {Type | undefined} t @returns {Type[]} */
+function membersOf(t) {
+  if (t === undefined) return [];
+  if (typeof t === "object" && "opt" in t) return membersOf(t.opt);
+  if (typeof t === "object" && "union" in t) return t.union.flatMap(membersOf);
+  return [t];
+}
+
+/** The item type of the list `expected` holds, if it holds one. @param {Type | undefined} expected @returns {Type | undefined} */
+function wantedItem(expected) {
+  const l = membersOf(expected).find((m) => typeof m === "object" && "list" in m);
+  return l && typeof l === "object" && "list" in l ? l.list : undefined;
+}
+
+/**
+ * The item type of a list literal lowered where a list of `want` is expected: `want` itself when the items do not
+ * share one type by the strict join but each fits it (a draw list's ops of several kinds), else null, and the
+ * strict join decides as it does everywhere.
+ * @param {Type | undefined} want @param {Type[]} items @returns {Type | null}
+ */
+function fitsWanted(want, items) {
+  if (!want || items.length === 0 || items.some((t) => t === "unknown")) return null;
+  /** @type {Type | null} */
+  let joined = items[0];
+  for (const t of items.slice(1)) joined = joined === null ? null : strictJoin(joined, t);
+  if (joined !== null) return null;
+  return items.every((t) => assignable(t, want)) ? want : null;
+}

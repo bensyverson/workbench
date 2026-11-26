@@ -82,6 +82,8 @@ export const particlesDialect = defineDialect({
   // Helpers are pure: they may read the particle they are passed, and nothing that changes otherwise. Every one is
   // checked, called or not (the sheet says so); what an uncalled one does through a parameter cannot be seen.
   helpers: { may: ["read Particle"], check: "all" },
+  // the picture's builder is Bench code: it calls tint and radius as Library functions, not the file's closures
+  library: { tint: { fn: String(tint) }, radius: { fn: String(radius) } },
   params: { object: "Params", name: "$" },
   environment(program) {
     const params = {};

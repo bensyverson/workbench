@@ -9,7 +9,7 @@ import { lowerProgram } from "../lower/index.js";
 import { closeLists } from "./ui/lower.js";
 import { pairLocal, printType, normalizeEdge } from "../seam/index.js";
 import { parseLambda } from "../parse/index.js";
-import { drawMaxes } from "./draw-ports.js";
+import { lowerDraws } from "./draw-lower.js";
 
 /** @import { Seams } from "./define.js" */
 /** @import { Type } from "../ir/ir.js" */
@@ -22,7 +22,7 @@ import { drawMaxes } from "./draw-ports.js";
  * @typedef {{ code: string, severity: "error", message: string, tip: string, file: string, loc: import("../parse/ast.js").Loc, range: [number, number], port?: string, frame?: string, lambdaLoc?: unknown }} PortDiagnostic
  */
 /** What a Program's seams lowered to: each frame's box, the Dialect's edges, each output lambda's result. */
-/** @typedef {{ extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, outputs: Record<string, import("../lower/index.js").LowerResult>, draws: Record<string, { max: number }> }} LoweredSeams */
+/** @typedef {{ extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, outputs: Record<string, import("../lower/index.js").LowerResult>, draws: Record<string, import("./draw-lower.js").LoweredDraw>, drawHelpers: import("../lower/index.js").HelperResult[] }} LoweredSeams */
 
 const NO_PARAMS = "(no params)";
 
@@ -103,8 +103,8 @@ export function lowerPorts(dialect, record) {
       else edges.push(why);
     });
   }
-  const draws = drawMaxes(dialect, record, push);
-  return { diagnostics, extents, edges, outputs, draws };
+  const { draws, helpers: drawHelpers } = lowerDraws(dialect, record, push);
+  return { diagnostics, extents, edges, outputs, draws, drawHelpers };
 }
 
 /**

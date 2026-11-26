@@ -3,7 +3,8 @@
 // Canvas 2D renderer. No Node built-ins: it runs in the page.
 
 export { DRAW_CODES } from "./codes.js";
-export { declareDraw, kindsOf, drawMax, runDraw, carryList, isCarried, DRAW_PORT_KEYS, REFUSED_CALLS } from "./builders.js";
+export { declareDraw, kindsOf, drawMax, runDraw, carryList, isCarried, DRAW_PORT_KEYS } from "./builders.js";
+export { drawTypes, PEN_OBJECT, PEN_EFFECT, OPEN } from "./types.js";
 export { CANVAS, GAMEBOY, PROFILES, kindProblems, checkDraw, shadeOf } from "./profiles.js";
 export { drawCanvas } from "./canvas.js";
 export { OPS, OP_KINDS, FONTS, GLYPH, typeOp, checkPaint, resolveColor, convertOp, opBox, nativeSize, cellCount, gridCells } from "./ops.js";

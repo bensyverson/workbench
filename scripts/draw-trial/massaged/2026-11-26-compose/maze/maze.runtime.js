@@ -17,7 +17,7 @@ export const mazeRuntime = defineRuntime(maze, {
   clock: (record) => ({ tick: record.tick ?? 1 / 8 }),
   init: (record) => {
     const player = { x: record.start.x, y: record.start.y };
-    return { t: 0, score: 0, coinsLeft: countCoins(record.grid), player, grid: [...record.grid], things: thingsOf(record.grid, player) };
+    return { t: 0, score: 0, coinsLeft: countCoins(record.grid), player, grid: [...record.grid], size: { cols: record.grid[0].length, rows: record.grid.length }, things: thingsOf(record.grid, player) };
   },
   step(state, { dt, kernels, controls, events }) {
     const pl = { x: state.player.x, y: state.player.y, dx: 0, dy: 0, steps: 0 };

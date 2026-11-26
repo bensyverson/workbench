@@ -334,7 +334,7 @@ export function lowerRecord(g, record) {
   const ported = s && (Object.keys(s.out).length || Object.keys(s.frames).length || s.edges) ? lowerPorts(g.dialect, record) : null;
   if (ported) diagnostics.push(.../** @type {any[]} */ (ported.diagnostics));
   return {
-    ...(ported ? { seams: { extents: ported.extents, edges: ported.edges, outputs: ported.outputs, draws: ported.draws } } : {}),
+    ...(ported ? { seams: { extents: ported.extents, edges: ported.edges, outputs: ported.outputs, draws: ported.draws, drawHelpers: ported.drawHelpers } } : {}),
     environment: env,
     lambdas: live.map((l, i) => ({ ref: l.ref, src: l.src, result: results[i], ...(l.alias ? { alias: l.alias } : {}) })),
     helpers: helperResults,

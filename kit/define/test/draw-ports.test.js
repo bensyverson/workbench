@@ -1,6 +1,7 @@
 // Draw ports in a Dialect (the draw-list draft, as ruled 2026-11-26): a Draw output declares its builder and the
 // kit reads its layers and op kinds; a Draw input takes no default and reads as an empty list unwired; colors and
-// images are Dialect keys; each is judged at defineDialect (J001–J003), and a Program's max at lower (J010).
+// images are Dialect keys; each is judged at defineDialect (J001, J003, and a builder's Runtime Subset), and a
+// Program's max at lower (J010). Lowering the builders themselves is draw-lower.test.js's.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -45,13 +46,14 @@ test("a Draw output defines clean and carries its builder, kinds, colors and ima
   assert.deepEqual(Object.keys(m.seams.images), ["sheet"]);
 });
 
-test("a malformed Draw port, a call of map or bad paint is refused at defineDialect", () => {
+test("a malformed Draw port or bad paint is refused at defineDialect", () => {
   const codes = (/** @type {(d: any) => void} */ f) => { const d = drawnMaze(); f(d); return diagnosticsOf(d).map((x) => x.code); };
   assert.deepEqual(codes((d) => { d.ports.out.view.pen = () => {}; }), ["J001"]);
   assert.deepEqual(codes((d) => { d.ports.out.view.layers[1].each = "score"; }), ["J001"]);
   assert.deepEqual(codes((d) => { d.ports.out.view.seam = "Draw<64>@nowhere"; }), ["D025"]);
   assert.deepEqual(codes((d) => { d.frames.line = { dims: 1, note: "one axis" }; d.ports.out.view.seam = "Draw<64>@line"; }), ["J001"]);
-  assert.deepEqual(codes((d) => { d.ports.out.view.layers[0].from = (/** @type {any} */ s) => s.grid.map(() => null); }), ["J002"]);
+  // a call of map is lowering's own L code when a Program lowers (draw-lower.test.js), no longer J002 here
+  assert.deepEqual(codes((d) => { d.ports.out.view.layers[0].from = (/** @type {any} */ s) => s.grid.map(() => null); }), []);
   assert.deepEqual(codes((d) => { d.colors.coin = "gold"; }), ["J003"]);
   assert.deepEqual(codes((d) => { d.images.sheet.cell = [3, 8]; }), ["J003"]);
   assert.deepEqual(codes((d) => { d.ports.out.view.size = 2; }), ["D024"]);
@@ -84,7 +86,8 @@ test("a Program's max comes from max(record) when it lowers, and one past the ce
   };
   const ok = lower(() => {});
   assert.deepEqual(ok.diagnostics.filter((/** @type {any} */ x) => x.severity === "error"), []);
-  assert.deepEqual(ok.seams.draws, { view: { max: 4 } });
+  assert.deepEqual(Object.keys(ok.seams.draws), ["view"]);
+  assert.equal(ok.seams.draws.view.max, 4);
   const over = lower((d) => { d.ports.out.view.max = () => 65; });
   const j = over.diagnostics.filter((/** @type {any} */ x) => x.code === "J010");
   assert.equal(j.length, 1);

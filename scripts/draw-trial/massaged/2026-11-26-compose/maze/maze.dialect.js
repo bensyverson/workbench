@@ -34,6 +34,8 @@ export const mazeDialect = defineDialect({
   },
   globals: { $: "Params" },
   targets: { js: { accepts: "*", compare: exact() } },
+  // the picture's builders are Bench code: they read the cell size as a Library constant, not the file's CELL
+  library: { CELL: { const: String(CELL) } },
   slots: {
     control: { params: ["Player", "Pad"], returns: "void", space: "player", body: "block", may: ["write Player"] },
   },
@@ -51,6 +53,8 @@ export const mazeDialect = defineDialect({
     coinsLeft: "f64",
     player: struct({ x: "f64", y: "f64" }),
     grid: list("str", 64),
+    // the grid's size in cells, for the picture: a builder reads no string's length
+    size: struct({ cols: "f64", rows: "f64" }),
     // What stands in the maze, one record per thing, for the picture: kind is "wall", "coin" or "player" (last).
     things: list(struct({ kind: "str", x: "f64", y: "f64" }), THINGS_MAX),
   },
@@ -82,7 +86,7 @@ export const mazeDialect = defineDialect({
         max: (record) => 1 + record.grid.length * record.grid[0].length,
         note: "the whole maze after this step, in pixel (8 units per cell): an opaque floor rectangle, then a square per wall, a small disc per coin not yet picked up, and last a large disc for the player",
         layers: [
-          { from: (s) => ({ op: "rect", at: [0, 0], size: [s.grid[0].length * CELL, s.grid.length * CELL], fill: "floor" }) },
+          { from: (s) => ({ op: "rect", at: [0, 0], size: [s.size.cols * CELL, s.size.rows * CELL], fill: "floor" }) },
           {
             each: "things",
             from: (thing, s) =>

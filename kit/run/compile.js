@@ -1,5 +1,5 @@
 // One part's build for a run: its record lowered by its Grammar, every Runtime Lambda and helper compiled through
-// the JS backend, and a reader for each value output. A Kernel reads the Dialect's globals (`$`, the inputs object,
+// the JS backend, a reader for each value output, and each Draw output's builder layers, compiled like any Kernel. A Kernel reads the Dialect's globals (`$`, the inputs object,
 // anything else the Dialect declares) by name; here each name is bound to a forwarding object that reads the part's
 // current globals, which the scheduler sets before every init and step, so a Kernel compiled once sees each step's
 // values. An Event input's record global (`record: { name, slots }`) is the exception: it is null when the runtime
@@ -13,10 +13,12 @@ import { drawReader } from "./draw.js";
 /** @import { Emitted } from "../emit/js/emit.js" */
 
 /**
- * A part compiled for one record. `kernels` by lambda id; `sources` their emitted text (what a build event compares);
- * `outputs` a reader per value output, `(state, params) => value`; `globals.current` what the Kernels' global names
- * read now; `aliases` each named call's `<instance>.<slot>.<name>` and the id it names.
- * @typedef {{ ok: true, kernels: Record<string, (...args: any[]) => any>, sources: Record<string, string>, aliases: Record<string, string>, outputs: Record<string, (state: any, params: any) => unknown>, globals: { current: Record<string, unknown> } }} Compiled
+ * A part compiled for one record. `kernels` by lambda id; `sources` their emitted text (what a build event compares),
+ * each Draw builder layer's too; `outputs` a reader per value output, `(state, params, view) => value` (a Draw output's reads the lists the View holds); `draws` each
+ * Draw output's max for this record and its layers' compiled Kernels, in order; `globals.current` what the
+ * Kernels' global names read now; `aliases` each named call's `<instance>.<slot>.<name>` and the id it names.
+ * @typedef {{ max: number, fns: Array<(...args: any[]) => unknown> }} CompiledDraw
+ * @typedef {{ ok: true, kernels: Record<string, (...args: any[]) => any>, sources: Record<string, string>, aliases: Record<string, string>, outputs: Record<string, (state: any, params: any, view?: any) => unknown>, draws: Record<string, CompiledDraw>, globals: { current: Record<string, unknown> } }} Compiled
  */
 
 /**
@@ -63,7 +65,25 @@ export function compilePart(runtime, record) {
     const k = low.seams?.outputs?.[p.name]?.kernel;
     if (k) outputs[p.name] = /** @type {any} */ (instantiate(emitKernel(k, { intrinsics }), helpers));
   }
-  return { ok: true, kernels, sources, aliases, outputs, globals };
+  /** @type {Compiled["draws"]} */
+  const draws = {};
+  const lowered = /** @type {Record<string, import("../define/draw-lower.js").LoweredDraw>} */ (low.seams?.draws ?? {});
+  if (Object.keys(lowered).length) {
+    // the builders' Library units, linked with the globals in scope as the Program's helpers are
+    const drawHelperEmits = (low.seams.drawHelpers ?? []).filter((/** @type {any} */ h) => h.kind === "fn" && h.result?.kernel).map((/** @type {any} */ h) => emitKernel(h.result.kernel, { intrinsics }));
+    const drawHelpers = drawHelperEmits.length ? helpersWith(drawHelperEmits, scope, records).fns : {};
+    for (const [port, d] of Object.entries(lowered)) {
+      draws[port] = {
+        max: d.max,
+        fns: d.layers.map((l) => {
+          const e = emitKernel(/** @type {any} */ (l.result.kernel), { intrinsics });
+          sources[l.id] = [...e.prelude, e.source].join("\n");
+          return /** @type {(...args: any[]) => unknown} */ (instantiate(e, { ...scope, ...drawHelpers }));
+        }),
+      };
+    }
+  }
+  return { ok: true, kernels, sources, aliases, outputs, draws, globals };
 }
 
 /** The names an Event input's record is read by: null in a Kernel called without one. @param {any} dialect @returns {string[]} */

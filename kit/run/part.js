@@ -6,7 +6,7 @@ import { clockOf } from "../define/runtime.js";
 import { canonical, stateHash } from "../build/index.js";
 import { stateErrorMessage } from "../define/state.js";
 import { seedRng, next } from "./rng.js";
-import { drawAfter } from "./draw.js";
+import { drawAfter, NONE } from "./draw.js";
 
 /** @import { Runtime, Clock } from "../define/runtime.js" */
 /** @import { Q } from "../define/rational.js" */
@@ -15,12 +15,14 @@ import { drawAfter } from "./draw.js";
 
 /**
  * A part's live record in the scheduler. `state` is null when init failed; `snapT` the instant of its last commit
- * (null for init's state); `lastValues` the canonical value inputs it last read (a demand part's wake test).
- * @typedef {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, clock: Clock, key: string, revision: number, content: string | null, state: any, hash: string, snapT: Q | null, stopped: boolean, rng: RngState, lastFrameT: Q | null, stepped: boolean, rebuilt: boolean, lastValues: string | null, params: Record<string, unknown>, controls: Record<string, unknown> }} Part
+ * (null for init's state); `lastValues` the canonical value inputs it last read (a demand part's wake test);
+ * `draws` its committed state's Draw lists, by port; `drawValues` the value and Draw inputs they were built with,
+ * which a checkpoint copies so a rewind can build them again (`redraw`).
+ * @typedef {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, clock: Clock, key: string, revision: number, content: string | null, state: any, hash: string, snapT: Q | null, stopped: boolean, rng: RngState, lastFrameT: Q | null, stepped: boolean, rebuilt: boolean, lastValues: string | null, drawValues: Record<string, unknown> | null, params: Record<string, unknown>, controls: Record<string, unknown>, draws: import("./draw.js").Draws }} Part
  */
 
 /** A part's own fields a checkpoint copies (everything that changes while it runs). */
-export const PART_FIELDS = /** @type {const} */ (["record", "compiled", "clock", "key", "revision", "content", "state", "hash", "snapT", "stopped", "rng", "lastFrameT", "stepped", "rebuilt", "lastValues", "params", "controls"]);
+export const PART_FIELDS = /** @type {const} */ (["record", "compiled", "clock", "key", "revision", "content", "state", "hash", "snapT", "stopped", "rng", "lastFrameT", "stepped", "rebuilt", "lastValues", "drawValues", "params", "controls"]);
 
 /** Freezes plain data all the way down, so a step that changes what it was handed throws (N003). @param {any} v */
 export function deepFreeze(v) {
@@ -119,7 +121,7 @@ function stateProblem(p, s, what) {
  * Runs a part's init on its record: the state, or an error message (N004 when it threw, N002 or N003 when it does
  * not fit; a J code when a Draw output does not build).
  * @param {Part} p @param {boolean} dev
- * @returns {{ state: any } | { code: string, message: string }}
+ * @returns {{ state: any, draws: import("./draw.js").Draws } | { code: string, message: string }}
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
@@ -130,13 +132,15 @@ export function runInit(p, dev) {
   const bad = stateProblem(p, s, "init returned");
   if (bad) return bad;
   const state = dev ? deepFreeze(s) : s;
-  return drawAfter(p, state, defaults(p.runtime)) ?? { state };
+  globalsFor(p, defaults(p.runtime));
+  const d = drawAfter(p, state);
+  return "code" in d ? d : { state, draws: d.draws };
 }
 
 /**
  * One step of a part. Returns the new state and the Events it pushed, or the diagnostic that stops it.
  * @param {Part} p @param {{ T: number, dt: number, inputs: Record<string, unknown>, values: Record<string, unknown>, dev: boolean }} o
- * @returns {{ state: any, events: Record<string, unknown[]>, rng: RngState } | { code: string, message: string }}
+ * @returns {{ state: any, events: Record<string, unknown[]>, rng: RngState, draws: import("./draw.js").Draws } | { code: string, message: string }}
  */
 export function runStep(p, { T, dt, inputs, values, dev }) {
   const outs = Object.values(/** @type {Record<string, any>} */ (p.runtime.dialect.seams.out)).filter((o) => o.seam.kind === "event").map((o) => o.name);
@@ -172,7 +176,9 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     }
     deepFreeze(r.state);
   }
-  return drawAfter(p, r.state, values) ?? r;
+  globalsFor(p, values);
+  const d = drawAfter(p, r.state);
+  return "code" in d ? d : { ...r, draws: d.draws };
 }
 
 /**
@@ -186,6 +192,19 @@ export function makePart(o) {
   return {
     name: o.name, index: o.index, dialect: o.dialect, runtime: o.runtime, record: o.record, compiled: o.compiled, clock: c.clock,
     key: o.key, revision: 1, content: o.content, state: null, hash: stateHash(null), snapT: null, stopped: false, rng: seedRng(o.seed, o.name),
-    lastFrameT: null, stepped: false, rebuilt: false, lastValues: null, params: paramsOf(o.record, o.params), controls: {},
+    lastFrameT: null, stepped: false, rebuilt: false, lastValues: null, drawValues: null, params: paramsOf(o.record, o.params), controls: {}, draws: NONE,
   };
+}
+
+/**
+ * Builds a part's Draw lists for its committed state again, from the inputs they were last built with: after a
+ * rewind restores the state. Lists are a pure function of the state, the record, the params and the inputs, so they
+ * come out as they were when that state was committed (a stopped part, or one whose lists did not build, has none).
+ * @param {Part} p
+ */
+export function redraw(p) {
+  if (p.stopped || p.state === null || typeof p.state !== "object") { p.draws = NONE; return; }
+  globalsFor(p, p.drawValues ?? defaults(p.runtime));
+  const d = drawAfter(p, p.state);
+  p.draws = "code" in d ? NONE : d.draws;
 }

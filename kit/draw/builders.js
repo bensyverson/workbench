@@ -1,15 +1,16 @@
 // A Draw output's builder (the draw-list draft, as ruled 2026-11-26): its declaration read into layers (a whole
-// list, one op per item of a state list, a pen, or layers of those), its source scanned for the op kinds it can
-// hold and for map and its kin, its max for one built Program, and the builder run on one state. A builder is
-// plain JavaScript in this slice, run as written: the kit scans it but does not lower it (see the README).
+// list, one op per item of a state list, a pen, or layers of those), each layer's source parsed (the Runtime
+// Subset's S codes) and scanned for the op kinds it can hold, its max for one built Program, and the built list
+// checked op by op. A builder is Bench code: kit/define lowers each layer through kit/lower for a Program, and
+// kit/run runs the emitted Kernels; runDraw is handed those, and runs nothing it was not handed.
 
-import { parseLambda } from "../parse/index.js";
+import { parseLambda, checkSubset } from "../parse/index.js";
 import { OP_KINDS, typeOp, resolveColor } from "./ops.js";
 
 /** @typedef {import("./ops.js").Op} Op */
 /** @typedef {import("./ops.js").Paint} Paint */
 /** A max: a whole number, or a function of the built record. @typedef {number | ((record: any) => unknown)} MaxDecl */
-/** @typedef {{ kind: "whole" | "each" | "pen", fn: Function, path?: string, max: MaxDecl | null, label: string }} Layer */
+/** A layer: its kind, its source (what lowering reads), the state list an each layer walks, its declared max. @typedef {{ kind: "whole" | "each" | "pen", src: string, path?: string, max: MaxDecl | null, label: string }} Layer */
 /** What a builder can hold: the op kinds it writes, the Draw inputs it spreads, and whether anything is hidden. @typedef {{ ops: string[], inputs: string[], open: boolean }} Kinds */
 /** @typedef {{ layers: Layer[], max: MaxDecl | null, kinds: Kinds }} DrawDecl */
 /** @typedef {{ code: string, message: string }} DrawProblem */
@@ -17,8 +18,6 @@ import { OP_KINDS, typeOp, resolveColor } from "./ops.js";
 /** A Draw output's keys beside seam and note. */
 export const DRAW_PORT_KEYS = Object.freeze(["seam", "note", "from", "each", "pen", "layers", "max"]);
 const LAYER_KEYS = ["from", "each", "pen", "max"];
-/** Calls a builder may not make: there is no map (draw.md). */
-export const REFUSED_CALLS = Object.freeze(["map", "flatMap", "filter", "forEach", "reduce", "push", "concat"]);
 
 /** The ops that crossed a wire or left their builder: typed and carried already, so a builder that spreads them does not type them again. */
 const CARRIED = new WeakSet();
@@ -27,6 +26,8 @@ export function carryList(list) { for (const op of list) if (op && typeof op ===
 /** @param {unknown} op */
 export const isCarried = (op) => op !== null && typeof op === "object" && CARRIED.has(op);
 
+/** @param {unknown} n @returns {n is number} */
+const isWhole = (n) => typeof n === "number" && Number.isInteger(n) && n >= 0;
 const isMax = (/** @type {unknown} */ m) => typeof m === "function" || (typeof m === "number" && Number.isInteger(m) && m >= 0);
 
 /**
@@ -61,7 +62,12 @@ export function declareDraw(port, { listMax, inputsName }) {
     const layer = layerOf(port, "the builder", false, listMax, bad);
     if (layer) layers.push(layer);
   }
-  for (const l of layers) for (const name of refusedCalls(l.fn)) problems.push({ code: "J002", message: `${l.label} calls ${name}; a builder has no ${name}: walk a state list with each, or with a pen's for…of, and concatenate whole lists with spread, [...<a>, ...<b>]` });
+  // the Runtime Subset's own codes, from the parser; a type or a name is lowering's, when a Program lowers
+  for (const l of layers) {
+    const r = parseLambda(l.src);
+    const found = r.ok && r.ast ? checkSubset(r.ast, l.src) : r.diagnostics;
+    for (const d of found.filter((x) => x.severity === "error")) problems.push({ code: d.code, message: `${l.label}, line ${d.loc.start.line}: ${d.message}${d.tip ? ` (${d.tip})` : ""}` });
+  }
   if (problems.length) return { decl: null, problems };
   return { decl: { layers, max: port.max ?? null, kinds: kindsOf(layers, inputsName) }, problems };
 }
@@ -82,18 +88,18 @@ function layerOf(l, label, inLayers, listMax, bad) {
     const m = listMax(l.each);
     if (m === null) { bad(`${label}: each names '${l.each}', which is not a list in the state`); return null; }
     if (m === "open") { bad(`${label}: each names '${l.each}', a state list with no max; give it one, list(<item>, <max>), so the draw list has a worst case`); return null; }
-    return { kind: "each", fn, path: l.each, max: m, label };
+    return { kind: "each", src: String(fn), path: l.each, max: m, label };
   }
   if (ways[0] === "pen") {
     if (inLayers && l.max === undefined) { bad(`${label}: a pen layer states its max, { pen, max: <n> or (record) => <n> }`); return null; }
-    return { kind: "pen", fn, max: inLayers ? l.max : null, label };
+    return { kind: "pen", src: String(fn), max: inLayers ? l.max : null, label };
   }
-  return { kind: "whole", fn, max: inLayers && l.max !== undefined ? l.max : null, label };
+  return { kind: "whole", src: String(fn), max: inLayers && l.max !== undefined ? l.max : null, label };
 }
 
-/** A builder's syntax tree, or null when its source is not an arrow function kit/parse reads. @param {Function} fn */
-function treeOf(fn) {
-  const r = parseLambda(String(fn));
+/** A builder's syntax tree, or null when its source is not an arrow function kit/parse reads. @param {string} src */
+function treeOf(src) {
+  const r = parseLambda(src);
   return r.ok ? /** @type {any} */ (r).ast : null;
 }
 
@@ -108,17 +114,6 @@ function walk(node, visit, up = []) {
 
 const propName = (/** @type {any} */ m) => (m && m.type === "MemberExpression" && !m.computed && m.property.type === "Identifier" ? m.property.name : null);
 
-/** The refused methods a builder calls, once each. @param {Function} fn @returns {string[]} */
-function refusedCalls(fn) {
-  const tree = treeOf(fn);
-  /** @type {string[]} */
-  const out = [];
-  walk(tree, (n) => {
-    const name = n.type === "CallExpression" ? propName(n.callee) : null;
-    if (name && REFUSED_CALLS.includes(name) && !out.includes(name)) out.push(name);
-  });
-  return out;
-}
 
 /**
  * What a builder's layers can hold, from their source: a whole or each builder's returned literals (`op` a string
@@ -156,7 +151,7 @@ export function kindsOf(layers, inputsName) {
     opsOf(a);
   };
   for (const l of layers) {
-    const tree = treeOf(l.fn);
+    const tree = treeOf(l.src);
     if (!tree) { k.open = true; continue; }
     if (l.kind === "pen") {
       const pen = tree.params[1]?.type === "Identifier" ? tree.params[1].name : null;
@@ -180,21 +175,28 @@ export function kindsOf(layers, inputsName) {
 
 /**
  * One built Program's max for a Draw output (ruling 1): its port's `max` (a number, or a function of the record),
- * else the sum of its layers' maxes when each is known (an each layer's state list, a pen layer's own), else the
- * seam's ceiling; never past the ceiling.
+ * else the sum of its layers' maxes when each is known (an each layer's state list, a pen layer's own, a whole
+ * layer's static max from its lowering, `lowered`), else the seam's ceiling; never past the ceiling.
  * @param {DrawDecl} decl @param {number} ceiling @param {Record<string, any>} record
+ * @param {Array<number | null>} [lowered]  each layer's static max, as lowering gives it (null where it gives none)
  * @returns {{ ok: true, max: number } | { ok: false, error: string }}
  */
-export function drawMax(decl, ceiling, record) {
+export function drawMax(decl, ceiling, record, lowered = []) {
   /** @param {MaxDecl} m @returns {unknown} */
   const value = (m) => (typeof m === "function" ? m(record) : m);
   /** @type {unknown} */
   let max = ceiling;
   let from = "";
   try {
+    // every layer's own max is judged, a port max or not: one that is no whole number would be a silent ceiling
+    for (const l of decl.layers) {
+      if (l.max === null) continue;
+      const v = value(l.max);
+      if (!isWhole(v)) return { ok: false, error: `${l.label}: its max(record) gives ${JSON.stringify(v) ?? String(v)}; a max is a whole number of at least 0` };
+    }
     if (decl.max !== null) { max = value(decl.max); from = "max(record)"; }
-    else if (decl.layers.every((l) => l.max !== null)) {
-      const each = decl.layers.map((l) => value(/** @type {MaxDecl} */ (l.max)));
+    else if (decl.layers.every((l, i) => l.max !== null || typeof lowered[i] === "number")) {
+      const each = decl.layers.map((l, i) => (l.max !== null ? value(l.max) : lowered[i]));
       if (each.every((n) => typeof n === "number")) { max = each.reduce((/** @type {number} */ a, b) => a + /** @type {number} */ (b), 0); from = "its layers' maxes"; }
     }
   } catch (e) {
@@ -209,63 +211,55 @@ export function drawMax(decl, ceiling, record) {
 const at = (v, path) => path.split(".").reduce((x, k) => (x === null || x === undefined ? x : x[k]), v);
 
 /**
- * Sets each of `globals` on the global object while `fn` runs, then puts back what was there: a builder reads the
- * inputs and the params by their globals' names, as a lowered lambda does (ruling 4).
- * @template T @param {Record<string, unknown>} globals @param {() => T} fn @returns {T}
- */
-function withGlobals(globals, fn) {
-  const g = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (globalThis));
-  const saved = Object.keys(globals).map((k) => [k, Object.getOwnPropertyDescriptor(g, k)]);
-  for (const [k, v] of Object.entries(globals)) Object.defineProperty(g, k, { value: v, configurable: true, writable: true, enumerable: false });
-  try { return fn(); } finally {
-    for (const [k, d] of /** @type {Array<[string, PropertyDescriptor | undefined]>} */ (saved)) { if (d) Object.defineProperty(g, k, d); else delete g[k]; }
-  }
-}
-
-/**
- * Runs a Draw output's builder on one state: its layers in order, each op typed against the part's paint, held to
- * the layers' maxes and the list's, its colors resolved to "#rrggbbaa" and its images named `<part>.<image>`.
- * Ops a builder spreads from its Draw inputs are carried already and pass as they are.
+ * Runs a Draw output's builder on one state: its layers in order, each through the function `fns` holds for it
+ * (kit/run hands the emitted Kernels, with the inputs and the params bound as every Kernel's globals are), each op
+ * typed against the part's paint, held to the layers' maxes and the list's, its colors resolved to "#rrggbbaa"
+ * and its images named `<part>.<image>`. Ops a builder spreads from its Draw inputs are carried already and pass
+ * as they are.
  * @param {DrawDecl} decl
- * @param {{ state: any, record: Record<string, any>, max: number, paint: Paint, part: string, globals: Record<string, unknown> }} env
+ * @param {{ state: any, record: Record<string, any>, max: number, paint: Paint, part: string, fns: Array<(...args: any[]) => unknown> }} env
  * @returns {{ ok: true, list: Op[] } | { ok: false, code: string, message: string }}
  */
-export function runDraw(decl, { state, record, max, paint, part, globals }) {
+export function runDraw(decl, { state, record, max, paint, part, fns }) {
   /** @type {unknown[]} */
   const made = [];
   /** @type {{ code: string, message: string } | null} */
   let stop = null;
   try {
-    withGlobals(globals, () => {
-      for (const l of decl.layers) {
-        if (stop) return;
-        if (l.kind === "whole") {
-          const v = l.fn(state, record);
-          if (v === null || v === undefined) continue;
-          if (Array.isArray(v)) { for (const op of v) if (op !== null && op !== undefined) made.push(op); continue; }
-          if (typeof v === "object") { made.push(v); continue; }
-          stop = { code: "J020", message: `${l.label} gave ${JSON.stringify(v)}; a whole builder gives an op, a list of ops or null` };
-        } else if (l.kind === "each") {
-          const items = at(state, /** @type {string} */ (l.path));
-          if (!Array.isArray(items)) { stop = { code: "J020", message: `${l.label}: the state's '${l.path}' is ${JSON.stringify(items)}, not a list` }; return; }
-          for (const item of items) {
-            const op = l.fn(item, state, record);
-            if (op === null || op === undefined) continue;
-            if (typeof op !== "object" || Array.isArray(op)) { stop = { code: "J020", message: `${l.label} gave ${JSON.stringify(op)} for an item; an each builder gives one op or null` }; return; }
-            made.push(op);
-          }
-        } else {
-          const limit = /** @type {number} */ (l.max === null ? max : typeof l.max === "function" ? l.max(record) : l.max);
-          let drawn = 0;
-          const pen = Object.freeze(Object.fromEntries(OP_KINDS.map((kind) => [kind, (/** @type {Record<string, unknown>} */ fields) => {
-            drawn++;
-            if (drawn <= limit) made.push({ ...fields, op: kind });
-          }])));
-          l.fn(state, pen, record);
-          if (drawn > limit) stop = { code: "J021", message: `${l.label} (a pen) drew ${drawn} ops, more than its max of ${limit}` };
+    for (const [li, l] of decl.layers.entries()) {
+      const fn = fns[li];
+      if (l.kind === "whole") {
+        const v = fn(state, record);
+        const before = made.length;
+        if (v === null || v === undefined) continue;
+        if (Array.isArray(v)) { for (const op of v) if (op !== null && op !== undefined) made.push(op); }
+        else if (typeof v === "object") made.push(v);
+        else { stop = { code: "J020", message: `${l.label} gave ${JSON.stringify(v)}; a whole builder gives an op, a list of ops or null` }; break; }
+        // a layer that states its max is held to it, as a pen layer is
+        const own = l.max === null ? null : typeof l.max === "function" ? l.max(record) : l.max;
+        if (typeof own === "number" && made.length - before > own) stop = { code: "J021", message: `${l.label} gave ${made.length - before} ops, more than its max of ${own}` };
+      } else if (l.kind === "each") {
+        const items = at(state, /** @type {string} */ (l.path));
+        if (!Array.isArray(items)) { stop = { code: "J020", message: `${l.label}: the state's '${l.path}' is ${JSON.stringify(items)}, not a list` }; break; }
+        for (const item of items) {
+          const op = fn(item, state, record);
+          if (op === null || op === undefined) continue;
+          if (typeof op !== "object" || Array.isArray(op)) { stop = { code: "J020", message: `${l.label} gave ${JSON.stringify(op)} for an item; an each builder gives one op or null` }; break; }
+          made.push(op);
         }
+      } else {
+        const limit = l.max === null ? max : typeof l.max === "function" ? l.max(record) : l.max;
+        if (!isWhole(limit)) { stop = { code: "J010", message: `${l.label}: its max(record) gives ${JSON.stringify(limit) ?? String(limit)}; a max is a whole number of at least 0` }; break; }
+        let drawn = 0;
+        const pen = Object.freeze(Object.fromEntries(OP_KINDS.map((kind) => [kind, (/** @type {Record<string, unknown>} */ fields) => {
+          drawn++;
+          if (drawn <= limit) made.push({ ...fields, op: kind });
+        }])));
+        fn(state, pen, record);
+        if (drawn > limit) stop = { code: "J021", message: `${l.label} (a pen) drew ${drawn} ops, more than its max of ${limit}` };
       }
-    });
+      if (stop) break;
+    }
   } catch (e) {
     return { ok: false, code: "J022", message: `the builder threw: ${e instanceof Error ? e.message : String(e)}` };
   }

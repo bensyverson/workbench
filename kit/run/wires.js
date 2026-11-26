@@ -11,7 +11,7 @@ import { imagesOf } from "./draw.js";
 /** @import { Part } from "./part.js" */
 
 /** @typedef {{ index: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire */
-/** What a consumer reads of a producer: its state and revision now, or as the instant began (the page's: no state, revision 1). @typedef {{ state: any, revision: number, part: Part | null }} View */
+/** What a consumer reads of a producer: its state and revision now, or as the instant began (the page's: no state, revision 1). @typedef {{ state: any, revision: number, part: Part | null, draws?: import("./draw.js").Draws }} View */
 
 /** @param {string} h  "level.out.picked", "cave.param.depth" */
 export const ends = (h) => { const [part, side, port] = h.split("."); return { part, side, port }; };
@@ -91,7 +91,7 @@ export function readInputs(p, T, wireTo, viewOf) {
     const v = viewOf(w);
     rev[i.name] = v.revision;
     if (w.event) { pending += ready(w, T); continue; }
-    const read = v.state === null || !v.part ? undefined : v.part.compiled.outputs[w.from.port]?.(v.state, v.part.params);
+    const read = v.state === null || !v.part ? undefined : v.part.compiled.outputs[w.from.port]?.(v.state, v.part.params, v);
     if (read !== undefined) values[i.name] = deepFreeze(carry(read, w));
   }
   return { values, rev, pending };

@@ -17,7 +17,7 @@ test("an image or tiles op spread through a middle part is sized by the next sca
       { from: () => ({ op: "image", at: [0, 0], image: "sheet", cell: 0 }) },
     ];
   });
-  const sg = screen((/** @type {any} */ d) => { d.ports.in.board.seam = "Draw<80>@px"; d.ports.out.view.max = 70; });
+  const sg = screen((/** @type {any} */ d) => { d.ports.in.board.seam = "Draw<80>@px"; d.ports.out.view.seam = "Draw<81>@px"; d.ports.out.view.max = 70; });
   const runtimes = [
     defineRuntime(mg, { clock: () => ({ tick: 1 / 8 }), init: (/** @type {any} */ r) => ({ t: 0, score: 0, player: { x: 1, y: 1 }, home: [1, 1], grid: r.grid, coins: [] }), step: (/** @type {any} */ s, /** @type {any} */ ctx) => ({ ...mazeStep(s, ctx), coins: [] }), events: { out: { picked: 8 } } }),
     defineRuntime(sg, { clock: () => ({ tick: 1 / 8 }), init: () => ({ t: 0 }), step: (/** @type {any} */ s, /** @type {any} */ ctx) => ({ t: s.t + ctx.dt }) }),

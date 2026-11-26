@@ -12,17 +12,18 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 | `resolveColor(c, colors)` | a color name or literal as `"#rrggbbaa"`, or null |
 | `convertOp(op, edge, images)` | one op converted across a frame edge (below) |
 | `opBox(op, images)`, `nativeSize(op, images)`, `cellCount(image)`, `gridCells(op)` | the box an op covers; the size an image or tiles cell draws at without `size`; an image's cells; a tiles grid as cell numbers |
-| `declareDraw(port, { listMax, inputsName })` | a Draw output's declaration read into layers (`{ decl, problems }`; J001, J002) |
+| `declareDraw(port, { listMax, inputsName })` | a Draw output's declaration read into layers, each with its source (`{ decl, problems }`; J001, and the Runtime Subset's own S codes) |
 | `kindsOf(layers, inputsName)` | the op kinds a builder can hold, the Draw inputs it spreads, and whether any are hidden (`{ ops, inputs, open }`) |
-| `drawMax(decl, ceiling, record)` | one built Program's max for an output (ruling 1), or why it has none (J010) |
-| `runDraw(decl, { state, record, max, paint, part, globals })` | the builder run on one state: `{ ok, list }`, or the J020–J022 that stops the part |
+| `drawMax(decl, ceiling, record, lowered?)` | one built Program's max for an output (ruling 1), counting each whole layer's static max from its lowering (`lowered`), or why it has none (J010) |
+| `runDraw(decl, { state, record, max, paint, part, fns })` | the list built on one state by `fns`, one function per layer (in a run, the emitted Kernels): `{ ok, list }`, or the J020–J022 that stops the part |
+| `drawTypes(num?)`, `PEN_OBJECT`, `PEN_EFFECT`, `OPEN` | the op table as core IR types, for lowering a builder: `{ op, list(max), pen }` (types.js) |
 | `carryList(list)`, `isCarried(op)` | marks ops that left their builder or crossed a wire, so a builder that spreads them does not type them again |
 | `CANVAS`, `GAMEBOY`, `PROFILES` | the renderer profiles (`{ name, label, kinds, limits? }`) |
 | `kindProblems(profile, kinds)` | the kinds a profile does not draw: what kit/compose's S401 reports |
 | `checkDraw(profile, list, { images, box })` | the draw-time check (`box` null for a frame with no extent): `{ ok, diagnostics, summary }` (J040–J042) |
 | `shadeOf(hex)` | a color's Game Boy shade, 0 (lightest) to 3, or null for alpha 0 |
 | `drawCanvas(ctx, list, { images, sources? })` | draws a list on a Canvas 2D context, in painter's order |
-| `DRAW_CODES`, `DRAW_PORT_KEYS`, `REFUSED_CALLS` | |
+| `DRAW_CODES`, `DRAW_PORT_KEYS` | |
 
 ## The op table
 
@@ -41,7 +42,7 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 
 ## Building a draw list
 
-A Draw output takes one builder: `from` (a whole list), `each` with `from` (one op or null per item of a state list), `pen` (one call per op), or `layers` of those, concatenated in order. A builder reads its parameters, the inputs global (value inputs and Draw inputs, ruling 4) and the params global, and the Dialect file's top-level helpers:
+A Draw output takes one builder: `from` (a whole list), `each` with `from` (one op or null per item of a state list), `pen` (one call per op), or `layers` of those, concatenated in order. **A builder is Bench code** (ruling 1; leaf `vcIzt1`): kit/define lowers each layer through kit/lower for each built Program ([`../define/draw-lower.js`](../define/draw-lower.js)), and kit/run runs the emitted Kernels. It reads its parameters, the inputs global (value inputs, and each Draw input as a list of ops, ruling 4), `$`, the Dialect's globals and its `library`; a top-level const or helper of the Dialect's own file is not a name it can see (L001). Its parameters are typed: `s` the Dialect's state, `record` the built record's value (a number the Dialect's number type, an array a list as long as it is, an object a struct; null and empty arrays are left out), `<item>` the state list's item, `pen` a handle whose six methods each take that op's fields. Its result is typed from the op table ([`types.js`](types.js)): a whole builder an op, a list of at most the seam's ceiling, or null; an each builder an op or null. So an op off the table (a missing `r`, a field of the wrong type, an unknown `op`) is lowering's L003 at the field, and a builder outside the Runtime Subset is refused at defineDialect with the subset's own S code. Colors and images are strings to lowering, checked when the list is built (J020), and so is a tiles `key`, which no IR type holds (its field type is `unknown`, the IR's mark for "already judged"):
 
 | Builder | Called as |
 |---|---|
@@ -50,14 +51,14 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 | `pen` | `(s, pen, record)`: each `pen.<op>({ <fields> })` adds one op; returns nothing |
 | `layers: [ … ]` | each layer one of the above; a pen layer states `max` |
 
-**Its max** for one built Program (ruling 1): the port's `max` (a whole number or `(record) => <n>`), else the sum of its layers' maxes when each is known (an each layer's state list max, a pen layer's `max`), else the seam's ceiling. A max past the ceiling is J010, reported when the Program lowers.
+**Its max** for one built Program (ruling 1): the port's `max` (a whole number or `(record) => <n>`), else the sum of its layers' maxes when each is known (an each layer's state list max, a pen layer's `max`, a whole layer's static max: the largest list its returns can give, a concatenation's being its parts' maxes summed, a Draw input's its seam's max), else the seam's ceiling. A max past the ceiling is J010, reported when the Program lowers; a whole builder whose concatenation can pass the ceiling is lowering's L003. J021 at run time is left only where the max comes from the record (a port's or a pen layer's `max(record)`) or from a pen's count, which only the run knows.
 
 **Its kinds** (ruling 2) are read from the source: an op literal's `op` string, a pen's method calls, and each `...<inputs>.<port>` spread, which kit/compose follows along the wire to that input's producer. Anything else that could make an op (a computed tag, a helper's result, a pen handed to a helper) leaves the kinds open, and then only the draw-time check judges them.
 
 ## Invariants
 
-- **Builders are plain JavaScript in this slice.** The kit scans each builder with kit/parse (J002 for `map` and its kin, and the kinds) but runs it as written: it is not lowered through kit/lower, so the Runtime Subset is not enforced inside it, and it runs only where JavaScript runs. `runDraw` sets the inputs and params globals on the global object while the builder runs and puts back what was there, so a builder reads them as a lowered lambda would.
-- **A list is never truncated.** A list longer than its max, or a pen layer past its own max, is J021; an op off the table is J020; a throw is J022. Each stops the part (kit/run), as N002 does.
+- **Builders are Bench code.** Each layer is lowered through kit/lower and run as its emitted Kernel, never as the function the Dialect holds; its globals are bound as every Kernel's are (kit/run's compile.js), and nothing is set on the global object. The kinds scan still reads the source.
+- **A list is never truncated.** A list longer than its max, or a layer past the max it states (a pen's, or a `from` layer's `max`), is J021; a layer max that is not a whole number of at least 0 for this Program (`max: () => undefined`, a negative one) is J010, whether or not the port states a max, never a silent ceiling or an empty pen (review F6); an op off the table is J020; a throw is J022. Each stops the part (kit/run), as N002 does.
 - **Painter's order.** Later ops cover earlier ones; layers concatenate first layer first. Nothing in the kit knows the word "layer".
 - **A renderer never drops an op silently.** At composition a profile judges kinds only; at draw time `checkDraw` counts exactly and names the profile and the limit. The composer owns the budget.
 
@@ -84,11 +85,11 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 | Code | When |
 |---|---|
 | J001 | a malformed Draw port: no builder or several, a layer with a key it does not take, an each path that is not a state list with a max, a pen layer without its max, a bad max, a Draw input given a default, required, delivery, record or type, a frame that is not 2-D |
-| J002 | a builder calls map, flatMap, filter, forEach, reduce, push or concat |
+| J002 | retired (leaf `vcIzt1`): a builder that called map and its kin. Builders are lowered now, so `map` is lowering's own L002 or L005; the number is not reused |
 | J003 | a malformed `colors` or `images` declaration |
-| J010 | a Program's max that is not a whole number of at least 0, or past the seam's ceiling |
+| J010 | a Program's max, or a layer's, that is not a whole number of at least 0, or a max past the seam's ceiling |
 | J020 | a builder made something off the op table |
-| J021 | a list over its max, or a pen layer over its own |
+| J021 | a list over its max, or a layer over the max it states (a pen's, a `from` layer's) |
 | J022 | a builder threw |
 | J040 | a profile's limit passed at draw time |
 | J041 | an op a profile cannot draw exactly |
@@ -98,4 +99,4 @@ J is reserved for the kit (kit/define's `RESERVED_LETTERS`), so a Dialect's own 
 
 ## Not built yet
 
-GLSL lowering of draw lists (parked in the draft); lowering builders through kit/lower; partial redraw; `defineUI`'s third stage form ("render my Draw output"); a Game Boy renderer that makes pixels (the profile checks only).
+GLSL lowering of draw lists (parked in the draft; a builder's Kernel holds lists, which kit/lir refuses); partial redraw; `defineUI`'s third stage form ("render my Draw output"); a Game Boy renderer that makes pixels (the profile checks only).

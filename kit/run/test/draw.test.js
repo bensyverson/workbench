@@ -9,6 +9,7 @@ import { defineRuntime } from "../../define/index.js";
 import { compose } from "../../compose/index.js";
 import { createRun, pageView } from "../index.js";
 import { drawnMaze, screen, GRID } from "../../draw/fixtures/draw-dialects.js";
+import { GAMEBOY } from "../../draw/index.js";
 import { mazeStep } from "./helpers.js";
 
 const right = "(pl, pad) => { pl.dx = 1; }";
@@ -63,7 +64,38 @@ test("a builder over its max or making a bad op stops its part with its J code",
   assert.equal(j.length, 1);
   assert.equal(j[0].part, "level");
   assert.match(j[0].message, /part 'level' \(maze\): out\.view: the draw list has 5 ops, and its max is 4/);
-  const bad = bench({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ op: "ellipse", at: [c.x, c.y], fill: "coin" }); } }).run;
+  // an op missing a field is lowering's L003 now (kit/define/test/draw-lower.test.js); a color name is a string
+  // there, so one the Dialect does not declare is still the build's J020
+  const bad = bench({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ op: "ellipse", at: [c.x, c.y], r: [1, 1], fill: "gold" }); } }).run;
   bad.runUntil(0.25);
-  assert.match(bad.diagnostics.find((d) => d.code === "J020")?.message ?? "", /op 1: an ellipse needs r/);
+  assert.match(bad.diagnostics.find((d) => d.code === "J020")?.message ?? "", /op 1: an ellipse: "gold" is not a color/);
+});
+
+test("a builder runs as its emitted Kernel, compiled once per build, not as the function the Dialect holds", async () => {
+  const { compilePart } = await import("../compile.js");
+  const { composed, runtimes } = bench();
+  const level = /** @type {any} */ (composed.parts.find((p) => p.name === "level"));
+  const c = /** @type {any} */ (compilePart(/** @type {any} */ (runtimes[0]), level.record));
+  assert.equal(c.ok, true);
+  assert.equal(c.draws.view.max, 4);
+  assert.equal(c.draws.view.fns.length, 2);
+  assert.match(c.sources["ports.out.view.layers[1]"], /ellipse/);
+  assert.deepEqual(c.draws.view.fns[1]({ x: 2, y: 1 }, {}, level.record), { op: "ellipse", at: [2, 1], r: [0.25, 0.25], fill: "coin" });
+});
+
+test("given the composition's profile, pageView checks the list it gives at draw time (review F10)", () => {
+  const { composed, runtimes, run } = bench();
+  // without a profile there is nothing to check
+  assert.equal(pageView(run, composed, runtimes).check, null);
+  // the maze's own picture, in its cell frame, holds tiles one unit a cell (J041: background cells don't scale) and a
+  // disc, which the Game Boy does not draw (J042), each found when the list is drawn
+  const level = pageView(run, composed, runtimes, "level", { profile: GAMEBOY });
+  assert.equal(level.check?.ok, false);
+  assert.deepEqual(level.check?.diagnostics.map((d) => d.code), ["J041", "J042"]);
+  assert.deepEqual(pageView(run, composed, runtimes, "level", { profile: "gameboy" }).check?.diagnostics.map((d) => d.code), ["J041", "J042"]);
+  // the shown list after the coin is picked is tiles and text, which it draws
+  run.runUntil(0.25);
+  const shown = pageView(run, composed, runtimes, undefined, { profile: GAMEBOY });
+  assert.deepEqual(shown.check?.diagnostics, []);
+  assert.equal(shown.check?.ok, true);
 });

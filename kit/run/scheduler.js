@@ -13,7 +13,7 @@ import { PAGE, pageRuntime, pageInputProblem } from "../compose/page.js";
 import { partKey, compositionKey, canonical, stateHash, nextRevision, buildEvent, paramTrigger, packageTrigger, glueTrigger, why as buildWhy } from "../build/index.js";
 import { compilePart } from "./compile.js";
 import { RunError } from "./codes.js";
-import { makePart, runInit, runStep, deepFreeze, PART_FIELDS } from "./part.js";
+import { makePart, runInit, runStep, deepFreeze, redraw, defaults, PART_FIELDS } from "./part.js";
 import { slowdowns, inputEntry, afterMs } from "./log.js";
 import { createFrameLog, framesTo, createSlowdown } from "./frames.js";
 import { running, nextInstant as instantAfter, awaitingFrame as waitsOnFrame, due } from "./instants.js";
@@ -151,11 +151,11 @@ export function createRun(composed, options) {
     for (const w of wires) if (w.to.part === p.name && w.queue.length) dropStopped(w, w.queue.splice(0).length, T);
   };
   /** @param {Part} p */
-  const commitState = (p, /** @type {any} */ s) => { p.state = s; p.hash = stateHash(s); };
+  const commitState = (p, /** @type {any} */ s, /** @type {import("./draw.js").Draws} */ draws) => { p.state = s; p.hash = stateHash(s); p.draws = draws; };
 
   for (const p of parts) {
     const r = runInit(p, dev);
-    if ("state" in r) commitState(p, r.state); else stop(p, r, null);
+    if ("state" in r) { commitState(p, r.state, r.draws); p.drawValues = defaults(p.runtime); } else stop(p, r, null);
   }
 
   for (const e of options.inputs ?? []) insert(inputEntry(e, toQ));
@@ -240,24 +240,24 @@ export function createRun(composed, options) {
     const r = runInit({ ...p, ...next }, dev);
     if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }], input })); return; }
     builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input }));
-    Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false });
+    Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false, drawValues: defaults(p.runtime) });
     // a drop after a later stop is noted again: once per wire per stop (ruling R3)
     delivery.restarted(p.name);
     revision++;
-    commitState(p, r.state);
+    commitState(p, r.state, r.draws);
   }
 
   /** What a wire's consumer reads of its producer: now, or as the instant began. @param {Wire} w @returns {View} */
   const viewOf = (w) => {
     const p = byName.get(w.from.part);
     if (!p) return PAGE_VIEW;
-    return w.delay ? startView.get(p.name) ?? { state: p.state, revision: p.revision, part: p } : { state: p.state, revision: p.revision, part: p };
+    return w.delay ? startView.get(p.name) ?? { state: p.state, revision: p.revision, part: p, draws: p.draws } : { state: p.state, revision: p.revision, part: p, draws: p.draws };
   };
 
   /** One instant: inputs applied, the due parts stepped in wire order, the state hashes recorded. @param {Q} T */
   function instant(T) {
     applyInputs(T, T);
-    startView = new Map(parts.map((p) => [p.name, { state: p.state, revision: p.revision, part: p }]));
+    startView = new Map(parts.map((p) => [p.name, { state: p.state, revision: p.revision, part: p, draws: p.draws }]));
     /** @type {string[]} */
     const stepped = [];
     for (const p of order) {
@@ -277,8 +277,8 @@ export function createRun(composed, options) {
       const dt = p.clock.kind === "tick" ? toNumber(p.clock.period) : p.clock.kind === "frame" && p.lastFrameT ? toNumber(sub(T, p.lastFrameT)) : 0;
       const r = runStep(p, { T: toNumber(T), dt, inputs: Object.freeze(inputs), values, dev });
       if ("code" in r) { stop(p, r, T); continue; }
-      commitState(p, r.state);
-      Object.assign(p, { rng: r.rng, snapT: T, stepped: true, rebuilt: false, lastValues: shown, ...(p.clock.kind === "frame" ? { lastFrameT: T } : {}) });
+      commitState(p, r.state, r.draws);
+      Object.assign(p, { rng: r.rng, snapT: T, stepped: true, rebuilt: false, lastValues: shown, drawValues: values, ...(p.clock.kind === "frame" ? { lastFrameT: T } : {}) });
       stepped.push(p.name);
       for (const [port, records] of Object.entries(r.events)) for (const w of wires) if (w.from.part === p.name && w.from.port === port) delivery.deliver(w, records, T);
     }
@@ -409,7 +409,11 @@ export function createRun(composed, options) {
     /** A part's state now; null when its init failed. @param {string} part */
     state(part) { return mustPart(part).state; },
     /** A part's snapshot: its state, revision and the instant it was committed at (null: init's). @param {string} part */
-    snapshot(part) { const p = mustPart(part); return { state: p.state, revision: p.revision, T: p.snapT ? qText(p.snapT) : null }; },
+    snapshot(part) {
+      const p = mustPart(part);
+      // its Draw lists, for a part that has them (pageView reads them)
+      return { state: p.state, revision: p.revision, T: p.snapT ? qText(p.snapT) : null, ...(Object.keys(p.draws).length ? { draws: p.draws } : {}) };
+    },
     /** A part's content key. @param {string} part */
     key(part) { return mustPart(part).key; },
     /** Drops (by a keepLast input; to a stopped part; by a wire's overflow policy) and slowdowns so far. */
@@ -425,6 +429,8 @@ export function createRun(composed, options) {
       const cp = checkpoints[i];
       checkpoints.length = i + 1;
       parts.forEach((p, j) => Object.assign(p, cp.parts[j], { rng: [...cp.parts[j].rng] }));
+      // a part's lists are built again from its restored state and the inputs they were built with
+      parts.forEach(redraw);
       wires.forEach((w, j) => Object.assign(w, cp.wires[j], { queue: [...cp.wires[j].queue] }));
       hashes.length = cp.lens.hashes; builds.length = cp.lens.builds; diagnostics.length = cp.lens.diagnostics;
       delivery.restore(cp);

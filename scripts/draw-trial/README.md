@@ -52,3 +52,10 @@ The Draw build ([kit/draw](../../kit/draw/README.md)) replaces the checker's emu
 - **particles** (ruling 1): one added line, `max: (record) => record.maxParticles`.
 
 The glue is unchanged. Builders, layers, colors and the op fields the packet chose needed no change, which is the finding: the rulings changed what a root writes, not what an author leg wrote.
+
+**Lowering the builders (leaf `vcIzt1`, 2026-11-26)** forced a second massage, of three Dialect files and one runtime (each manifest rehashed): every change is a builder reading something that was a JavaScript closure, or a string's length.
+- **maze:** the floor layer read `s.grid[0].length`, which lowering refuses twice (a list index may be empty, L008; a string has no `length`, L002). The state gains `size: struct({ cols, rows })`, set once by the runtime's init (1 line), and the floor reads `s.size.cols` and `s.size.rows` (1 line). The builders read `CELL`, a top-level const of the file (L001), now also the Library constant `library: { CELL: { const: String(CELL) } }` (1 line). 3 lines in the Dialect and 1 in the runtime.
+- **particles:** the pen called `tint` and `radius`, top-level helpers of the file (L001); they are now also Library functions, `library: { tint: { fn: String(tint) }, radius: { fn: String(radius) } }` (1 line).
+- **arcade:** the view read `LINE`, a top-level const (L001), now `library: { LINE: { const: String(LINE) } }` (1 line).
+
+Nothing in a builder's own text changed but the maze floor's one line: the op literals, the ternaries over two op kinds, the concatenation of two Draw inputs with a HUD, and the pen's `for…of` all lowered as written.

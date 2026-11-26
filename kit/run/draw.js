@@ -1,48 +1,49 @@
 // Draw lists in a run (the draw-list draft, as ruled 2026-11-26). After a part's init and each step, each of its
-// Draw outputs is built from the state it returned (kit/draw's runDraw), with the record, its params and its value
-// and Draw inputs through the inputs global (ruling 4). The lists are kept by the state object they were built
-// from, so a delayed wire, which reads the snapshot as its instant began, reads that snapshot's lists too. A Draw
+// Draw outputs is built from the state it returned (kit/draw's runDraw), by its builder layers' compiled Kernels
+// (kit/run/compile.js), with the record, and its params and its value and Draw inputs through the Kernels' globals
+// (ruling 4), which the caller sets for this init or step. A part's lists are committed with its state, as its
+// `draws`, and a View (what a wire reads) holds the snapshot's lists beside its state, so a delayed wire reads the
+// lists as its instant began even when a step returned the very state object it was handed, and two parts that
+// commit one object keep their own. A rewound part's lists are built again from its restored state and the inputs
+// they were last built with (`redraw`, part.js): a list is a pure function of the state, the record, the params and
+// the inputs. A Draw
 // wire converts its list op by op into the consumer's frame, and the page reads the shown part's list.
 
-import { drawMax, runDraw, convertOp, carryList } from "../draw/index.js";
+import { runDraw, convertOp, carryList, checkDraw, PROFILES } from "../draw/index.js";
 
 /** @typedef {import("../draw/ops.js").Op} Op */
 /** @typedef {import("../draw/ops.js").Image} Image */
 /** @typedef {import("./part.js").Part} Part */
+/** A part's Draw lists for one committed state, by port. @typedef {Readonly<Record<string, readonly Op[]>>} Draws */
 
-/** Each committed state's Draw outputs, by port. @type {WeakMap<object, Record<string, readonly Op[]>>} */
-const DRAWN = new WeakMap();
+/** The lists of a part with no Draw output, or of no state. @type {Draws} */
+export const NONE = Object.freeze({});
 
 /** @param {any} runtime @returns {any[]} */
 const drawPorts = (runtime) => Object.values(/** @type {Record<string, any>} */ (runtime.dialect.seams.out)).filter((o) => o.draw);
 
 /**
- * Builds a part's Draw outputs from a state it is about to commit; null when they build, else the diagnostic that
- * stops the part (J010, J020–J022).
- * @param {Part} p @param {any} state @param {Record<string, unknown>} values  its value and Draw inputs
- * @returns {{ code: string, message: string } | null}
+ * Builds a part's Draw outputs from a state it is about to commit: its lists by port (frozen; none for a part with
+ * no Draw output), else the diagnostic that stops the part (J010, J020–J022). The caller has set the Kernels'
+ * globals (`$` and the inputs, with its Draw inputs) for this init or step.
+ * @param {Part} p @param {any} state
+ * @returns {{ draws: Draws } | { code: string, message: string }}
  */
-export function drawAfter(p, state, values) {
+export function drawAfter(p, state) {
   const ports = drawPorts(p.runtime);
-  if (ports.length === 0 || state === null || typeof state !== "object") return null;
+  if (ports.length === 0 || state === null || typeof state !== "object") return { draws: NONE };
   const seams = p.runtime.dialect.seams;
-  const def = /** @type {Record<string, any>} */ (p.runtime.dialect.def ?? {});
-  /** @type {Record<string, unknown>} */
-  const globals = {};
-  if (seams.inputs) globals[seams.inputs.name] = Object.freeze({ ...values });
-  if (typeof def.params?.name === "string") globals[def.params.name] = p.params;
   /** @type {Record<string, readonly Op[]>} */
   const drawn = {};
   for (const port of ports) {
     const where = `part '${p.name}' (${p.dialect}): out.${port.name}`;
-    const m = drawMax(port.draw, port.seam.max, p.record);
-    if (!m.ok) return { code: "J010", message: `${where}: ${m.error}` };
-    const r = runDraw(port.draw, { state, record: p.record, max: m.max, paint: { colors: seams.colors, images: seams.images }, part: p.name, globals });
+    const c = p.compiled.draws?.[port.name];
+    if (!c) return { code: "J010", message: `${where}: its builder did not lower for this Program, so it has no list` };
+    const r = runDraw(port.draw, { state, record: p.record, max: c.max, paint: { colors: seams.colors, images: seams.images }, part: p.name, fns: c.fns });
     if (!r.ok) return { code: r.code, message: `${where}: ${r.message}` };
     drawn[port.name] = deepFreezeList(r.list);
   }
-  DRAWN.set(state, Object.freeze(drawn));
-  return null;
+  return { draws: Object.freeze(drawn) };
 }
 
 /** @param {Op[]} list */
@@ -52,8 +53,8 @@ function deepFreezeList(list) {
   return freeze(list);
 }
 
-/** A reader for one Draw output, as kit/run reads a value output: the list built from that state. @param {string} port */
-export const drawReader = (port) => (/** @type {any} */ state) => (state && typeof state === "object" ? DRAWN.get(state)?.[port] : undefined);
+/** A reader for one Draw output, as kit/run reads a value output: the list of the snapshot a View holds. @param {string} port */
+export const drawReader = (port) => (/** @type {any} */ _state, /** @type {unknown} */ _params, /** @type {{ draws?: Draws } | undefined} */ view) => view?.draws?.[port];
 
 /** A part's declared images, by their carried names (`<part>.<image>`). @param {string} part @param {any} runtime @returns {Record<string, Image>} */
 export function imagesOf(part, runtime) {
@@ -73,13 +74,16 @@ export function convertDraw(v, c) {
 
 /**
  * What the page draws: the shown part's (or `part`'s) Draw output, as it stands, with every part's images and the
- * box of its frame (its extent for the built record) for a renderer.
- * @param {{ snapshot: (part: string) => { state: any } }} run @param {{ parts: Array<{ name: string, dialect: string, record: any }>, show: string | null, view?: string }} composed
+ * box of its frame (its extent for the built record) for a renderer. Given the composition's renderer profile (a
+ * profile or its name), `check` is that profile's draw-time check of the list (kit/draw's checkDraw: J040–J042,
+ * the counts and positions composition cannot judge), else null; the list is never trimmed to pass it.
+ * @param {{ snapshot: (part: string) => { state: any, draws?: Record<string, readonly Op[]> } }} run @param {{ parts: Array<{ name: string, dialect: string, record: any }>, show: string | null, view?: string }} composed
  * @param {any[]} runtimes  kit/define's defineRuntime results, matched by Dialect name
  * @param {string} [part]
- * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: { min: number[], max: number[] } | null }}
+ * @param {{ profile?: import("../draw/profiles.js").Profile | string }} [options]
+ * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: { min: number[], max: number[] } | null, check: ReturnType<typeof checkDraw> | null }}
  */
-export function pageView(run, composed, runtimes, part) {
+export function pageView(run, composed, runtimes, part, options = {}) {
   const runtimeOf = (/** @type {string} */ dialect) => runtimes.find((r) => r.dialect?.name === dialect);
   /** @type {Record<string, Image>} */
   const images = {};
@@ -90,9 +94,12 @@ export function pageView(run, composed, runtimes, part) {
   const rt = runtimeOf(cp.dialect);
   const ports = rt ? drawPorts(rt) : [];
   const port = part === undefined && composed.view ? ports.find((o) => o.name === composed.view) : ports.length === 1 ? ports[0] : ports.find((o) => o.name === "view");
-  if (!port) return { part: name, port: null, list: [], images, box: null };
+  if (!port) return { part: name, port: null, list: [], images, box: null, check: null };
   const frame = rt.dialect.seams.frames[port.seam.frame];
   const box = frame?.extent ? frame.extent(cp.record) : null;
-  const state = run.snapshot(name).state;
-  return { part: name, port: port.name, list: drawReader(port.name)(state) ?? [], images, box };
+  const list = run.snapshot(name).draws?.[port.name] ?? [];
+  const profile = typeof options.profile === "string" ? /** @type {Record<string, import("../draw/profiles.js").Profile>} */ (PROFILES)[options.profile] : options.profile;
+  if (typeof options.profile === "string" && !profile) throw new Error(`pageView: no renderer profile '${options.profile}' (the profiles: ${Object.keys(PROFILES).join(", ")})`);
+  const check = profile ? checkDraw(profile, [...list], { images, box: box ?? { min: [0, 0], max: [0, 0] } }) : null;
+  return { part: name, port: port.name, list, images, box, check };
 }

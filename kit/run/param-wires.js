@@ -45,7 +45,7 @@ export function createParamFeed(composed, byName, report, given = {}) {
       if (!p || !c || p.state === null) return;
       const mine = logged.filter((e) => e.kind === "param" && e.part === c.name && e.name === w.to.port);
       if (mine.some((e) => e.wire === w.source)) return; // logged: a run from a log
-      const value = p.compiled.outputs[w.from.port]?.(p.state, p.params);
+      const value = p.compiled.outputs[w.from.port]?.(p.state, p.params, { draws: p.draws });
       if (value === undefined) return;
       // what the param holds right after `T`: the last of those inputs, else its value now
       const last = mine.at(-1);

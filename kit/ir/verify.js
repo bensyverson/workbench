@@ -393,6 +393,7 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
     /** @type {Type | null} */
     let item = "unknown";
     for (const a of e.items) item = item === null ? null : strictJoin(item, a.t);
+    if (item === null) item = declaredItem(e.t, e.items.map((a) => a.t));
     if (n === 0 || item === null) { bad(n === 0 ? "An array literal has at least one item." : "An array literal's items share one type."); return; }
     if (!(typeof e.t === "object" && "list" in e.t) || !sameType(e.t, { list: item, max: n, len: n })) bad(`An array of ${n} ${showSafe(item)} is ${showSafe({ list: item, max: n, len: n })} with len ${n}, not ${showSafe(e.t)}.`);
   },
@@ -409,6 +410,7 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
       max += a.t.max;
       len = len === undefined || a.t.len === undefined ? undefined : len + a.t.len;
     }
+    if (item === null) item = declaredItem(e.t, e.parts.map((a) => /** @type {any} */ (a.t).list));
     if (item === "unknown") { bad("A concatenation's item type is unknown."); return; }
     if (e.parts.length === 0 || item === null) { bad(e.parts.length === 0 ? "A concatenation has at least one part." : "A concatenation's parts share one item type."); return; }
     const want = { list: item, max, ...(len === undefined ? {} : { len }) };
@@ -522,3 +524,14 @@ const STMT = /** @type {{ [K in Stmt["k"]]: (x: { c: Checker, s: Extract<Stmt, {
   break: ({ c, s, path }) => { if (c.loops === 0) c.report("V010", "A break outside a loop.", path, s.span); },
   continue: ({ c, s, path }) => { if (c.loops === 0) c.report("V010", "A continue outside a loop.", path, s.span); },
 });
+
+/**
+ * A list's declared item type when it is a union every item fits, else null: a list lowered where a list of a
+ * union was expected (a draw list's ops of several kinds) holds items of several struct types (kit/lower).
+ * @param {Type} t @param {Type[]} items @returns {Type | null}
+ */
+function declaredItem(t, items) {
+  if (!(typeof t === "object" && "list" in t)) return null;
+  const want = t.list;
+  return typeof want === "object" && "union" in want && items.every((i) => assignable(i, want)) ? want : null;
+}

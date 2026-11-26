@@ -53,13 +53,14 @@ test("a profile judges the shown list's kinds at composition, through the inputs
   // by name, too
   assert.deepEqual(errors(glue().check({ profile: "gameboy" })).map((d) => d.code), ["S401"]);
   assert.deepEqual(errors(glue().check({ profile: "vectrex" })).map((d) => d.code), ["S403"]);
-  // a kind the kit cannot see is left to draw time
-  const open = glue({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ ...c, op: c.kind }); } });
+  // a kind the kit cannot see is left to draw time (an op returned through a local; a builder is Bench code, so a
+  // spread into an object, as this case was written before builders were lowered, is S109 at defineDialect)
+  const open = glue({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => { const o = { op: "ellipse", at: [c.x, c.y], r: [1, 1] }; return o; }; } });
   assert.deepEqual(errors(open.check({ profile: GAMEBOY })), []);
   // but a builder that is open does not hide the kinds the kit can see: a rect beside it is still S401
   const hidden = glue({ maze: (d) => {
     d.ports.out.view.layers[0].from = () => ({ op: "rect", at: [0, 0], size: [1, 1] });
-    d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ ...c, op: c.kind });
+    d.ports.out.view.layers[1].from = (/** @type {any} */ c) => { const o = { op: "image", at: [c.x, c.y], image: "sheet", cell: 0 }; return o; };
   } });
   const seen = errors(hidden.check({ profile: GAMEBOY }));
   assert.deepEqual(seen.map((d) => d.code), ["S401"]);
@@ -70,9 +71,9 @@ test("a profile judges the shown list's kinds at composition, through the inputs
 });
 
 test("a shown part with several Draw outputs shows the one named view, and none named view is S402", () => {
-  const two = glue({ screen: (d) => { d.ports.out.mini = { seam: "Draw<4>@px", note: "a thumbnail", from: () => [] }; } });
+  const two = glue({ screen: (d) => { d.ports.out.mini = { seam: "Draw<4>@px", note: "a thumbnail", from: () => null }; } });
   assert.equal(/** @type {any} */ (two.build()).view, "view");
-  const ds = errors(glue({ screen: (d) => { d.ports.out.big = d.ports.out.view; delete d.ports.out.view; d.ports.out.mini = { seam: "Draw<4>@px", note: "a thumbnail", from: () => [] }; } }).check());
+  const ds = errors(glue({ screen: (d) => { d.ports.out.big = d.ports.out.view; delete d.ports.out.view; d.ports.out.mini = { seam: "Draw<4>@px", note: "a thumbnail", from: () => null }; } }).check());
   assert.deepEqual(ds.map((d) => d.code), ["S402"]);
   assert.match(ds[0].message, /scr has two Draw outputs, big and mini, and none is named view/);
 });

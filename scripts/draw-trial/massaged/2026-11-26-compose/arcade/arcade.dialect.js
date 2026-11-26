@@ -15,6 +15,8 @@ export const arcadeDialect = defineDialect({
   inputs: { object: "Wired", name: "wired" },
   globals: { wired: "Wired" },
   targets: { js: { accepts: "*", compare: exact() } },
+  // the view's builder is Bench code: it reads the text line's height as a Library constant
+  library: { LINE: { const: String(LINE) } },
   slots: {},
   state: { t: "f64" },
   colors: { backdrop: "#000000", ink: "#ffffff" },
