@@ -131,7 +131,7 @@ function analyze(text) {
     }
   }
 
-  for (const s of program.body) top(s);
+  try { for (const s of program.body) top(s); } catch (e) { throw scanError(e); }
   last = { text, analysis: { program, records, holds } };
   return last.analysis;
 }
@@ -252,7 +252,8 @@ export function buildTimeNames(code) {
  * callback is listed too, and so is a Runtime Lambda's own parameter when the lambda holds a query callback
  * (`(p, dt) => p.items.some((q) => q.x > dt)` lists `dt`; issue `JYmuWM`: telling the two apart takes the builder's
  * knowledge of which arrows it was handed). A function that holds no function (a lambda's or a helper's own
- * parameter) never counts, and neither does the export's own parameter.
+ * parameter) never counts. The export's own parameter counts when the export holds a function (it may then hold a
+ * lambda that reads the name) and never otherwise (no lambda can read it).
  * @param {string} code
  * @returns {string[]}
  */
@@ -290,6 +291,8 @@ export function topLevelRefs(src, names) {
   let tree;
   try { tree = parseModule(wrapped); } catch (e) { throw scanError(e); }
   if (tree.body.length !== 1 || tree.body[0].type !== "ExpressionStatement" || tree.body[0].end !== wrapped.length) throw new ScanError("it is not one expression", 1);
-  const free = freeNames(tree.body[0].expression);
+  /** @type {Set<string>} */
+  let free;
+  try { free = freeNames(tree.body[0].expression); } catch (e) { throw scanError(e); }
   return names.filter((n, i) => free.has(n) && names.indexOf(n) === i);
 }

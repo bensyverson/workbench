@@ -8,14 +8,28 @@ import { parse, tokenizer } from "../vendor/acorn/acorn.mjs";
 /** @type {import("../vendor/acorn/acorn.mjs").Options} */
 const OPTIONS = { ecmaVersion: "latest", sourceType: "module", locations: true };
 
+// A token that is a property name (an identifier or a keyword written as one).
+const PROPERTY = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200c\u200d]*$/u;
+
 /**
  * Parses `text` as an ES module, with line/column locations. Throws a SyntaxError carrying `loc.line` (1-based)
- * when the text is not a module.
+ * when the text is not a module, and when acorn reads a `/` as the start of a regex right after `?.` and a property
+ * name (`o?.in\n/ 2`; acorn takes a keyword-named property for a keyword). JavaScript reads a division
+ * there, and the regex acorn swallows could hide a declaration, so it fails closed rather than trust the tree. No
+ * valid program has a regex right after `?.name`, so no keyword list is needed; `?.[` and `?.(` may hold one.
  * @param {string} text
  * @returns {AstNode}
  */
 export function parseModule(text) {
-  return parse(text, OPTIONS);
+  /** @type {import("../vendor/acorn/acorn.mjs").Token[]} */
+  const tokens = [];
+  const tree = parse(text, { ...OPTIONS, onToken: tokens });
+  for (let i = 2; i < tokens.length; i++) {
+    if (tokens[i].type.label === "regexp" && tokens[i - 2].type.label === "?." && PROPERTY.test(text.slice(tokens[i - 1].start, tokens[i - 1].end))) {
+      throw Object.assign(new SyntaxError(`a '/' after '?.${text.slice(tokens[i - 1].start, tokens[i - 1].end)}' is read as a regular expression by the parser, though JavaScript reads a division`), { loc: tokens[i].loc?.start });
+    }
+  }
+  return tree;
 }
 
 /**
