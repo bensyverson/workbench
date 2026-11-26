@@ -29,7 +29,7 @@ test("a time is its rational text, with seconds in decimals when it is not whole
 test("a param rebuild says the new revision, when, the param and its values, the input that set it, and where build code read it", () => {
   const text = formatBuild(paramBuild(), { log: LOG, base: "file:///w/" });
   const lines = text.split("\n");
-  assert.equal(lines[0], "build cave@2 after instant T=3/10 (0.3 s), before instant T=1/3 (0.333 s)");
+  assert.equal(lines[0], "build cave@2 after instant T=3/10 (0.3 s), at T=1/3 (0.333 s) (before the next instant)");
   assert.match(text, /because: +param cave\.\$\.depth changed 0 → 3, set by a param input stamped T=1\/3 \(0\.333 s\)/);
   assert.match(text, /read at build time at scenario\/glue\.js:12 \(before cave\.grid\)/);
 });
@@ -115,4 +115,42 @@ test("without a base, read paths are shortened against the directory the builds'
 
 test("why() with no part covers every part's builds", () => {
   assert.match(why([paramBuild(), paramBuild({ part: "game" })], LOG), /^why: 2 rebuilds in the run log\n/);
+});
+
+/** Two changed rebuilds of the cave landing at one stamp, applied by log inputs 1 and 2. */
+const pair = () => [
+  paramBuild({ boundary: { after: "3/10", before: "1/3" }, input: 1, trigger: { kind: "glue", call: null } }),
+  paramBuild({ boundary: { after: "3/10", before: "1/3" }, input: 2, revision: { before: 2, after: 3 }, key: { before: KEY_B, after: KEY_A }, trigger: { kind: "glue", call: null } }),
+];
+const PAIR_LOG = { inputs: [
+  { kind: "control", T: "1/30", part: "game", name: "pad", value: { right: true } },
+  { kind: "rebuild", T: "1/3", part: "cave", record: {} },
+  { kind: "rebuild", T: "1/3", part: "cave", record: {} },
+  { kind: "control", T: "1/2", part: "game", name: "pad", value: { right: false } },
+] };
+
+test("a build superseded at its own stamp says so, and the next names the revision consumers last read", () => {
+  const text = why(pair(), PAIR_LOG, { part: "cave" });
+  assert.match(text, /consumers: +game\.in\.start, game\.in\.exit never read cave@2: superseded by cave@3 before any consumer step/);
+  assert.match(text, /read cave@1 at every step before T=1\/3 \(0\.333 s\), and cave@3 \(\$rev 3\) from their first step/);
+});
+
+test("each input is listed under exactly one build: the first applied at or after it, by log position", () => {
+  const text = why(pair(), PAIR_LOG, { part: "cave" });
+  const lines = text.split("\n").filter((l) => l.includes("inputs:"));
+  assert.match(lines[0], /since the run started: T=1\/30 \(0\.033 s\) game pad right; T=1\/3 \(0\.333 s\) cave rebuild$/);
+  assert.match(lines[1], /since T=1\/3 \(0\.333 s\): T=1\/3 \(0\.333 s\) cave rebuild$/);
+});
+
+test("two builds at different stamps say what consumers read between them without claiming a step", () => {
+  const second = paramBuild({ boundary: { after: "3/10", before: "2/5" }, revision: { before: 2, after: 3 }, key: { before: KEY_B, after: KEY_A } });
+  const text = why([paramBuild(), second], LOG, { part: "cave" });
+  assert.match(text, /cave@2 \(\$rev 2\) at any step from T=1\/3 \(0\.333 s\) until cave@3 landed at T=2\/5 \(0\.4 s\)/);
+  assert.match(text, /read cave@2 at every step from T=1\/3 \(0\.333 s\) until T=2\/5 \(0\.4 s\)/);
+});
+
+test("a boundary says it landed at its stamp, before the next instant, and the header counts since", () => {
+  assert.match(formatBuild(paramBuild(), {}).split("\n")[0], /^build cave@2 after instant T=3\/10 \(0\.3 s\), at T=1\/3 \(0\.333 s\) \(before the next instant\)$/);
+  assert.equal(why([paramBuild()], LOG, { part: "cave", since: "1/4" }).split("\n")[0], "why cave: 1 rebuild since T=1/4 (0.25 s); cave@2 now");
+  assert.equal(why([paramBuild()], LOG, { since: "1/4" }).split("\n")[0], "why: 1 rebuild since T=1/4 (0.25 s)");
 });

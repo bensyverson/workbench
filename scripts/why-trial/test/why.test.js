@@ -29,7 +29,7 @@ test("a time is its rational text, with seconds in decimals when it is not whole
 test("a param rebuild says the new revision, when, the param and its values, the input that set it, and where build code read it", () => {
   const text = formatBuild(paramBuild(), { log: LOG, base: "file:///w/" });
   const lines = text.split("\n");
-  assert.equal(lines[0], "build cave@2 after instant T=3/10 (0.3 s), before instant T=1/3 (0.333 s)");
+  assert.equal(lines[0], "build cave@2 after instant T=3/10 (0.3 s), at T=1/3 (0.333 s) (before the next instant)");
   assert.match(text, /because: +param cave\.\$\.depth changed 0 → 3, set by a param input stamped T=1\/3 \(0\.333 s\)/);
   assert.match(text, /read at build time at scenario\/glue\.js:12 \(before cave\.grid\)/);
 });

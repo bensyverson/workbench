@@ -16,8 +16,10 @@ import { canonical } from "./key.js";
 /**
  * A build event, as the run log keeps it. `boundary` is the instant boundary it landed on: after the instant
  * `after` (null before the first) and before `before`, each as rational text. `changed` is whether the key did;
- * `record` lists the record's top-level keys that differ; `consumers` the inputs fed by this part's outputs.
- * @typedef {{ kind: "build", part: string, boundary: { after: string | null, before: string }, trigger: Trigger, ok: boolean, changed: boolean, key: { before: string, after: string | null }, revision: { before: number, after: number }, record: string[], kernels: { changed: string[], added: string[], removed: string[], unchanged: string[] }, consumers: string[], diagnostics: unknown[] }} BuildEvent
+ * `record` lists the record's top-level keys that differ; `consumers` the inputs fed by this part's outputs; `input`
+ * (kit/run sets it) the position in the run log's inputs of the one that applied the rebuild, so the why text can
+ * split inputs between builds at one stamp.
+ * @typedef {{ kind: "build", part: string, boundary: { after: string | null, before: string }, trigger: Trigger, ok: boolean, changed: boolean, key: { before: string, after: string | null }, revision: { before: number, after: number }, record: string[], kernels: { changed: string[], added: string[], removed: string[], unchanged: string[] }, consumers: string[], diagnostics: unknown[], input?: number }} BuildEvent
  */
 
 /**
@@ -53,10 +55,10 @@ export const glueTrigger = (call) => ({ kind: "glue", call: call ?? null });
 /**
  * The build event of one rebuild. `after` is null when the rebuild failed: the previous revision keeps running and
  * the event carries the diagnostics.
- * @param {{ part: string, boundary: BuildEvent["boundary"], trigger: Trigger, before: BuildSide & { revision: number }, after: BuildSide | null, consumers: string[], diagnostics?: unknown[] }} o
+ * @param {{ part: string, boundary: BuildEvent["boundary"], trigger: Trigger, before: BuildSide & { revision: number }, after: BuildSide | null, consumers: string[], diagnostics?: unknown[], input?: number }} o
  * @returns {BuildEvent}
  */
-export function buildEvent({ part, boundary, trigger, before, after, consumers, diagnostics = [] }) {
+export function buildEvent({ part, boundary, trigger, before, after, consumers, diagnostics = [], input }) {
   const ok = after !== null;
   const changed = ok && after.key !== before.key;
   const keys = ok ? [...new Set([...Object.keys(before.record), ...Object.keys(after.record)])].filter((k) => k !== "reads").sort() : [];
@@ -76,5 +78,6 @@ export function buildEvent({ part, boundary, trigger, before, after, consumers, 
     },
     consumers,
     diagnostics,
+    ...(input === undefined ? {} : { input }),
   };
 }

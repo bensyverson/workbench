@@ -204,24 +204,25 @@ export function createRun(composed, options) {
    */
   function rebuild(p, record, trigger, pkg, before) {
     const boundary = { after: at.lastT ? qText(at.lastT) : null, before: qText(before) };
+    const input = cursor - 1; // the log position of the input being applied
     const consumers = wires.filter((w) => w.from.part === p.name).map((w) => `${w.to.part}.in.${w.to.port}`);
     const was = { key: p.key, revision: p.revision, record: p.record, kernels: p.compiled.sources };
     const compiled = compilePart(p.runtime, record);
     const clock = compiled.ok ? clockOf(p.runtime, record) : null;
     if (!compiled.ok || !clock?.ok) {
       const diags = !compiled.ok ? compiled.diagnostics : [{ code: "N006", message: `part '${p.name}' (${p.dialect}): ${/** @type {any} */ (clock).error}` }];
-      builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: diags }));
+      builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: diags, input }));
       return;
     }
     const content = pkg && pkg.content !== undefined ? pkg.content : p.content;
     const key = partKey({ package: content, record });
     const after = { key, record, kernels: compiled.sources };
-    if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers })); return; }
+    if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input })); return; }
     // init runs on a trial copy, so a throw or a state that does not fit leaves the running part as it was
     const next = { record, compiled, clock: clock.clock, key, content, revision: nextRevision({ key: was.key, revision: was.revision }, key), rng: /** @type {Part["rng"]} */ ([...p.rng]) };
     const r = runInit({ ...p, ...next }, dev);
-    if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }] })); return; }
-    builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers }));
+    if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }], input })); return; }
+    builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input }));
     Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false });
     // a drop after a later stop is noted again: once per wire per stop (ruling R3)
     delivery.restarted(p.name);
@@ -348,6 +349,7 @@ export function createRun(composed, options) {
      * @param {string} [part] @param {number | Q | string} [since]
      */
     why(part, since) {
+      if (part !== undefined && !byName.has(part)) throw new Error(`run.why: the composition has no part '${part}': the parts are ${parts.map((x) => x.name).join(", ")}`);
       return buildWhy(builds, run.log, { part, since: since === undefined ? undefined : qText(toQ(since)) });
     },
     /** The next instant a part is due at, not run; null when none is. */
