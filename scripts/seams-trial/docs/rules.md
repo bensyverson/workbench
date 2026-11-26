@@ -22,7 +22,7 @@ If the tool you write files with refuses to write `REPORT.md`, write it from the
 - **R4. Authors: one new example** under `examples/` that uses what you added, listed in the manifest. (K codes)
 - **R5. Authors: you write for strangers.** You don't know what your package will be used with. Every port and frame has a `note` a stranger can act on. Don't name another language, package or frame. (D codes; the rest is read by hand)
 - **R6. Composer: don't change either package**, not even a comment. Everything that involves both goes in `workbench.js`. If a package lacks something you need, that is a gap. (K006 if a file changed; read by hand)
-- **R7. Composer: no hand conversions.** Don't multiply, add or divide to move a value from one language's frame into another's. Relate the frames with `.frame` and let the wire convert. (G codes; read by hand)
+- **R7. Composer: no hand conversions.** Don't multiply, add or divide to move a value from one language's frame into another's. Relate the frames with `.frame` and let the wire convert. (G003 when the position crosses with no frame of the glue; a hand conversion is read by hand)
 - **R8. The report.** `REPORT.md` has these sections, in order:
   1. **Difficulty**, 1 (easy) to 5 (could not do it), with one sentence why.
   2. **What you did**: authors, each port and frame you added and why a stranger would want it; composer, each part, frame and wire, and why.
@@ -40,5 +40,5 @@ If the tool you write files with refuses to write `REPORT.md`, write it from the
 | D… | a port, frame, edge or `inputs` declaration your Dialect states badly; the message names it |
 | B…, L…, U… | the Grammar, a lambda or the UI, as before your change |
 | S… | a seam: the table at the end of `seams.md` |
-| G… | the composer's task: the burst is not wired from a maze event, a conversion is done by hand, or a frame fact is missing from the glue |
+| G… | the composer's task: the burst is not wired from a maze pickup or goal event into an input an emitter triggers on, its position does not cross through a frame the glue relates, the particles part is not shown, or the glue does not return one composition of the two packages (a conversion done by hand is read by hand) |
 | LOAD | a file could not be loaded at all |

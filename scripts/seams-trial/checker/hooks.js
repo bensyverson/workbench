@@ -10,14 +10,12 @@ import { session as uiSession } from "../../ui-trial/checker/session.js";
 const DEFINE_URL = new URL("./define.js", import.meta.url).href;
 const COMPOSE_URL = new URL("./compose.js", import.meta.url).href;
 
-/** What the glue may import, and what it imported that it may not. */
+/** The glue being checked: its URL and the packages its bare names resolve to. (What it may import is decided from its syntax tree, glue-scan.js.) */
 export const glue = {
   /** The glue program's URL (no query), or "" when no glue is being checked. */
   url: "",
   /** Each package's Grammar entry by its bare name. @type {Record<string, string>} */
   packages: {},
-  /** Imports of the glue that are not allowed: the specifier. @type {string[]} */
-  refused: [],
 };
 
 export const GLUE_IMPORTS = Object.freeze(["kit/compose", "kit/define"]);
@@ -39,7 +37,6 @@ export function installHooks() {
       }
       if (fromGlue) {
         if (Object.hasOwn(glue.packages, specifier)) return { url: `${glue.packages[specifier]}?run=${uiSession.run}`, format: "module", shortCircuit: true };
-        if (!GLUE_IMPORTS.includes(specifier)) glue.refused.push(specifier);
       }
       return next(specifier, context);
     },

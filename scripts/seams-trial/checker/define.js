@@ -66,7 +66,7 @@ export function defineDialect(def) {
   const { value: dialect, refused } = attempt(() => kitDefineDialect(/** @type {any} */ (rest)));
   const own = dialect ? [...problems, ...against(seams, dialect)] : problems;
   refuseAll("defineDialect", def, refused, own);
-  dialects.set(dialect, { seams, file: callSite().file });
+  dialects.set(dialect, { seams, file: callSite().file, decl: def });
   return dialect;
 }
 
@@ -124,8 +124,10 @@ export function defineGrammar(dialect, def) {
     /** The kit's lowering, then the seams' (port-lower.js). @param {Record<string, any>} record */
     lower: (record) => {
       const lowered = real.lower(record);
-      const extra = lowerPorts(dialect, seams, record).diagnostics;
-      return extra.length ? { ...lowered, diagnostics: [...lowered.diagnostics, ...extra] } : lowered;
+      // a seam's problem is the Dialect's, at its port or frame, not the Program's: kept for the checker to place
+      const at = dialects.get(dialect);
+      for (const d of lowerPorts(dialect, seams, record).diagnostics) registry.seamLowerings.push({ diagnostic: d, file: at?.file ?? "", decl: at?.decl });
+      return lowered;
     },
   });
   builders.set(builder, { dialect, seams, grammar: def });

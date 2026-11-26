@@ -12,12 +12,13 @@ import { checkPackageDir, CheckTargetError } from "../../pkg-trial/checker/index
 import { scopeModules, buildOptions } from "../../pkg-trial/checker/scope.js";
 import { session as uiSession, begin } from "../../ui-trial/checker/session.js";
 import { locatePos, lineAt } from "../../ui-trial/checker/locate.js";
-import { parseModule, walkNodes } from "../../../kit/parse/module.js";
 import { MANIFEST_PATH } from "../../../kit/package/index.js";
 import { installHooks, glue } from "./hooks.js";
 import { registry, resetRegistry, builders } from "./registry.js";
 import { composeSession, isComposition } from "./compose.js";
 import { mazeTask, particlesTask, composeTask } from "./task.js";
+import { forbiddenReads, conditionReads } from "./glue-scan.js";
+import { placeSeam } from "./place.js";
 import { LOAD } from "./codes.js";
 
 /** @import { Violation, Side } from "./codes.js" */
@@ -85,6 +86,15 @@ async function checkPackage(root, role, prefix = "") {
       }
     }
   }
+  // a seam problem an example's lowering found is the Dialect's, at its port or frame: once, however many examples show it
+  const placedSeams = new Set();
+  for (const { diagnostic: d, file, decl } of registry.seamLowerings) {
+    const at = placeSeam(d, file, decl, dirUrl) ?? { file: manifest?.entry?.dialect ?? MANIFEST_PATH, line: 1 };
+    const key = `${d.code}|${at.file}|${at.line}|${d.message}`;
+    if (placedSeams.has(key)) continue;
+    placedSeams.add(key);
+    diagnostics.push({ ...at, code: d.code, severity: "error", message: d.message, fix: d.tip });
+  }
   /** @type {{ seams: any, grammar: any, builder: any } | null} */
   let loaded = null;
   if (manifest?.entry?.grammar && !diagnostics.some((d) => d.code === "K011" || /^D0(2[4-9]|3[01])$/.test(d.code) || d.code === "LOAD")) {
@@ -148,7 +158,6 @@ async function checkCompose(root) {
   scopeModules(dirUrl, [GLUE_FILE], { [GLUE_FILE]: text });
   glue.url = `${dirUrl}${GLUE_FILE}`;
   glue.packages = Object.fromEntries(Object.entries(entries).map(([n, e]) => [n, `${dirUrl}${n}/${e}`]));
-  glue.refused = [];
   /** @param {number} line @param {string} code @param {string} message @param {string} fix @param {{ from?: Side, to?: Side }} [sides] */
   const add = (line, code, message, fix, sides = {}) => diagnostics.push({ file: GLUE_FILE, line, code, severity: "error", message, fix, ...sides });
   const done = () => {
@@ -159,6 +168,10 @@ async function checkCompose(root) {
   // the packages must load for the glue to mean anything
   if (diagnostics.some((d) => d.code === "K011" || d.code === "LOAD" || /^D0(2[4-9]|3[01])$/.test(d.code))) return done();
 
+  // what the glue may not import is decided from its text, and a glue that makes one such import is not loaded
+  const forbidden = forbiddenReads(text, Object.keys(entries));
+  for (const f of forbidden) add(f.line, "C006", `${GLUE_FILE} ${f.what}; the glue program may import only "kit/compose", "kit/define", "maze" and "particles"`, "remove it; write what you need in workbench.js");
+  if (forbidden.length) return done();
   /** @type {Record<string, unknown>} */
   let mod;
   try {
@@ -168,10 +181,6 @@ async function checkCompose(root) {
     const site = String(err.stack ?? "").match(new RegExp(`${escape(dirUrl)}([^\\s():?]+)(?:\\?[^\\s():]*)?:(\\d+)`));
     diagnostics.push({ file: site ? decodeURIComponent(site[1]) : GLUE_FILE, line: site ? Number(site[2]) : 1, code: LOAD, severity: "error", message: `${GLUE_FILE} does not load: ${err.message}`, fix: "fix the file so it loads; run node on it to see the error" });
     return done();
-  }
-  for (const s of new Set(glue.refused)) {
-    const at = text.search(new RegExp(`["']${escape(s)}["']`));
-    add(at < 0 ? 1 : lineAt(text, at), "C006", `${GLUE_FILE} imports '${s}'; the glue program may import only "kit/compose", "kit/define", "maze" and "particles"`, "remove the import; write what you need in workbench.js");
   }
   const exportLine = (() => { const at = text.search(/export\s+default/); return at < 0 ? 1 : lineAt(text, at); })();
   const fn = mod.default;
@@ -184,12 +193,29 @@ async function checkCompose(root) {
     comp = fn(Object.freeze({}));
   } catch (e) {
     const err = /** @type {Error & { diagnostics?: any[] }} */ (e);
-    if (Array.isArray(err.diagnostics)) for (const d of err.diagnostics) add(placeIn(d, dirUrl) ?? exportLine, d.code, d.message, d.tip ?? "");
-    else add(exportLine, LOAD, `${GLUE_FILE}'s default export threw: ${err.message}`, "fix the glue so it runs");
+    if (Array.isArray(err.diagnostics)) {
+      for (const d of err.diagnostics) {
+        const at = placeIn(d, dirUrl) ?? { file: GLUE_FILE, line: exportLine };
+        diagnostics.push({ ...at, code: d.code, severity: "error", message: d.message, fix: d.fix ?? d.tip ?? "", ...(d.from ? { from: d.from } : {}), ...(d.to ? { to: d.to } : {}) });
+      }
+    } else add(exportLine, LOAD, `${GLUE_FILE}'s default export threw: ${err?.message ?? String(err)}`, "fix the glue so it runs");
+    return done();
+  }
+  if (comp instanceof Promise) {
+    comp.catch(() => {}); // its rejection is this mistake's, not an unhandled one
+    add(exportLine, "G006", `${GLUE_FILE}'s default export returns a Promise: it is async, and a composition is built synchronously`, "drop async: export default ($) => { …; return compose(\"…\")…; };");
     return done();
   }
   if (!isComposition(comp)) { add(exportLine, "G006", `${GLUE_FILE}'s default export returns ${comp === undefined ? "nothing" : "something other than a composition"}`, "return compose(\"…\").part(…)…, without .build()"); return done(); }
-  const a = /** @type {Analysis} */ (/** @type {any} */ (comp).analyze());
+  /** @type {Analysis} */
+  let a;
+  try {
+    a = /** @type {any} */ (comp).analyze();
+  } catch (e) {
+    // a check the stand-in did not foresee: say so with a code, at the glue, rather than fail the whole checker
+    add(exportLine, LOAD, `the composition could not be checked: ${/** @type {Error} */ (e)?.message ?? String(e)}`, "simplify what the glue passes to .part, .frame and .wire to plain values, and report this with the file");
+    return done();
+  }
   for (const d of a.diagnostics) diagnostics.push({ file: d.file, line: d.line, code: d.code, severity: "error", message: d.message, fix: d.fix, ...(d.from ? { from: d.from } : {}), ...(d.to ? { to: d.to } : {}) });
   for (const line of conditionReads(text)) add(line.line, "S301", `${line.handle} is tested as a value at build time; a handle is not a value: it only names a port or a frame, for .wire and .frame`, "pass the handle to .wire or .frame; values flow only when the parts run");
   if (!diagnostics.length) for (const t of composeTask(a, { file: GLUE_FILE, line: exportLine })) diagnostics.push({ ...t, severity: "error" });
@@ -203,33 +229,14 @@ const partNameOf = (h) => h.program?.root?.openCall?.args?.[0] ?? "?";
 /** @param {string} s */
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** A kit diagnostic's line when it is in the hand-in. @param {any} d @param {string} dirUrl */
-const placeIn = (d, dirUrl) => (typeof d.file === "string" && d.file.startsWith(dirUrl) && d.loc?.start?.line ? d.loc.start.line : null);
-
 /**
- * The handles a condition tests (`if (level.out.picked)`, `!fx.in.burst`, `a && b`): a run-time trap cannot see
- * a test, so the glue's text is read for them.
- * @param {string} text @returns {Array<{ line: number, handle: string }>}
+ * Where a diagnostic thrown inside the glue points, when that is in the hand-in: a kit one's file URL and loc, or a
+ * composition's own relative file and line.
+ * @param {any} d @param {string} dirUrl @returns {{ file: string, line: number } | null}
  */
-export function conditionReads(text) {
-  /** @type {Array<{ line: number, handle: string }>} */
-  const out = [];
-  let tree;
-  try { tree = parseModule(text); } catch { return out; }
-  /** @param {any} n */
-  const handle = (n) => {
-    if (n?.type !== "MemberExpression" || n.computed || n.object?.type !== "MemberExpression" || n.object.computed) return null;
-    const side = n.object.property?.name;
-    if (!["out", "in", "frame"].includes(side)) return null;
-    const base = n.object.object;
-    return base?.type === "Identifier" ? `${base.name}.${side}.${n.property.name}` : null;
-  };
-  /** @param {any} n */
-  const test = (n) => { const h = handle(n); if (h) out.push({ line: n.loc.start.line, handle: h }); };
-  walkNodes(tree, (/** @type {any} */ n) => {
-    if (["IfStatement", "WhileStatement", "DoWhileStatement", "ForStatement", "ConditionalExpression"].includes(n.type)) test(n.test);
-    else if (n.type === "UnaryExpression" && n.operator === "!") test(n.argument);
-    else if (n.type === "LogicalExpression") { test(n.left); test(n.right); }
-  });
-  return out;
+function placeIn(d, dirUrl) {
+  if (typeof d.file !== "string") return null;
+  if (d.file.startsWith(dirUrl) && d.loc?.start?.line) return { file: decodeURIComponent(d.file.slice(dirUrl.length)).replace(/\?.*$/, ""), line: d.loc.start.line };
+  if (!d.file.includes(":") && typeof d.line === "number") return { file: d.file, line: d.line };
+  return null;
 }

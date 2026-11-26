@@ -218,6 +218,69 @@ test("LOAD: a glue program that does not parse", async () => {
   assert.deepEqual(codes(r), ["LOAD"]);
 });
 
+test("a quantity's conversion in the record is one magnitude, even across a flip", async () => {
+  const g = /** @type {any} */ (globalThis);
+  delete g.__seamsRecord;
+  const r = await check((d) => {
+    mazeOut(d, 'reach: { seam: "f64@cell", from: "score", note: "how far the player reaches, in cells" },');
+    sub(d, W, FRAME, '.frame(level.frame.cell, fx.frame.px, { scale: [-32, 32], offset: [320, 16] })\n    .wire(level.out.reach, fx.in.radius)');
+    sub(d, W, '  return compose("coin-bursts")', '  const c = compose("coin-bursts")');
+    sub(d, W, ".show(fx);", ".show(fx);\n  globalThis.__seamsRecord = c.build();\n  return c;");
+  });
+  assert.deepEqual(r.diagnostics, []);
+  const record = g.__seamsRecord;
+  delete g.__seamsRecord;
+  const reach = record.wires.find((/** @type {any} */ w) => w.from === "level.out.reach");
+  assert.deepEqual(reach.convert, [{ field: "", kind: "quantity", from: "maze.cell", to: "particles.px", scale: [32], offset: [0] }]);
+});
+
+test("C006: a dynamic import, process and require are found in the glue's syntax tree", async () => {
+  for (const line of ['  import("node:fs");', '  process.getBuiltinModule("node:fs").readdirSync(".");', '  const fs = require("node:fs");']) {
+    const r = await check((d) => sub(d, W, "export default ($) => {", `export default ($) => {\n${line}`));
+    assert.deepEqual(codes(r), ["C006"], line);
+    assert.equal(r.diagnostics[0].line, 29, line);
+  }
+});
+
+test("C006, not LOAD: a bare import of a package's other file", async () => {
+  const r = await check((d) => sub(d, W, 'import { particles } from "particles";', 'import { particles } from "particles";\nimport { mazeDialect } from "maze/maze.dialect.js";'));
+  assert.deepEqual(codes(r), ["C006"]);
+  assert.equal(r.diagnostics[0].line, 4);
+});
+
+test("a BigInt scale is S257, not a crash", async () => {
+  assert.deepEqual(codes(await check((d) => sub(d, W, FRAME, ".frame(level.frame.cell, fx.frame.px, { scale: 32n, offset: 16 })"))), ["S257"]);
+});
+
+test("a check that throws inside the composition is a coded diagnostic, not a crash", async () => {
+  const r = await check((d) => sub(d, W, FRAME, '.frame(level.frame.cell, fx.frame.px, { get scale() { throw new Error("boom"); } })'));
+  assert.deepEqual(codes(r), ["LOAD"]);
+  assert.match(r.diagnostics[0].message, /boom/);
+});
+
+test("S251 across frames of different dims says no edge can join them, not fit", async () => {
+  const r = await check((d) => {
+    sub(d, MD, "  frames: {\n", '  frames: {\n    tick: { dims: 1, note: "ticks", extent: () => ({ min: [0], max: [1] }) },\n');
+    mazeOut(d, 'clock: { seam: "f64@tick", from: "t", note: "time in ticks" },');
+    sub(d, W, WIRE, `${WIRE}\n    .wire(level.out.clock, fx.in.radius)`);
+  });
+  assert.deepEqual(codes(r), ["S251"]);
+  assert.doesNotMatch(r.diagnostics[0].fix, /fit/);
+  assert.match(r.diagnostics[0].message, /1 dims.*2 dims|different dims/);
+});
+
+test("a .build() thrown inside the glue keeps its own lines", async () => {
+  const r = await check((d) => { sub(d, W, `    ${FRAME}\n`, ""); sub(d, W, ".show(fx);", ".show(fx).build();"); });
+  assert.deepEqual(codes(r), ["S251"]);
+  assert.equal(r.diagnostics[0].line, 41);
+});
+
+test("an async default export is G006, saying it returned a Promise", async () => {
+  const r = await check((d) => sub(d, W, "export default ($) => {", "export default async ($) => {"));
+  assert.deepEqual(codes(r), ["G006"]);
+  assert.match(r.diagnostics[0].message, /Promise/);
+});
+
 test("every S code and every composer G code is exercised", () => {
   const want = [...Object.keys(COMPOSE_CODES), ...Object.keys(TASK_CODES).filter((c) => /^G0/.test(c)), "C006", "LOAD"];
   assert.deepEqual(want.filter((c) => !seen.has(c)), []);

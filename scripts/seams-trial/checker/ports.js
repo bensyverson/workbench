@@ -45,6 +45,8 @@ export function declare(def) {
   const seams = { out: {}, in: {}, frames: {}, edges: null, inputs: null };
   /** @type {Record<string, unknown>} */
   const members = {};
+  /** Every frame name declared, its dims valid or not: a seam that names a frame refused for its dims is not also D025. @type {Set<string>} */
+  const declaredFrames = new Set();
   /** @param {Record<string, any>} o @param {string[]} allowed @param {Array<string | number>} at @param {string} what @param {string} code */
   const keys = (o, allowed, at, what, code) => {
     for (const k of Object.keys(o)) if (!allowed.includes(k)) add(code, [...at, k], `${what} has no key '${k}'.${didYouMean(k, allowed)}`, `use ${allowed.map((a) => `'${a}'`).join(", ")}`);
@@ -57,6 +59,7 @@ export function declare(def) {
       const at = ["frames", n];
       if (!IDENT.test(n)) { add("D030", at, `the frame name '${n}' is not an identifier`, "rename the frame"); continue; }
       if (!isObj(f)) { add("D030", at, `frame '${n}' is { dims, note, extent? }, not ${show(f)}`, `${n}: { dims: 2, note: "…" }`); continue; }
+      declaredFrames.add(n);
       keys(f, FRAME_KEYS, at, `frame '${n}'`, "D030");
       const dimsOk = f.dims === 1 || f.dims === 2 || f.dims === 3;
       if (!dimsOk) add("D030", [...at, "dims"], `frame '${n}': dims is 1 (a unit: seconds), 2 or 3 (a space), not ${show(f.dims)}`, "dims: 2");
@@ -77,7 +80,8 @@ export function declare(def) {
     if (!r.ok) { add("D025", [...at, "seam"], `${what}: the seam ${show(p.seam)} does not parse: ${r.error}`, 'write a seam type such as "f64", "point2@cell" or "Event<{ at: point2@cell }>"'); return null; }
     let ok = true;
     for (const f of framesOf(r.type)) {
-      if (!Object.hasOwn(seams.frames, f)) {
+      if (!Object.hasOwn(seams.frames, f) && declaredFrames.has(f)) ok = false; // its D030 says what is wrong
+      else if (!Object.hasOwn(seams.frames, f)) {
         ok = false;
         const known = Object.keys(seams.frames);
         add("D025", [...at, "seam"], `${what}: the seam ${printSeam(r.type)} names the frame '${f}', which this Dialect does not declare.${didYouMean(f, known)}`, known.length ? `use one of: ${known.join(", ")}, or declare frames: { ${f}: { dims, note } }` : `declare it: frames: { ${f}: { dims: 2, note: "…" } }`);

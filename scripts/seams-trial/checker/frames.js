@@ -11,6 +11,12 @@
 
 const EPS = 1e-9;
 
+/** A value as a message writes it, whatever it is (a BigInt, a cycle, an object with no toString). @param {unknown} v */
+export function show(v) {
+  if (typeof v === "bigint") return `${v}n`;
+  try { return JSON.stringify(v) ?? String(v); } catch { try { return String(v); } catch { return typeof v; } }
+}
+
 /** @param {unknown} v */
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
 
@@ -21,7 +27,7 @@ const finite = (v) => typeof v === "number" && Number.isFinite(v);
  * @returns {{ ok: true, edge: Edge } | { ok: false, error: string }}
  */
 export function normalizeEdge(e, dims) {
-  if (e === null || typeof e !== "object" || Array.isArray(e)) return { ok: false, error: `an edge is { scale, offset }, not ${JSON.stringify(e) ?? String(e)}` };
+  if (e === null || typeof e !== "object" || Array.isArray(e)) return { ok: false, error: `an edge is { scale, offset }, not ${show(e)}` };
   const o = /** @type {Record<string, unknown>} */ (e);
   const extra = Object.keys(o).filter((k) => k !== "scale" && k !== "offset");
   if (extra.length) return { ok: false, error: `an edge takes only scale and offset, not ${extra.map((k) => `'${k}'`).join(", ")} (there is no rotation in v0)` };
@@ -31,7 +37,7 @@ export function normalizeEdge(e, dims) {
     if (v === undefined) return Array(dims).fill(dflt);
     if (finite(v)) return Array(dims).fill(v);
     if (Array.isArray(v) && v.length === dims && v.every(finite)) return /** @type {number[]} */ ([...v]);
-    return `the ${what} is a number, or an array of ${dims} number${dims === 1 ? "" : "s"} (one per axis), not ${JSON.stringify(v) ?? String(v)}`;
+    return `the ${what} is a number, or an array of ${dims} number${dims === 1 ? "" : "s"} (one per axis), not ${show(v)}`;
   };
   const scale = axes(o.scale, "scale", 1);
   if (typeof scale === "string") return { ok: false, error: scale };

@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { checkRole } from "../checker/index.js";
 import { SEAM_DEFINE_CODES, TASK_CODES } from "../checker/codes.js";
 import { handIn, sub, remove, FIXTURES } from "../fixture-copy.js";
@@ -11,15 +12,22 @@ import { handIn, sub, remove, FIXTURES } from "../fixture-copy.js";
 /** Codes the cases below saw. @type {Set<string>} */
 const seen = new Set();
 
+/** The text of each diagnostic's line, read before the copy is removed. @type {WeakMap<object, string>} */
+const lines = new WeakMap();
 /** @param {"maze" | "particles"} role @param {(dir: string) => void} edit */
 async function check(role, edit) {
   const dir = await handIn(role, edit);
   try {
     const r = await checkRole(dir, role);
-    for (const d of r.diagnostics) seen.add(d.code);
+    for (const d of r.diagnostics) {
+      seen.add(d.code);
+      try { lines.set(d, readFileSync(join(dir, d.file), "utf8").split("\n")[d.line - 1] ?? ""); } catch { lines.set(d, ""); }
+    }
     return r;
   } finally { remove(dir); }
 }
+/** @param {object} d */
+const lineOf = (d) => lines.get(d) ?? "";
 /** @param {{ diagnostics: Array<{ code: string }> }} r */
 const codes = (r) => r.diagnostics.map((d) => d.code);
 const MD = "maze.dialect.js", PD = "particles.dialect.js", PG = "particles.grammar.js";
@@ -69,14 +77,15 @@ test("D026: a lambda that breaks the UI value lambda rules", async () => {
   assert.match(r.diagnostics[0].message, /no member 'z'/);
 });
 
-test("D027: a state type that does not pair with its seam, and a lambda's result, found when an example lowers", async () => {
+test("D027: a state type that does not pair with its seam, and a lambda's result, found when an example lowers, at the port's line", async () => {
   let r = await check("maze", (d) => sub(d, MD, 'seam: "f64", from: "score"', 'seam: "bool", from: "score"'));
   assert.deepEqual(codes(r), ["D027"]);
   assert.match(r.diagnostics[0].message, /bool pairs with "bool", not f64/);
   r = await check("maze", (d) => sub(d, MD, "from: (s) => cell2(s.player.x, s.player.y)", "from: (s) => s.player.x"));
-  assert.deepEqual(codes(r), ["K012"]);
-  assert.match(r.diagnostics[0].message, /D027 output 'player': its lambda gives f64/);
-  seen.add("D027");
+  assert.deepEqual(codes(r), ["D027"], "the port's own code, not the example's K012");
+  assert.match(r.diagnostics[0].message, /output 'player': its lambda gives f64/);
+  assert.equal(r.diagnostics[0].file, MD);
+  assert.match(lineOf(r.diagnostics[0]), /player: \{ seam: "point2@cell", from: \(s\) => s\.player\.x/);
 });
 
 test("D027: a vector input when the Dialect has no vector type of its dims", async () => {
@@ -100,14 +109,17 @@ test("D029: value inputs with no inputs declaration, and an inputs object with n
 });
 
 test("D030: a frame of 4 dims, and one with no note", async () => {
-  assert.ok(codes(await check("maze", (d) => sub(d, MD, "dims: 2,", "dims: 4,"))).includes("D030"));
+  assert.deepEqual(codes(await check("maze", (d) => sub(d, MD, "dims: 2,", "dims: 4,"))), ["D030"], "no D025 for the seams that name the frame");
+  assert.deepEqual(codes(await check("maze", (d) => sub(d, MD, "dims: 2,", 'dims: "2",'))), ["D030"]);
   assert.deepEqual(codes(await check("particles", (d) => sub(d, PD, 'note: "pixels in the bounds; x right, y down; (0, 0) is the top-left corner", ', ""))), ["D030"]);
 });
 
-test("D030: an extent(record) of the wrong shape, found when an example lowers", async () => {
+test("D030: an extent(record) of the wrong shape, found when an example lowers, at the frame's line", async () => {
   const r = await check("maze", (d) => sub(d, MD, "max: [record.grid[0].length - 0.5, record.grid.length - 0.5] })", "max: [record.grid.length] })"));
-  assert.deepEqual(codes(r), ["K012"]);
-  assert.match(r.diagnostics[0].message, /D030 frame 'cell': extent\(record\) gave \{"min":\[-0.5,-0.5\],"max":\[5\]\}/);
+  assert.deepEqual(codes(r), ["D030"]);
+  assert.match(r.diagnostics[0].message, /frame 'cell': extent\(record\) gave \{"min":\[-0.5,-0.5\],"max":\[5\]\}/);
+  assert.equal(r.diagnostics[0].file, MD);
+  assert.match(lineOf(r.diagnostics[0]), /extent: \(record\) =>/);
 });
 
 test("D031: a ref(\"in\") with no ports.in, and a slot named like a handle", async () => {

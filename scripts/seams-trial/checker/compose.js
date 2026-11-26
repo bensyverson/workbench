@@ -11,7 +11,8 @@ import { builders, programs, dialects, registry, packageOf } from "./registry.js
 import { isHandle, partName } from "./handles.js";
 import { compareSeams } from "./seam.js";
 import { lowerPorts } from "./port-lower.js";
-import { FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform } from "./frames.js";
+import { placeSeam } from "./place.js";
+import { FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue } from "./frames.js";
 import { siteIn, hideStandInFrames } from "./stack.js";
 
 hideStandInFrames();
@@ -113,7 +114,7 @@ function analyze(name, start, calls, sites) {
   const out = [];
   /** @param {{ file: string, line: number }} at @param {string} code @param {string} message @param {string} fix @param {{ from?: Side, to?: Side }} [sides] */
   const add = (at, code, message, fix, sides = {}) => out.push({ code, message, file: at.file, line: at.line, ...sides, fix });
-  if (typeof name !== "string" || !/^[a-z][a-z0-9-]*$/.test(name)) add(start, "S102", `compose(${JSON.stringify(name)}): a composition's name is the workbench's, lowercase letters, digits and -`, 'compose("coin-bursts")');
+  if (typeof name !== "string" || !/^[a-z][a-z0-9-]*$/.test(name)) add(start, "S102", `compose(${showValue(name)}): a composition's name is the workbench's, lowercase letters, digits and -`, 'compose("coin-bursts")');
 
   /** @type {Map<object, Part>} */
   const parts = new Map();
@@ -150,7 +151,11 @@ function analyze(name, start, calls, sites) {
     const errors = lowered.diagnostics.filter((/** @type {any} */ d) => d.severity === "error" || d.severity === undefined);
     for (const d of errors) add(placed(d, at), d.code, `part '${part.name}' (${part.dialectName}): ${d.message}`, d.tip ?? "");
     if (errors.length) { broken.add(part); return; }
-    part.extents = lowerPorts(dialect, info.seams, part.record).extents;
+    const seamsLowered = lowerPorts(dialect, info.seams, part.record);
+    const def = dialects.get(dialect);
+    for (const d of seamsLowered.diagnostics) add((def && placeSeam(d, def.file, def.decl, registry.dirUrl)) ?? at, d.code, `part '${part.name}' (${part.dialectName}): ${d.message}`, d.tip);
+    if (seamsLowered.diagnostics.length) { broken.add(part); return; }
+    part.extents = seamsLowered.extents;
   });
 
   /** A side of a handle, for a diagnostic. @param {Handle} h @returns {Side} */
@@ -274,6 +279,12 @@ function analyze(name, start, calls, sites) {
       if (!path && refusedPairs.has(`${fromId}|${toId}`)) { wire.ok = false; continue; }
       if (!path) {
         const fa = `${pa.name}.frame.${leaf.from}`, fb = `${pb.name}.frame.${leaf.to}`;
+        const da = graph.nodes.get(fromId), db = graph.nodes.get(toId);
+        if (da !== db) {
+          add(at, "S251", `${text}: ${field} is ${article(leaf.kind)} in ${frameName(fromId)} (${da} dims); ${hi.name} takes ${article(leaf.kind)} in ${frameName(toId)} (${db} dims), and no edge joins frames of different dims`, `wire an output measured in a frame of ${db} dims, or an input that takes one of ${da}; a .frame cannot join these two`, sides);
+          wire.ok = false;
+          continue;
+        }
         const fit = pa.extents[leaf.from] && pb.extents[leaf.to];
         add(at, "S251", `${text}: ${field} is ${article(leaf.kind)} in ${frameName(fromId)}; ${hi.name} takes ${article(leaf.kind)} in ${frameName(toId)}, and no frame path joins them`, fit ? `write .frame(${fa}, ${fb}, "fit"), or give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … })` : `give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … })${!pa.extents[leaf.from] || !pb.extents[leaf.to] ? " (\"fit\" needs both frames to declare an extent)" : ""}`, sides);
         wire.ok = false;
@@ -284,7 +295,7 @@ function analyze(name, start, calls, sites) {
         wire.ok = false;
         continue;
       }
-      wire.convert.push({ field: leaf.field, kind: leaf.kind, from: frameName(fromId), to: frameName(toId), scale: path.edge.scale, offset: leaf.kind === "point" ? path.edge.offset : path.edge.offset.map(() => 0), text: convertText({ field: leaf.field, kind: leaf.kind, from: frameName(fromId), to: frameName(toId), edge: path.edge }), glue: path.steps.some((s) => s.glue) });
+      wire.convert.push({ field: leaf.field, kind: leaf.kind, from: frameName(fromId), to: frameName(toId), ...planOf(leaf.kind, path.edge), text: convertText({ field: leaf.field, kind: leaf.kind, from: frameName(fromId), to: frameName(toId), edge: path.edge }), glue: path.steps.some((s) => s.glue) });
     }
     wires.push(wire);
   });
@@ -347,3 +358,14 @@ function describe(v) {
   try { return JSON.stringify(v); } catch { return "an object"; }
 }
 
+
+/**
+ * A conversion's numbers as the record keeps them: a point's scale and offset per axis, a vector's scale per axis
+ * (sign kept, no offset), a quantity's one magnitude (a length is a size: a flip does not make it negative).
+ * @param {"point" | "vector" | "quantity"} kind @param {Edge} edge
+ * @returns {{ scale: number[], offset: number[] }}
+ */
+function planOf(kind, edge) {
+  if (kind === "quantity") return { scale: [Math.abs(edge.scale[0])], offset: [0] };
+  return { scale: edge.scale, offset: kind === "point" ? edge.offset : edge.offset.map(() => 0) };
+}
