@@ -19,8 +19,8 @@ const EQUALITY = ["===", "!==", "==", "!="];
 const LOGICAL = ["&&", "||", "??"];
 
 /**
- * The text of a member chain ending `.out.X`, `.in.X` or `.frame.X` (`level.out.picked`, `a.out?.x`, `a.out["x"]`), or null.
- * @param {any} n @returns {string | null}
+ * A member chain ending `.out.X`, `.in.X` or `.frame.X` (`level.out.picked`, `a.out?.x`, `a.out["x"]`): its text and node, or null.
+ * @param {any} n @returns {{ text: string, node: any } | null}
  */
 function handleChain(n) {
   const node = n?.type === "ChainExpression" ? n.expression : n;
@@ -35,7 +35,8 @@ function handleChain(n) {
     return p === null || o === null ? null : `${o}.${p}`;
   };
   const side = prop(node?.object);
-  return prop(node) !== null && side !== null && SIDES.includes(side) ? text(node) : null;
+  const t = prop(node) !== null && side !== null && SIDES.includes(side) ? text(node) : null;
+  return t === null ? null : { text: t, node };
 }
 
 /**
@@ -51,24 +52,39 @@ export function scanGlue(text, packages, path = "workbench.js") {
   /** @type {ReturnType<typeof parseModule>} */
   let tree;
   try { tree = parseModule(text); } catch { return scanned; } // scanImports said K007
+  /** @type {Set<any>} */
+  const seen = new Set();
   /** @param {any} at @param {string} handle @param {string} how */
   const report = (at, handle, how) => tested.push({ code: "S301", severity: "error", message: `${handle} is ${how} at build time; a handle is not a value: it only names a port or a frame, for .wire and .frame`, fix: "pass the handle to .wire or .frame; values flow only when the parts run, so the glue cannot branch on one", file: path, line: at.loc?.start.line ?? 1 });
+  /** A handle chain tested, once, at its own line; whether `e` is one. @param {any} e */
+  const hit = (e) => {
+    const c = handleChain(e);
+    if (c === null) return false;
+    if (!seen.has(c.node)) { seen.add(c.node); report(c.node, c.text, "tested or compared"); }
+    return true;
+  };
+  /**
+   * An expression in a test position: a handle there is tested; so is a logical's left operand and, when the logical
+   * itself is in a test position, its right (otherwise the right is the logical's result, a value that may be a handle).
+   * @param {any} e @param {boolean} inTest
+   */
+  const check = (e, inTest) => {
+    if (e?.type === "LogicalExpression" && LOGICAL.includes(e.operator)) { check(e.left, true); check(e.right, inTest); } else if (inTest) hit(e);
+  };
   walkNodes(tree, (n) => {
     const node = /** @type {any} */ (n);
-    /** @param {...any} xs */
-    const test = (...xs) => { const h = xs.map(handleChain).find((c) => c !== null); if (h !== undefined && h !== null) report(node, h, "tested or compared"); };
     switch (node.type) {
       case "IfStatement": case "ConditionalExpression": case "WhileStatement": case "DoWhileStatement": case "ForStatement":
-        if (node.test) test(node.test);
+        if (node.test) check(node.test, true);
         break;
       case "UnaryExpression":
-        if (node.operator === "!" || node.operator === "typeof") test(node.argument);
+        if (node.operator === "!" || node.operator === "typeof") check(node.argument, true);
         break;
       case "LogicalExpression":
-        if (LOGICAL.includes(node.operator)) test(node.left, node.right);
+        check(node, false);
         break;
       case "BinaryExpression":
-        if (EQUALITY.includes(node.operator)) test(node.left, node.right);
+        if (EQUALITY.includes(node.operator)) { void (hit(node.left) || hit(node.right)); }
         break;
     }
   });

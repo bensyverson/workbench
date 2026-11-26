@@ -28,6 +28,9 @@ export const isHandle = (v) => v !== null && typeof v === "object" && /** @type 
 /** A handle as messages write it: `level.out.picked`. @param {Handle} h */
 export const handleText = (h) => `${h.part}.${h.side}.${h.name}`;
 
+/** Properties a handle may lack (`seam` on a frame, `dims` on a port) and the one promises probe: reading them is not a mistake. */
+const OPTIONAL = new Set(["seam", "dims", "then"]);
+
 /** Each Program's sides, made once. @type {WeakMap<object, Partial<Record<"out" | "in" | "frame", object>>>} */
 const made = new WeakMap();
 /** Where each Program's handles were read as values. @type {WeakMap<object, Array<{ handle: string, file: string, loc: Loc }>>} */
@@ -57,7 +60,7 @@ export function sideOf(program, side, seams, part, dialect) {
     const text = `${part}.${side}.${name}`;
     const port = side === "frame" ? undefined : known ? /** @type {any} */ (declared)[name] : undefined;
     const frame = side === "frame" && known ? seams.frames[name] : undefined;
-    return Object.freeze({
+    const handle = Object.freeze({
       [HANDLE]: true, program, part, dialect, side, name, known,
       ...(port ? { seam: /** @type {string} */ (port.seamText) } : {}),
       ...(frame ? { dims: frame.dims } : {}),
@@ -69,6 +72,14 @@ export function sideOf(program, side, seams, part, dialect) {
       },
       toString() { return `[handle ${text}]`; },
       toJSON() { return `[handle ${text}]`; },
+    });
+    // A property the handle lacks would read as undefined, so `a.out.x.y` in a test takes a branch silently: it throws.
+    return new Proxy(handle, {
+      get(t, prop, receiver) {
+        if (typeof prop === "symbol" || prop in t || OPTIONAL.has(prop)) return Reflect.get(t, prop, receiver);
+        const { file, loc } = callSite();
+        throw Object.assign(new Error(`${text}.${prop} is read at build time; a handle is not a value: it only names a port or a frame, for .wire and .frame (S301 at ${file}:${loc.start.line})`), { code: "S301", file, loc });
+      },
     });
   };
   const target = Object.freeze(Object.assign(Object.create(null), Object.fromEntries(Object.keys(declared).map((n) => [n, make(n, true)]))));

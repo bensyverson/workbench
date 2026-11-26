@@ -15,7 +15,6 @@ test("S301 for each form of a handle tested or compared, at its line", () => {
     "const x = level.in.burst ? 1 : 2;",
     "const x = !level.out.picked;",
     "const x = level.out.picked && 1;",
-    "const x = 1 && level.out.picked;",
     "const x = level.out.picked || 1;",
     "const x = level.out.picked ?? 1;",
     "const x = level.out.picked !== undefined;",
@@ -34,6 +33,37 @@ test("S301 for each form of a handle tested or compared, at its line", () => {
     "const x = parts.level.out.picked ? 1 : 2;",
   ];
   for (const f of forms) assert.deepEqual(s301(`\n${f}\n`), [["S301", 4]], f);
+});
+
+test("a logical's right operand is the result, not a tested value: only a logical in a test position tests it", () => {
+  // `flag && level.out.picked` selects a handle at build time, which is correct glue (the handle is the value of the
+  // expression, never tested); its left operand is always tested.
+  const fine = [
+    "const h = flag && level.out.picked;",
+    "const h = override || level.out.picked;",
+    "const h = override ?? level.out.picked;",
+    "const x = 1 && level.out.picked;",
+    "const h = a && (b || level.out.picked);",
+    "const h = flag ? level.out.picked : level.out.other;",
+    "const h = flag ? (a && level.out.picked) : null;",
+  ];
+  for (const f of fine) assert.deepEqual(s301(`\n${f}\n`), [], f);
+  const flagged = [
+    "if (1 && level.out.picked) {}",
+    "if (a && (b || level.out.picked)) {}",
+    "const x = (a || level.out.picked) ? 1 : 2;",
+    "const x = !(a && level.out.picked);",
+    "while (a ?? level.out.picked) { break; }",
+    "if ((level.out.picked && a) && b) {}",
+    "const x = typeof (a && level.out.picked);",
+  ];
+  for (const f of flagged) assert.deepEqual(s301(`\n${f}\n`), [["S301", 4]], f);
+});
+
+test("S301 is reported once, at the handle chain's own line", () => {
+  assert.deepEqual(s301("\nif (\n  a &&\n  level.out.picked\n) {}\n"), [["S301", 6]]);
+  assert.deepEqual(s301("\nconst x = a\n  ? 1\n  : 2;\nconst y = (\n  level.out.picked\n) ? 1 : 2;\n"), [["S301", 8]]);
+  assert.deepEqual(s301("\nconst x = level.frame.cell ===\n  level.frame.px;\n"), [["S301", 4]]);
 });
 
 test("S301 carries file, line, message and fix", () => {
