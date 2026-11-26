@@ -112,3 +112,12 @@ test("a counted loop to a list that has a max still passes", () => {
   const g = defineGrammar(d, { root: "p", constructs: { p: { opens: [name()], slots: {} } } });
   defineUI(g, { tiles: { t: { title: "T", place: { splitBelow: "stage" }, body: [{ kind: "stat", label: "x", value: (s) => { let n = 0; for (let i = 0; i < s.xs.length; i++) n += 1; return n; } }] } } });
 });
+
+test("the open flag does not depend on the order a let is assigned in (loop-carried values)", () => {
+  const refused = (fn) => { const c = uiCodes(fn); return c.length > 0 && c.every((x) => x === "U007"); };
+  assert.ok(refused((s) => { let n = 0; for (let k = 0; k < 3; k++) { for (let i = 0; i < n; i++) { } n = s.bodies.length } return n; }), "loop-carried n");
+  assert.ok(refused((s) => { let n = 0; let m = 0; for (let k = 0; k < 3; k++) { for (let i = 0; i < m; i++) { } m = n; n = s.bodies.length } return m; }), "two lets, m = n; n = open");
+  assert.ok(refused((s) => { let n = 0; for (let k = 0; k < 3; k++) { for (let i = 0; i < n; i++) { } n = n + s.bodies.length } return n; }), "self-referential");
+  assert.deepEqual(uiCodes((s) => { let n = 0; for (let k = 0; k < 3; k++) { for (let i = 0; i < n; i++) { } n = k } return n + s.bodies.length; }), [], "a let never set from an open list still bounds a loop");
+  assert.deepEqual(uiCodes((s) => { let n = 0; { let n = s.bodies.length; n += 1; } for (let i = 0; i < n; i++) { } return n; }), [], "a shadowing let in another scope does not taint the outer one");
+});

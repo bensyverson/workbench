@@ -56,7 +56,7 @@ export function checkLambda(fn, ctx) {
    * set on a const that is exactly a member chain from a parameter: its `type` (null when the root has no shape, like `$`)
    * is what chains rooted at it are checked against. `held` marks a local already refused for holding state, so a read off
    * it is not refused a second time. `open` marks a value computed from the length of a list with no max.
-   * @typedef {{ kw: "param" | "arg" | "const" | "let", i?: number, typed?: boolean, type?: Type | null, held?: boolean, open?: boolean }} Binding
+   * @typedef {{ kw: "param" | "arg" | "const" | "let", i?: number, typed?: boolean, type?: Type | null, held?: boolean, open?: boolean, site?: string }} Binding
    */
   /** @type {Array<Map<string, Binding>>} */
   const scopes = [new Map()];
@@ -65,8 +65,12 @@ export function checkLambda(fn, ctx) {
   const lookup = (name) => { for (let i = scopes.length - 1; i >= 0; i--) { const b = scopes[i].get(name); if (b) return b; } return undefined; };
   /** @param {string} name @param {Binding} b */
   const declare = (name, b) => { scopes[scopes.length - 1].set(name, b); };
+  /** Declarations (by position and name) found open on an earlier pass: a loop-carried value is open before the loop that reads it. @type {Set<string>} */
+  const openSites = new Set();
+  /** @param {any} d @param {string} name */
+  const siteOf = (d, name) => `${d.loc.start.line}:${d.loc.start.column}:${name}`;
   /** @param {any[]} decls names a block's own declarations before they are reached, so a closure may read one declared below it */
-  const hoist = (decls) => { for (const st of decls) if (st?.type === "VariableDeclaration") for (const d of st.declarations) for (const name of bound(d.id)) declare(name, { kw: st.kind }); };
+  const hoist = (decls) => { for (const st of decls) if (st?.type === "VariableDeclaration") for (const d of st.declarations) for (const name of bound(d.id)) { const site = siteOf(d, name); declare(name, { kw: st.kind, site, open: openSites.has(site) }); } };
   /** @param {() => void} f runs `f` in a new scope */
   const scoped = (f) => { scopes.push(new Map()); try { f(); } finally { scopes.pop(); } };
 
@@ -161,7 +165,7 @@ export function checkLambda(fn, ctx) {
         if (n.type === "AssignmentExpression") {
           if (tb?.kw === "let") {
             if (holdsStruct(n.right) && !tb.held) holdsState(n, [target.name], readsData(n.right) ?? "the state");
-            if (touchesOpen(n.right)) tb.open = true;
+            if (touchesOpen(n.right)) { tb.open = true; if (tb.site) openSites.add(tb.site); }
           }
           visit(n.right);
         }
@@ -262,7 +266,7 @@ export function checkLambda(fn, ctx) {
           declare(names[0], { kw: "const", typed: true, type: r && "type" in r ? r.type : null, open: touchesOpen(init) });
         } else {
           const bad = readsData(init) && (n.id.type !== "Identifier" || holdsStruct(init));
-          for (const name of names) declare(name, { kw, open: touchesOpen(init) });
+          for (const name of names) { const site = siteOf(n, name); declare(name, { kw, site, open: touchesOpen(init) || openSites.has(site) }); if (touchesOpen(init)) openSites.add(site); }
           if (bad) holdsState(n, names, /** @type {string} */ (readsData(init)));
         }
         return;
@@ -271,7 +275,8 @@ export function checkLambda(fn, ctx) {
         for (const [k, v] of Object.entries(n)) if (k !== "loc" && k !== "range" && k !== "type") visit(v);
     }
   }
-  visit(ast.body);
+  // Run to a fixpoint: a let found open late (assigned below the loop that reads it) seeds the next pass.
+  for (let before = -1; before !== openSites.size;) { before = openSites.size; out.length = 0; visit(ast.body); }
   return out;
 }
 
