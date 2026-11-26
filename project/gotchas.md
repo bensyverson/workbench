@@ -12,7 +12,7 @@ Format: one dated H2 headline, then one paragraph. If an entry needs more than t
 
 ## 2026-11-23: a worktree has no node_modules
 
-`npm run typecheck` in a fresh worktree fails because `node_modules` is gitignored and so absent. Symlink the main checkout's (`ln -s /Users/ben/git/workbench/node_modules <worktree>/node_modules`) and remove the link before handing back. `npm test` needs no packages and runs without it.
+`npm run typecheck` in a fresh worktree fails because `node_modules` is gitignored and so absent. Symlink the main checkout's (`ln -s /Users/ben/git/workbench/node_modules <worktree>/node_modules`) and remove the link before handing back. `npm test` needs no packages and runs without it. `.gitignore` names `node_modules` without a trailing slash so the link is ignored too: with `node_modules/` (2026-11-26) the integrator's `git add -A` snapshot carried the link to main, whose squash merge replaced the real, ignored folder with a link to itself, and `npm` then failed silently (exit 194, `spawn ELOOP` in `~/.npm/_logs`).
 
 ## 2026-11-23: a worktree agent's harness may refuse any command whose text contains "git"
 

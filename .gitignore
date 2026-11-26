@@ -13,7 +13,7 @@
 local/
 
 # Node (tests and scripts; the kit itself has no dependencies)
-node_modules/
+node_modules
 npm-debug.log*
 .npm/
 coverage/
