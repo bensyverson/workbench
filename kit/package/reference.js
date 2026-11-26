@@ -42,6 +42,6 @@ export function packageReference(pkg) {
   }
   lines.push("## Frames", "");
   for (const f of frames) lines.push(`- \`${f.name}\`: ${f.dims} dims${f.extent ? ", with an extent (\"fit\" can use it)" : ""}${said(f.note)}`);
-  lines.push("- the kit's `s`: seconds, the same in every package (`f64@s`, and rates such as `vec2@px/s`).", "");
+  lines.push("- the kit's `s`: seconds, the same in every package (`f64@s`, and rates such as `vec2@<frame>/s`).", "");
   return lines.join("\n");
 }

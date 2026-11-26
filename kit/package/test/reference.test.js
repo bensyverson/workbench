@@ -25,6 +25,8 @@ test("a package's reference prints its outputs, inputs and frames", () => {
   assert.match(fx, /^- `aim`: `point2@px`, required: where bursts aim\.$/m);
   assert.match(fx, /^- `px`: 2 dims, with an extent/m);
   assert.match(fx, /the kit's `s`/);
+  assert.match(fx, /`vec2@<frame>\/s`/, "the rate is spelled with a placeholder, not a name to copy");
+  assert.doesNotMatch(fx, /such as `vec2@px\/s`/);
 });
 
 test("a Dialect with no seams says so", () => {
