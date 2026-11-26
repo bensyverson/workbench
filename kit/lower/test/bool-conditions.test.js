@@ -53,3 +53,36 @@ test("the tip writes the explicit form for the type found", () => {
   assert.match(tips(`${P} { if (n) return true; return false; }`), /n !== 0/);
   assert.match(tips(`${P} { if (s) return true; return false; }`), /s !== ""/);
 });
+
+/** @type {Environment} */
+const typed = {
+  ...environment,
+  name: "condition tips (test)",
+  // (l: f64[<=4], st: { a: f64 }, en: "a" | "b", z: null, n: f64, b: bool)
+  slot: () => ({ params: [{ list: "f64", max: 4 }, { struct: { a: "f64" } }, { enum: ["a", "b"] }, "null", "f64", "bool"], returns: "infer", space: "row", forbid: [] }),
+};
+/** @param {string} src */
+const typedTip = (src) => lowerLambda(typed, `(l, st, en, z, n, b) => ${src}`, { id: "t.keep", kind: "keep", on: "t" }).diagnostics.map((d) => d.tip ?? "").join("\n");
+
+test("the tip for a list, struct, enum or null is a test that is itself a legal condition", () => {
+  assert.match(typedTip("{ if (l) return true; return false; }"), /l\.length !== 0/);
+  assert.doesNotMatch(typedTip("{ if (l) return true; return false; }"), /l !== 0/);
+  assert.match(typedTip("{ if (st) return true; return false; }"), /st\.a/);
+  assert.doesNotMatch(typedTip("{ if (st) return true; return false; }"), /st !== 0/);
+  assert.match(typedTip("{ if (en) return true; return false; }"), /en === "<member>"/);
+  assert.doesNotMatch(typedTip("{ if (en) return true; return false; }"), /!== ""/);
+  assert.doesNotMatch(typedTip("{ if (z) return true; return false; }"), /z !== 0/);
+});
+
+test("the tip parenthesizes source text that is not a name or member chain", () => {
+  assert.match(typedTip("{ if (b ? n : n) return true; return false; }"), /\(b \? n : n\) !== 0/);
+  assert.match(typedTip("{ if (n) return true; return false; }"), /n !== 0/);
+  assert.doesNotMatch(typedTip("{ if (n) return true; return false; }"), /\(n\)/);
+});
+
+test("L008's tip is a check the kit accepts: x == null, never a truthiness test", () => {
+  const r = lowerLambda(environment, "(n, m, s, e, b) => { e.kill(); }", { id: "t.keep", kind: "keep", on: "t" });
+  const tip = r.diagnostics.find((d) => d.code === "L008")?.tip ?? "";
+  assert.match(tip, /if \(e == null\) return;/);
+  assert.doesNotMatch(tip, /if \(!e\)/);
+});

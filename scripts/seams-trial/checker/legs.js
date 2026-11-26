@@ -166,11 +166,28 @@ const near = (state, p, r) => (state?.particles ?? []).filter((/** @type {any} *
 
 /**
  * The particles a record made, near `p` within `r`: the run's state against the state of the same run at the same
- * instant with the record never delivered. A particle that only moved there (a marker following the record) adds
- * nothing to the total, so it is not counted; born particles raise both the total and the count near `p`.
- * @param {any} state @param {any} baseline @param {number[]} p @param {number} r
+ * instant with the record never delivered. Particles identical in both states are untouched; the rest of the
+ * baseline's (`gone`) are what the record moved or removed, and each may explain one changed particle of `state`
+ * as a move, taken to be one near `p` first, so a marker that follows the record is never counted. What is left
+ * near `p` was born there. A burst born elsewhere counts for nothing.
+ * @param {any} state @param {any} baseline the same run without the record; required, or every particle would count as born
+ * @param {number[]} p @param {number} r
  */
-export const bornNear = (state, baseline, p, r) => Math.max(0, Math.min(near(state, p, r) - near(baseline, p, r), (state?.particles?.length ?? 0) - (baseline?.particles?.length ?? 0)));
+export function bornNear(state, baseline, p, r) {
+  if (!Array.isArray(baseline?.particles)) throw new Error("bornNear needs the baseline state of the run without the record");
+  /** @type {Map<string, number>} */
+  const left = new Map();
+  for (const q of baseline.particles) { const k = JSON.stringify(q); left.set(k, (left.get(k) ?? 0) + 1); }
+  /** @type {any[]} */
+  const changed = [];
+  for (const q of state?.particles ?? []) {
+    const k = JSON.stringify(q);
+    const n = left.get(k) ?? 0;
+    if (n > 0) left.set(k, n - 1); else changed.push(q);
+  }
+  const gone = [...left.values()].reduce((a, b) => a + b, 0);
+  return Math.max(0, near({ particles: changed }, p, r) - gone);
+}
 
 /**
  * Each particles example run alone, and with a probe part that sends one record to each Event input.

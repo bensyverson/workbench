@@ -61,7 +61,7 @@ export function refuse(L, what, s, node) {
 /**
  * L003 for a nominal scalar tested as a condition, returning whether it was one: it is always present, and
  * its backing number would make the one stored as 0 (the epoch, for a date) false. A possibly-empty scalar
- * is tested as an optional number is, by JavaScript's truthiness: that is how it narrows.
+ * is tested with `x != null`, as any optional is; a bare test of it is the generic L003, not this one.
  * @param {Lowerer} L
  * @param {AST.Node} node
  * @param {Type} t

@@ -277,7 +277,7 @@ function index(L, node) {
   let t = recv.t;
   if (typeof t === "object" && "opt" in t) {
     const what = L.src.slice(node.object.range[0], node.object.range[1]);
-    L.error("L008", node.object, `'${what}' may be empty here.`, `Check it first: if (!${what}) return;`);
+    L.error("L008", node.object, `'${what}' may be empty here.`, `Check it first: if (${what} == null) return;`);
     t = t.opt;
   }
   if (typeof t === "object" && "list" in t) {
@@ -315,7 +315,7 @@ export function resolveOn(L, recv, name, node) {
   if (t === "unknown") return null;
   if (typeof t === "object" && "opt" in t) {
     const what = L.src.slice(node.object.range[0], node.object.range[1]);
-    L.error("L008", node.object, `'${what}' may be empty here.`, `Check it first: if (!${what}) return;`);
+    L.error("L008", node.object, `'${what}' may be empty here.`, `Check it first: if (${what} == null) return;`);
     t = t.opt;
     recv = { ...recv, t };
   }
@@ -510,10 +510,16 @@ export function test(L, node) {
  * @returns {string}
  */
 function conditionTip(t, text) {
-  if (typeof t === "object" && "opt" in t) return `Test for absence explicitly: ${text} == null (absent) or ${text} != null (present); it also narrows a const.`;
-  if (typeof t === "object" && "vec" in t) return `Test a component: ${text}.x !== 0.`;
-  if (t === "str" || (typeof t === "object" && "enum" in t)) return `Compare it: ${text} !== "" (not empty).`;
-  return `Compare it: ${text} !== 0, ${text} > 0, or whatever you mean.`;
+  // A compound expression is wrapped, so the suggested comparison binds to all of it.
+  const x = /^[\w$]+(\.[\w$]+)*$/.test(text) ? text : `(${text})`;
+  if (typeof t === "object" && "opt" in t) return `Test for absence explicitly: ${x} == null (absent) or ${x} != null (present); it also narrows a const.`;
+  if (typeof t === "object" && "vec" in t) return `Test a component: ${x}.x !== 0.`;
+  if (typeof t === "object" && "list" in t) return `Test its length: ${x}.length !== 0 (not empty).`;
+  if (typeof t === "object" && "struct" in t) return `A struct has no truth value; test one of its fields, such as ${x}.${Object.keys(t.struct)[0] ?? "<field>"}, as its own type needs.`;
+  if (typeof t === "object" && "enum" in t) return `Compare it with a member: ${x} === "<member>".`;
+  if (t === "null") return "A value that is always null has no truth value; remove the test.";
+  if (t === "str") return `Compare it: ${x} !== "" (not empty).`;
+  return `Compare it: ${x} !== 0, ${x} > 0, or whatever you mean.`;
 }
 
 /**
@@ -678,7 +684,16 @@ function concat(L, node, elements) {
     }
     thunks.push(() => {
       const items = seq(L, run.map((x) => () => settle(L, expr(L, x))));
-      const item = items.reduce((/** @type {Type | null} */ a, e) => (a === null ? null : strictJoin(a, e.t)), "unknown");
+      /** @type {Type | null} */
+      let item = "unknown";
+      for (const [j, e] of items.entries()) {
+        const joined = strictJoin(item, e.t);
+        if (joined === null) {
+          L.error("L003", run[j], `An array's items share one type, but this is ${describe(e.t)} and the items before it are ${describe(item)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
+          return bad(node);
+        }
+        item = joined;
+      }
       return L.ex({ k: "array", items, t: item === null || item === "unknown" ? "unknown" : { list: item, max: items.length, len: items.length }, span: spanOf(node) });
     });
     at.push(run[0]);

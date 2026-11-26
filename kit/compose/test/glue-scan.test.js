@@ -35,6 +35,33 @@ test("S301 for each form of a handle tested or compared, at its line", () => {
   for (const f of forms) assert.deepEqual(s301(`\n${f}\n`), [["S301", 4]], f);
 });
 
+test("S301 for a handle in a switch, an in or instanceof, a sequence, or inside a compared logical or ternary", () => {
+  const forms = [
+    "switch (level.out.picked) { case 1: break; }",
+    "switch (x) { case level.out.picked: break; }",
+    "const y = level.out.picked in obj;",
+    "const y = key in level.out.picked;",
+    "const y = level.out.picked instanceof Object;",
+    "const y = (0, level.out.picked) ? 1 : 2;",
+    "if ((a, level.out.picked)) {}",
+    "const y = !(a, level.out.picked);",
+    "const y = (flag && level.out.picked) === 1;",
+    "const y = 1 === (flag || level.out.picked);",
+    "const y = (flag ? level.out.picked : other) === 1;",
+    "const y = ((0, level.out.picked) && flag) === 1;",
+    "if ((flag ? level.out.picked : other)) {}",
+  ];
+  for (const f of forms) assert.deepEqual(s301(`\n${f}\n`), [["S301", 4]], f);
+  const fine = [
+    "const h = (0, level.out.picked);",
+    "const y = (flag && 1) === 1;",
+    "switch (x) { case 1: break; }",
+    "const y = key in obj;",
+    "c.wire((flag ? level.out.picked : other), fx.in.burst);",
+  ];
+  for (const f of fine) assert.deepEqual(s301(`\n${f}\n`), [], f);
+});
+
 test("a logical's right operand is the result, not a tested value: only a logical in a test position tests it", () => {
   // `flag && level.out.picked` selects a handle at build time, which is correct glue (the handle is the value of the
   // expression, never tested); its left operand is always tested.

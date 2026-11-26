@@ -16,6 +16,8 @@ export const GLUE_SPECIFIERS = Object.freeze(["kit/compose", "kit/define"]);
 
 const SIDES = ["out", "in", "frame"];
 const EQUALITY = ["===", "!==", "==", "!="];
+/** Binary operators that compare, or ask about membership of, a value: a handle there is never what the author meant. */
+const COMPARISONS = [...EQUALITY, "in", "instanceof"];
 const LOGICAL = ["&&", "||", "??"];
 
 /**
@@ -69,7 +71,21 @@ export function scanGlue(text, packages, path = "workbench.js") {
    * @param {any} e @param {boolean} inTest
    */
   const check = (e, inTest) => {
-    if (e?.type === "LogicalExpression" && LOGICAL.includes(e.operator)) { check(e.left, true); check(e.right, inTest); } else if (inTest) hit(e);
+    if (e?.type === "LogicalExpression" && LOGICAL.includes(e.operator)) { check(e.left, true); check(e.right, inTest); }
+    else if (e?.type === "SequenceExpression") check(e.expressions[e.expressions.length - 1], inTest); // only the last value flows on
+    else if (e?.type === "ConditionalExpression" && inTest) { check(e.consequent, true); check(e.alternate, true); }
+    else if (inTest) hit(e);
+  };
+  /**
+   * An operand of a comparison: whatever it may evaluate to is compared, so look through a logical, a ternary's arms
+   * and a sequence's last value; whether a handle was found.
+   * @param {any} e @returns {boolean}
+   */
+  const compared = (e) => {
+    if (e?.type === "LogicalExpression" && LOGICAL.includes(e.operator)) return compared(e.left) || compared(e.right);
+    if (e?.type === "SequenceExpression") return compared(e.expressions[e.expressions.length - 1]);
+    if (e?.type === "ConditionalExpression") return compared(e.consequent) || compared(e.alternate);
+    return hit(e);
   };
   walkNodes(tree, (n) => {
     const node = /** @type {any} */ (n);
@@ -84,7 +100,11 @@ export function scanGlue(text, packages, path = "workbench.js") {
         check(node, false);
         break;
       case "BinaryExpression":
-        if (EQUALITY.includes(node.operator)) { void (hit(node.left) || hit(node.right)); }
+        if (COMPARISONS.includes(node.operator)) { void (compared(node.left) || compared(node.right)); }
+        break;
+      case "SwitchStatement":
+        check(node.discriminant, true);
+        for (const c of node.cases) if (c.test) compared(c.test);
         break;
     }
   });

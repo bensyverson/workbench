@@ -96,7 +96,7 @@ test("L006 also covers a callback assigning the enclosing lambda's local", () =>
 test("L008: a possibly-empty reference used without a check", () => {
   const { d, text } = only("L008", "(w) => { const m = w.rng.pick(w.board); m.up = true; }", "timer", "World");
   assert.equal(text, "m");
-  assert.match(d.tip, /if \(!m\) return;/);
+  assert.match(d.tip, /if \(m == null\) return;/);
 });
 
 test("L009: a dynamic property name", () => {

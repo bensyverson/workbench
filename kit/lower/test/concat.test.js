@@ -93,6 +93,13 @@ test("parts of different item types are one L003, with a tip", () => {
   assert.deepEqual(codes("(a, b, z, s) => [...s, 1]"), ["L003"]);
 });
 
+test("a mixed-type run beside a spread is L003, as a plain mixed literal is", () => {
+  assert.deepEqual(codes("(a) => [1, 'x', ...a]"), ["L003"]);
+  assert.deepEqual(codes("(a) => { const p = [...a, 1, 'x']; return p; }"), ["L003"]);
+  assert.deepEqual(codes("(a) => [1, 'x']"), ["L003"]);
+  assert.equal(lower("(a) => [1, 'x', ...a]").kernel, null);
+});
+
 test("spreading a value that is not a list is L003", () => {
   assert.deepEqual(codes("(a, b, z, s, n) => [...n]"), ["L003"]);
   assert.deepEqual(codes("(a, b, z, s, n) => [...a, ...n]"), ["L003"]);

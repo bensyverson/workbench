@@ -112,6 +112,17 @@ test("never throws: not a kernel, a cycle, a hole", () => {
   assert.deepEqual(codes(hole), ["V001"]);
 });
 
+test("a concat part whose item type is unknown is refused, and says so", () => {
+  const unk = { list: "unknown", max: 2, len: 2 };
+  const k = broken(rich(), (kk) => {
+    const arr = kk.body[3].value;
+    arr.t = unk;
+    kk.body[3].value = { k: "concat", parts: [arr], t: unk, span: S };
+    kk.locals[3].t = unk;
+  });
+  assert.ok(verify(k).some((d) => d.path === "body[3].value" && /item type/.test(d.message)), JSON.stringify(verify(k)));
+});
+
 test("V001: a node of no known kind, or missing a field its kind has", () => {
   assert.deepEqual(codes(broken(rich(), (k) => { k.body[3].value.k = "tuple"; })), ["V001"]);
   assert.deepEqual(codes(broken(rich(), (k) => { k.body[5].k = "var"; })), ["V001"]);

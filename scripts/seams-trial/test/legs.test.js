@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkLeg, stateProblems, portProblems } from "../checker/legs.js";
+import { checkLeg, bornNear, stateProblems, portProblems } from "../checker/legs.js";
 import { handIn, remove, sub, FIXTURES_2 } from "../fixture-copy.js";
 
 const TRIGGER_LOOP = "for (const ev of inputs[e.opts.trigger] ?? []) for (let i = 0; i < (e.opts.perEvent ?? PER_EVENT); i++) at.push(ev);";
@@ -151,6 +151,36 @@ test("G013: a marker that only follows the record is not a burst; with a real bu
   assert.match(r.diagnostics[0].message, /no particles were born/);
   const { codes: ok } = await codes("compose", (d) => markerSystem(d, true, "particles/"));
   assert.deepEqual(ok, []);
+});
+
+/**
+ * A marker system whose real burst is born 500 units from the record: only the marker is near it.
+ * @param {string} dir @param {string} prefix
+ */
+function misplacedBurst(dir, prefix) {
+  const file = `${prefix}particles.runtime.js`;
+  const move = "const m = next.find((q) => q.life === 1e9); if (m) { m.x = ev.at[0]; m.y = ev.at[1]; }";
+  const elsewhere = " for (let i = 0; i < (e.opts.perEvent ?? PER_EVENT); i++) at.push({ at: [ev.at[0] + 500, ev.at[1] + 500] });";
+  sub(dir, file, TRIGGER_LOOP, `{ if (state.t === 0) at.push({ at: [0, 0], marker: true }); for (const ev of inputs[e.opts.trigger] ?? []) { ${move}${elsewhere} } }`);
+  sub(dir, file, SPAWNED, "if (!p.dead) { const q = stored(p, e.name); if (ev.marker) q.life = 1e9; next.push(q); live[e.name] += 1; }");
+}
+
+test("G008 and G013: a burst born far from the record, beside a marker that follows it, is not a burst near it", async () => {
+  const { codes: c } = await codes("particles", (d) => misplacedBurst(d, ""));
+  assert.deepEqual(c, ["G008"]);
+  const { codes: g } = await codes("compose", (d) => misplacedBurst(d, "particles/"));
+  assert.deepEqual(g, ["G013"]);
+});
+
+test("bornNear counts particles born within the radius, never ones that moved there, and refuses a missing baseline", () => {
+  const base = { particles: [{ x: 100, y: 0 }, { x: 5, y: 5 }] };
+  const moved = { particles: [{ x: 0.5, y: 0 }, { x: 5, y: 5 }] };
+  assert.equal(bornNear(base, base, [0, 0], 1), 0);
+  assert.equal(bornNear(moved, base, [0, 0], 1), 0);
+  assert.equal(bornNear({ particles: [...base.particles, { x: 0.1, y: 0 }, { x: 0.2, y: 0 }] }, base, [0, 0], 1), 2);
+  assert.equal(bornNear({ particles: [...moved.particles, { x: 0.1, y: 0 }] }, base, [0, 0], 1), 1);
+  assert.equal(bornNear({ particles: [...moved.particles, { x: 400, y: 0 }, { x: 500, y: 0 }] }, base, [0, 0], 1), 0);
+  assert.throws(() => bornNear(base, undefined, [0, 0], 1), /baseline/);
 });
 
 test("G008: a marker that only follows the record is not a burst; with a real burst added it passes", async () => {

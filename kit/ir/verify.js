@@ -402,6 +402,7 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
       max += a.t.max;
       len = len === undefined || a.t.len === undefined ? undefined : len + a.t.len;
     }
+    if (item === "unknown") { bad("A concatenation's item type is unknown."); return; }
     if (e.parts.length === 0 || item === null) { bad(e.parts.length === 0 ? "A concatenation has at least one part." : "A concatenation's parts share one item type."); return; }
     const want = { list: item, max, ...(len === undefined ? {} : { len }) };
     if (!(typeof e.t === "object" && "list" in e.t) || !sameType(e.t, want)) bad(`A concatenation of these parts is ${showSafe(want)}, not ${showSafe(e.t)}.`);
