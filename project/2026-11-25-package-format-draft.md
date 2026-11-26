@@ -109,6 +109,8 @@ The package's reference (API.md-style) is generated from its definitions, so it 
 ## Open questions for Ben
 
 > **Ruled, 2026-11-25 (Ben):** Q1 `wb-package.json`; Q2 no package-to-package imports, kit only; Q3 a `kit` version field checked at load (the kit gains a Definition API version); Q4 both upload forms, read as one `{ path: text }`, the bundle written by a tool; Q6 the dogfood pass goes ahead per the AGENTS.md ruling. Q5 is answered by the probe (Safari 27.2, all rows pass): an import map, static or added at run time, resolves bare names such as `kit/define`, but a `blob:` module still cannot resolve `./x.js`, so uploads keep the specifier rewrite and import maps cover only bare names. Chrome and Firefox are untested.
+>
+> **Revised after the package trial, 2026-11-25:** the manifest gains `refusals` (Ben); dotfiles are not part of a package; the content key covers the manifest; `elements` must match the UI's modules. See [the package trial findings](2026-11-25-package-trial-findings.md).
 
 1. **Manifest name and form:** a JSON `wb-package.json` beside the files (recommended), or fields in the Dialect itself?
 2. **No package-to-package imports:** a package imports only the kit and its own files (recommended), so all composition is the glue Program's. The alternative is declared dependencies with versions, which brings a resolver.
