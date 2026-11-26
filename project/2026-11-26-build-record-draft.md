@@ -1,6 +1,6 @@
 # Draft: the build record — identity, revision, content key, and why a part rebuilt
 
-*2026-11-26, leaf `HKNInI` (M4 Composition, `SPPLaM`). A design draft for Ben, not built and not ruled. Inputs:*
+*2026-11-26, leaf `HKNInI` (M4 Composition, `SPPLaM`). A design draft for Ben; **ruled 2026-11-26: questions 1–5 as recommended** (Ben: "All the recommendations sound good"). Inputs:*
 - *[the architecture synthesis](2026-11-24-architecture-synthesis.md) §3.7, from Manuel's pass-design gist: keep identity, revision and content key apart; answer "why did this rebuild?" from a dependency record, not opaque hashes; no pass framework at our scale;*
 - *[the clocks draft](2026-11-25-clocks-draft.md) as ruled, which needs a revision per rebuild that consumers can see (`inputs.$rev`), rebuilds between instants, and replay from a log;*
 - *what is already built: kit/package's content key (`contentKey`), kit/define's recorded build-time reads (`record.reads`, `needsRebuild`), and lambda slot ids (`<on>.<slot>#<index>`).*
