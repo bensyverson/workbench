@@ -25,3 +25,7 @@ test("resolveRelative joins against the folder of the importing file", () => {
 test("resolveRelative refuses a trailing slash or an empty part", () => {
   for (const s of ["./a.js/", "./lib//b.js", ".//a.js", "./lib/", "./"]) assert.equal(resolveRelative("a.js", s), null, s);
 });
+
+test("?, # and % are refused: a URL import would read them as a query, a fragment or an escape", () => {
+  for (const p of ["a.mjs#.js", "a.mjs?.js", "x%2ejs", "lib/a#b.js", "lib/a?b.js"]) assert.equal(isPackagePath(p), false, p);
+});

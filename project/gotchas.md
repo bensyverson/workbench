@@ -52,7 +52,7 @@ Claude Code sends periodic reminders to use TaskCreate/TaskUpdate, and on 2026-1
 
 ## 2026-11-25: browser-safe.test.js flags the text `import(` anywhere in kit/ outside comments
 
-The kit's browser-safety test scans kit/ sources for dynamic imports with a regex, so the spelling inside a string or template literal (a diagnostic message, say) fails it too. kit/package words its message as "a dynamic import expression". Write it that way, or fix the test to skip strings.
+The kit's browser-safety test scans kit/ sources for dynamic imports with a regex, so the spelling inside a string or template literal (a diagnostic message, say) fails it too. kit/package words its message as "a dynamic import expression". Write it that way, or fix the test to skip strings. The test reads only `.js` files, so the vendored acorn build (`kit/vendor/acorn/acorn.mjs`) is not scanned by it; `kit/package/test/vendor.test.js` holds that line.
 
 ## 2026-11-25: the scan-time test in kit/parse can fail under load
 

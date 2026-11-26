@@ -74,7 +74,7 @@ A module in a package may import exactly two kinds of thing:
 - `kit/define`
 - the package's own files, by relative path (`./tiles.dialect.js`, `../lib/noise.js`), each of which must exist in the package
 
-Nothing else is allowed: no other package, no bare name, no URL, no Node built-in, no dynamic `import()` (also not after a spread, `...`), and no `import.source` or `import.defer` (`import.meta` is fine). A relative path names a `.js` file exactly, with no trailing `/` or empty part. This holds for every `.js` file, examples and elements included. Packages never import each other. When two packages are used together, a **glue Program** written for the workbench joins them, so the seam between them is designed by whoever uses both, not by either author.
+Nothing else is allowed: no other package, no bare name, no URL, no Node built-in, no dynamic `import()` (also not after a spread, `...`), and no `import.source` or `import.defer` (`import.meta` is fine). A module that does not parse as an ES module is refused too. A relative path names a `.js` file exactly, with no trailing `/` or empty part. This holds for every `.js` file, examples and elements included. Packages never import each other. When two packages are used together, a **glue Program** written for the workbench joins them, so the seam between them is designed by whoever uses both, not by either author.
 
 ## The definition files
 

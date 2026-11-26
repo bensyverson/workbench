@@ -34,7 +34,7 @@ The manifest (`MANIFEST_PATH = "wb-package.json"`), checked by `checkManifest(te
 | `foreign` | optional array of `{ module, targets, why }`; each is a path in the package |
 | `files` | required: `{ path: "sha256-<base64>" }` for every file but the manifest |
 
-Every path is normalized and relative: `/`-separated, no leading `/`, no `.`, `..` or empty part, no backslash, no `:` (so no drive letter), no control character, no space at the start or end of a part. Every path the manifest names must be in `files` (K004). `scripts/pkg/hash.js <dir>` writes `files`.
+Every path is normalized and relative: `/`-separated, no leading `/`, no `.`, `..` or empty part, no backslash, no `:` (so no drive letter), no `?`, `#` or `%` (a URL import reads them as a query, a fragment or an escape: `import "./x.mjs#.js"` once ran an unscanned file), no control character, no space at the start or end of a part. Every path the manifest names must be in `files` (K004). `scripts/pkg/hash.js <dir>` writes `files`.
 
 **A package's modules are exactly its files whose names end in `.js`** (lowercase). `entry`, `lib`, `elements`, `examples`, `refusals` and `foreign.module` must name such files (K002), and a relative import must target one (K007). `files` may also list other files (data, text); they are hashed but cannot be imported.
 
@@ -60,9 +60,11 @@ What `loadPackage` checks across the entries, with what it can see: the Dialect'
 
 ## What imports may do
 
-A package module may import `"kit/define"` and files of its own package by relative path, and nothing else: no other package, no bare name, no Node built-in, no URL, no dynamic import expression (always refused, even of an allowed file, and also as an operand: after a spread, `...`, a call is still one), and no `import.source` or `import.defer` (only `import.meta` follows `import.`). A relative specifier must be normalized (no trailing `/`, no empty part) and name an existing `.js` file. Every `.js` file is scanned, foreign modules and elements included. K007 names the file and line.
+A package module may import `"kit/define"` and files of its own package by relative path, and nothing else: no other package, no bare name, no Node built-in, no URL, no dynamic import expression (always refused, even of an allowed file, and also as an operand: after a spread, `...`, a call is still one), and no `import.source` or `import.defer` (only `import.meta` follows `import.`). A module that does not parse is refused. A relative specifier must be normalized (no trailing `/`, no empty part) and name an existing `.js` file. Every `.js` file is scanned, foreign modules and elements included. K007 names the file and line.
 
-`scanImports` is **lexical**. It uses `kit/parse`'s `blank` to turn comments, strings, regexes and template text into spaces, finds `import "x"`, `import … from "x"`, `export * from "x"`, `export * as n from "x"`, `export { … } from "x"`, and every `import(`, and reads the specifier from the original text. A specifier inside a comment, a string or a template is not an import. Its limits, honestly: it is not a parser, so an odd layout it does not recognize (an `import` clause with a `}` or `;` inside a default-value expression, attributes such as `with { type: "json" }` are read only as far as `from "x"`) is skipped, not refused; it cannot see code built at run time (`eval`, `new Function`, `globalThis["imp" + "ort"]`, a worker or script tag built from a string) or a dynamic `import()` spelled with a comment between `import` and `(` only because that does parse as one. It stops a package that **names** something it may not import; it is not a sandbox, and a package's code runs with the page's privileges once loaded.
+`scanImports` is **a parse**. It parses the module with the vendored acorn ([kit/vendor/acorn](../vendor/acorn/README.md), through `parse-module.js`; `ecmaVersion: "latest"`, module goal) and reads the tree: every `ImportDeclaration`, every `export … from` (`ExportAllDeclaration`, `ExportNamedDeclaration` with a `source`), every `ImportExpression` (refused) and every `import.<name>` that is not `import.meta` (refused). Comments, strings, regexes and template text are never imports, and a method, getter or property named `import` (`class A { import() {} }`, `a.import(1)`) is not an import expression. **A module that does not parse is refused**, K007, with the line of the error: what the check cannot read must not run, so it fails closed (this also refuses syntax the vendored acorn is older than, and TypeScript or JSX in a `.js` file). `imports[i].start`/`end` are the specifier's offsets in the original text, inside the quotes, which is what `rewriteSpecifiers` replaces.
+
+Its limits: it checks **module imports**, the ways a module names another module. It stops a package that names something it may not import; it is not a sandbox, and a package's code runs with the page's privileges once loaded. Out of scope, because they are not imports: code built at run time (`eval`, `new Function`, `globalThis["imp" + "ort"]`), `new Worker(url)`, `importScripts`, a script or `<link>` element built from a string, `fetch`, `WebAssembly.instantiate`, and a `with { type: "json" }` attribute on an allowed import (the specifier must be a `.js` file of the package anyway).
 
 ## Uploads
 
@@ -86,7 +88,7 @@ An import cycle is K009 (no order of blobs can resolve it; it names the cycle), 
 | K004 | A file the manifest names that the package does not hold |
 | K005 | A file in the package the manifest does not list |
 | K006 | A file whose hash is not the listed one: it changed after the package was hashed |
-| K007 | An import other than `kit/define` or an existing own `.js` file, any dynamic import, `import.source` or `import.defer` |
+| K007 | An import other than `kit/define` or an existing own `.js` file, any dynamic import, `import.source` or `import.defer`, or a module that does not parse |
 | K008 | An entry without exactly one definition of its kind, or definitions that do not fit (name, Grammar on Dialect, UI on Grammar) |
 | K009 | Modules that import each other in a cycle |
 | K010 | A malformed bundle |
