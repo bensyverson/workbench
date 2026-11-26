@@ -7,6 +7,7 @@ import { emitGlsl, fromLowering } from "../emit/glsl/index.js";
 import { run } from "../interp/index.js";
 import { lowerField, INTRINSICS, FIELDS_DIALECT } from "../dialects/fields/index.js";
 import { encodeImage } from "./gl.js";
+import { checkImage } from "./image.js";
 
 /** @import { Kernel } from "../ir/ir.js" */
 /** @import { FieldProgram } from "../dialects/fields/decls.js" */
@@ -110,8 +111,7 @@ export function uniformValues(p, values) {
     const v = values[u.param];
     if (v === undefined) throw new Error(`${p.program.name}: no value for uniform '${u.param}'`);
     if (u.kind === "sampler2D") {
-      if (typeof v !== "object") throw new Error(`${p.program.name}: '${u.param}' is an image param, and its value is ${typeof v}, not an image`);
-      gl[u.glsl] = encodeImage(v);
+      gl[u.glsl] = encodeImage(checkImage(v, `${p.program.name}: image param '${u.param}'`));
     } else if (u.options) {
       const i = u.options.indexOf(/** @type {string} */ (v));
       if (i < 0) throw new Error(`${p.program.name}: '${String(v)}' is not an option of '${u.param}'`);

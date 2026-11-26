@@ -61,20 +61,21 @@ const IHASH_GLSL = `float ihash(float x, float y, float s) {
 /**
  * The texel of `img` (a SamplerImage, kit/interp: bytes, row 0 the bottom) nearest the point `(x, y)` of the unit
  * square, with the coordinates clamped to the edge (GL's NEAREST and CLAMP_TO_EDGE), as four channels in 0..1. A NaN
- * coordinate reads texel 0 (GLSL leaves it undefined).
+ * coordinate reads texel 0 (GLSL leaves it undefined). The texel index is the f32 product `v * n`, floored: fields is an f32
+ * Dialect, and a GPU rounds that product to f32, so on an exact edge it can land on the integer where an f64 product would not.
  * @param {import("../../interp/interp.js").SamplerImage} img @param {number} x @param {number} y
  * @returns {number[]}
  */
 function sampleRef(img, x, y) {
-  const at = (/** @type {number} */ v, /** @type {number} */ n) => Math.min(n - 1, Math.max(0, Math.floor(v * n))) || 0;
+  const at = (/** @type {number} */ v, /** @type {number} */ n) => Math.min(n - 1, Math.max(0, Math.floor(Math.fround(v * n)))) || 0;
   const k = (at(y, img.height) * img.width + at(x, img.width)) * 4;
   return [0, 1, 2, 3].map((c) => img.data[k + c] / 255);
 }
 
 /** The same in the JS backend's spelling, written out so the generated code needs no import. */
 const SAMPLE_JS = `function sample(img, p) {
-  const i = Math.min(img.width - 1, Math.max(0, Math.floor(p[0] * img.width))) || 0;
-  const j = Math.min(img.height - 1, Math.max(0, Math.floor(p[1] * img.height))) || 0;
+  const i = Math.min(img.width - 1, Math.max(0, Math.floor(Math.fround(p[0] * img.width)))) || 0;
+  const j = Math.min(img.height - 1, Math.max(0, Math.floor(Math.fround(p[1] * img.height)))) || 0;
   const k = (j * img.width + i) * 4, d = img.data;
   return [d[k] / 255, d[k + 1] / 255, d[k + 2] / 255, d[k + 3] / 255];
 }

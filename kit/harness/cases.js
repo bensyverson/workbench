@@ -40,7 +40,7 @@ export function pixelUv(i, j, width, height) {
   return [(i + 0.5) / width, (j + 0.5) / height];
 }
 
-/** The side of the image every image param gets by default: a power of two, so no pixel center of a recorded grid lands on a texel edge when sampled at `uv`. */
+/** The side of the image every image param gets by default: a power of two, whose f32 product with a coordinate is exact, so an edge case (a grid whose centers land on a texel edge) cannot split the reference from the GPU. */
 export const TEST_IMAGE_SIZE = 16;
 
 /**

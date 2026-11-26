@@ -3,6 +3,7 @@
 
 export { standardCases, stressCase, coverageCase, pixelUv, testImage } from "./cases.js";
 export { prepare, uniformValues } from "./pipeline.js";
+export { checkImage, ImageError } from "./image.js";
 export { runCase, referencePixels, compareJs, compareGlsl, shaderJob } from "./run.js";
 export { compare, rgbOf } from "./compare.js";
 export { locate } from "./locate.js";
