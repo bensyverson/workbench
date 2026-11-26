@@ -143,3 +143,7 @@ API.md lets a handle be passed whole as any call's argument, so `h($)` and `h(co
 ## 2026-11-25: Program-level UI
 
 A Program adding its own tiles beside its package's (the data Dream Code's `.view(…)`), so a notebook-like Program can chart its own results. The UI DSL draft is package-level only. Parked by Ben (2026-11-25, UI DSL question 3): no workbench needs it yet. **Un-park when** a workbench (data-tools is the likely first) needs per-Program views that a package's tiles cannot give.
+
+## 2026-11-26: 3-D (rotation, a scene seam, a 3-D renderer)
+
+What exists: `point3`/`vec3` seams, `dims: 3` frames, per-axis edges composed through inverses. What's planned, in order: (1) **rotation in edges** (a rigid transform, so two parts that disagree about up, or a camera at an angle, can be related); (2) a **`Scene<max>@<frame3>` seam**: instances of declared meshes with a transform and a material, plus a camera and lights, under `Draw`'s rules (a declared max, conversion by frame, renderer profiles); (3) a **3-D renderer** that projects a scene to an `Image@px` a 2-D root draws (needs `LUSPEC`'s sampler and the `Image` seam); materials as `fields` Kernels. Per-pixel 3-D (a raymarched SDF) already works as a `fields` Kernel and needs only the `Image` seam to cross a wire. Design notes: [the draw-list draft](2026-11-26-draw-list-draft.md), Parked. Parked by Ben (2026-11-26: "plan for it but no need to do it now"). **Un-park when** a 3-D Dialect is wanted, or a 2-D composition needs a part that disagrees about axes by more than a flip.
