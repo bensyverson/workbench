@@ -1,0 +1,5 @@
+pass  bug session, 1/10 s chunks: depth 1, want 1
+pass  bug session, 1/4 s chunks: depth 1, want 1
+pass  bug session, 1/30 s chunks: depth 1, want 1
+pass  two exits, 1/10 s chunks: depth 2, want 2
+exit 0

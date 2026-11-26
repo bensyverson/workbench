@@ -26,6 +26,8 @@ A composed workbench rebuilds parts while it runs. A param that build-time code 
 ### Revision
 
 - **A revision is per part, starts at 1 when the run starts, and bumps only when the part's content key changes.** A rebuild that produces the same key (a param changed, but nothing at build read it differently; a package re-hashed with no change) keeps the revision. Consumers never see a revision change that isn't a real one.
+
+  > **Correction (2026-11-26, the [why-text trial](2026-11-26-why-text-trial-findings.md), finding 2):** as built, this does not hold for a param. `record.params` carries each param's value, and `partKey` hashes it, so every change to a build-time param changes the key and bumps the revision, even when build code makes the identical record from it (roughness 45 → 46 in the trial). Only a rebuild with an identical record keeps the revision. The fix recommended there: leave the params' values out of the key.
 - **A rebuild lands between instants** (clocks ruling 7). Its snapshot carries the new revision, and `inputs.$rev` shows it to consumers. The composed workbench has its own revision, which bumps when any part's does or the glue changes.
 - **Revisions are not global versions.** They number one run's builds, so replay reproduces them exactly (below), and two runs' `level@3` are not comparable. What *is* comparable across runs is the content key.
 

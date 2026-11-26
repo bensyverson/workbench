@@ -112,6 +112,8 @@ A param read at build time, or a new package version, rebuilds a part. That is t
 - **A consumer sees the revision.** `inputs.$rev` gives, for each input, the revision of the snapshot read. A value read across a revision change is not interpolated (the `lerp` problem). Interpolation is not in v0 anyway (question 5).
 - **The double descent goes away** for the reason the trial wanted. The game raises `depth` at instant `n`. The cave, a `demand` part, rebuilds before instant `n + 1`. At `n + 1` the game reads the new revision, and the exit it is standing on is gone.
 
+  > **Correction (2026-11-26, the [why-text trial](2026-11-26-why-text-trial-findings.md), finding 1):** as built, this holds only if the host bridges the game's `depth` into the cave's param after every instant. No wire carries a part's output into another part's build-time param, so a host has to read the game's state and send a `param` input. A host that advances the run in chunks (1/10 s in the trial, three game ticks) brings the double descent back: 0 → 3 from one stand on the exit. The question of a glue wire into a param is queued for Ben there.
+
 What a revision *is* (an identity, a counter, a content key) and how the build record explains it is `HKNInI`'s.
 
 ## What a package's author now writes

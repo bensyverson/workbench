@@ -1,0 +1,135 @@
+[
+  {
+    "kind": "build",
+    "part": "cave",
+    "boundary": {
+      "after": "3/10",
+      "before": "1/3"
+    },
+    "trigger": {
+      "kind": "param",
+      "param": "depth",
+      "from": 0,
+      "to": 3,
+      "reads": [
+        {
+          "file": "glue.js",
+          "line": 12,
+          "by": "cave.grid"
+        }
+      ]
+    },
+    "ok": true,
+    "changed": true,
+    "key": {
+      "before": "sha256-Il/pahv+PhP81+nqqrlKJli5aaN1Fi4215WGa5gYg08=",
+      "after": "sha256-fGVdjARbIiq9ly0Jg7V1sgfzang8SeebneemdCSZxYs="
+    },
+    "revision": {
+      "before": 1,
+      "after": 2
+    },
+    "record": [
+      "exit",
+      "grid",
+      "params",
+      "start"
+    ],
+    "kernels": {
+      "changed": [],
+      "added": [],
+      "removed": [],
+      "unchanged": [
+        "cave.shade"
+      ]
+    },
+    "consumers": [
+      "game.in.start",
+      "game.in.exit"
+    ],
+    "diagnostics": []
+  },
+  {
+    "kind": "build",
+    "part": "cave",
+    "boundary": {
+      "after": "1",
+      "before": "31/30"
+    },
+    "trigger": {
+      "kind": "param",
+      "param": "roughness",
+      "from": 45,
+      "to": 46,
+      "reads": [
+        {
+          "file": "glue.js",
+          "line": 12,
+          "by": "cave.grid"
+        }
+      ]
+    },
+    "ok": true,
+    "changed": true,
+    "key": {
+      "before": "sha256-fGVdjARbIiq9ly0Jg7V1sgfzang8SeebneemdCSZxYs=",
+      "after": "sha256-LFGR3IrBUTUTV+tmCUXtnyL6P2dO/N/ux+wg3sJoDTE="
+    },
+    "revision": {
+      "before": 2,
+      "after": 3
+    },
+    "record": [
+      "params"
+    ],
+    "kernels": {
+      "changed": [],
+      "added": [],
+      "removed": [],
+      "unchanged": [
+        "cave.shade"
+      ]
+    },
+    "consumers": [
+      "game.in.start",
+      "game.in.exit"
+    ],
+    "diagnostics": []
+  },
+  {
+    "kind": "build",
+    "part": "cave",
+    "boundary": {
+      "after": "6/5",
+      "before": "37/30"
+    },
+    "trigger": {
+      "kind": "glue",
+      "call": null
+    },
+    "ok": true,
+    "changed": false,
+    "key": {
+      "before": "sha256-LFGR3IrBUTUTV+tmCUXtnyL6P2dO/N/ux+wg3sJoDTE=",
+      "after": "sha256-LFGR3IrBUTUTV+tmCUXtnyL6P2dO/N/ux+wg3sJoDTE="
+    },
+    "revision": {
+      "before": 3,
+      "after": 3
+    },
+    "record": [],
+    "kernels": {
+      "changed": [],
+      "added": [],
+      "removed": [],
+      "unchanged": [
+        "cave.shade"
+      ]
+    },
+    "consumers": [
+      "game.in.start",
+      "game.in.exit"
+    ],
+    "diagnostics": []
+  }
+]

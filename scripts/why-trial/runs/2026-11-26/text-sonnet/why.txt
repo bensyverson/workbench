@@ -1,0 +1,21 @@
+why: 3 rebuilds in the run log
+
+build cave@2 at T=1/3 (0.333 s), between instants T=3/10 (0.3 s) and T=1/3 (0.333 s)
+  because:     param cave.$.depth changed 0 → 3, set by a param input stamped T=1/3 (0.333 s)
+               read at build time at glue.js:12 (before cave.grid)
+  key:         sha256-Il/pah… → sha256-fGVdjA… (record changed: exit, grid, params, start)
+  kernels:     cave.shade unchanged
+  consumers:   game.in.start, game.in.exit see cave@2 ($rev 2) from their next step at or after T=1/3 (0.333 s)
+
+build cave@3 at T=31/30 (1.033 s), between instants T=1 s and T=31/30 (1.033 s)
+  because:     param cave.$.roughness changed 45 → 46, set by a param input stamped T=31/30 (1.033 s)
+               read at build time at glue.js:12 (before cave.grid)
+  key:         sha256-fGVdjA… → sha256-LFGR3I… (record changed: params)
+  kernels:     cave.shade unchanged
+  consumers:   game.in.start, game.in.exit see cave@3 ($rev 3) from their next step at or after T=31/30 (1.033 s)
+
+build cave@3 at T=37/30 (1.233 s), between instants T=6/5 (1.2 s) and T=37/30 (1.233 s): rebuilt, nothing changed; revision kept
+  because:     glue edit (the call was not recorded)
+  key:         sha256-LFGR3I… unchanged
+  kernels:     cave.shade unchanged
+  consumers:   game.in.start, game.in.exit keep reading cave@3 (no new revision)
