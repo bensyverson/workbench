@@ -1,0 +1,69 @@
+// Keys and revisions (the build record draft, ruled 2026-11-26). Identity is the part's name in the glue; a
+// revision numbers one run's builds of a part and bumps only when its content key changes; the content key is what
+// a cache would reuse a result by.
+
+import { KIT_VERSION } from "../define/version.js";
+import { sha256 } from "./sha256.js";
+
+/**
+ * Plain data as JSON with every object's keys sorted, so two equal values give one text whatever order their keys
+ * were written in. Symbol keys and functions are left out, as JSON leaves them.
+ * @param {unknown} v @returns {string}
+ */
+export function canonical(v) {
+  return JSON.stringify(v, (_k, x) => (x !== null && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+}
+
+/**
+ * A part's content key: the hash of the kit version, the package's content key (kit/package's; "" when the host
+ * has none) and the built record in canonical form. The record's `reads` are left out: they say where build-time
+ * code read a param (a file and line, which move when the glue's lines do), and what each read produced is already
+ * in the record.
+ * @param {{ package: string | null | undefined, record: Record<string, any>, kitVersion?: string }} o
+ * @returns {string}
+ */
+export function partKey({ package: pkg, record, kitVersion = KIT_VERSION }) {
+  const { reads: _reads, ...rest } = record;
+  return sha256(`${kitVersion}\0${pkg ?? ""}\0${canonical(rest)}`);
+}
+
+/**
+ * A composition's content key: its parts' keys by identity (sorted by name), its wires as data and its shown part.
+ * @param {Record<string, string>} parts  each part's content key, by name
+ * @param {unknown[]} wires  the composed record's wires
+ * @param {string | null} show
+ * @returns {string}
+ */
+export function compositionKey(parts, wires, show) {
+  const keys = Object.keys(parts).sort().map((n) => [n, parts[n]]);
+  return sha256(canonical({ parts: keys, wires, show }));
+}
+
+/**
+ * The revision a build gets: 1 for a part's first build in a run, the same number when the key is unchanged, the
+ * next number when it changed.
+ * @param {{ key: string, revision: number } | null} previous @param {string} key
+ * @returns {number}
+ */
+export function nextRevision(previous, key) {
+  if (!previous) return 1;
+  return previous.key === key ? previous.revision : previous.revision + 1;
+}
+
+/**
+ * A fast hash of plain data, for comparing a run's states instant by instant (R005); not a content key. 53 bits as
+ * 14 hex digits, over the canonical text (cyrb53).
+ * @param {unknown} v @returns {string}
+ */
+export function stateHash(v) {
+  const s = canonical(v) ?? "undefined";
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
+}

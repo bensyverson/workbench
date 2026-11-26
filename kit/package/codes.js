@@ -10,7 +10,7 @@ export const PACKAGE_CODES = Object.freeze({
   K005: "A file in the package that the manifest's files does not list",
   K006: "A file whose hash is not the one the manifest lists: it changed after the package was hashed",
   K007: "An import other than \"kit/define\" or an existing .js file of the package: a bare name, a built-in, a URL, a missing or outside file, any dynamic import expression, or a module that does not parse",
-  K008: "An entry module that does not export exactly one definition of its kind, or definitions that do not fit: the Dialect's name is not the package's, the Grammar is not built on the Dialect, the UI not on the Grammar",
+  K008: "An entry module that does not export exactly one definition of its kind, or definitions that do not fit: the Dialect's name is not the package's, the Grammar is not built on the Dialect, the UI or the Runtime not on the Grammar",
   K009: "Modules that import each other in a cycle, so no order of blob: URLs can resolve them",
   K010: "A bundle that is not { \"format\": \"wb-bundle\", \"files\": { path: text } }",
   K011: "An entry, example or refusal module that failed to import",

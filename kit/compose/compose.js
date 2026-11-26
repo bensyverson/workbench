@@ -27,7 +27,10 @@ import { formatDiagnostic } from "./format.js";
 /**
  * What `.check` and `.build` take: the loaded packages (for each part's version: kit/package's loadPackage results,
  * or `{ name, version }`), and the build options each part is built with (its module scope).
- * @typedef {{ packages?: Array<{ name: string, version: string, dialect?: unknown }>, build?: import("../define/define.js").BuildOptions }} ComposeOptions
+ * With `runtimes` (kit/define's defineRuntime results, matched to parts by Dialect name), each reliable Event wire's queue
+ * is sized (S116), a frame consumer's by `catchUp`, the most workbench time one display frame may cover (seconds,
+ * default 1/15).
+ * @typedef {{ packages?: Array<{ name: string, version: string, dialect?: unknown }>, build?: import("../define/define.js").BuildOptions, runtimes?: import("../define/runtime.js").Runtime[], catchUp?: number }} ComposeOptions
  */
 /** @typedef {{ kind: "part", value: unknown } | { kind: "frame", a: unknown, b: unknown, edge: unknown } | { kind: "wire", from: unknown, to: unknown, options: unknown } | { kind: "show", value: unknown }} GlueCall */
 

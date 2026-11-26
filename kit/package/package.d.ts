@@ -21,7 +21,7 @@ export interface Manifest {
   version: string;
   kit: string;
   description?: string;
-  entry: { dialect: string; grammar: string; ui?: string };
+  entry: { dialect: string; grammar: string; ui?: string; runtime?: string };
   lib?: string[];
   foreign?: ForeignModule[];
   elements?: string[];
@@ -50,6 +50,7 @@ export interface LoadedPackage {
   dialect: unknown;
   grammar: unknown;
   ui: unknown;
+  runtime: unknown;
   /** The manifest's example paths, for the host to import. */
   examples: string[];
   /** The manifest's refusals, for checkExamples. */

@@ -11,6 +11,7 @@ Read this page, then [API.md](API.md). The pages in [docs/](docs/) cover one top
 | `<lang>.dialect.js` | `export const <name> = defineDialect({...})`: types, the operations a lambda may call, how each kind of lambda is called |
 | `<lang>.grammar.js` | `export const <builder> = defineGrammar(<dialect>, {...})`: the builder methods and their arguments |
 | `examples/*.js` | Programs, one per file: `export default ($) => <builder>("name")…;` |
+| `<lang>.runtime.js` | optional: `export const <name> = defineRuntime(<builder>, {...})`: how a run steps your state (API.md ▸ A runtime) |
 
 Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md).
 
@@ -36,3 +37,4 @@ Don't invent API, and don't work around it silently. Express what you can, inclu
 - **Port**: what a Dialect offers (`ports.out`) or accepts (`ports.in`), written in a seam type every package shares.
 - **Frame**: a coordinate space or unit a Dialect measures in; a composer relates one package's to another's.
 - **Build time / run time**: the Program function runs once, at build time. Its lambdas run later, per row, pixel or month.
+- **Runtime**: a package's `init` and `step` over its own state; the kit's scheduler runs it on one workbench time, instant by instant.

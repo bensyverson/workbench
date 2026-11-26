@@ -129,6 +129,18 @@ function installGlueHooks() {
  * @returns {Promise<{ diagnostics: Found[], plan: string[] }>}
  */
 export async function checkComposeReal(dir) {
+  const r = await loadComposeReal(dir);
+  return { diagnostics: r.diagnostics, plan: r.plan };
+}
+
+/**
+ * What checkComposeReal checks, with what a run needs besides: the loaded packages (each with its runtime when its
+ * manifest names one), the composition and the options it was checked with. `composition` is null when a package
+ * or the glue was refused before the glue ran.
+ * @param {string} dir  holds workbench.js, maze/ and particles/
+ * @returns {Promise<{ diagnostics: Found[], plan: string[], loaded: any[], composition: any, options: any }>}
+ */
+export async function loadComposeReal(dir) {
   installGlueHooks();
   const dirUrl = pathToFileURL(realpathSync(dir)).href + "/";
   begin(dirUrl);
@@ -151,23 +163,23 @@ export async function checkComposeReal(dir) {
     glue.packages[name] = `${base}${manifest.entry.grammar}?run=${session.run}`;
     loaded.push(pkg);
   }
-  if (found.length) return { diagnostics: found, plan: [] };
+  if (found.length) return { diagnostics: found, plan: [], loaded, composition: null, options: null };
   const text = readFileSync(join(dir, "workbench.js"), "utf8");
   const scanned = scanGlue(text, ["maze", "particles"]);
   for (const d of scanned.diagnostics) found.push({ file: "workbench.js", line: d.line ?? 1, code: d.code, message: d.message, fix: d.fix });
-  if (found.length) return { diagnostics: found, plan: [] };
+  if (found.length) return { diagnostics: found, plan: [], loaded, composition: null, options: null };
   glue.url = `${dirUrl}workbench.js`;
   try {
     scopeModules(dirUrl, ["workbench.js"], { "workbench.js": text });
     const mod = await import(`${glue.url}?run=${session.run}`);
     const c = mod.default(Object.freeze({}));
-    if (!isComposition(c)) return { diagnostics: [{ file: "workbench.js", line: 1, code: "LOAD", message: "the default export does not return a composition" }], plan: [] };
+    if (!isComposition(c)) return { diagnostics: [{ file: "workbench.js", line: 1, code: "LOAD", message: "the default export does not return a composition" }], plan: [], loaded, composition: null, options: null };
     const options = { packages: loaded, build: buildOptions("workbench.js", mod) };
     for (const d of c.check(options)) {
       const [file, line] = formatDiagnostic(d, dirUrl).split("\n")[0].split(":");
       const sides = formatDiagnostic(d, dirUrl).split("\n").slice(1).join(" / ");
       found.push({ file, line: Number(line), code: d.code, message: sides ? `${d.message} [${sides}]` : d.message });
     }
-    return { diagnostics: found, plan: found.length ? [] : c.plan(options) };
+    return { diagnostics: found, plan: found.length ? [] : c.plan(options), loaded, composition: c, options };
   } finally { glue.url = ""; glue.packages = {}; }
 }

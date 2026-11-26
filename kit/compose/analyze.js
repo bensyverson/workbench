@@ -1,7 +1,7 @@
 // The checks behind compose(): the parts (each built and lowered by its own Grammar), the frame graph (each
 // Dialect's own edges, then the glue's .frame calls), the wires (seams field by field after any rename, a frame
-// path and a conversion by kind for each tagged leaf), the required inputs, the cycles, the shown part and the
-// handles read as values. Every S diagnostic about a wire or an edge carries both sides.
+// path and a conversion by kind for each tagged leaf), the required inputs, the cycles, each reliable Event wire's
+// queue bound (given the runtimes), the shown part and the handles read as values. Every S diagnostic about a wire or an edge carries both sides.
 
 import { programOf } from "../define/grammar.js";
 import { lowerRecord } from "../define/lower.js";
@@ -10,6 +10,7 @@ import { didYouMean } from "../define/codes.js";
 import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
 import { compareSeams, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
 import { applyRename, undelayedLoops } from "./wires.js";
+import { queueProblems } from "./queues.js";
 
 /** @import { Loc } from "../parse/ast.js" */
 /** @import { Handle } from "../define/handles.js" */
@@ -228,6 +229,17 @@ export function analyze(name, start, calls, options) {
   for (const { loop, wires: ws } of undelayedLoops(order, wires.map((w) => ({ from: w.from.part, to: w.to.part, delay: w.delay, wire: w })))) {
     const first = ws[0];
     add(first.at, "S115", `the wires make a loop with no delay: ${loop.join(" → ")} (${ws.map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")}); each part would wait on the other within one instant`, `mark one wire of the loop delayed: .wire(${handleText(first.from)}, ${handleText(first.to)}, { delay: true }), so its consumer reads the previous instant's snapshot`, { from: side(first.from), to: side(first.to) });
+  }
+
+  // with the parts' runtimes, each reliable Event wire's queue is sized from the clocks and per-step maxes
+  if (options.runtimes?.length) {
+    const live = wires.filter((w) => w.ok);
+    const sized = [...parts.values()].filter((p) => !broken.has(p) && p.record).map((p) => ({ name: p.name, dialect: p.dialectName, record: /** @type {Record<string, any>} */ (p.record) }));
+    const ends = live.map((w) => ({ from: { part: w.from.part, name: w.from.name }, to: { part: w.to.part, name: w.to.name }, delivery: /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name].delivery }));
+    for (const pr of queueProblems(sized, ends, options.runtimes, { catchUp: options.catchUp })) {
+      const w = live[pr.wire];
+      add(w.at, "S116", pr.message, pr.fix, { from: side(w.from), to: side(w.to) });
+    }
   }
 
   /** @type {Part | null} */

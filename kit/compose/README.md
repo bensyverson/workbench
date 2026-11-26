@@ -1,6 +1,6 @@
 # kit/compose: the glue program
 
-Composes parts, each a Program built by its own package's Grammar, into one workbench ([the seams draft](../../project/2026-11-25-seams-draft.md), "The glue program", as ruled 2026-11-26). The composer owns every fact that spans two parts: which output feeds which input, and how one part's frame relates to another's. kit/compose checks each wire field by field, plans each conversion through the frame graph as data, and names both sides when something is wrong. It runs nothing: the scheduler, Event delivery and queue bounds are leaf `ZH4KWX`'s, and the composed page's drawing is `FqsPVJ`'s. No Node built-ins.
+Composes parts, each a Program built by its own package's Grammar, into one workbench ([the seams draft](../../project/2026-11-25-seams-draft.md), "The glue program", as ruled 2026-11-26). The composer owns every fact that spans two parts: which output feeds which input, and how one part's frame relates to another's. kit/compose checks each wire field by field, plans each conversion through the frame graph as data, and names both sides when something is wrong. It runs nothing: [kit/run](../run/README.md) runs the composed record; given the parts' runtimes, it sizes each reliable Event queue (S116). The composed page's drawing is `FqsPVJ`'s. No Node built-ins.
 
 ```js
 import { compose } from "kit/compose";
@@ -33,9 +33,10 @@ export default ($) => {
 | `.plan(options?)` | each checked wire as text: `level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +[16, 48]` |
 | `formatDiagnostic(d, base?)` | a diagnostic as the draft prints it (below); `base` drops the glue's folder from the file |
 | `scanGlue(text, packages, path?)` | a glue's imports from its syntax tree, by kit/package's `scanImports`: `"kit/compose"`, `"kit/define"` and the package names only, no dynamic import (K007 otherwise) |
+| `queueProblems`, `stepsIn`, `catchUpOf`, `CATCH_UP`, `NOMINAL_FRAME`, `MIN_FRAME` | the queue bound (below), shared with [kit/run](../run/README.md) |
 | `COMPOSE_CODES`, `ComposeError`, `isComposition`, `GLUE_SPECIFIERS` | |
 
-`options` is `{ packages?, build? }`: `packages` gives each part's version (kit/package's `loadPackage` results, or `{ name, version }`, matched by Dialect, then by name); `build` is the `BuildOptions` each part is built with (its module scope).
+`options` is `{ packages?, build?, runtimes?, catchUp? }`: `packages` gives each part's version (kit/package's `loadPackage` results, or `{ name, version }`, matched by Dialect, then by name); `build` is the `BuildOptions` each part is built with (its module scope); `runtimes` (kit/define's `defineRuntime` results, matched by Dialect name) turns on the queue bound below; `catchUp` is the most workbench time one display frame may cover (seconds, default 1/15).
 
 **The composed record** is `{ name, parts: [{ name, dialect, version, record }], wires: [{ from, to, convert, rename, delay, dropped, delivery }], show }`. Each `convert` entry is `{ field, kind, rate?, from, to, scale, offset }`: a point by scale and offset per axis, a vector (or a rate of one) by scale per axis with a zero offset, a quantity by one magnitude. `dropped` lists the producer's record fields the consumer does not take; `delivery` is the consumer's (`"reliable"` or `{ keepLast: n }`) for an Event wire.
 
@@ -50,6 +51,8 @@ export default ($) => {
 - **Cycles.** A loop of wires is S115 unless one wire in it is `{ delay: true }`. Glue line order never decides it: the loop is found from the parts and wires, and named from the part added first.
 - **One wire per input** (S112); a part wired to itself is S114 (a cycle inside a part is its Dialect's business). Each part keeps its own params; there is no glue-level `$`.
 - **S301 is a trap, not a scan.** A handle read as a number or a string at build time (`level.out.player * 2`, a template) records the read on its Program, and the check reports it at that line. A handle tested as a condition (`if (h)`, `h ? a : b`, `!h`) cannot be trapped, since an object is always truthy, and is not reported.
+
+**Queue bounds** ([`queues.js`](queues.js); the clocks draft's queue ruling). Queues live in workbench time, so their length depends only on rates and per-step maximums, as in synchronous dataflow. With the runtimes, each reliable Event wire's bound is the producer's per-step max (its runtime's `events.out`) times the most producer steps one consumer step can see: for a tick consumer, in a window of its period (a tick producer's `ceil(period_c / period_p)`); for a frame consumer, in a window of the catch-up cap; a demand consumer is woken by the Event, so one producer step. A frame producer counts as stepping at most every 1/240 s, a demand producer at most once per instant of the clocked parts. A bound above the consumer's max (its runtime's `events.in`) is S116, naming both sides and the two fixes: raise the max, or `{ keepLast: n }` on the input. `queueProblems(parts, wires, runtimes, { catchUp })` is exported for the scheduler, which refuses the same composition.
 
 ## Printing
 
@@ -71,6 +74,7 @@ workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the field 'at' i
 | S113 | a required input with no wire |
 | S114 | a part wired to itself |
 | S115 | a loop of wires with no delayed wire in it (names the loop) |
+| S116 | a reliable Event wire whose queue can hold more records at one consumer step than the consumer takes (needs the runtimes; names both sides and both fixes) |
 | S201 | seam kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate |
 | S202 | a record field the consumer takes and the producer lacks (after any rename), or one of another kind |
 | S203 | an enum the consumer does not accept |
@@ -85,4 +89,4 @@ workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the field 'at' i
 | S257 | a malformed edge, or `.frame` of two frames of one part or of different dims |
 | S301 | a handle read as a value at build time |
 
-The codes are the relay trial checker's ([scripts/seams-trial](../../scripts/seams-trial/README.md)), kept where the meaning is unchanged, so its records still read; S115 and S205 are new with the 2026-11-26 rulings.
+The codes are the relay trial checker's ([scripts/seams-trial](../../scripts/seams-trial/README.md)), kept where the meaning is unchanged, so its records still read; S115, S116 and S205 are new with the 2026-11-26 rulings.

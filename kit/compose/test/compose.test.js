@@ -3,8 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compose, COMPOSE_CODES, formatDiagnostic, ComposeError, scanGlue } from "../index.js";
-import { defineDialect, defineGrammar, exact, vector, struct, name, ref, data, lambda } from "../../define/index.js";
-import { maze, particles } from "../../define/fixtures/seams-dialects.js";
+import { defineDialect, defineGrammar, defineRuntime, exact, vector, struct, name, ref, data, lambda } from "../../define/index.js";
+import { maze, particles, particlesDecl, particlesGrammar } from "../../define/fixtures/seams-dialects.js";
 
 /** Codes the cases below saw. @type {Set<string>} */
 const seen = new Set();
@@ -229,6 +229,56 @@ test("a part that does not build stops the composition with its own diagnostics,
   assert.deepEqual(codes(ds), ["B005"]);
   assert.match(ds[0].message, /^part 'level' \(maze\): /);
   assert.throws(() => compose("t").part(bad).build(), ComposeError);
+});
+
+// The queue bound (clocks draft, ruled 2026-11-26): with the parts' runtimes, a reliable Event wire's queue is sized
+// at composition from the clocks and the per-step maxes, as in synchronous dataflow.
+/** A runtime on `g` with clock `clock` and the given Event maxes. @param {any} g @param {any} clock @param {any} events */
+const rt = (g, clock, events) => defineRuntime(g, { clock: () => clock, init: () => ({}), step: (/** @type {any} */ s) => s, events });
+/** level → fx with the maxes and clocks given; `fxGrammar` lets a case change the input's delivery. */
+function bursts(/** @type {{ levelTick?: number, fxClock?: any, out?: number, inMax?: number, fxGrammar?: any }} */ o = {}) {
+  const M = maze(), P = o.fxGrammar ?? particles();
+  const l = /** @type {any} */ (M("level").grid(GRID).control(steer));
+  const f = /** @type {any} */ (P("fx").bounds({ width: 320, height: 320 }).emitter("pop", { x: 160, y: 160, trigger: "burst" }).rate("(t, live) => 0").spawn("(p, rng) => { p.pos = ev.at; p.life = inp.radius; }"));
+  const c = compose("t").part(l).part(f).frame(l.frame.cell, f.frame.px, "fit").wire(l.out.picked, f.in.burst);
+  const runtimes = [rt(M, { tick: o.levelTick ?? 1 / 8 }, { out: { picked: o.out ?? 8 } }), rt(P, o.fxClock ?? { tick: 1 / 30 }, { in: { burst: o.inMax ?? 8 } })];
+  return { c, runtimes };
+}
+
+test("S116: a reliable wire whose queue can outgrow the consumer's max names both sides and offers both fixes", () => {
+  // level ticks every 1/8 s, fx every 1/4 s: two level steps of up to 8 records each between two fx steps
+  const { c, runtimes } = bursts({ fxClock: { tick: 1 / 4 } });
+  const ds = check(c, { runtimes });
+  assert.deepEqual(codes(ds), ["S116"]);
+  const p = formatDiagnostic(ds[0]);
+  twoSides(p);
+  assert.match(ds[0].message, /level\.out\.picked → fx\.in\.burst can hold 16 records/);
+  assert.match(ds[0].message, /fx\.in\.burst takes at most 8/);
+  assert.match(ds[0].fix, /burst: 16/);
+  assert.match(ds[0].fix, /keepLast: 8/);
+  assert.throws(() => c.build({ runtimes }), ComposeError);
+});
+
+test("S116 is not reported where the bound fits: 1/8 into 1/30, a demand consumer, keepLast, no runtimes", () => {
+  assert.deepEqual(codes(check(bursts().c, { runtimes: bursts().runtimes })), []);
+  // a demand consumer is woken by the Event, so it takes one producer step's records
+  const d = bursts({ fxClock: { demand: true } });
+  assert.deepEqual(codes(check(d.c, { runtimes: d.runtimes })), []);
+  // keepLast is lossy by the consumer's choice
+  const decl = particlesDecl();
+  decl.ports.in.burst.delivery = { keepLast: 8 };
+  const k = bursts({ fxClock: { tick: 1 / 4 }, fxGrammar: particlesGrammar(defineDialect(/** @type {any} */ (decl))) });
+  assert.deepEqual(codes(check(k.c, { runtimes: k.runtimes })), []);
+  // without runtimes the clocks are unknown, and nothing is sized
+  assert.deepEqual(codes(check(bursts({ fxClock: { tick: 1 / 4 } }).c)), []);
+});
+
+test("S116: a frame consumer is bounded by the catch-up cap, and the cap is an option", () => {
+  // level ticks every 1/60 s; a frame step may cover up to 1/15 s of workbench time: 4 level steps, 32 records
+  const f = bursts({ levelTick: 1 / 60, fxClock: { frame: true } });
+  assert.deepEqual(codes(check(f.c, { runtimes: f.runtimes })), ["S116"]);
+  assert.match(check(f.c, { runtimes: f.runtimes })[0].message, /can hold 32 records/);
+  assert.deepEqual(codes(check(f.c, { runtimes: f.runtimes, catchUp: 1 / 60 })), []);
 });
 
 test("every S code has a failing case above", () => {

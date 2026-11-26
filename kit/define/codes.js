@@ -38,6 +38,7 @@ export const DEFINE_CODES = Object.freeze({
   D030: "A malformed frames or edges declaration: a key a frame does not take, dims other than 1, 2 or 3, a missing note, an extent or edges that is not a function, a frame named like the kit's s; or (when a Program lowers) an extent(record) or edges(record) that throws or returns the wrong shape",
   D031: "A Grammar whose ref(\"in\") has no ports.in to name, that declares name(\"in\") itself, with a slot or child construct named out, in or frame (the handles every builder has), or a ref kind other than \"event\" or \"value\" on ref(\"in\")",
   D032: "An Event input's record that is not { name, slots }: a name that is not an identifier or is already a global, object, intrinsic, type, the inputs' or params' name or another input's record; slots that are empty or name no slot convention; a record on a value input",
+  D033: "A runtime declaration defineRuntime refuses: not on a Grammar builder, a clock, init or step that is not a function, an unknown key, or an Event port without a whole positive max per step (or a max on a value port, on a port the Dialect lacks, or below an input's keepLast n)",
 });
 
 /** defineUI's codes: U… is a UI declaration refused when defineUI is called. U006 is retired (its job, a bad state, is D023's); its number is not reused. */

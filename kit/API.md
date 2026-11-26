@@ -174,6 +174,32 @@ inputs: { object: "In", name: "inp" },            // value inputs, read as inp.r
 - An output lambda's result, `extent(record)` and `edges(record)` are checked when an example lowers (D027, D030), at your `defineDialect` line.
 - **Composing** packages is a glue program's job, with `kit/compose`: read [compose/README.md](compose/README.md) when you wire parts, relate frames, rename record fields or break a cycle.
 
+## A runtime: `defineRuntime`
+
+A package that runs (alone or composed) names a runtime module in its manifest's `entry.runtime`: plain JavaScript over your Dialect's `state`, which the kit's scheduler ([run/README.md](run/README.md)) steps.
+
+```js
+import { defineRuntime } from "kit/define";
+import { maze } from "./maze.grammar.js";
+
+export const mazeRuntime = defineRuntime(maze, {
+  clock: (record) => ({ tick: record.tick ?? 1 / 8 }),      // or { frame: true }, or { demand: true }
+  init: (record, ctx) => ({ t: 0, score: 0, player: { x: record.start.x, y: record.start.y }, grid: record.grid }),
+  step(state, { dt, part, kernels, controls, inputs, events, rng }) {
+    const pl = { x: state.player.x, y: state.player.y, dx: 0, dy: 0 };
+    kernels[`${part}.control`](pl, controls.pad);              // the Program's lambdas, compiled; ids are <instance>.<slot>
+    // … move, pick coins …
+    for (const at of pickedNow) events.picked.push({ at });    // an Event output is pushed, never kept in state
+    return { ...state, t: state.t + dt };                       // a new state: never change the one you are handed
+  },
+  events: { out: { picked: 8 } },                               // each Event port's most records per step
+});
+```
+
+- **`step` returns the next state** and keeps no other memory: no module-level variables, no `Math.random` (use `ctx.rng`), no clock. The state must fit your Dialect's `state` (R002). A development run freezes it and runs each step twice to check (R003).
+- **`ctx.inputs`** holds each value input converted into your frames, and each Event input's records since your last step, in order; `ctx.globals` is what your lambdas' globals read (set an Event record's name, `ctx.globals.ev = record`, before calling a lambda that reads it).
+- **Every Event port needs its max** in `events` (D033). The composition sizes each queue from the maxes and the clocks, and refuses a reliable wire that could overflow (S116).
+
 ## A Program
 
 ```js
@@ -209,8 +235,8 @@ These cost earlier authors time.
 7. **Intrinsics exist only inside lambdas.** `const START = dayOf(2026, 1, 1)` at the top level fails when the file loads.
 8. **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
 9. **`state` means two things.** A Dialect's `state` is the run's, what `text(state)` and a UI are handed; a Grammar construct's `state` (`record: "calls"`) is its build-time record. Write each where it belongs.
-10. **An Event output has no `from`**, and the queue an Event input's `delivery` implies is not checked yet: no runtime exists.
+10. **An Event output has no `from`**: your runtime pushes its records in `step`, and declares how many at most (`events`).
 
 ## Not built
 
-Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, lambdas or `rest()` in a construct's opening arguments, an Event runtime (`defineRuntime`), delivery and queue bounds, a composed page that layers parts. Report a need for one as a gap; don't invent API.
+Spawning an instance from a lambda, writes outside the handed instance (other than a bump), `emit`, effectful intrinsics, fragments, build-time slots that return grammar, Dialect imports, lambdas or `rest()` in a construct's opening arguments, a composed page that layers parts, sampling modes (`lerp`). Report a need for one as a gap; don't invent API.

@@ -6,3 +6,4 @@ export { compose, ComposeError, isComposition } from "./compose.js";
 export { COMPOSE_CODES } from "./codes.js";
 export { formatDiagnostic } from "./format.js";
 export { scanGlue, GLUE_SPECIFIERS } from "./glue.js";
+export { queueProblems, stepsIn, catchUpOf, CATCH_UP, NOMINAL_FRAME, MIN_FRAME } from "./queues.js";

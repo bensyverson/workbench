@@ -5,6 +5,8 @@ import { isDotPath, isModulePath, isPackagePath } from "./paths.js";
 
 export const MANIFEST_PATH = "wb-package.json";
 
+/** The entry modules: dialect and grammar required, ui and runtime optional. */
+const ENTRIES = ["dialect", "grammar", "ui", "runtime"];
 const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "elements", "examples", "refusals", "files"];
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
 const DIAGNOSTIC_CODE = /^[A-Z][0-9]{3}$/;
@@ -45,12 +47,12 @@ export function checkManifest(text) {
   if (m.description !== undefined && typeof m.description !== "string") bad(`"description" must be a string`, `write a sentence, or remove it`);
   /** @type {string[]} */
   const named = [];
-  if (!isObject(m.entry)) bad(`"entry" must be an object with "dialect" and "grammar" (and "ui" if the package has one)`, `write "entry": { "dialect": "x.dialect.js", "grammar": "x.grammar.js" }`);
+  if (!isObject(m.entry)) bad(`"entry" must be an object with "dialect" and "grammar" (and "ui" and "runtime" if the package has them)`, `write "entry": { "dialect": "x.dialect.js", "grammar": "x.grammar.js" }`);
   else {
-    for (const k of Object.keys(m.entry)) if (!["dialect", "grammar", "ui"].includes(k)) bad(`"entry" has an unknown key "${k}"`, `entry takes dialect, grammar and ui`);
-    for (const k of ["dialect", "grammar", "ui"]) {
+    for (const k of Object.keys(m.entry)) if (!ENTRIES.includes(k)) bad(`"entry" has an unknown key "${k}"`, `entry takes dialect, grammar, ui and runtime`);
+    for (const k of ENTRIES) {
       const v = m.entry[k];
-      if (v === undefined) { if (k !== "ui") bad(`"entry.${k}" is missing`, `name the file that exports the package's ${k}`); } else if (path(v, `"entry.${k}"`)) named.push(/** @type {string} */ (v));
+      if (v === undefined) { if (k === "dialect" || k === "grammar") bad(`"entry.${k}" is missing`, `name the file that exports the package's ${k}`); } else if (path(v, `"entry.${k}"`)) named.push(/** @type {string} */ (v));
     }
   }
   for (const k of ["lib", "elements", "examples"]) {

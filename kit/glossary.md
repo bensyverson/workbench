@@ -28,6 +28,13 @@ The kit's terms, as ruled on 2026-11-23 ([nomenclature decision](../project/2026
 - **Glue program**: the workbench's own file (`workbench.js`) that builds each part with its package's Grammar and composes them with `kit/compose`: `.part`, `.frame`, `.wire`, `.show`. It owns every fact that spans two parts, and holds no lambdas.
 - **Part**: one Program in a composition, named by its root's opening name (`maze("level")` is the part `level`).
 - **Handle**: `part.out.<port>`, `part.in.<port>` or `part.frame.<name>` on any builder: a read-only name of one part's port or frame, passed to kit/compose's `.wire` and `.frame`. Not a value.
+- **Runtime**: a package's runtime module (`defineRuntime`): its `clock`, `init` and `step`, plain JavaScript over the Dialect's state. Not a Runtime Lambda, which is lowered; a runtime is trusted and calls the Program's compiled lambdas.
+- **Workbench time** (`T`): the one clock a composed workbench runs on, in seconds from 0, in exact rationals ([kit/run](run/README.md)).
+- **Instant**: a value of `T` at which at least one part is due (a tick part's multiple of its period, a display frame). Within an instant, parts step in wire order.
+- **Snapshot**: a part's committed state after a step, with its outputs and revision; nobody sees a part halfway through a step. A consumer reads its producer's latest snapshot (a delayed wire, the one before the instant).
+- **Revision**: which build of a part a snapshot came from, in one run (`level@3`): it starts at 1 and bumps only when the part's content key changes. Consumers see it as `inputs.$rev`.
+- **Content key**: the hash of what determines a part's built record and Kernels (the kit version, its package's key, the canonical record; [kit/build](build/README.md)); a package has its own (kit/package's). What a cache would reuse a result by; comparable across runs, where revisions are not.
+- **Input log**: every outside input of a run (a pad, a param, a rebuild, a display frame), stamped with `T`. A run is a pure function of the composed record, its params and its input log.
 
 ## Programs and compiling them
 

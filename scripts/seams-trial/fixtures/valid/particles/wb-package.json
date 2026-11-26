@@ -6,7 +6,8 @@
   "entry": {
     "dialect": "particles.dialect.js",
     "grammar": "particles.grammar.js",
-    "ui": "particles.ui.js"
+    "ui": "particles.ui.js",
+    "runtime": "particles.runtime.js"
   },
   "elements": [
     "particles-field.js"
@@ -55,8 +56,9 @@
     "examples/06.js": "sha256-PRcdAos/oBDacb/L2loioKEhrr9G4xuyS9NXIsTcJ58=",
     "examples/07.js": "sha256-jkBQt9Jr7C7e2RHbV6bLrXIOcqJ+TnwF3LP9+8LmQpA=",
     "particles-field.js": "sha256-RLZvdiaFq9b7K8oKtYzmEWlfqsLSEo3nX0tLB0CIKSs=",
-    "particles.dialect.js": "sha256-G/acr1RyYUGO1w8bNZZa8zlqMvKErHyV9pmcnKAdCXo=",
+    "particles.dialect.js": "sha256-uBRVowZB7f7upcfhtQ9iRgjK6IVuOSQppMIPZL8cxwg=",
     "particles.grammar.js": "sha256-y6lmyixYUr30stihBvlVV6ZN/vaLTxUK7yqV8n064AE=",
+    "particles.runtime.js": "sha256-0e0FfUT6aDQD9yFJgg+eu0xv9/k/O0SUHiMdMIR9f6Y=",
     "particles.ui.js": "sha256-cgTAcDqn67WVnpJqNekwNBBCkrnwLgNrt/tVQcRP7Pc=",
     "refusals/r01.js": "sha256-lpoISmkPd8VXD7ao+1q6FWgerjJ5cduu34okZJ/OzXY=",
     "refusals/r02.js": "sha256-0EjmQ4hlFuCRaMpWZ5KPhdNNfQIQHp9BQCv0KQOBKY4=",

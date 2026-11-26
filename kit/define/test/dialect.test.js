@@ -111,7 +111,7 @@ test("every problem is collected, not only the first", () => {
 });
 
 test("every define code is exercised by these tests or the grammar's", () => {
-  assert.deepEqual(Object.keys(DEFINE_CODES).filter((c) => c.startsWith("D")), ["D001", "D002", "D003", "D004", "D005", "D006", "D007", "D008", "D009", "D010", "D011", "D012", "D013", "D014", "D015", "D017", "D018", "D019", "D020", "D021", "D022", "D023", "D024", "D025", "D026", "D027", "D028", "D029", "D030", "D031", "D032"]);
+  assert.deepEqual(Object.keys(DEFINE_CODES).filter((c) => c.startsWith("D")), ["D001", "D002", "D003", "D004", "D005", "D006", "D007", "D008", "D009", "D010", "D011", "D012", "D013", "D014", "D015", "D017", "D018", "D019", "D020", "D021", "D022", "D023", "D024", "D025", "D026", "D027", "D028", "D029", "D030", "D031", "D032", "D033"]);
 });
 
 test("a convention may be a function of (ref, program, state); a string refuses the slot", () => {

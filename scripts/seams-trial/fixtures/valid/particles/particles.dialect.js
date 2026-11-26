@@ -102,7 +102,7 @@ export const particlesDialect = defineDialect({
     t: "f64",
     maxParticles: "f64",
     bounds: struct({ width: "f64", height: "f64" }),
-    particles: list(struct({ x: "f64", y: "f64" }), 10000),
+    particles: list(struct({ x: "f64", y: "f64", vx: "f64", vy: "f64", age: "f64", life: "f64" }), 10000),
     emitters: list(struct({ name: "str", live: "f64" }), 100),
     counters: list(struct({ name: "str", value: "f64" }), 100),
   },

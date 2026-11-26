@@ -1,5 +1,5 @@
 // The module the checker supplies as `kit/define` to a candidate's files: the real kit/define, with
-// defineDialect and defineGrammar wrapped so that a refused definition is recorded (each problem at its
+// defineDialect, defineGrammar and defineRuntime wrapped so that a refused definition is recorded (each problem at its
 // line) instead of ending the load, and so the checker learns which Dialect and Grammar the candidate made.
 // Nothing here checks anything itself: per-slot effects (--effects) are the kit's own checks too.
 
@@ -82,4 +82,20 @@ export function defineGrammar(dialect, def) {
 /** What a refused defineGrammar returns: the examples are not run, so it is never called by the checker. */
 function refusedBuilder() {
   throw new Error("the Grammar was refused; fix the definition files first");
+}
+
+/**
+ * kit/define's defineRuntime; a refusal is recorded (D033) and null returned.
+ * @param {unknown} grammar @param {import("../../../kit/define/runtime.js").RuntimeDecl} decl
+ */
+export function defineRuntime(grammar, decl) {
+  const site = callSite();
+  try {
+    return kit.defineRuntime(grammar, decl);
+  } catch (e) {
+    if (!(e instanceof kit.DefinitionError)) throw e;
+    session.report(site, e.diagnostics);
+    session.refused = true;
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
 // A composition's codes: S… is a glue program's mistake, found when it is checked. Each about a wire or an edge
 // names both sides. The numbers are the seams draft's table (S102, S257 added by the relay trial's checker; S115
-// and S205 by the 2026-11-26 rulings on cycles and renames).
+// and S205 by the 2026-11-26 rulings on cycles and renames; S116 by the queue-bound ruling).
 
 /** Each code and what it means; the tests check that every one has a failing case. */
 export const COMPOSE_CODES = Object.freeze({
@@ -11,6 +11,7 @@ export const COMPOSE_CODES = Object.freeze({
   S113: "A required input with no wire",
   S114: "A part wired to itself",
   S115: "A cycle of wires with no wire in it marked { delay: true } (names the loop)",
+  S116: "A reliable Event wire whose queue can hold more records at one consumer step than the consumer's runtime takes (from the two clocks and the producer's per-step max; checked when .check or .build is given the runtimes): names both sides and the two fixes, raise the max or { keepLast: n }",
   S201: "Seam kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate",
   S202: "A record field the consumer takes and the producer lacks, or one of another kind (names the field, both sides); a field the producer has and the consumer does not take is dropped on the wire, not an error",
   S203: "An enum the consumer does not accept",
