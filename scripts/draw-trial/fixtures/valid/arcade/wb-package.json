@@ -1,0 +1,20 @@
+{
+  "name": "arcade",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "A page that shows two pictures, one over the other, with a HUD.",
+  "entry": {
+    "dialect": "arcade.dialect.js",
+    "grammar": "arcade.grammar.js",
+    "runtime": "arcade.runtime.js"
+  },
+  "examples": [
+    "examples/01.js"
+  ],
+  "files": {
+    "arcade.dialect.js": "sha256-hhaY/3+S0olXU0pavPcInL53SvEseSFtIc56lFMWngA=",
+    "arcade.grammar.js": "sha256-uInaZzXkOsihUlqIX3NjyWpd7u5SuoFyMUUDzzRA9u8=",
+    "arcade.runtime.js": "sha256-1vl7j6EuoJQ6X5OQIiwAVaxp7FZGvnEkmog9widVFgo=",
+    "examples/01.js": "sha256-agqPMGnNUtouehzXqAQ3Ee4tDMeSJ9IFP20d+oLxSmE="
+  }
+}

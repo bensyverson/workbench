@@ -1,0 +1,7 @@
+*Saved by the integrator (leaf e3qYus) from the transcript's final result line: the compose leg's closing reply, word for word. The leg's own report is REPORT.md.*
+
+**Difficulty: 2 out of 5.** The hand-in is complete, but `check.sh` still reports one violation, W024, which I believe is a checker defect.
+
+**The hardest part** was W024, which says no burst was drawn near the picked coin. The checker looks for it at (5, 15) on my screen, but the kit's own wire conversion puts the coin in cell (5, 7) at (44, 68), where the maze draws it and where the burst should start. (5, 15) is what you get by adding the picture's offset to the raw cell numbers and skipping the maze's cell-to-pixel scaling. That explanation is my inference, since I didn't read the checker. Relating the maze's `cell` frame instead of `pixel` gave identical output, and I didn't distort the frames to make the check pass. As a result, nothing in the checker has confirmed that the burst lands on the coin; I have only the arithmetic from the printed edges. The rest worked on the first run: both pictures layered under the HUD with plain array spread, the run replayed identically, and Canvas drew everything. The Game Boy profile refuses the page.
+
+The root package is in `arcade/`, the glue is `workbench.js`, and the details are in `REPORT.md`. It also records that I read one file outside the folder: the tool's saved copy of my own over-long printout of the `particles/` files.

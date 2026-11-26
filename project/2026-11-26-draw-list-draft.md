@@ -151,3 +151,10 @@ A click or touch on the stage lands in the shown part's frame. The root owns the
 ## Next
 
 Dogfood before building: a small trial on paper, from this draft alone. One fresh agent gives maze a `view` output, one gives particles one, and a third writes the root Dialect and glue that layer them, with a HUD. A checker types the lists and runs them through a Canvas renderer and a Game Boy profile. Concatenation is a small kit/lower leaf ahead of the trial's build. The trial should give one author an entity-shaped Dialect (maze) and one a Canvas-shaped one (particles), and see whether each bridge comes out as small as DMG's. Then build `Draw` as a leaf after `wwG0JR`.
+
+> **Trial run 2026-11-26 (leaf `e3qYus`, [the findings](2026-11-26-draw-list-trial-findings.md)).** The builder styles and concatenation held: every leg rated it 2 of 5, and no agent reached for `map`. The particles bridge came out smaller than DMG's (19 lines). The maze bridge came out larger (43), because `each` has no index and can't walk the grid's strings. Three premises above need changing before the build:
+> - a `Draw` max cannot follow the built Program;
+> - "a `Draw<512>` into a renderer limited to 40 sprites is a compose-time error … unless the op mix is narrower" refuses every composed list, because no seam can state a narrower op mix;
+> - `tiles` converting `at` only breaks under a scaling wire.
+>
+> See the findings' recommendations.
