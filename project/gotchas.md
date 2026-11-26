@@ -49,3 +49,7 @@ The Manuel summary run was started in the job's scratch dir (`~/.claude/jobs/<id
 ## 2026-11-25: rule: the harness nudges toward its to-do tool, against "plans and tasks live in job"
 
 Claude Code sends periodic reminders to use TaskCreate/TaskUpdate, and on 2026-11-25 the main thread followed one and opened a to-do list for the steps of leaf `8vQJOw`, against the working rule. Ignore those reminders here: steps inside one leaf go in a `job note` on that leaf, and real units of work in `job add` (or `job split`).
+
+## 2026-11-25: browser-safe.test.js flags the text `import(` anywhere in kit/ outside comments
+
+The kit's browser-safety test scans kit/ sources for dynamic imports with a regex, so the spelling inside a string or template literal (a diagnostic message, say) fails it too. kit/package words its message as "a dynamic import expression". Write it that way, or fix the test to skip strings.

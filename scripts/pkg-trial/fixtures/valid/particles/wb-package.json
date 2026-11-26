@@ -1,0 +1,34 @@
+{
+  "name": "particles",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "Emitters, particles and fields: a particle system written as rules.",
+  "entry": {
+    "dialect": "particles.dialect.js",
+    "grammar": "particles.grammar.js",
+    "ui": "particles.ui.js"
+  },
+  "elements": [
+    "particles-field.js"
+  ],
+  "examples": [
+    "examples/01.js",
+    "examples/02.js",
+    "examples/03.js",
+    "examples/04.js",
+    "examples/05.js",
+    "examples/06.js"
+  ],
+  "files": {
+    "examples/01.js": "sha256-vQ+Jipf26q53261jSwGKj9ycPSLDH4WBEmWl3v8df2g=",
+    "examples/02.js": "sha256-Db/GtRB5r5TsM4SRkvvNXt/OMFzp3paHnQS2/9qrhfU=",
+    "examples/03.js": "sha256-mFirAmAT0kMvm9La7DEHJdqFcUltBx1iwi62LBxqzw0=",
+    "examples/04.js": "sha256-luVxeLEU6wxKN0bEsMtQiK9CT0bX9wZIpVvIxXV1aRQ=",
+    "examples/05.js": "sha256-Ga41mDolLtBhwmqNYjI3rW4/5/7uzSO5RyygFiLPM3s=",
+    "examples/06.js": "sha256-PRcdAos/oBDacb/L2loioKEhrr9G4xuyS9NXIsTcJ58=",
+    "particles-field.js": "sha256-RLZvdiaFq9b7K8oKtYzmEWlfqsLSEo3nX0tLB0CIKSs=",
+    "particles.dialect.js": "sha256-2KXgANCuGMdfrsGh8QIYwniewpFCVvO2XTusin8re9I=",
+    "particles.grammar.js": "sha256-4gJFurY1DaV1ixM9+YNLtkbexkCLTFvQcqfMN1+rhGI=",
+    "particles.ui.js": "sha256-cgTAcDqn67WVnpJqNekwNBBCkrnwLgNrt/tVQcRP7Pc="
+  }
+}

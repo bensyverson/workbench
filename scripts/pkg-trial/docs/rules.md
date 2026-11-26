@@ -35,10 +35,18 @@ If the tool you write files with refuses to write `REPORT.md`, write it from the
 
 ## Codes
 
-<!-- The K code table is filled in from kit/package's PACKAGE_CODES at integration. -->
-
 | Code | Refused when |
 |---|---|
-| LOAD | a definition or example file cannot be imported: a syntax error, an exception |
+| K001 | there is no `wb-package.json`, or it is not a JSON object |
+| K002 | a manifest key is missing, unknown or the wrong shape: a glob, a path that is not a plain relative path, a bad `name`, `version`, `kit` or hash |
+| K003 | the package is written for another kit version than `"0.4"` |
+| K004 | a file the manifest names (in `files`, `entry`, `lib`, `foreign`, `elements` or `examples`) is not in the package, or a named file is not in `files` |
+| K005 | a file in the package folder is not listed in `files` |
+| K006 | a file's hash is not the one `files` gives (rerun `hash.sh`) |
+| K007 | an import of anything but `kit/define` or an existing file of the package: a bare name, a built-in, a URL, a path that leaves the package, a dynamic `import()` |
+| K008 | an entry file does not export exactly one definition of its kind, or the parts do not fit: the Dialect's name is not the package's, the Grammar is not built on the Dialect, the UI not on the Grammar |
+| K009 | modules that import each other in a cycle (an uploaded package cannot be loaded then) |
+| K011 | an entry file fails to import: a syntax error or an exception, at its line |
+| U… | the UI file breaks a rule of the UI API; the message says which |
 
-The checker doesn't run a host. Nothing is drawn, and no example is run, only imported. Whether a definition still says what it said is read by hand.
+The checker doesn't run a host. Nothing is drawn, and no example is imported or run. Whether a definition still says what it said is read by hand.

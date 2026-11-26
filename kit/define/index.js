@@ -8,3 +8,4 @@ export { defineUI, isUI } from "./ui.js";
 export { DEFINE_CODES, BUILD_CODES, UI_CODES, didYouMean } from "./codes.js";
 export { vector, scalar, exact, tolerance, list, opt, struct, union, enumOf, object, name, ref, data, lambda, rest, oneOf, recordOf, listOf } from "./tags.js";
 export { run, needsRebuild, bindingText } from "./params.js";
+export { KIT_VERSION } from "./version.js";

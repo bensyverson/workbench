@@ -52,7 +52,7 @@ Paths are relative to the folder, written with `/`, and stay inside it: no `..`,
 
 ### Hashes
 
-`files` maps each path to the SHA-256 of its bytes, written as `sha256-` plus base64 (the spelling HTML uses for Subresource Integrity). Don't write hashes by hand. Run the hash tool on the folder, and run it again after any change:
+`files` maps each path to the SHA-256 of its text (as UTF-8), written as `sha256-` plus base64 (the spelling HTML uses for Subresource Integrity). Don't write hashes by hand. Run the hash tool on the folder, and run it again after any change:
 
 ```sh
 ./hash.sh out/tiles      # rewrites out/tiles/wb-package.json's "files"
@@ -86,7 +86,7 @@ When a host loads a package, it does this, in order. The checker you are given d
 1. Read `wb-package.json` and check it: its shape, its `kit` version, every listed path present, and every file hashed.
 2. Scan every `.js` file's imports, without running anything.
 3. Import the Dialect, the Grammar and the UI, and check that they belong together and to this package.
-4. Import each example.
+4. List the examples. Each is imported when a host runs it.
 
 Each problem is printed with a code and a fix. A problem in step 1 or 2 stops the load, because the host does not run code from a package it cannot vouch for.
 

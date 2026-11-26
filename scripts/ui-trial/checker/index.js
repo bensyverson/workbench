@@ -51,12 +51,12 @@ export function packageFiles(lang) {
 }
 
 /**
- * Checks `<dir>/<lang>.ui.js`.
- * @param {string} dir @param {{ lang: string }} options @returns {Promise<CheckResult>}
+ * Checks `<dir>/<lang>.ui.js`, or the UI and Grammar files `files` names (a package whose manifest names its entries).
+ * @param {string} dir @param {{ lang: string, files?: { ui: string, grammar: string } }} options @returns {Promise<CheckResult>}
  */
-export async function checkDir(dir, { lang }) {
+export async function checkDir(dir, { lang, files: named }) {
   const root = resolve(dir);
-  const names = packageFiles(lang);
+  const names = { ...packageFiles(lang), ...named };
   for (const f of [names.ui, names.grammar]) if (!isFile(join(root, f))) throw new CheckTargetError(`${join(dir, f)} does not exist (or is not a file)`);
   installHooks();
   // Node resolves through symlinks (macOS tmp is /private/var), so the hooks compare against the real path.
