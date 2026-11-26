@@ -305,7 +305,7 @@ export function createRun(composed, options) {
   /** A display run moved by runUntil, not by the driver, logs its frames up to `target` first (frames.js). @param {Q} target */
   function logFrames(target) {
     if (frames !== "display") return;
-    for (const T of framesTo(frameLog, now, target)) insert({ kind: "frame", T });
+    for (const T of framesTo(frameLog, now, target, catchUp)) insert({ kind: "frame", T });
   }
 
   function checkpoint() {

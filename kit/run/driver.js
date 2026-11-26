@@ -46,7 +46,8 @@ export function createDriver(run, o = {}) {
     resume() { paused = false; ideal = toNumber(run.T); pendingWall = 0; pendingCapped = false; mark = run.T; },
     /**
      * Runs the next instant, paused or not. Frame parts step on frames, so when the run has any, a step is at most
-     * one nominal frame (1/60 s) after the last frame, and lands on a logged frame when it reaches that far.
+     * one nominal frame (1/60 s) after the last frame (or, when T already stands that far past it, the cap after it),
+     * and lands on a logged frame when it reaches that far.
      */
     step() {
       sync();

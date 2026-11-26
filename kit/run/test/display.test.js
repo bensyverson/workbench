@@ -139,3 +139,19 @@ test("a frame part fixed at T = 0 on a display run steps at the run's frame at T
     assert.equal(run.hashes[0]?.T, "0", JSON.stringify(clock));
   }
 });
+
+test("after a rewind between frames, runUntil's first frame stays within the cap of the last, even for a cap off the 1/60 grid", async () => {
+  const { framesTo, createFrameLog } = await import("../frames.js");
+  // last frame 0, T 0.029, cap 0.03: the next grid point (1/30) is past the cap, so the first frame is the cap, and
+  // the grid goes on from it
+  const out = framesTo(createFrameLog(), q(29, 1000), q(1, 10), q(3, 100));
+  assert.deepEqual(out.slice(0, 2).map(qText), ["3/100", "7/150"]);
+  // end to end: a driver frame capped at 0.03, a rewind between frames, then runUntil
+  const { built, runtimes } = pair({ prodClock: { tick: 1 / 1000 }, consClock: { frame: true }, max: 100000 });
+  const run = createRun(built.build({ runtimes, catchUp: 0.03 }), { runtimes, frames: "display", dev: false, catchUp: 0.03 });
+  createDriver(run).frame(0.5);
+  run.rewind(0.029);
+  run.runUntil(0.1);
+  for (const s of frameSpans(run)) assert.ok(toNumber(s) <= 0.03 + 1e-12, `a frame spans ${toNumber(s)} s, past the cap`);
+  assert.ok(run.state("b").biggest <= 30, "a step took more records than S116 sized for the cap");
+});

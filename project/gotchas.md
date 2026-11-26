@@ -32,7 +32,7 @@ The architecture consult's blind pass (leaf `Cy9u98`) was told not to read `proj
 
 ## 2026-11-24: probe files kept under `local/` run as tests
 
-`local/` is gitignored but not excluded from `node --test`'s glob, so a reviewer's `*.test.js` probe copied there (to keep it as a fix's red test) runs in `npm test` and the pre-commit hook, and a probe that is red by design fails the commit. Keep kept probes named `*.probe.js`.
+`local/` is gitignored but not excluded from `node --test`'s glob, so a reviewer's `*.test.js` probe copied there (to keep it as a fix's red test) runs in `npm test` and the pre-commit hook, and a probe that is red by design fails the commit. Keep kept probes named `*.probe.js`. The same goes for a whole tree: a reviewer that extracts an old `kit/` under `local/` to compare against (`git archive <sha> kit`, 2026-11-26) brings its `test/` folders, which then fail every commit; extract it under the job's scratch directory instead, or delete it before committing.
 
 ## 2026-11-24: an inline script with backticks may be refused as a removal
 

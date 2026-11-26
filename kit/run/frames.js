@@ -37,15 +37,29 @@ export function createFrameLog() {
  * from the last frame at or before `target` (last + k/60) after the run's T and at or before `target`, never one at
  * `target` off the grid, so where runUntil is cut changes nothing. The driver logs its frame and then runs to it, so
  * it gets none. When T has run past the last frame without frames (advance from the log alone), the grid resumes at
- * its first point after T. Frames a hand-written log holds ahead of T are kept as they are, gaps and all.
- * @param {FrameLog} log @param {Q} now  the run's T @param {Q} target @returns {Q[]}
+ * its first point after T, but never past the cap from the last frame (`catchUp`, which need not be a multiple of
+ * 1/60): when the next grid point is past it and the cap is after T, the first frame is the cap, and the grid goes on
+ * from there. That frame depends only on the last frame and T. Frames a hand-written log holds ahead of T are kept
+ * as they are, gaps and all, and the grid then starts from the last of them at or before `target`, so such a log is
+ * the one case where cutting runUntil differently changes the frames.
+ * @param {FrameLog} log @param {Q} now  the run's T @param {Q} target @param {Q} catchUp @returns {Q[]}
  */
-export function framesTo(log, now, target) {
+export function framesTo(log, now, target, catchUp) {
   /** @type {Q[]} */
   const out = [];
   if (cmp(target, now) <= 0) return out;
-  const from = log.lastAt(target);
-  for (let k = cmp(now, from) > 0 ? floorDiv(sub(now, from), NOMINAL_FRAME) + 1 : 1; ; k++) {
+  let from = log.lastAt(target);
+  let k = 1;
+  if (cmp(now, from) > 0) {
+    k = floorDiv(sub(now, from), NOMINAL_FRAME) + 1;
+    const cap = add(from, catchUp);
+    if (cmp(add(from, mul(NOMINAL_FRAME, q(k))), cap) > 0 && cmp(cap, now) > 0) {
+      if (cmp(cap, target) > 0) return out;
+      out.push(cap);
+      from = cap; k = 1;
+    }
+  }
+  for (; ; k++) {
     const T = add(from, mul(NOMINAL_FRAME, q(k)));
     if (cmp(T, target) > 0) return out;
     out.push(T);
