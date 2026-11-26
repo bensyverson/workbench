@@ -8,8 +8,17 @@ import { assignable, exactLimit, mixesNumbers, namedScalar, sameType, showType, 
 /** Every verb an effect may start with (ir.d.ts, `EffectVerb`). */
 export const EFFECT_VERBS = new Set(/** @type {EffectVerb[]} */ (["read", "write", "bump", "rng", "emit", "sfx", "toast", "spawn", "destroy", "call", "hud", "input", "log", "end"]));
 
+/** The sampler type (ir.d.ts): a handle onto an image, only passed to a call. */
+export const SAMPLER = "sampler";
+
+/**
+ * Whether `t` is the sampler type.
+ * @param {unknown} t
+ */
+export const isSampler = (t) => t === SAMPLER;
+
 /** The named types; `unknown` is not one: a Kernel holds only types that lowered. */
-const NAMED = new Set(["f64", "f32", "bool", "str", "null", "void"]);
+const NAMED = new Set(["f64", "f32", "bool", "str", "null", "void", SAMPLER]);
 
 /** A vector's scalar types: no integer or bool vectors. */
 const SCALARS = new Set(["f32", "f64"]);
@@ -25,6 +34,7 @@ export function typeProblem(t, partial = false) {
   if (typeof t === "string") return NAMED.has(t) ? null : "not a type";
   if (typeof t !== "object" || t === null || Array.isArray(t)) return "not a type";
   const o = /** @type {Record<string, unknown>} */ (t);
+  if (holdsSampler(o)) return "a sampler is never held inside another type (a list, struct, union or possibly-empty value): it is only passed to a call";
   if ("tvar" in o) return "a type variable is bound at each call, so none is left in a Kernel";
   if ("enum" in o) {
     const v = o.enum;
@@ -70,6 +80,18 @@ export function typeProblem(t, partial = false) {
     return null;
   }
   return "not a type";
+}
+
+/**
+ * Whether a compound type has the sampler type directly among its parts.
+ * @param {Record<string, unknown>} o
+ */
+function holdsSampler(o) {
+  if ("opt" in o) return isSampler(o.opt);
+  if ("list" in o) return isSampler(o.list);
+  if ("struct" in o) return typeof o.struct === "object" && o.struct !== null && Object.values(o.struct).some(isSampler);
+  if ("union" in o) return Array.isArray(o.union) && o.union.some(isSampler);
+  return false;
 }
 
 /** @param {Type} t */

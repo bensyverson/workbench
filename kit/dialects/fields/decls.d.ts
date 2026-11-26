@@ -9,7 +9,9 @@
 export type ParamDecl =
   | { value: number; min?: number; max?: number; step?: number }
   | { value: string; options: string[] }
-  | { value: boolean };
+  | { value: boolean }
+  /** An image: a `sampler` uniform, read with `sample(u.name, p)` and `imageSize(u.name)`. Its value is the host's (a SamplerImage, kit/interp). */
+  | { image: true };
 
 /** A top-level function (`kind: "fn"`) or constant of a Program, or of the Library. */
 export interface UnitDecl {
@@ -44,6 +46,7 @@ export interface Intrinsic {
    * The reference implementation, on numbers: what the interpreter runs. Where `componentwise` is
    * set it is applied to each component of the vector arguments, scalar arguments being passed whole.
    */
-  ref: (...args: number[]) => number;
+  /** On numbers; an argument that is no number (a sampler's image) is passed whole, and a vector result is an array of its components. */
+  ref: (...args: any[]) => number | number[];
   componentwise?: boolean;
 }

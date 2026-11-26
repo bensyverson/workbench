@@ -34,6 +34,8 @@ export function glslUniformValues(uniforms, values) {
   return uniforms.map((u) => {
     const v = values[u.param];
     if (v === undefined) throw new Error(`no value for uniform '${u.param}'`);
+    // An image is a texture to bind, not a number; the page uploads none yet (kit/harness/gl.js has the upload to port).
+    if (u.kind === "sampler2D") throw new Error(`uniform ${u.glsl} is an image (sampler2D), and the debugger's page does not upload images yet`);
     if (u.options) {
       const index = u.options.indexOf(/** @type {string} */ (v));
       if (index < 0) throw new Error(`'${String(v)}' is not an option of '${u.param}' (${u.options.join(", ")})`);

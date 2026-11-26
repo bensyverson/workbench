@@ -36,7 +36,7 @@ test("B004 for a bad param shape names the param and lists the forms", () => {
 test("the B004 for a bad param shape stays short and still names the way out", () => {
   const m = refusal(() => field("c").param("angle", { value: "x" }).pixel(px));
   assert.ok(m.length < 500, m);
-  assert.match(m, /fits none of its 3 forms/);
+  assert.match(m, /fits none of its 4 forms/);
 });
 
 test("a bound function is refused as B007 saying it has no source", () => {

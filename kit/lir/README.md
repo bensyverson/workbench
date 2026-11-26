@@ -21,6 +21,7 @@ An `LProgram` is one entry kernel, the helpers it calls (**callee first**, so a 
 | The core IR | The LIR |
 |---|---|
 | `f32`, `f64`, vectors named by a Dialect (`vec2`, `color`) | `f32`, `i32`, `bool`, and `vec2`..`vec4` of f32 (a Dialect's `color` is a `vec3`). **No f64.** |
+| `sampler`, a uniform image or a helper's parameter, passed to a call | `sampler` (a GLSL `sampler2D`): a uniform or a parameter, read only as an argument of a `call` or `helper`, never a local or a return |
 | Reads of a place (`u.angle`) | `uniform` nodes naming the program's uniform (`u_angle`); the entry kernel's uniforms parameter is dropped |
 | A declared choice (`u.palette`), compared with `"grey"` | An `i32` uniform holding an index into its `options`; the comparison is of two i32s. Two choices compare only when their options are identical and in the same order (else R002): the indices would be of different lists |
 | `call` of a Dialect intrinsic by name | `call` carrying its **spelling** (`clamp($0, $1, $2)`) and a prelude when it needs one |
@@ -40,13 +41,13 @@ Lowering's codes (**R**) are the author's: why this kernel cannot be a shader. E
 | Code | Meaning |
 |---|---|
 | R001 | The kernel's meaning depends on f64 precision (above) |
-| R002 | A value or statement with no form in the LIR: a string, list, struct, optional, entity, a nominal scalar (an f64 underneath), a store, a bump, a loop over a list, a read of state that is not a uniform |
+| R002 | A value or statement with no form in the LIR: a string, list, struct, optional, entity, a nominal scalar (an f64 underneath), a store, a bump, a loop over a list, a read of state that is not a uniform; a sampler held in a local, compared, chosen by a ternary or returned (the core refuses these too, V002, but the LIR refuses them on its own) |
 | R003 | An intrinsic the target has no spelling for |
 | R004 | A helper that was not given, or that recurses (GLSL has no recursion) |
 | R005 | A read of a uniform the program does not declare |
 | R006 | An operator whose JavaScript result GLSL cannot reproduce: `%` on f32 |
 
-The verifier's codes (**W**) are kit bugs, in [`verify.js`](verify.js) (`LIR_CODES`): **W001** unknown node or missing field; **W002** type disagreement (operator operands, result, return, assignment, condition); **W003** a type or literal the LIR cannot hold (f64, an f32 not already rounded, an i32 not whole); **W004** a name unbound or bound twice, or a local missing from the kernel's list; **W005** an assignment to a parameter or of another type; **W006** `break` outside a loop, or a loop with no bound; **W007** a helper, uniform or spelling that does not match its use; **W008** a helper declared after its caller, or recursion; **W009** a node without a span inside the kernel's source; **W010** a name that is not a legal identifier (keyword, built-in, `__`, a prefix the emitter owns); **W011** a prelude missing for an intrinsic, or listed and unused.
+The verifier's codes (**W**) are kit bugs, in [`verify.js`](verify.js) (`LIR_CODES`): **W001** unknown node or missing field; **W002** type disagreement (operator operands, result, return, assignment, condition), or a sampler anywhere but as a `call`'s or `helper`'s argument, or one that is not a `uniform` or `local`; **W003** a type or literal the LIR cannot hold (f64, an f32 not already rounded, an i32 not whole, a sampler `let`, loop variable or return); **W004** a name unbound or bound twice, or a local missing from the kernel's list; **W005** an assignment to a parameter or of another type; **W006** `break` outside a loop, or a loop with no bound; **W007** a helper, uniform or spelling that does not match its use; **W008** a helper declared after its caller, or recursion; **W009** a node without a span inside the kernel's source; **W010** a name that is not a legal identifier (keyword, built-in, `__`, a prefix the emitter owns); **W011** a prelude missing for an intrinsic, or listed and unused.
 
 Every node keeps the core node's `span`, indexing the core kernel's `src`, so a backend's line map points at the author's lambda.
 
@@ -56,4 +57,4 @@ Every node keeps the core node's `span`, indexing the core kernel's `src`, so a 
 
 ## Tests
 
-`test/verify.test.js` builds a broken program by hand for each W code (and the operators that must still verify); `test/lower.test.js` lowers hand-built core kernels for each explicit rule and each R code. The two survey sketches lower and verify in [`../emit/glsl/test/sketches.test.js`](../emit/glsl/test/sketches.test.js).
+`test/verify.test.js` builds a broken program by hand for each W code (and the operators that must still verify); `test/lower.test.js` lowers hand-built core kernels for each explicit rule and each R code; `test/sampler.test.js` is the sampler's: what lowers and verifies, the R002s, and the W codes. The two survey sketches lower and verify in [`../emit/glsl/test/sketches.test.js`](../emit/glsl/test/sketches.test.js).

@@ -1,15 +1,19 @@
 // A sketch that calls every intrinsic and every call-style operator of the fields Dialect, so the harness runs each
 // spelling on the GPU (the book's sketches leave `fract`, `min`, `max`, `sqrt`, `atan2` and the six `v…` calls unrun).
 // It is not a picture: every term stays inside the domain where GLSL and JavaScript agree (no `sqrt` of a negative, no
-// `pow` with a negative base, no `atan2(0, 0)`, no divisor near zero, no `smoothstep` with equal edges).
+// `pow` with a negative base, no `atan2(0, 0)`, no divisor near zero, no `smoothstep` with equal edges). Its image param
+// is sampled off the pixel grid's texel edges and partly outside the unit square, so the clamp to the edge is run too.
 
 import { field } from "../index.js";
 
 export const coverage = field("coverage")
   .param("k", { value: 3, min: 1, max: 6, step: 0.1 })
   .param("shift", { value: 0.25, min: -1, max: 1, step: 0.05 })
+  .param("img", { image: true })
   .pixel(`(uv, u) => {
   const p = vec2(uv.x, uv.y);
+  const tx = sample(u.img, vec2(p.x * 0.93 + 0.011, p.y * 1.4 - 0.2));
+  const sz = imageSize(u.img);
   const q = vmul(p, vec2(u.k, 2));
   const w = vdiv(vadd(p, vec2(1, 1)), vsub(vec2(3, 3), p));
   const n = vneg(vscale(q, 0.25));
@@ -26,6 +30,6 @@ export const coverage = field("coverage")
   const r = mix(a, s, sm);
   const g = clamp(abs(ang) + abs(n.x) + 0.2 * sin(q.x * 6 + u.t), 0, 1);
   const b = mix(h, cos(wl * 5) * 0.5 + 0.5, 0.5) * 0.7 + 0.3 * e;
-  return color(clamp(r + m.x * 0.1 + abs(v3n.x), 0, 1), clamp(g + m.y * 0.1 + abs(v3n.z), 0, 1), clamp(b + abs(v3n.y), 0, 1));
+  return color(clamp(r + m.x * 0.1 + abs(v3n.x), 0, 1) * 0.8 + tx.x * 0.2, clamp(g + m.y * 0.1 + abs(v3n.z), 0, 1) * 0.8 + tx.w * 0.2, clamp(b + abs(v3n.y), 0, 1) * 0.8 + tx.z * 0.2 * sz.x / sz.y);
 }`)
   .build();

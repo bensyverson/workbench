@@ -81,10 +81,16 @@ export class Ctx {
    * @param {Type} t
    * @param {Span | null} span
    * @param {string} what  What holds it, for the message.
+   * @param {boolean} [sampler]  Whether it may be a sampler: only a parameter may.
    * @returns {LType | null}
    */
-  type(t, span, what) {
+  type(t, span, what, sampler = false) {
     if (t === "f32" || t === "bool") return t;
+    if (t === "sampler") {
+      if (sampler) return t;
+      this.report("R002", `it holds a sampler (${what}), and a sampler is only passed whole as an argument of a call`, span);
+      return null;
+    }
     if (t === "f64" || (typeof t === "object" && "vec" in t && t.of === "f64")) return this.f64(what, span);
     if (typeof t === "object" && "vec" in t) return { vec: t.vec };
     if (typeof t === "object" && "enum" in t && t.declared) return "i32";

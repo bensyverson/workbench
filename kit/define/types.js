@@ -10,7 +10,8 @@ import { dialectEnum, optional } from "../ir/types.js";
 
 /** @typedef {{ code: string, path: Array<string | number>, message: string, tip: string }} Problem */
 
-export const BUILTIN_TYPES = Object.freeze(["f32", "f64", "bool", "str", "null", "void"]);
+/** The type names every Dialect has; `sampler` is the core's handle onto an image (kit/ir/ir.d.ts), read only by a Dialect's intrinsics. */
+export const BUILTIN_TYPES = Object.freeze(["f32", "f64", "bool", "str", "null", "void", "sampler"]);
 
 /** @param {string[]} names */
 export const listed = (names) => names.map((n) => `'${n}'`).join(", ");

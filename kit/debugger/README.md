@@ -15,7 +15,7 @@ groupByLine(trace);   // [{ kernel, line, text, steps }] in first-reached order
 
 A `Step` is `{ index, kernel, span, text, line, column, kind, stmt, value, type, shown, path, depth }`. `span` indexes the source of `kernel` (`trace.sources[kernel]`: the pixel Kernel or a helper such as `fbm`), `text` is that slice, `shown` the value formatted by its IR type (an f32 as the shortest decimal that is the same single, a vector as `vec2(0.5, 1)`), `depth` how many helper calls deep it ran. A branch not taken has no steps; an `if` step's span covers the whole statement.
 
-Other exports: `pixelUv(i, j, w, h)` and `pixelOfUv(uv, w, h)` (the GLSL backend's convention: pixel centers, y up from the lower left), `uniformsFor(program, overrides)`, `formatValue(v, type)`, `compareColor(color, rgba)` (the interpreter's float color against the bytes `readPixels` gave, in 8-bit steps) and `glslUniformValues(emitted.uniforms, u)` (what to upload).
+Other exports: `pixelUv(i, j, w, h)` and `pixelOfUv(uv, w, h)` (the GLSL backend's convention: pixel centers, y up from the lower left), `uniformsFor(program, overrides)` (an image param has no default, so its image must be among the overrides, or it throws), `formatValue(v, type)`, `compareColor(color, rgba)` (the interpreter's float color against the bytes `readPixels` gave, in 8-bit steps) and `glslUniformValues(emitted.uniforms, u)` (what to upload; a `sampler2D` throws, since the page uploads no textures yet: `kit/harness/gl.js` has the upload to port).
 
 ## The preview page
 

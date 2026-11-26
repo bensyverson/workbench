@@ -30,7 +30,8 @@ test("every intrinsic has a signature, both spellings and a reference", () => {
 test("each JS spelling computes what its reference does", () => {
   const samples = [-2.5, -1, -0.25, 0, 0.3, 1, 1.5, 7.75];
   for (const [name, i] of Object.entries(INTRINSICS)) {
-    if (name === "ihash") continue;
+    // ihash has its own test; sample and imageSize take an image, so theirs is below.
+    if (name === "ihash" || name === "sample" || name === "imageSize") continue;
     if (name === "length") {
       assert.equal(i.ref(3, 4), 5);
       assert.equal(spelled("length")([3, 4]), 5);
@@ -40,10 +41,21 @@ test("each JS spelling computes what its reference does", () => {
     const n = i.sig.params.length;
     for (const a of samples) for (const b of [0.5, 2]) for (const c of [0, 1]) {
       const args = [a, b, c].slice(0, n);
-      const want = i.ref(...args), got = f(...args);
+      const want = /** @type {number} */ (i.ref(...args)), got = f(...args);
       assert.ok(Object.is(want, got) || (Number.isNaN(want) && Number.isNaN(got)) || Math.abs(want - got) < 1e-12, `${name}(${args}) ${got} vs ${want}`);
     }
   }
+});
+
+test("sample and imageSize: the JS spelling reads the texel the reference does, in the image and past its edges", () => {
+  const img = { width: 3, height: 2, data: Array.from({ length: 3 * 2 * 4 }, (_, n) => (n * 41 + 7) % 256) };
+  const sample = spelled("sample"), size = spelled("imageSize");
+  for (const x of [-1, 0, 0.2, 0.34, 0.5, 0.99, 1, 3]) for (const y of [-0.5, 0, 0.49, 0.5, 1, 2]) {
+    assert.deepEqual(sample(img, [x, y]), INTRINSICS.sample.ref(img, x, y), `sample at (${x}, ${y})`);
+  }
+  assert.deepEqual(size(img), [3, 2]);
+  assert.deepEqual(INTRINSICS.imageSize.ref(img), [3, 2]);
+  assert.deepEqual(INTRINSICS.sample.ref(img, 0.5, 0.75), [0, 1, 2, 3].map((c) => img.data[(1 * 3 + 1) * 4 + c] / 255), "texel (1, 1): row 1 is the top of two");
 });
 
 test("ihash: the JS spelling is the book's own code, the GLSL spelling is uint arithmetic, and the reference agrees", () => {

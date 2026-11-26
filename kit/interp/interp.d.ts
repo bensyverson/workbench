@@ -5,10 +5,25 @@ import type { Kernel, Span, Coerce, Place } from "../ir/ir.js";
 /** A value the interpreter holds: a number, string, bool, null, undefined, a vector (an array of numbers), a list, a record, or whatever a host gives. */
 export type Value = unknown;
 
+/**
+ * The value of a `sampler` (kit/ir): an image of `width` by `height` texels, `data` holding each texel's red, green,
+ * blue and alpha as bytes (0 to 255), four per texel, **row 0 the bottom** (texel `(i, j)` starts at `(j * width + i) * 4`),
+ * as a WebGL texture uploaded without a flip is. The interpreter and the JS backend pass it whole to the intrinsics
+ * that read it; how a Dialect samples it is the Dialect's (fields' `sample`).
+ */
+export interface SamplerImage {
+  width: number;
+  height: number;
+  data: ArrayLike<number>;
+}
+
 /** What the Dialect gives an intrinsic: its reference implementation, on numbers. */
 export interface IntrinsicRef {
-  /** On numbers. Where `componentwise` is set it is applied to each component of vector arguments, scalar arguments being passed whole; otherwise a vector argument's components are passed spread. */
-  ref: (...args: number[]) => number;
+  /**
+   * On numbers. Where `componentwise` is set it is applied to each component of vector arguments, scalar arguments being passed whole; otherwise a vector argument's components are passed spread.
+   * Any other argument (a sampler's `SamplerImage`) is passed whole, and a reference whose call returns a vector returns its components as an array.
+   */
+  ref: (...args: any[]) => number | number[];
   componentwise?: boolean;
 }
 

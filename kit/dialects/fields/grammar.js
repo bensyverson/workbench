@@ -8,11 +8,12 @@ import { defineGrammar, name, data, lambda, oneOf } from "../../define/index.js"
 import { fields } from "./dialect.js";
 import { library } from "./library.js";
 
-/** A param, in the one declaration form every Program uses: a number, a choice or a toggle (decls.d.ts, ParamDecl). */
+/** A param, in the one declaration form every Program uses: a number, a choice, a toggle or an image (decls.d.ts, ParamDecl). */
 const ParamShape = oneOf(
   { value: "number", "min?": "number", "max?": "number", "step?": "number" },
   { value: "string", options: "string[]" },
   { value: "boolean" },
+  { image: "boolean" },
 );
 
 export const field = defineGrammar(fields, {
@@ -25,8 +26,9 @@ export const field = defineGrammar(fields, {
         param: {
           kind: "decl", args: [name("uniform"), data(ParamShape)], as: "params",
           check({ args: [n, p] }, ctx) {
-            const decl = /** @type {{ value: unknown, min?: number, max?: number }} */ (p);
+            const decl = /** @type {{ value: unknown, min?: number, max?: number, image?: boolean }} */ (p);
             if (n === "t" || n === "aspect") ctx.error("F002", `param '${n}' clashes with the built-in uniform u.${n}`, { arg: 0, tip: "rename the param" });
+            if (decl.image === false) ctx.error("F004", `param '${n}': an image param is { image: true }, so { image: false } declares nothing`, { arg: 1, tip: "write { image: true }, or declare a number, a choice or a toggle" });
             if (typeof decl.value === "number" && (decl.value < (decl.min ?? -Infinity) || decl.value > (decl.max ?? Infinity))) {
               ctx.error("F001", `param '${n}': its value ${decl.value} lies outside its range ${decl.min ?? "-∞"}..${decl.max ?? "∞"}`, { arg: 1, tip: "move the value inside min..max" });
             }

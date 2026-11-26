@@ -33,6 +33,8 @@ run(kernel, inputs, { helpers, intrinsics: INTRINSICS, onNode: (e) => … });
 - **Calls** that are not intrinsics go to the host: `recv.name(args)`, or `recv(args)` when `fn` has no dot (`at(0, 0)`).
 - **Loops** are bounded by the IR: `each` over more than its `max` items is an error.
 
+**A sampler** (kit/ir) holds the host's `SamplerImage` (`interp.d.ts`: `{ width, height, data }`, RGBA bytes, four per texel, row 0 the bottom), which the interpreter never looks inside: an intrinsic's `ref` gets it whole (a non-number argument is not spread), and a `ref` whose call returns a vector returns an array, which is then rounded to the call's type.
+
 ## The per-node hook
 
 `onNode(event)` is called after each node finishes, in evaluation order (operands before their operator, a statement after its expressions, a helper's nodes before the call's result):

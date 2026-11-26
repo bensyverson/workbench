@@ -10,7 +10,7 @@ The topic pages in [docs/](docs/) hold the detail; each line below that points t
 
 ## Types
 
-A type is a string: `"f64" "f32" "bool" "str" "null" "void"`, a declared vector, scalar or object, or one capital letter (a type variable in an intrinsic). Compound: `list(t, <max>)` (`list(t)` with no max only in a Dialect's `state`; `<max>` is the most items your spec allows), `opt(t)`, `struct({ <field>: "f64" }, { optional: ["<field>"] })`, `union(a, b)`, `enumOf(["<a>", "<b>"])`, `object(label, members)`. **There is no integer type.**
+A type is a string: `"f64" "f32" "bool" "str" "null" "void" "sampler"` (a handle onto an image, only passed to a call; see kit/ir), a declared vector, scalar or object, or one capital letter (a type variable in an intrinsic). Compound: `list(t, <max>)` (`list(t)` with no max only in a Dialect's `state`; `<max>` is the most items your spec allows), `opt(t)`, `struct({ <field>: "f64" }, { optional: ["<field>"] })`, `union(a, b)`, `enumOf(["<a>", "<b>"])`, `object(label, members)`. **There is no integer type.**
 
 ## `defineDialect`
 

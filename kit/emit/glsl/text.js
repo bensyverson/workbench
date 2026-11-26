@@ -12,6 +12,7 @@ export function glslType(t) {
   if (t === "f32") return "float";
   if (t === "i32") return "int";
   if (t === "bool") return "bool";
+  if (t === "sampler") return "sampler2D";
   return `vec${t.vec}`;
 }
 

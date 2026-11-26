@@ -52,14 +52,14 @@ export const fields = defineDialect({
   constants: { calls: "pure" },
 
   // Each param becomes a uniform, read in the pixel lambda as u.name: an f32 for a number (an integer is a whole
-  // f32, as `ihash` takes), the choice's enum for options, bool for a toggle.
+  // f32, as `ihash` takes), the choice's enum for options, bool for a toggle, a sampler for an image.
   environment(program) {
     /** @type {Record<string, unknown>} */
     const members = {};
     for (const [n, p] of Object.entries(/** @type {Record<string, ParamDecl>} */ (program.params ?? {}))) {
       if (Object.hasOwn(BUILT_IN, n)) throw new Error(`param '${n}' clashes with the built-in uniform u.${n}`);
-      const t = "options" in p ? enumOf(p.options) : typeof p.value === "boolean" ? "bool" : typeof p.value === "number" ? "f32" : null;
-      if (t === null) throw new Error(`param '${n}' has no type: give a number, a toggle (true or false) or a choice (value and options)`);
+      const t = "image" in p ? (p.image === true ? "sampler" : null) : "options" in p ? enumOf(p.options) : typeof p.value === "boolean" ? "bool" : typeof p.value === "number" ? "f32" : null;
+      if (t === null) throw new Error(`param '${n}' has no type: give a number, a toggle (true or false), a choice (value and options) or an image ({ image: true })`);
       const size = "max" in p && typeof p.max === "number" && p.max <= SIZE_CAP;
       // defineProperty, not assignment: a param named __proto__ must be an own member, not set a prototype.
       Object.defineProperty(members, n, { value: size ? { value: t, size: true } : t, enumerable: true, writable: true, configurable: true });

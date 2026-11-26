@@ -3,7 +3,7 @@
 // cannot take. Its diagnostics are kit bugs, never the author's: whatever the author wrote that
 // cannot lower is refused earlier, by `lowerToLir`. It reads the program alone and never throws.
 
-import { isLType, isVec, sameLType, showLType, COMPONENTS } from "./types.js";
+import { isLType, isVec, sameLType, showLType, COMPONENTS, SAMPLER } from "./types.js";
 import { identifierProblem } from "./names.js";
 import { OPS, EXPR_FIELDS, STMT_FIELDS } from "./verify-rules.js";
 
@@ -13,8 +13,8 @@ import { OPS, EXPR_FIELDS, STMT_FIELDS } from "./verify-rules.js";
 /** Each code and the invariant it guards. */
 export const LIR_CODES = Object.freeze({
   W001: "A node of no known kind, or missing a field its kind has",
-  W002: "A type that disagrees with the node's operands or its kind",
-  W003: "A type or literal the LIR cannot hold: f64, an f32 not already rounded, an i32 not whole",
+  W002: "A type that disagrees with the node's operands or its kind, or a sampler anywhere but as an argument of a call",
+  W003: "A type or literal the LIR cannot hold: f64, an f32 not already rounded, an i32 not whole, a sampler local or return",
   W004: "A name used where nothing binds it, or bound twice",
   W005: "An assignment to a parameter, or of a value of another type",
   W006: "A break or continue outside a loop, or a loop that names no bound",
@@ -126,6 +126,7 @@ class Checker {
     this.span(k, path);
     this.identifier(k.name, path);
     if (!isLType(k.returns)) this.report("W003", `The kernel returns ${showLType(k.returns)}, which the LIR cannot hold.`, `${path}.returns`);
+    else if (k.returns === SAMPLER) this.report("W003", "The kernel returns a sampler; a sampler is only passed to a call.", `${path}.returns`);
     /** @type {Map<string, LType>} */
     const root = new Map();
     this.scopes = [root];
@@ -183,6 +184,7 @@ class Checker {
     switch (s.k) {
       case "let": {
         if (!isLType(s.t)) { this.report("W003", `${s.name} has type ${showLType(s.t)}, which the LIR cannot hold.`, path, s.span); return; }
+        if (s.t === SAMPLER) { this.report("W003", `${s.name} is a sampler local; only a uniform or a parameter holds a sampler.`, path, s.span); this.bind(s.name, s.t, path); return; }
         const v = s.value === null ? null : this.expr(s.value, `${path}.value`);
         if (v && !sameLType(v, s.t)) this.report("W002", `${s.name} is ${showLType(s.t)} but its value is ${showLType(v)}.`, `${path}.value`, s.span);
         this.bind(s.name, s.t, path);
@@ -198,7 +200,7 @@ class Checker {
       }
       case "for": {
         if (typeof s.bound !== "string" || s.bound === "") this.report("W006", "A loop names what bounds it.", path, s.span);
-        if (!isLType(s.t)) { this.report("W003", `The loop variable has type ${showLType(s.t)}, which the LIR cannot hold.`, path, s.span); return; }
+        if (!isLType(s.t) || s.t === SAMPLER) { this.report("W003", `The loop variable has type ${showLType(s.t)}, which the LIR cannot hold in a variable.`, path, s.span); return; }
         this.wants(s.init, s.t, "A loop's start", `${path}.init`);
         this.scopes.push(new Map());
         this.bind(s.name, s.t, path);
@@ -238,12 +240,15 @@ class Checker {
    * Checks `e` and returns its type, or null when it is broken (already reported).
    * @param {LExpr} e
    * @param {string} path
+   * @param {boolean} [asArg]  Whether it is an argument of a call or a helper: the one place a sampler may stand.
    * @returns {LType | null}
    */
-  expr(e, path) {
+  expr(e, path, asArg = false) {
     if (!this.shape(/** @type {any} */ (e), EXPR_FIELDS, path)) return null;
     this.span(e, path);
     if (!isLType(e.t)) { this.report("W003", `A ${e.k} node has type ${showLType(e.t)}, which the LIR cannot hold.`, path, e.span); return null; }
+    if (e.t === SAMPLER && !asArg) { this.report("W002", `A sampler ${e.k} stands where only a call's argument may: a sampler is only passed whole.`, path, e.span); return null; }
+    if (e.t === SAMPLER && e.k !== "uniform" && e.k !== "local") { this.report("W002", `A sampler is a uniform or a parameter, not a ${e.k}.`, path, e.span); return null; }
     const t = e.t;
     switch (e.k) {
       case "num": return this.number(e, path) ? t : null;
@@ -321,7 +326,7 @@ class Checker {
 
   /** @param {Extract<LExpr, { k: "call" }>} e @param {string} path */
   callNode(e, path) {
-    const types = e.args.map((a, i) => this.expr(a, `${path}.args[${i}]`));
+    const types = e.args.map((a, i) => this.expr(a, `${path}.args[${i}]`, true));
     const sp = e.spelling;
     if (typeof sp !== "object" || sp === null || typeof sp.call !== "string") { this.report("W007", `The call to ${e.name} has no spelling.`, path, e.span); return null; }
     for (const m of sp.call.matchAll(/\$(\d+)/g)) if (Number(m[1]) >= e.args.length) this.report("W007", `The spelling of ${e.name} uses $${m[1]}, and the call has ${e.args.length} arguments.`, path, e.span);
@@ -335,7 +340,7 @@ class Checker {
 
   /** @param {Extract<LExpr, { k: "helper" }>} e @param {string} path */
   helperCall(e, path) {
-    const types = e.args.map((a, i) => this.expr(a, `${path}.args[${i}]`));
+    const types = e.args.map((a, i) => this.expr(a, `${path}.args[${i}]`, true));
     const at = this.helpers.get(e.name);
     const callee = at === undefined ? undefined : [...this.p.helpers, this.p.main][at];
     if (at === undefined || !callee) { this.report("W007", `There is no helper ${e.name}.`, path, e.span); return null; }

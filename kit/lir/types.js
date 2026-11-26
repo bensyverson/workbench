@@ -1,4 +1,4 @@
-// The LIR's types: f32, i32, bool and float vectors. Small enough to compare and print by hand.
+// The LIR's types: f32, i32, bool, float vectors and the sampler. Small enough to compare and print by hand.
 
 /** @import { LType } from "./lir.js" */
 
@@ -13,7 +13,10 @@ export const isVec = (t) => typeof t === "object" && t !== null && "vec" in t &&
  * @param {unknown} t
  * @returns {t is LType}
  */
-export const isLType = (t) => t === "f32" || t === "i32" || t === "bool" || isVec(t);
+export const isLType = (t) => t === "f32" || t === "i32" || t === "bool" || t === SAMPLER || isVec(t);
+
+/** The sampler type: a uniform or parameter only, passed whole to a call. */
+export const SAMPLER = "sampler";
 
 /**
  * @param {LType} a

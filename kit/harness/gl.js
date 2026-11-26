@@ -10,8 +10,15 @@
  * @property {number} height
  * @property {string} resolution  The vec2 uniform that takes (width, height).
  * @property {Array<{ glsl: string, kind: string }>} uniforms
- * @property {Array<Record<string, number | boolean>>} sets  Uniform values by shader name, one entry per run.
+ * @property {Array<Record<string, number | boolean | EncodedImage>>} sets  Uniform values by shader name, one entry per run; a `sampler2D`'s is an EncodedImage.
  */
+
+/**
+ * An image as it crosses into the page: its size and its RGBA bytes (row 0 the bottom, as a SamplerImage's) as base64.
+ * @typedef {{ width: number, height: number, rgba: string }} EncodedImage
+ */
+
+/** @import { SamplerImage } from "../interp/interp.js" */
 
 /**
  * @typedef {object} ShaderResult
@@ -104,6 +111,8 @@ export function renderJobs(gl, jobs) {
     const sets = [];
     for (const values of job.sets) {
       if (resolution) gl.uniform2f(resolution, job.width, job.height);
+      /** @type {WebGLTexture[]} */
+      const images = [];
       for (const u of job.uniforms) {
         const loc = gl.getUniformLocation(program, u.glsl);
         if (!loc) continue;
@@ -112,6 +121,8 @@ export function renderJobs(gl, jobs) {
         if (u.kind === "float") gl.uniform1f(loc, Number(v));
         else if (u.kind === "int") gl.uniform1i(loc, Number(v));
         else if (u.kind === "bool") gl.uniform1i(loc, v ? 1 : 0);
+        // Unit 0 holds the output texture, so images take units from 1.
+        else if (u.kind === "sampler2D") images.push(bindImage(gl, loc, images.length + 1, /** @type {EncodedImage} */ (v)));
         else throw new Error(`${job.id}: uniform ${u.glsl} has kind ${u.kind}, which the harness does not set`);
       }
       gl.clearColor(0, 0, 0, 0);
@@ -120,6 +131,8 @@ export function renderJobs(gl, jobs) {
       const pixels = new Float32Array(job.width * job.height * 4);
       gl.readPixels(0, 0, job.width, job.height, gl.RGBA, gl.FLOAT, pixels);
       sets.push(pixels);
+      for (const t of images) gl.deleteTexture(t);
+      gl.activeTexture(gl.TEXTURE0);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(fbo);
@@ -127,6 +140,55 @@ export function renderJobs(gl, jobs) {
     gl.deleteProgram(program);
     return { id: job.id, error: null, sets };
   });
+}
+
+/**
+ * Uploads an image uniform's value as an RGBA8 texture on `unit` and points the sampler at it: NEAREST filtering and
+ * CLAMP_TO_EDGE, the convention the fields Dialect's `sample` reference implements, and rows uploaded as given (no
+ * flip), so row 0 is the bottom, at t = 0.
+ * @param {WebGL2RenderingContext} gl
+ * @param {WebGLUniformLocation} loc
+ * @param {number} unit
+ * @param {EncodedImage} encoded
+ * @returns {WebGLTexture}
+ */
+function bindImage(gl, loc, unit, encoded) {
+  const img = decodeImage(encoded);
+  const texture = /** @type {WebGLTexture} */ (gl.createTexture());
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, img.width, img.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, /** @type {Uint8Array} */ (img.data));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.uniform1i(loc, unit);
+  return texture;
+}
+
+/**
+ * An image as it crosses into the page: its bytes, base64.
+ * @param {SamplerImage} img
+ * @returns {EncodedImage}
+ */
+export function encodeImage(img) {
+  const bytes = Uint8Array.from(img.data);
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { width: img.width, height: img.height, rgba: btoa(s) };
+}
+
+/**
+ * @param {EncodedImage} e
+ * @returns {SamplerImage & { data: Uint8Array }}
+ */
+export function decodeImage(e) {
+  const s = atob(e.rgba);
+  const data = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) data[i] = s.charCodeAt(i);
+  return { width: e.width, height: e.height, data };
 }
 
 /**

@@ -179,7 +179,8 @@ export function check(program, style) {
   const samples = [];
   if (ok && lowered.kernel) {
     const helpers = Object.fromEntries(lowered.helpers.filter((h) => h.kind === "fn" && h.result.kernel).map((h) => [h.name, /** @type {Kernel} */ (h.result.kernel)]));
-    const u = { ...Object.fromEntries(Object.entries(program.params).map(([k, d]) => [k, d.value])), t: 0, aspect: SAMPLE_ASPECT };
+    // A trial's sketch has no image param (the trial predates them); one would read undefined and fail its samples.
+    const u = { ...Object.fromEntries(Object.entries(program.params).map(([k, d]) => [k, "value" in d ? d.value : undefined])), t: 0, aspect: SAMPLE_ASPECT };
     for (const uv of SAMPLES) {
       try {
         samples.push({ uv: [...uv], color: /** @type {number[]} */ (run(lowered.kernel, [[...uv], u], { helpers, intrinsics: INTRINSICS })) });

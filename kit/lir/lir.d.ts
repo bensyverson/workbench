@@ -4,8 +4,12 @@
 
 import type { Span } from "../ir/ir.js";
 
-/** A value type. No f64, and a vector is always of f32 (a Dialect's `color` is a `vec3` here). */
-export type LType = "f32" | "i32" | "bool" | { vec: 2 | 3 | 4 };
+/**
+ * A value type. No f64, and a vector is always of f32 (a Dialect's `color` is a `vec3` here). `sampler` is the core's
+ * handle onto an image (a GLSL `sampler2D`): only a uniform or a parameter has it, and it stands only as an argument of
+ * a `call` or a `helper`, never as a local, an operand, a condition's arm or a return.
+ */
+export type LType = "f32" | "i32" | "bool" | "sampler" | { vec: 2 | 3 | 4 };
 
 /** How a target spells an intrinsic: a call template (`$0`, `$1` are the arguments) and text it needs defined first. */
 export interface Spelling {

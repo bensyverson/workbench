@@ -74,13 +74,13 @@ function declareUniforms(state) {
 const objectName = (t) => (typeof t === "object" && "obj" in t ? t.obj : null);
 
 /**
- * What a uniform of core type `t` is in the LIR, or null when none: an f32, a bool, a choice (an index), a vector of f32,
- * or an f64 the host supplies and the upload narrows.
+ * What a uniform of core type `t` is in the LIR, or null when none: an f32, a bool, a sampler, a choice (an index), a
+ * vector of f32, or an f64 the host supplies and the upload narrows.
  * @param {Type} t
  * @returns {{ t: LType, options?: string[], host?: "f64" } | null}
  */
 function uniformType(t) {
-  if (t === "f32" || t === "bool") return { t };
+  if (t === "f32" || t === "bool" || t === "sampler") return { t };
   if (t === "f64") return { t: "f32", host: "f64" };
   if (typeof t === "object" && "enum" in t && t.declared) return { t: "i32", options: [...t.enum] };
   if (typeof t === "object" && "vec" in t && t.of === "f32") return { t: { vec: t.vec } };
@@ -104,7 +104,7 @@ function lowerKernel(state, k, functions, isMain) {
   for (const p of k.params) {
     const owner = objectName(p.t);
     if (isMain && owner !== null && state.input.uniforms[owner]) { cx.uniformParams.set(p.name, owner); continue; }
-    const t = cx.type(p.t, k.span, `parameter ${p.name}`);
+    const t = cx.type(p.t, k.span, `parameter ${p.name}`, true);
     const v = { name: safeName(p.name, taken), t };
     cx.vars.set(p.name, v);
     if (t) params.push({ name: v.name, t });

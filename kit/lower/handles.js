@@ -4,7 +4,10 @@
 // helper, a Dialect method such as DMG's `w.overlap(self, b)`, an intrinsic, a keyed call), whose own type check
 // still applies; a callable one is only called. A value of object type that is not a handed-in name (`const m = w.spawn(…)`, a query callback's
 // item) is not a handle. A helper's own parameter of object type is a handle inside the helper, whatever a call
-// site passes it, so the rule holds however far a handle is passed.
+// site passes it, so the rule holds however far a handle is passed. A sampler (kit/ir) is stricter: a sampler read,
+// a uniform's or a helper parameter's, is only passed whole as a call's argument (`refuseSampler`).
+
+import { isSampler } from "../ir/verify-rules.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Type } from "../ir/ir.js" */
@@ -33,7 +36,8 @@ export function handleRoles(root) {
     if (n.type === "MemberExpression" && n.object.type === "Identifier") roles.set(n.object, { role: "member" });
     if (n.type === "CallExpression") {
       if (n.callee.type === "Identifier") roles.set(n.callee, { role: "callee" });
-      for (const a of n.arguments) if (a.type === "Identifier") roles.set(a, { role: "arg" });
+      // A member read passed whole (`sample(u.atlas, p)`) is where a sampler may stand (`refuseSampler`).
+      for (const a of n.arguments) if (a.type === "Identifier" || a.type === "MemberExpression") roles.set(a, { role: "arg" });
     }
     if (n.type === "AssignmentExpression" && n.left.type === "Identifier") roles.set(n.left, { role: "target" });
     if (n.type === "UpdateExpression" && n.argument.type === "Identifier") roles.set(n.argument, { role: "target" });
@@ -54,6 +58,39 @@ function objectOf(t) {
 }
 
 /**
+ * The tip for a sampler used other than passed whole: the calls that take one, from the Environment's callable
+ * globals (fields' `sample(img, …)`, `imageSize(img)`), and a helper.
+ * @param {Lowerer} L
+ * @param {string} text  How the source wrote the sampler.
+ */
+function samplerTip(L, text) {
+  const takers = Object.entries(L.environment.globals).flatMap(([name, t]) => {
+    const sig = typeof t === "object" && "obj" in t ? L.environment.objects[t.obj]?.call : undefined;
+    if (!sig || !sig.params.some(isSampler)) return [];
+    return [`${name}(${sig.params.map((p) => (isSampler(p) ? text : "…")).join(", ")})`];
+  });
+  return `A sampler is only passed whole as an argument of a call: ${[...takers, `f(${text})`].join(", ")}. It cannot be stored, returned, compared, tested, chosen by a ternary or read as an object.`;
+}
+
+/**
+ * Reports L018 when `node`, a sampler read (`u.atlas`, or a helper's sampler parameter), stands anywhere but as an
+ * argument of a call: a sampler is only sampled (kit/ir's rule, which GLSL's opaque types share). Returns whether it
+ * was refused.
+ * @param {Lowerer} L
+ * @param {AST.Node} node
+ * @param {Type} t
+ */
+export function refuseSampler(L, node, t) {
+  if (!isSampler(t)) return false;
+  const r = L.handleRoles.get(node);
+  if (r?.role === "arg") return false;
+  if (r?.role === "target") return false; // a store to it is the store rules' own L013
+  const text = L.src.slice(node.range[0], node.range[1]);
+  L.error("L018", node, `'${text}' is a sampler; it cannot be used as a value here.`, samplerTip(L, text));
+  return true;
+}
+
+/**
  * Reports L018 when `node`, which names a handle of type `t`, stands where a handle may not. Returns whether it
  * was refused.
  * @param {Lowerer} L
@@ -62,6 +99,7 @@ function objectOf(t) {
  * @param {"param" | "global"} kind
  */
 export function refuseHandle(L, node, t, kind) {
+  if (isSampler(t)) return refuseSampler(L, node, t);
   const owner = objectOf(t);
   if (owner === null) return false;
   const callable = Boolean(L.environment.objects[owner]?.call);

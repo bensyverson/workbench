@@ -6,7 +6,9 @@ import { coverage } from "../dialects/fields/programs/coverage.js";
 
 /** @import { FieldProgram } from "../dialects/fields/decls.js" */
 
-/** @typedef {Record<string, number | string | boolean>} ParamValues */
+/** @import { SamplerImage } from "../interp/interp.js" */
+
+/** @typedef {Record<string, number | string | boolean | SamplerImage>} ParamValues */
 
 /**
  * A case's GLSL figure, when it must differ from the target's: stated with the reason, which is required.
@@ -38,14 +40,30 @@ export function pixelUv(i, j, width, height) {
   return [(i + 0.5) / width, (j + 0.5) / height];
 }
 
+/** The side of the image every image param gets by default: a power of two, so no pixel center of a recorded grid lands on a texel edge when sampled at `uv`. */
+export const TEST_IMAGE_SIZE = 16;
+
 /**
- * The declared defaults of a program's params, with `t` and `aspect`.
+ * A recorded test image: every texel and channel a different byte, so a read of the wrong texel or channel shows. Row 0 is
+ * the bottom, as a SamplerImage's is.
+ * @param {number} width
+ * @param {number} height
+ * @returns {SamplerImage}
+ */
+export function testImage(width, height) {
+  const data = new Uint8Array(width * height * 4);
+  for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) for (let c = 0; c < 4; c++) data[(j * width + i) * 4 + c] = (i * 53 + j * 97 + c * 61 + i * j * 7) % 256;
+  return { width, height, data };
+}
+
+/**
+ * The declared defaults of a program's params, with `t` and `aspect`; an image param gets the recorded test image.
  * @param {FieldProgram} program
  * @param {number} aspect
  * @returns {ParamValues}
  */
 function defaults(program, aspect) {
-  return { ...Object.fromEntries(Object.entries(program.params).map(([k, d]) => [k, d.value])), t: 0, aspect };
+  return { ...Object.fromEntries(Object.entries(program.params).map(([k, d]) => [k, "image" in d ? testImage(TEST_IMAGE_SIZE, TEST_IMAGE_SIZE) : d.value])), t: 0, aspect };
 }
 
 /**

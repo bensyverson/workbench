@@ -145,7 +145,7 @@ test("emitted source is the same for DMG-shaped kernels: no prelude, no rounding
  * @param {string} src  A pixel lambda `(uv, u) => ...`.
  */
 function lowered(src) {
-  const r = lowerField(field("t").param("k", { value: 2, min: 0, max: 8 }).pixel(src).build());
+  const r = lowerField(field("t").param("k", { value: 2, min: 0, max: 8 }).param("img", { image: true }).pixel(src).build());
   assert.deepEqual(r.pixel.diagnostics.map((d) => d.message), [], src);
   /** @type {Record<string, Kernel>} */
   const helpers = {};
@@ -168,7 +168,9 @@ test("a loop over an f32 counter, with f32 and vector accumulators, rounds each 
 });
 
 const UVS = [[0.1, 0.9], [-1.5, 2.25], [1 / 3, 1e3], [0, 0]];
-const U = { k: 2.7, t: 0.35, aspect: 1.5 };
+/** A 3 by 2 image whose every byte differs, for `sample` and `imageSize`. */
+const IMG = { width: 3, height: 2, data: Array.from({ length: 3 * 2 * 4 }, (_, n) => (n * 41 + 7) % 256) };
+const U = { k: 2.7, t: 0.35, aspect: 1.5, img: IMG };
 
 /** Each intrinsic in the shapes it takes: `s` has a scalar result, `v` a vec2 one. */
 const INTRINSIC_PIXELS = /** @type {Record<string, Array<["s" | "v", string]>>} */ ({
@@ -191,6 +193,9 @@ const INTRINSIC_PIXELS = /** @type {Record<string, Array<["s" | "v", string]>>} 
   vdiv: [["s", "vdiv(uv.x, u.k)"], ["v", "vdiv(uv, vec2(3, 7))"]],
   vscale: [["s", "vscale(uv.x, u.k)"], ["v", "vscale(uv, 0.3)"]],
   vneg: [["s", "vneg(uv.x)"], ["v", "vneg(uv)"]],
+  // Reading an image param: UVS reaches inside the image and past its edges.
+  sample: [["v", "vec2(sample(u.img, uv).x, sample(u.img, uv * 0.4).w)"]],
+  imageSize: [["v", "imageSize(u.img)"]],
 });
 
 test("every fields intrinsic is tested here", () => {

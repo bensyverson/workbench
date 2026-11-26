@@ -52,7 +52,7 @@ function agree(program, uniforms) {
   return n;
 }
 
-const DEFAULTS = (/** @type {FieldProgram} */ p) => Object.fromEntries(Object.entries(p.params).map(([k, d]) => [k, d.value]));
+const DEFAULTS = (/** @type {FieldProgram} */ p) => Object.fromEntries(Object.entries(p.params).map(([k, d]) => [k, "value" in d ? d.value : undefined]));
 
 test("the fields Dialect's JS target is compared exactly", () => {
   assert.deepEqual(FIELDS_DIALECT.targets.js.compare, { kind: "exact" });

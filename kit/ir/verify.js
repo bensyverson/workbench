@@ -7,7 +7,7 @@
 import { assignable, join, sameType, strictJoin, itemAt, optional, showType } from "./types.js";
 import { formatJSON, jsonDifference } from "./json.js";
 import { shapeProblems } from "./verify-shape.js";
-import { typeProblem, OPS, EFFECT_VERBS, ownerOf, storeFits, unbounded } from "./verify-rules.js";
+import { typeProblem, OPS, EFFECT_VERBS, ownerOf, storeFits, unbounded, isSampler } from "./verify-rules.js";
 
 /** @import { Kernel, Expr, Stmt, Type, Span, Place, Local, Effect, EffectVerb, Op } from "./ir.js" */
 
@@ -139,6 +139,8 @@ class Checker {
     const k = this.k;
     if (!this.goodSpan(k.span)) this.report("V011", `The kernel's span ${JSON.stringify(k.span)} is not [start, end] inside its src.`, "span");
     this.type(k.returns, "returns", null);
+    if (isSampler(k.returns)) this.report("V002", "A kernel never returns a sampler: a sampler is only passed to a call.", "returns");
+    k.locals.forEach((l, i) => { if (isSampler(l.t)) this.report("V002", `'${l.name}' is a ${l.kind} of type sampler: only a parameter holds a sampler.`, `locals[${i}]`); });
     [...k.params.map((l, i) => /** @type {const} */ ([l, `params[${i}]`])), ...k.locals.map((l, i) => /** @type {const} */ ([l, `locals[${i}]`]))].forEach(([l, path]) => {
       this.type(l.t, `${path}.t`, null);
       if (this.declared.has(l.name)) this.report("V005", `'${l.name}' is declared twice among the kernel's parameters and locals.`, path);
@@ -244,15 +246,20 @@ class Checker {
    * Checks an expression and returns what evaluating it does.
    * @param {Expr} e
    * @param {string} path
+   * @param {boolean} [asArg]  Whether it stands as an argument of a call (`call`, `method`, `helper`): the one place a sampler may.
    * @returns {Effect[]}
    */
-  expr(e, path) {
+  expr(e, path, asArg = false) {
     this.span(e, path);
     this.type(e.t, `${path}.t`, e.span);
     /** @type {Effect[]} */
     const does = [];
-    const sub = (/** @type {Expr} */ c, /** @type {string} */ key) => { does.push(...this.expr(c, `${path}.${key}`)); return c; };
+    const sub = (/** @type {Expr} */ c, /** @type {string} */ key, /** @type {boolean} */ arg = false) => { does.push(...this.expr(c, `${path}.${key}`, arg)); return c; };
     const bad = (/** @type {string} */ message) => this.report("V002", message, path, e.span);
+    if (isSampler(e.t)) {
+      if (!asArg) bad("A sampler stands only as an argument of a call; it is not an operand, a condition's arm, a value to hold or return, or a receiver.");
+      else if (e.k !== "load" && e.k !== "local") bad(`A sampler is a load of a uniform or a parameter, not a ${e.k}.`);
+    }
     EXPR[e.k]({ c: this, e: /** @type {never} */ (e), sub, bad, does, path });
     return does;
   }
@@ -289,7 +296,7 @@ function showSafe(t) {
 }
 
 /**
- * @typedef {(e: Expr, key: string) => Expr} Sub
+ * @typedef {(e: Expr, key: string, asArg?: boolean) => Expr} Sub
  * @typedef {(message: string) => void} Bad
  */
 
@@ -332,19 +339,19 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
   },
   call: ({ c, e, sub, does, path }) => {
     if (e.recv) sub(e.recv, "recv");
-    e.args.forEach((a, i) => sub(a, `args[${i}]`));
+    e.args.forEach((a, i) => sub(a, `args[${i}]`, true));
     for (const f of e.effects) c.effectName(f, `${path}.effects`, e.span);
     does.push(...e.effects);
   },
   method: ({ c, e, sub, bad, does, path }) => {
     sub(e.recv, "recv");
-    e.args.forEach((a, i) => sub(a, `args[${i}]`));
+    e.args.forEach((a, i) => sub(a, `args[${i}]`, true));
     if (ownerOf(e.recv.t) !== e.owner) bad(`A method of ${e.owner} is called on ${showSafe(e.recv.t)}.`);
     for (const f of e.effects) c.effectName(f, `${path}.effects`, e.span);
     does.push(`call ${e.owner}.${e.name}`, ...e.effects);
   },
   helper: ({ c, e, sub, does, path }) => {
-    e.args.forEach((a, i) => sub(a, `args[${i}]`));
+    e.args.forEach((a, i) => sub(a, `args[${i}]`, true));
     for (const f of e.effects) c.effectName(f, `${path}.effects`, e.span);
     does.push(`call ${e.name}`, ...e.effects);
   },

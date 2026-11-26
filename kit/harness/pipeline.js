@@ -6,10 +6,12 @@ import { emitKernel, emitHelpers, instantiate } from "../emit/js/index.js";
 import { emitGlsl, fromLowering } from "../emit/glsl/index.js";
 import { run } from "../interp/index.js";
 import { lowerField, INTRINSICS, FIELDS_DIALECT } from "../dialects/fields/index.js";
+import { encodeImage } from "./gl.js";
 
 /** @import { Kernel } from "../ir/ir.js" */
 /** @import { FieldProgram } from "../dialects/fields/decls.js" */
 /** @import { GlslResult } from "../emit/glsl/index.js" */
+/** @import { EncodedImage } from "./gl.js" */
 
 /**
  * The Kernels of one Program: its pixel Kernel and the helpers beside it, by name.
@@ -96,18 +98,21 @@ export function prepare(program, plant) {
 
 /**
  * The values of one param set as the interpreter and the JS function take them (a choice by name), and as the
- * shader takes them (a choice by option index, a toggle as a boolean), keyed by uniform name.
+ * shader takes them (a choice by option index, a toggle as a boolean, an image as RGBA bytes in base64), keyed by uniform name.
  * @param {Pipeline} p
- * @param {Record<string, number | string | boolean>} values  Every uniform of the program: its params, `t` and `aspect`.
- * @returns {{ host: Record<string, unknown>, gl: Record<string, number | boolean> }}
+ * @param {import("./cases.js").ParamValues} values  Every uniform of the program: its params, `t` and `aspect`.
+ * @returns {{ host: Record<string, unknown>, gl: Record<string, number | boolean | EncodedImage> }}
  */
 export function uniformValues(p, values) {
-  /** @type {Record<string, number | boolean>} */
+  /** @type {Record<string, number | boolean | EncodedImage>} */
   const gl = {};
   for (const u of p.glsl.uniforms) {
     const v = values[u.param];
     if (v === undefined) throw new Error(`${p.program.name}: no value for uniform '${u.param}'`);
-    if (u.options) {
+    if (u.kind === "sampler2D") {
+      if (typeof v !== "object") throw new Error(`${p.program.name}: '${u.param}' is an image param, and its value is ${typeof v}, not an image`);
+      gl[u.glsl] = encodeImage(v);
+    } else if (u.options) {
       const i = u.options.indexOf(/** @type {string} */ (v));
       if (i < 0) throw new Error(`${p.program.name}: '${String(v)}' is not an option of '${u.param}'`);
       gl[u.glsl] = i;

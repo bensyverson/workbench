@@ -58,6 +58,28 @@ const IHASH_GLSL = `float ihash(float x, float y, float s) {
 }
 `;
 
+/**
+ * The texel of `img` (a SamplerImage, kit/interp: bytes, row 0 the bottom) nearest the point `(x, y)` of the unit
+ * square, with the coordinates clamped to the edge (GL's NEAREST and CLAMP_TO_EDGE), as four channels in 0..1. A NaN
+ * coordinate reads texel 0 (GLSL leaves it undefined).
+ * @param {import("../../interp/interp.js").SamplerImage} img @param {number} x @param {number} y
+ * @returns {number[]}
+ */
+function sampleRef(img, x, y) {
+  const at = (/** @type {number} */ v, /** @type {number} */ n) => Math.min(n - 1, Math.max(0, Math.floor(v * n))) || 0;
+  const k = (at(y, img.height) * img.width + at(x, img.width)) * 4;
+  return [0, 1, 2, 3].map((c) => img.data[k + c] / 255);
+}
+
+/** The same in the JS backend's spelling, written out so the generated code needs no import. */
+const SAMPLE_JS = `function sample(img, p) {
+  const i = Math.min(img.width - 1, Math.max(0, Math.floor(p[0] * img.width))) || 0;
+  const j = Math.min(img.height - 1, Math.max(0, Math.floor(p[1] * img.height))) || 0;
+  const k = (j * img.width + i) * 4, d = img.data;
+  return [d[k] / 255, d[k + 1] / 255, d[k + 2] / 255, d[k + 3] / 255];
+}
+`;
+
 /** The Dialect's intrinsics, by the name a lambda calls. */
 export const intrinsics = /** @type {Record<string, IntrinsicDef>} */ ({
   floor: generic(1, 0, Math.floor, "Math.floor($0)", "floor($0)"),
@@ -84,4 +106,9 @@ export const intrinsics = /** @type {Record<string, IntrinsicDef>} */ ({
     h ^= h >>> 16; h = Math.imul(h, 0x7feb352d); h ^= h >>> 15; h = Math.imul(h, 0x846ca68b); h ^= h >>> 16;
     return (h >>> 0) / 4294967296;
   }, spell: { js: spelled("ihash($0, $1, $2)", IHASH_JS), glsl: spelled("ihash($0, $1, $2)", IHASH_GLSL) } },
+  // Reading an image param (a sampler): the nearest texel to a point of the unit square, clamped to the edge, and the
+  // image's size in texels. The host binds the texture with NEAREST filtering and CLAMP_TO_EDGE (kit/emit/glsl).
+  sample: { params: ["sampler", "vec2"], returns: "vec4", ref: sampleRef, spell: { js: spelled("sample($0, $1)", SAMPLE_JS), glsl: "texture($0, $1)" } },
+  imageSize: { params: ["sampler"], returns: "vec2", ref: (img) => [img.width, img.height],
+    spell: { js: spelled("imageSize($0)", "const imageSize = (img) => [img.width, img.height];"), glsl: "vec2(textureSize($0, 0))" } },
 });

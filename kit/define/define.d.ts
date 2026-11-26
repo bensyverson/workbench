@@ -41,7 +41,8 @@ export interface IntrinsicDef {
   rest?: TypeDef;
   numeric?: "number" | "vector";
   componentwise?: boolean;
-  ref: (...args: number[]) => number;
+  /** On numbers; an argument that is no number (a sampler's image) is passed whole, and a vector result is an array of its components. */
+  ref: (...args: any[]) => number | number[];
   spell: Record<string, string | Spelling>;
 }
 
@@ -158,7 +159,8 @@ export type ConstantCalls = "none" | "pure";
 /** One intrinsic as the backends read it: the shape of kit/dialects/fields/intrinsics.js entries, one spelling per target. */
 export interface Intrinsic {
   sig: FnSig;
-  ref: (...args: number[]) => number;
+  /** On numbers; an argument that is no number (a sampler's image) is passed whole, and a vector result is an array of its components. */
+  ref: (...args: any[]) => number | number[];
   componentwise?: boolean;
   [target: string]: unknown;
 }

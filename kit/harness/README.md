@@ -22,11 +22,11 @@ r.glslVsInterp.at;                             // { kernel, line, text, jsLine, 
 
 | File | What it holds |
 |---|---|
-| `cases.js` | the recorded grids and param sets: `standardCases(scale)`, `stressCase()`, `coverageCase(scale)` (every intrinsic and call-style operator, in `programs/coverage.js` of the fields Dialect; not a standard case, so the recorded grids and fault counts are unchanged), `pixelUv` (the sampling convention) |
+| `cases.js` | the recorded grids and param sets: `testImage(width, height)` (the recorded image every image param gets by default, 16 texels square), `standardCases(scale)`, `stressCase()`, `coverageCase(scale)` (every intrinsic and call-style operator, in `programs/coverage.js` of the fields Dialect; not a standard case, so the recorded grids and fault counts are unchanged), `pixelUv` (the sampling convention) |
 | `pipeline.js` | `prepare(program, plant?)`: lowering, the three evaluators, and a planted fault; `uniformValues` (a choice is a name for the host and an option index for the shader) |
 | `evaluate.js`, `compare.js`, `locate.js` | a pixel function over a grid; the worst difference of two sets of buffers; the `return` that made a pixel, found again in the author's lambda and in both line maps |
 | `run.js` | `runCase`, and its parts (`referencePixels`, `compareJs`, `compareGlsl`, `shaderJob`); the `Render` type |
-| `gl.js`, `page.js`, `page.html` | the GLSL half: `renderJobs(gl, jobs)` compiles each shader and reads the pixels back (DOM-free, the context is handed in); `page.js` is the thin part that makes a canvas and sets `window.workbenchHarness` |
+| `gl.js`, `page.js`, `page.html` | the GLSL half: `renderJobs(gl, jobs)` compiles each shader and reads the pixels back (DOM-free, the context is handed in), binding each image uniform as an RGBA8 texture with NEAREST filtering and CLAMP_TO_EDGE on units from 1 (unit 0 holds the output); `encodeImage`/`decodeImage` carry an image across the page boundary as base64 bytes; `page.js` is the thin part that makes a canvas and sets `window.workbenchHarness` |
 | `target.js` | `glslFigure()`, `targetFigure(dialect, target)` and `figureFor(case)`: the figure comes from the Dialect's target declaration, and a case's override is checked here |
 | `faults.js`, `sensitivity.js` | planted faults and the run that plants each in each backend |
 
@@ -35,6 +35,7 @@ r.glslVsInterp.at;                             // { kernel, line, text, jsLine, 
 - **Pixels.** Column `i`, row `j` from the bottom, sampled at its center: `uv = ((i + 0.5) / width, (j + 0.5) / height)`, y up, as the GLSL backend's `gl_FragCoord.xy / wb_resolution` is; `readPixels` rows are bottom-up too, so nothing flips. `aspect` is a uniform set to width over height.
 - **Why grids avoid ties.** A pixel whose input lands *exactly* on a branch threshold (`pmod(x, 10) < 1` with `x` an integer) can fall on either side on a GPU and in the interpreter, which differ by a whole color, not a tolerance. A 75-pixel `swirl` panel does it (`(i + 0.5) * 150 / 75` is an integer); the recorded 150- and 74-pixel panels do not. Other scales tie too: `check --scale 0.3` (45 px) puts pixel (22, 16) on a threshold, 0.16 off. The CLI does not warn; pick a scale from the recorded ones, or read a failure at such a pixel as a tie before blaming a backend. A grid that has ties tests the sketch's discontinuities, not the backends.
 - **Color** is compared as `vec3` rgb; the shader's alpha must read back as exactly 1.
+- **Images.** An image param's value is a `SamplerImage` (row 0 the bottom): the interpreter and the JS function take it whole, the shader takes it as an `EncodedImage` (`uniformValues`'s `gl` half) that `gl.js` uploads without a flip. A case that sets none gets `testImage(16, 16)`. Planting `UNPACK_FLIP_Y_WEBGL` true in `gl.js` makes the coverage case fail on the GPU (checked by hand, 2026-11-26, leaf LUSPEC); no recorded fault plants it.
 - **The reference is always the interpreter.** A fault planted in one backend leaves the interpreter untouched, so the pair that holds the faulty backend is the one expected to differ.
 
 ## What a report can and cannot say
@@ -49,4 +50,4 @@ The GLSL target declares `compare: { kind: "tolerance", figure: 1e-3 }` in `FIEL
 
 ## Tests
 
-`test/`: the pairs' arithmetic (`compare.test.js`), the pipeline, the sampling convention and `locate` (`pipeline.test.js`), the fault mutators (`faults.test.js`), and the fast half of the harness (`agree.test.js`: all three sketches over every param set at a small grid, JS exactly; the JS half of the planted-fault run; and the coverage case, which must call every name in `INTRINSICS`, JS exactly). The GLSL half is in [scripts/shader-diff/prerelease](../../scripts/shader-diff/prerelease/glsl.prerelease.js), because it needs `sleepy` and takes about a minute.
+`test/`: the pairs' arithmetic (`compare.test.js`), the pipeline, the sampling convention and `locate` (`pipeline.test.js`), the fault mutators (`faults.test.js`), and the fast half of the harness (`agree.test.js`: all three sketches over every param set at a small grid, JS exactly; the JS half of the planted-fault run; and the coverage case, which must call every name in `INTRINSICS`, JS exactly). `sampler.test.js` is the image plumbing: the test image, the encoding, the coverage case's image param, and `renderJobs`'s texture setup against a recording fake context. The GLSL half is in [scripts/shader-diff/prerelease](../../scripts/shader-diff/prerelease/glsl.prerelease.js), because it needs `sleepy` and takes about a minute.

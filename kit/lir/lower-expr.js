@@ -24,10 +24,15 @@ const isF64 = (t) => t === "f64" || (typeof t === "object" && "vec" in t && t.of
 /**
  * @param {Ctx} cx
  * @param {Expr} e
+ * @param {boolean} [asArg]  Whether it is an argument of a call or a helper: the one place a sampler may stand.
  * @returns {LExpr | null}
  */
-export function lowerExpr(cx, e) {
+export function lowerExpr(cx, e, asArg = false) {
   const span = e.span;
+  if (e.t === "sampler" && !asArg) {
+    cx.report("R002", "it uses a sampler other than as an argument of a call (held, compared, chosen by a ternary or returned), and a sampler is only passed whole", span);
+    return null;
+  }
   switch (e.k) {
     case "num": {
       if (e.t !== "f32") return cx.f64(`the literal ${e.v}, outside an f32 conversion`, span);
@@ -206,7 +211,7 @@ function call(cx, e) {
   if (!bare) { cx.report("R002", `it calls ${e.fn} on a receiver, and only a Dialect's bare intrinsics have a spelling`, span); return null; }
   const spelling = cx.state.spell(e.fn);
   if (!spelling) { cx.report("R003", `it calls ${e.fn}, an intrinsic with no GLSL spelling`, span); return null; }
-  const args = e.args.map((a) => lowerExpr(cx, a));
+  const args = e.args.map((a) => lowerExpr(cx, a, true));
   const t = cx.type(e.t, span, `the result of ${e.fn}`);
   return t && args.every((a) => a !== null) ? bound(cx, e.fn, spelling, /** @type {LExpr[]} */ (args), t, span) : null;
 }
@@ -219,7 +224,7 @@ function call(cx, e) {
  */
 function helper(cx, e) {
   const { span } = e;
-  const args = e.args.map((a) => lowerExpr(cx, a));
+  const args = e.args.map((a) => lowerExpr(cx, a, true));
   const t = cx.type(e.t, span, `the result of ${e.name}`);
   const callee = cx.state.kernels.get(e.name);
   if (!callee) { cx.report("R004", `it calls ${e.name}, which is not a helper of this program`, span); return null; }

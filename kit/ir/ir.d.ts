@@ -12,6 +12,12 @@ export type Span = [number, number];
  */
 export type Type =
   | "f64" | "f32" | "bool" | "str" | "null" | "void"
+  /**
+   * A handle onto an image a Kernel only samples (a Dialect's intrinsic reads it, as fields' `sample`). Opaque: no
+   * operator, field or condition takes it, and nothing holds it. A sampler value is a load of a read-only place (a
+   * uniform) or a Kernel parameter, and it stands only as an argument of a call; a type never holds one inside it.
+   */
+  | "sampler"
   /** The type of an expression that already failed to lower; it silences cascades. */
   | "unknown"
   /** One of a fixed set of strings: sprite names, choice options, buttons. `declared` marks a dialect's enum, which is nominal; the enum of a string literal has no mark. */

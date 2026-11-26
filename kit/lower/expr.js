@@ -8,7 +8,7 @@ import { call, reachable } from "./call.js";
 import { assign, update } from "./assign.js";
 import { scalarBinary, scalarTest, refuse as refuseScalar } from "./scalar.js";
 import { nullCheck, nullCheckOf, nullFacts } from "./nullcheck.js";
-import { refuseHandle } from "./handles.js";
+import { refuseHandle, refuseSampler } from "./handles.js";
 import { wide, infinite, asScalar, settle, isUntyped, scalarOf, clash, mixTip, typedBinary, components, componentOf, isNumericName, vectorTip, own } from "./numeric.js";
 
 /** @import * as AST from "../parse/ast.js" */
@@ -97,7 +97,8 @@ export function expr(L, node, expected) {
       if (node.computed) return index(L, node);
       const r = resolveMember(L, node);
       if (!r) return bad(node);
-      return valueOf(L, r, node);
+      const v = valueOf(L, r, node);
+      return refuseSampler(L, node, v.t) ? bad(node) : v;
     }
     case "CallExpression": return call(L, node);
     case "UnaryExpression": {

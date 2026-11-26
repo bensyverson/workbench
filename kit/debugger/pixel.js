@@ -30,6 +30,7 @@ export function pixelOfUv(uv, w, h) {
 
 /**
  * The uniforms object a pixel lambda reads as `u`: each param's default, `t` (0) and `aspect` (1), then `overrides`.
+ * An image param has no default, so its value must be among the overrides (a SamplerImage, kit/interp).
  * @param {FieldProgram} program
  * @param {Record<string, unknown>} [overrides]
  * @returns {Record<string, unknown>}
@@ -37,6 +38,10 @@ export function pixelOfUv(uv, w, h) {
 export function uniformsFor(program, overrides = {}) {
   /** @type {Record<string, unknown>} */
   const u = { t: 0, aspect: 1 };
-  for (const [name, p] of Object.entries(program.params)) u[name] = p.value;
+  for (const [name, p] of Object.entries(program.params)) {
+    if ("image" in p) {
+      if (!Object.hasOwn(overrides, name)) throw new Error(`image param '${name}' has no default: pass its image in overrides ({ ${name}: { width, height, data } })`);
+    } else u[name] = p.value;
+  }
   return { ...u, ...overrides };
 }
