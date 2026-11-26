@@ -103,6 +103,8 @@ ports: { out: {
 
 - **An output reads the run's state**, the one the Dialect's `state` declares, `checkState` checks and the UI's views read. `from` is either a path (as the UI's paths are) or a value lambda `(s) => …`, lowered and typed exactly as a UI value lambda is (same rules, same L codes, no list queries). Reusing the UI's machinery means a port adds no new runtime contract: the host already commits that state after each step.
 - **An Event output is a state list the host refills each step** with what happened during it, and clears at the start of the next. The kit snapshots the list when the host commits. This is the one rule a host author must know; the Dialect's reference prints it beside the port.
+> **See also 2026-11-25:** [the clocks draft](2026-11-25-clocks-draft.md) (question 3) proposes that a runtime pushes Event records in its `step` instead of refilling a state list, so an Event output would have no `from`.
+
 - `note` is required for a tagged or Event port and optional otherwise. It is what a composer reads to decide what to wire, and the package reference prints it.
 
 ### Inputs
