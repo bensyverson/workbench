@@ -10,7 +10,7 @@
  * A parsed seam type.
  * @typedef {{ kind: "scalar", of: "f64" | "bool" | "str" }
  *   | { kind: "quantity", frame: string, rate?: true }
- *   | { kind: "point", dims: 2 | 3, frame: string }
+ *   | { kind: "point", dims: 1 | 2 | 3, frame: string }
  *   | { kind: "vector", dims: 2 | 3, frame: string | null, rate?: true }
  *   | { kind: "enum", values: string[] }
  *   | { kind: "record", fields: Record<string, Seam> }
@@ -72,6 +72,7 @@ export function parseSeam(text) {
       while (peek() !== "}") {
         const f = next();
         if (!IDENT.test(f)) throw new SeamSyntax(`a record field is a name, not '${f || "the end"}'`);
+        if (f === "__proto__") throw new SeamSyntax("a record field cannot be named __proto__");
         if (Object.hasOwn(fields, f)) throw new SeamSyntax(`the record has the field '${f}' twice`);
         expect(":");
         fields[f] = type(false);
@@ -97,6 +98,7 @@ export function parseSeam(text) {
       next();
       const f = next();
       if (!IDENT.test(f)) throw new SeamSyntax(`a frame after @ is a name, not '${f || "the end"}'`);
+      if (f === "__proto__") throw new SeamSyntax("a frame cannot be named __proto__");
       return f;
     };
     /** A trailing `/s`: whether the leaf is a rate. @param {string | null} f  its frame */
@@ -118,18 +120,19 @@ export function parseSeam(text) {
       if (peek() === "/") throw new SeamSyntax(`${t} cannot be a rate; only f64 and vectors change per second`);
       return { kind: "scalar", of: t };
     }
-    const m = /^(point|vec)([23])$/.exec(t);
-    if (m) {
-      const dims = /** @type {2 | 3} */ (Number(m[2]));
+    const m = /^(point|vec)([123])$/.exec(t);
+    if (m && !(m[1] === "vec" && m[2] === "1")) {
+      const dims = /** @type {1 | 2 | 3} */ (Number(m[2]));
       const f = tag();
       if (m[1] === "point") {
         if (f === null) throw new SeamSyntax(`a point is a position in a frame: write ${t}@<frame>`);
         if (peek() === "/") throw new SeamSyntax(`a point is a place, so it has no rate; a velocity is a vector: vec${dims}@${f}/s`);
         return { kind: "point", dims, frame: f };
       }
-      return per(f) ? { kind: "vector", dims, frame: f, rate: true } : { kind: "vector", dims, frame: f };
+      const vdims = /** @type {2 | 3} */ (dims);
+      return per(f) ? { kind: "vector", dims: vdims, frame: f, rate: true } : { kind: "vector", dims: vdims, frame: f };
     }
-    throw new SeamSyntax(`'${t || "the end"}' is not a seam type; use f64, bool, str, f64@frame, point2@frame, point3@frame, vec2, vec3 (optionally @frame), an enum ('a' | 'b'), a record ({ … }), list<T, max> or Event<{ … }>`);
+    throw new SeamSyntax(`'${t || "the end"}' is not a seam type; use f64, bool, str, f64@frame, point1@frame, point2@frame, point3@frame, vec2, vec3 (optionally @frame), an enum ('a' | 'b'), a record ({ … }), list<T, max> or Event<{ … }>`);
   };
   try {
     const out = type(true);
@@ -228,6 +231,7 @@ export function pairLocal(seam, local) {
       return local === "str" || (typeof local === "object" && "enum" in local) ? null : want('"str"');
     case "quantity": return isF64(local) ? null : want('"f64"');
     case "point": case "vector":
+      if (seam.kind === "point" && seam.dims === 1) return isF64(local) ? null : want('"f64"');
       return typeof local === "object" && "vec" in local && local.vec === seam.dims && local.of === "f64" ? null : want(`a vector(${seam.dims}, "f64") type`);
     case "enum": {
       if (!(typeof local === "object" && "enum" in local)) return want(`enumOf([${seam.values.map((v) => JSON.stringify(v)).join(", ")}])`);
@@ -294,7 +298,9 @@ export function compareSeams(from, to) {
       return;
     }
     const f64 = (/** @type {Seam} */ s) => s.kind === "scalar" && s.of === "f64";
-    if ((f64(a) && b.kind === "quantity") || (a.kind === "quantity" && f64(b))) {
+    // a 1-D point is one number in a frame, so an untagged f64 on its other side has the same S252 problem as a quantity's
+    const measured = (/** @type {Seam} */ s) => s.kind === "quantity" || (s.kind === "point" && s.dims === 1);
+    if ((f64(a) && measured(b)) || (measured(a) && f64(b))) {
       add("S252", `${where(field)} is ${printSeam(a)} and the input takes ${printSeam(b)}: ${f64(a) ? "the output is untagged" : "the input is untagged"}, so no frame says how to convert it`);
       return;
     }

@@ -113,7 +113,7 @@ export function lowerPorts(dialect, record) {
  * @returns {Type}
  */
 function builtVector(seam, src, returns) {
-  if (seam.kind !== "point" && seam.kind !== "vector") return returns;
+  if ((seam.kind !== "point" && seam.kind !== "vector") || seam.dims === 1) return returns;
   const items = typeof returns === "object" && "list" in returns && (returns.list === "f64" || (typeof returns.list === "object" && "scalar" in returns.list && returns.list.of === "f64"));
   if (!items) return returns;
   const parsed = parseLambda(src);

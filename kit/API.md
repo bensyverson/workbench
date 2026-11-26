@@ -143,7 +143,7 @@ The UI reads the **run's state your Dialect's `state` declares** (above): a path
 
 ## Seams: ports, frames and inputs
 
-A package that others may compose with declares what it **offers** and **accepts**, in seam types every package shares ([seam/README.md](seam/README.md)): `f64` `bool` `str`, a quantity `f64@cell`, a point `point2@cell`, a vector `vec2@cell` (or untagged `vec2`), a rate per second `vec2@px/s` or `f64@cell/s`, an enum `'coin' | 'key'`, a record `{ at: point2@cell }`, `list<T, max>`, and `Event<{ … }>` (the records one step produced). You never name another package: a composer wires your ports to a stranger's.
+A package that others may compose with declares what it **offers** and **accepts**, in seam types every package shares ([seam/README.md](seam/README.md)): `f64` `bool` `str`, a quantity `f64@cell`, a point `point2@cell` (or a 1-D position `point1@c`, such as a temperature), a vector `vec2@cell` (or untagged `vec2`), a rate per second `vec2@px/s` or `f64@cell/s`, an enum `'coin' | 'key'`, a record `{ at: point2@cell }`, `list<T, max>`, and `Event<{ … }>` (the records one step produced). You never name another package: a composer wires your ports to a stranger's.
 
 ```js
 frames: {                                         // the spaces and units you measure in; different packages' frames never unify by name
@@ -168,7 +168,7 @@ inputs: { object: "In", name: "inp" },            // value inputs, read as inp.r
 ```
 
 - **A note is required** on a tagged or Event port: it is what a composer reads to decide what to wire (D024).
-- **Pairing.** A port's local type must have its seam's structure: a `point2@cell` output's state is a `vector(2, "f64")`, a record a `struct` with the same fields (D027). An output lambda may build a point or vector as an array literal of exactly its dims. An input's point or vector reads as your one `vector` type of its dims; with several, say which with `type: "vec2"`.
+- **Pairing.** A port's local type must have its seam's structure: a `point2@cell` output's state is a `vector(2, "f64")`, a record a `struct` with the same fields (D027). An output lambda may build a point or vector as an array literal of exactly its dims. A `point1` pairs with a plain `f64`. An input's point or vector reads as your one `vector` type of its dims; with several, say which with `type: "vec2"`.
 - **Triggers.** A Grammar names an input with `ref("in")`, checked by name (B003, with a did-you-mean); `ref("in", { kind: "event" })` takes only Event inputs, `{ kind: "value" }` only value inputs.
 - **Handles.** Every builder has read-only `.out.<port>`, `.in.<port>` and `.frame.<name>`, which a composer passes to kit/compose ([compose/README.md](compose/README.md)). So no slot or child construct may be named `out`, `in` or `frame` (D031).
 - An output lambda's result, `extent(record)` and `edges(record)` are checked when an example lowers (D027, D030), at your `defineDialect` line.

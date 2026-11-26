@@ -163,9 +163,12 @@ export function analyze(name, start, calls, options) {
   const wires = [];
   /** @type {Map<Handle, At>} */
   const wired = new Map();
+  /** The inputs the glue wired, however the wire fared: a wire refused for its producer or its output is that wire's problem, not a missing one. @type {Set<string>} */
+  const attempted = new Set();
   for (const c of calls) {
     if (c.kind !== "wire") continue;
     const at = c.at;
+    if (isHandle(c.to) && c.to.side === "in" && c.to.known && parts.has(c.to.program)) attempted.add(`${c.to.part}.${c.to.name}`);
     const both = callSides(c.from, c.to);
     const opts = wireOptions(c.options);
     if (typeof opts === "string") { add(at, "S102", `.wire(…, …, ${describe(c.options)}): ${opts}`, ".wire(a.out.x, b.in.y, { rename: { pos: \"at\" }, delay: true }), each optional", both); continue; }
@@ -202,6 +205,10 @@ export function analyze(name, start, calls, options) {
         const fa = `${pa.name}.frame.${leaf.from}`, fb = `${pb.name}.frame.${leaf.to}`;
         const da = graph.nodes.get(fromId), db = graph.nodes.get(toId);
         if (da !== db) { add(at, "S251", `${text}: ${field} is ${kind} in ${frameName(fromId)} (${da} dims); ${hi.name} takes ${kind} in ${frameName(toId)} (${db} dims), and no edge joins frames of different dims`, `wire an output measured in a frame of ${db} dims, or an input that takes one of ${da}; a .frame cannot join these two`, sides); continue; }
+        if (leaf.from === SECONDS || leaf.to === SECONDS) {
+          add(at, "S251", `${text}: ${field} is ${kind} in ${frameName(fromId)}; ${hi.name} takes ${kind} in ${frameName(toId)}, and no frame path joins them`, `the kit's s relates to no package frame (a .frame cannot name it, nor can a Dialect's edges); wire ports measured in s on both sides, or have ${leaf.from === SECONDS ? pb.name : pa.name} measure its time in s`, sides);
+          continue;
+        }
         const fit = pa.extents[leaf.from] && pb.extents[leaf.to];
         add(at, "S251", `${text}: ${field} is ${kind} in ${frameName(fromId)}; ${hi.name} takes ${kind} in ${frameName(toId)}, and no frame path joins them`, fit ? `write .frame(${fa}, ${fb}, "fit"), or give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … })` : `give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … }) ("fit" needs both frames to declare an extent)`, sides);
         continue;
@@ -219,16 +226,19 @@ export function analyze(name, start, calls, options) {
   for (const p of parts.values()) {
     if (broken.has(p)) continue;
     for (const i of Object.values(p.seams.in)) {
-      if (!i.required || [...wired.keys()].some((w) => w.program === p.program && w.name === i.name)) continue;
+      if (!i.required || attempted.has(`${p.name}.${i.name}`)) continue;
       add(p.at, "S113", `the required input ${p.name}.in.${i.name} (${i.seamText}) has no wire`, `wire one: .wire(<part>.out.<port>, ${p.name}.in.${i.name})`, { to: { ...partSide(p), port: `in.${i.name}`, seam: i.seamText } });
     }
   }
 
   // a cycle of wires needs one delayed wire in it; which wire the glue wrote last never decides it
   const order = [...parts.values()].map((p) => p.name);
-  for (const { loop, wires: ws } of undelayedLoops(order, wires.map((w) => ({ from: w.from.part, to: w.to.part, delay: w.delay, wire: w })))) {
-    const first = ws[0];
-    add(first.at, "S115", `the wires make a loop with no delay: ${loop.join(" → ")} (${ws.map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")}); each part would wait on the other within one instant`, `mark one wire of the loop delayed: .wire(${handleText(first.from)}, ${handleText(first.to)}, { delay: true }), so its consumer reads the previous instant's snapshot`, { from: side(first.from), to: side(first.to) });
+  for (const { loop, hops } of undelayedLoops(order, wires.map((w) => ({ from: w.from.part, to: w.to.part, delay: w.delay, wire: w, key: `${handleText(w.from)} ${handleText(w.to)}` })))) {
+    const first = hops[0][0];
+    /** @param {Wire[]} hop */
+    const calls = (hop) => hop.map((w) => `.wire(${handleText(w.from)}, ${handleText(w.to)}, { delay: true })`).join(" and ");
+    // delaying one of several parallel wires leaves the loop, so a fix delays all the wires of one hop
+    add(first.at, "S115", `the wires make a loop with no delay: ${loop.join(" → ")} (${hops.flat().map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")}); each part would wait on the other within one instant`, `mark every wire of one hop of the loop delayed, so its consumer reads the previous instant's snapshot: ${hops.map((hop, i) => `${loop[i]} → ${loop[i + 1]}: ${calls(hop)}`).join("; or ")}`, { from: side(first.from), to: side(first.to) });
   }
 
   // with the parts' runtimes, each reliable Event wire's queue is sized from the clocks and per-step maxes

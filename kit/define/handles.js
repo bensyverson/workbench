@@ -2,7 +2,7 @@
 // `.frame.<name>`, read-only, on any builder of a Program's chain. A handle names a port or a frame of one part
 // for kit/compose's `.wire` and `.frame`; it is not a value. Reading one as a number or a string (arithmetic, a
 // comparison, a template) records where on its Program, which kit/compose reports as S301. A handle tested as a
-// condition cannot be caught this way: an object is always truthy.
+// condition cannot be caught this way (an object is always truthy); kit/compose's scanGlue finds it in the glue's text.
 // The handles live here, inside kit/define, so a builder diagnostic still points at the author's line (site.js
 // skips this folder's frames); a wrapper around the builder would move every one into the wrapper's file.
 

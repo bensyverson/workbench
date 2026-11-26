@@ -22,6 +22,10 @@ const RECORD_KEYS = ["name", "slots"];
 const IDENT = /^[A-Za-z_$][\w$]*$/;
 /** The frames the kit declares for every package: one shared unit, seconds. */
 export const KIT_FRAMES = /** @type {Readonly<Record<string, Frame>>} */ (Object.freeze({ [SECONDS]: Object.freeze({ name: SECONDS, dims: 1, note: "seconds: the kit's one unit, the same in every package", extent: null }) }));
+/** Names a port or a frame may not take: `then` is probed on every object (a handle named so could not be read), `__proto__` is no plain key. */
+const UNNAMEABLE = ["then", "__proto__"];
+/** @param {string} n */
+const unnameableWhy = (n) => (n === "then" ? "is probed on every object by runtimes and test libraries, so a handle of that name could not be read; rename it" : "is not a usable object key; rename it");
 /** The delivery an Event input has when it declares none. */
 export const RELIABLE = "reliable";
 
@@ -63,6 +67,7 @@ export function declareSeams(def) {
     else for (const [n, f] of Object.entries(def.frames)) {
       const at = ["frames", n];
       if (!IDENT.test(n)) { add("D030", at, `the frame name '${n}' is not an identifier`, "rename the frame"); continue; }
+      if (UNNAMEABLE.includes(n)) { add("D030", at, `the frame name '${n}' ${unnameableWhy(n)}`, "rename the frame"); continue; }
       if (Object.hasOwn(KIT_FRAMES, n)) { add("D030", at, `the kit declares the frame '${n}' (${KIT_FRAMES[n].note}) for every package; a package names it without declaring it`, `remove frames.${n}; write f64@${n}, or a rate such as vec2@px/${n}`); declaredFrames.add(n); continue; }
       if (!isObj(f)) { add("D030", at, `frame '${n}' is { dims, note, extent? }, not ${show(f)}`, `${n}: { dims: 2, note: "…" }`); continue; }
       declaredFrames.add(n);
@@ -96,7 +101,7 @@ export function declareSeams(def) {
       const fr = (seam.kind === "point" || seam.kind === "vector") && seam.frame !== null ? frameNamed(seam.frame) : undefined;
       if (fr && (seam.kind === "point" || seam.kind === "vector") && fr.dims !== seam.dims) {
         ok = false;
-        add("D025", [...at, "seam"], `${what}: ${field ? `the field '${field}' is` : "the seam is"} ${printSeam(seam)}, but the frame '${fr.name}' has ${fr.dims} dims`, `write ${seam.kind === "point" ? "point" : "vec"}${fr.dims}@${fr.name}, or tag it with a frame of ${seam.dims} dims`);
+        add("D025", [...at, "seam"], `${what}: ${field ? `the field '${field}' is` : "the seam is"} ${printSeam(seam)}, but the frame '${fr.name}' has ${fr.dims} dims`, fr.dims === 1 && seam.kind === "vector" ? `a 1-D frame measures a position (point1@${fr.name}) or a quantity (f64@${fr.name}); a vector needs a frame of 2 or 3 dims` : `write ${seam.kind === "point" ? "point" : "vec"}${fr.dims}@${fr.name}, or tag it with a frame of ${seam.dims} dims`);
       }
     }
     return ok ? r.type : null;
@@ -122,6 +127,7 @@ export function declareSeams(def) {
         const at = ["ports", side, n];
         const what = `${side === "out" ? "output" : "input"} '${n}'`;
         if (!IDENT.test(n)) { add("D024", at, `the port name '${n}' is not an identifier`, "rename the port"); continue; }
+        if (UNNAMEABLE.includes(n)) { add("D024", at, `the port name '${n}' ${unnameableWhy(n)}`, "rename the port"); continue; }
         if (!isObj(p)) { add("D024", at, `${what} is { seam, … }, not ${show(p)}`, `${n}: { seam: "f64"${side === "out" ? `, from: "${n}"` : ", default: 0"} }`); continue; }
         keys(p, side === "out" ? OUT_KEYS : IN_KEYS, at, what, "D024");
         const seam = seamOf(p, at, what);
@@ -259,6 +265,7 @@ function localOf(def, type, seam, at, what, add) {
       }
       case "list": { const t = local(s.of, `${where}[]`); return t === undefined ? undefined : list(t, s.max); }
       case "point": case "vector": {
+        if (s.kind === "point" && s.dims === 1) return "f64";
         const found = vectors(s.dims);
         if (type !== undefined) {
           if (typeof type === "string" && found.includes(type)) return type;
@@ -280,7 +287,7 @@ function sampleDefault(s) {
   switch (s.kind) {
     case "scalar": return s.of === "f64" ? "0" : s.of === "bool" ? "false" : '""';
     case "quantity": return "1";
-    case "point": case "vector": return `[${Array(s.dims).fill(0).join(", ")}]`;
+    case "point": case "vector": return s.kind === "point" && s.dims === 1 ? "0" : `[${Array(s.dims).fill(0).join(", ")}]`;
     case "enum": return `"${s.values[0]}"`;
     case "record": return `{ ${Object.entries(s.fields).map(([k, f]) => `${k}: ${sampleDefault(f)}`).join(", ")} }`;
     case "list": return "[]";
@@ -294,7 +301,9 @@ export function fits(s, v) {
   switch (s.kind) {
     case "scalar": return s.of === "f64" ? (num(v) ? null : "it is not a finite number") : typeof v === (s.of === "bool" ? "boolean" : "string") ? null : `it is not a ${s.of === "bool" ? "boolean" : "string"}`;
     case "quantity": return num(v) ? null : "it is not a finite number";
-    case "point": case "vector": return Array.isArray(v) && v.length === s.dims && v.every(num) ? null : `it is not an array of ${s.dims} numbers`;
+    case "point": case "vector":
+      if (s.kind === "point" && s.dims === 1) return num(v) ? null : "it is not a finite number";
+      return Array.isArray(v) && v.length === s.dims && v.every(num) ? null : `it is not an array of ${s.dims} numbers`;
     case "enum": return typeof v === "string" && s.values.includes(v) ? null : `it is not one of ${s.values.map((x) => `'${x}'`).join(", ")}`;
     case "record": {
       if (!isObj(v)) return "it is not an object";

@@ -5,8 +5,11 @@ import { didYouMean } from "../define/codes.js";
 
 /** @import { Seam } from "../seam/seam.js" */
 
-/** The record a seam carries (an Event's, or a record value's), or null. @param {Seam} s */
-const recordOf = (s) => /** @type {(Seam & { kind: "record" }) | null} */ (s.kind === "event" ? s.of : s.kind === "record" ? s : null);
+/** The record a seam carries (an Event's, a list's items', or a record value's), or null. @param {Seam} s @returns {(Seam & { kind: "record" }) | null} */
+const recordOf = (s) => (s.kind === "event" || s.kind === "list" ? recordOf(s.of) : s.kind === "record" ? s : null);
+
+/** The same seam with its record replaced by `record`. @param {Seam} s @param {Seam} record @returns {Seam} */
+const withRecord = (s, record) => (s.kind === "event" ? { kind: "event", of: record } : s.kind === "list" ? { ...s, of: withRecord(s.of, record) } : record);
 
 /**
  * A wire's `rename: { from: to }` applied to the producer's seam: each source must be a field of its record, each
@@ -37,25 +40,24 @@ export function applyRename(from, to, rename) {
   /** @type {Record<string, Seam>} */
   const fields = {};
   for (const [k, v] of Object.entries(a.fields)) fields[Object.hasOwn(rename, k) ? rename[k] : k] = v;
-  /** @type {Seam} */
-  const renamed = { kind: "record", fields };
-  return { seam: from.kind === "event" ? { kind: "event", of: renamed } : renamed, problems: [] };
+  return { seam: withRecord(from, { kind: "record", fields }), problems: [] };
 }
 
 /**
  * The loops among parts that no delayed wire breaks: each as the parts in order, starting at the earliest part
  * (in the order parts were added) and following the earliest next part, so the same wiring gives the same loop
- * whatever order the glue wrote its .wire lines in.
+ * whatever order the glue wrote its .wire lines in. Each hop of a loop (two neighbors in it) carries every undelayed
+ * wire between those two parts, in the order of their `key`s: delaying one of several parallel wires leaves the loop.
  * @template W
  * @param {string[]} parts  the parts' names, in the order they were added
- * @param {Array<{ from: string, to: string, delay: boolean, wire: W }>} edges
- * @returns {Array<{ loop: string[], wires: W[] }>}
+ * @param {Array<{ from: string, to: string, delay: boolean, wire: W, key: string }>} edges  `key` orders parallel wires, a stable name
+ * @returns {Array<{ loop: string[], hops: W[][] }>}
  */
 export function undelayedLoops(parts, edges) {
   const order = new Map(parts.map((p, i) => [p, i]));
   const live = edges.filter((e) => !e.delay && e.from !== e.to);
   /** @param {string} p */
-  const next = (p) => live.filter((e) => e.from === p).sort((x, y) => (order.get(x.to) ?? 0) - (order.get(y.to) ?? 0));
+  const next = (p) => live.filter((e) => e.from === p).sort((x, y) => (order.get(x.to) ?? 0) - (order.get(y.to) ?? 0) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
   // Tarjan's strongly connected components; each of two or more parts holds at least one loop
   let index = 0;
   /** @type {Map<string, { index: number, low: number, on: boolean }>} */
@@ -86,7 +88,7 @@ export function undelayedLoops(parts, edges) {
     const inside = new Set(comp);
     const startAt = [...comp].sort((x, y) => (order.get(x) ?? 0) - (order.get(y) ?? 0))[0];
     // the shortest loop back to the start, by breadth, taking the earliest next part first
-    /** @type {Map<string, { prev: string, wire: W } | null>} */
+    /** @type {Map<string, { prev: string } | null>} */
     const came = new Map([[startAt, null]]);
     const queue = [startAt];
     while (queue.length) {
@@ -95,15 +97,15 @@ export function undelayedLoops(parts, edges) {
         if (!inside.has(e.to)) continue;
         if (e.to === startAt) {
           /** @type {string[]} */
-          const loop = [startAt];
-          /** @type {W[]} */
-          const wires = [e.wire];
-          for (let p = at; p !== startAt; p = /** @type {any} */ (came.get(p)).prev) { loop.splice(1, 0, p); wires.unshift(/** @type {any} */ (came.get(p)).wire); }
-          return { loop: [...loop, startAt], wires };
+          const path = [at];
+          for (let p = at; p !== startAt; p = /** @type {any} */ (came.get(p)).prev) path.unshift(/** @type {any} */ (came.get(p)).prev);
+          const loop = [...path, startAt];
+          const hops = loop.slice(1).map((to, i) => next(loop[i]).filter((x) => x.to === to).map((x) => x.wire));
+          return { loop, hops };
         }
-        if (!came.has(e.to)) { came.set(e.to, { prev: at, wire: e.wire }); queue.push(e.to); }
+        if (!came.has(e.to)) { came.set(e.to, { prev: at }); queue.push(e.to); }
       }
     }
-    return { loop: [startAt, startAt], wires: [] };
+    return { loop: [startAt, startAt], hops: [] };
   });
 }

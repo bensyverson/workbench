@@ -24,5 +24,5 @@ export const COMPOSE_CODES = Object.freeze({
   S255: "A point into a vector, or a vector into a point",
   S256: "\"fit\" with a frame that has no extent, or with dims that differ",
   S257: "A malformed edge: not { scale, offset }, a scale of 0, the wrong number of axes; or two frames of different dims, or of one part, related by .frame",
-  S301: "A handle read as a value at build time (arithmetic, a comparison, a string)",
+  S301: "A handle read as a value at build time: arithmetic, an ordering comparison or a string (caught as the glue runs), or tested or compared (`if (h)`, `h ? a : b`, `!h`, `h && x`, `h !== undefined`, `h == null`; found by scanGlue in the glue's text)",
 });
