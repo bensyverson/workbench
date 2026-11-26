@@ -11,10 +11,11 @@ test("the session descends three levels from one stand on the exit: the host for
   assert.equal(/** @type {any} */ (run.state("game")).depth, 3);
   const [deep, rough, save] = /** @type {any[]} */ (run.builds);
   assert.deepEqual([deep.trigger.param, deep.trigger.from, deep.trigger.to, deep.changed], ["depth", 0, 3, true]);
-  assert.deepEqual(deep.record, ["exit", "grid", "params", "start"]);
-  // a build-time param's value is in record.params, so any change to it changes the key and bumps the revision
-  assert.deepEqual([rough.trigger.param, rough.changed, rough.record], ["roughness", true, ["params"]]);
-  assert.deepEqual([save.trigger.kind, save.changed, save.revision], ["glue", false, { before: 3, after: 3 }]);
+  assert.deepEqual(deep.record, ["exit", "grid", "start"]);
+  // a param's value is not in the content key (ruled 2026-11-26, x3iG6D): roughness 45 → 46 carves the same cave,
+  // so the rebuild keeps cave@2 (before the ruling it bumped to cave@3 with only record.params changed)
+  assert.deepEqual([rough.trigger.param, rough.changed, rough.record, rough.revision], ["roughness", false, [], { before: 2, after: 2 }]);
+  assert.deepEqual([save.trigger.kind, save.changed, save.revision], ["glue", false, { before: 2, after: 2 }]);
   assert.equal(replay(buildComposition(), { runtimes, build: buildPart }, run.record()).ok, true);
 });
 

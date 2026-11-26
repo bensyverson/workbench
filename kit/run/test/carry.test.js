@@ -40,6 +40,13 @@ test("a planned fill always wins: an undeclared field a runtime pushes under tha
   assert.deepEqual(carry({ n: 1, speed: "not-a-number" }, w), { n: 1, speed: 40 });
 });
 
+test("a wire constant (set) gives each record its fields after the conversions, a copy each, and replaces a stray field as a fill does", () => {
+  const w = { ...wire({ convert: [{ field: "at", kind: "point", scale: [2, 2], offset: [0, 0] }] }), set: { kind: "coin", push: [0, 1] } };
+  const a = /** @type {any} */ (carry({ at: [1, 1], kind: "stray" }, w));
+  assert.deepEqual(a, { at: [2, 2], kind: "coin", push: [0, 1] });
+  assert.notEqual(a.push, w.set.push);
+});
+
 test("each carried record gets its own copy of a filled list or record, so freezing one never freezes the shared default", () => {
   const shared = [1, 2], rec = { x: { y: 1 } };
   const w = { ...wire({}), fill: { l: shared, r: rec } };

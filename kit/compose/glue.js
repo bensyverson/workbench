@@ -14,14 +14,14 @@ export const GLUE_SPECIFIERS = Object.freeze(["kit/compose", "kit/define"]);
 
 /** @typedef {{ code: "S301", severity: "error", message: string, fix: string, file: string, line: number }} GlueDiagnostic */
 
-const SIDES = ["out", "in", "frame"];
+const SIDES = ["out", "in", "frame", "param"];
 const EQUALITY = ["===", "!==", "==", "!="];
 /** Binary operators that compare, or ask about membership of, a value: a handle there is never what the author meant. */
 const COMPARISONS = [...EQUALITY, "in", "instanceof"];
 const LOGICAL = ["&&", "||", "??"];
 
 /**
- * A member chain ending `.out.X`, `.in.X` or `.frame.X` (`level.out.picked`, `a.out?.x`, `a.out["x"]`): its text and node, or null.
+ * A member chain ending `.out.X`, `.in.X`, `.frame.X` or `.param.X` (`level.out.picked`, `a.out?.x`, `a.out["x"]`): its text and node, or null.
  * @param {any} n @returns {{ text: string, node: any } | null}
  */
 function handleChain(n) {

@@ -1,7 +1,10 @@
-// Two things about wires that span a composition: a rename of record fields (data only, checked against both
-// sides), and the cycles of wires none of which is delayed. Neither depends on the order the glue wrote its lines.
+// Three things about wires that span a composition: a rename of record fields and a wire constant (data only,
+// checked against both sides), and the cycles of wires none of which is delayed. None depends on the order the glue
+// wrote its lines.
 
 import { didYouMean } from "../define/codes.js";
+import { fits } from "../define/ports.js";
+import { printSeam, printValue } from "../seam/index.js";
 
 /** @import { Seam } from "../seam/seam.js" */
 
@@ -41,6 +44,45 @@ export function applyRename(from, to, rename) {
   const fields = {};
   for (const [k, v] of Object.entries(a.fields)) fields[Object.hasOwn(rename, k) ? rename[k] : k] = v;
   return { seam: withRecord(from, { kind: "record", fields }), problems: [] };
+}
+
+/** The record at a seam's top that a wire constant may set: an Event's or a record value's, not a list's items. @param {Seam} s @returns {(Seam & { kind: "record" }) | null} */
+const topRecord = (s) => (s.kind === "event" ? topRecord(s.of) : s.kind === "record" ? s : null);
+
+/**
+ * A wire's `set: { field: value }` (a wire constant, ruled 2026-11-26) against both sides: each field one the
+ * consumer's record takes and the producer's (after any rename) does not send (S208 otherwise: a set never
+ * overrides), each value a literal that fits the field's seam (S207). Returns the consumer's seam without the set
+ * fields, for comparing the rest, or the problems.
+ * @param {Seam} from  the producer's seam, renamed @param {Seam} to @param {Record<string, unknown>} set
+ * @returns {{ seam: Seam, problems: Array<{ code: "S207" | "S208", message: string, fix: string }> }}
+ */
+export function applySet(from, to, set) {
+  const pairs = Object.entries(set);
+  if (!pairs.length) return { seam: to, problems: [] };
+  const b = topRecord(to);
+  if (!b) {
+    const why = recordOf(to) ? "a list's items, and set sets only the fields of an Event's record or of a record value" : "no record into its input";
+    return { seam: to, problems: [{ code: "S207", message: `set sets record fields, and this wire carries ${why}`, fix: "remove set" }] };
+  }
+  const a = topRecord(from);
+  const want = Object.keys(b.fields);
+  /** @type {Array<{ code: "S207" | "S208", message: string, fix: string }>} */
+  const problems = [];
+  for (const [k, v] of pairs) {
+    if (a && Object.hasOwn(a.fields, k)) problems.push({ code: "S208", message: `set: the output's record sends ${k}, and a wire constant never overrides a field the producer sends`, fix: `remove ${k} from set; to replace the producer's ${k}, rename it to another field` });
+    else if (!Object.hasOwn(b.fields, k)) problems.push({ code: "S207", message: `set: the input's record takes no field '${k}'.${didYouMean(k, want)} It takes: ${want.join(", ") || "nothing"}`, fix: `set one of the input's fields: ${want.map((f) => `"${f}"`).join(", ")}` });
+    else {
+      const bad = fits(b.fields[k], v);
+      if (bad) problems.push({ code: "S207", message: `set: ${k} = ${printValue(/** @type {any} */ (v))} does not fit ${printSeam(b.fields[k])}: ${bad}`, fix: `set ${k} to a value of ${printSeam(b.fields[k])}` });
+    }
+  }
+  if (problems.length) return { seam: to, problems };
+  /** @type {Record<string, Seam>} */
+  const fields = {};
+  for (const [k, f] of Object.entries(b.fields)) if (!Object.hasOwn(set, k)) fields[k] = f;
+  const defaults = b.defaults ? Object.fromEntries(Object.entries(b.defaults).filter(([k]) => !Object.hasOwn(set, k))) : undefined;
+  return { seam: withRecord(to, { kind: "record", fields, ...(defaults && Object.keys(defaults).length ? { defaults } : {}) }), problems: [] };
 }
 
 /**

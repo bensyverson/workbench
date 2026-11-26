@@ -1,7 +1,8 @@
 // The checks behind compose(): the parts (each built and lowered by its own Grammar), the frame graph (each
 // Dialect's own edges, then the glue's .frame calls), the wires (seams field by field after any rename, a frame
-// path and a conversion by kind for each tagged leaf), the required inputs, the cycles, each reliable Event wire's
-// queue bound (given the runtimes), the shown part and the handles read as values. Every S diagnostic about a wire or an edge carries both sides.
+// path and a conversion by kind for each tagged leaf, and any wire constant), the param wires (param-wires.js), the
+// required inputs, the cycles, each reliable Event wire's queue bound (given the runtimes), the shown part and the
+// handles read as values. Every S diagnostic about a wire or an edge carries both sides.
 
 import { programOf } from "../define/grammar.js";
 import { lowerRecord } from "../define/lower.js";
@@ -9,7 +10,8 @@ import { instanceName } from "../define/record.js";
 import { didYouMean } from "../define/codes.js";
 import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
 import { compareSeams, printValue, printSeam, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
-import { applyRename, undelayedLoops } from "./wires.js";
+import { applyRename, applySet, undelayedLoops } from "./wires.js";
+import { paramWireProblems, paramLoops, rateOf } from "./param-wires.js";
 import { queueProblems } from "./queues.js";
 import { withPage, pageRuntime } from "./page.js";
 
@@ -21,10 +23,10 @@ import { withPage, pageRuntime } from "./page.js";
 
 /** @typedef {{ file: string, loc: Loc }} At */
 /** @typedef {{ name: string, program: any, dialect: any, seams: Seams, dialectName: string, version?: string, record: Record<string, any> | null, extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, at: At }} Part */
-/** @typedef {{ from: Handle, to: Handle, at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, delay: boolean, overflow: Overflow | null, dropped: string[], fill: Record<string, unknown>, ok: boolean }} Wire */
+/** `into` is "param" for a wire into a param (param-wires.js), which kit/run applies between instants. @typedef {{ from: Handle, to: Handle, into: "in" | "param", at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, set: Record<string, unknown>, delay: boolean, overflow: Overflow | null, dropped: string[], fill: Record<string, unknown>, ok: boolean }} Wire */
 /** What a wire drops when its records outrun the consumer's max (ruling 7, 2026-11-26). @typedef {"keepLast" | "keepFirst"} Overflow */
 
-const WIRE_OPTIONS = ["rename", "delay", "overflow"];
+const WIRE_OPTIONS = ["rename", "set", "delay", "overflow"];
 const OVERFLOWS = ["keepLast", "keepFirst"];
 
 /**
@@ -91,21 +93,21 @@ export function analyze(name, start, given, options) {
   };
   /** @param {unknown} a @param {unknown} b */
   const callSides = (a, b) => { const from = anySide(a), to = anySide(b); return { ...(from ? { from } : {}), ...(to ? { to } : {}) }; };
-  /** @param {Part} p @param {"out" | "in" | "frame"} s */
-  const names = (p, s) => Object.keys(s === "out" ? p.seams.out : s === "in" ? p.seams.in : p.seams.frames);
+  /** @param {Part} p @param {"out" | "in" | "frame" | "param"} s */
+  const names = (p, s) => (s === "param" ? [...p.program.declared().keys()] : Object.keys(s === "out" ? p.seams.out : s === "in" ? p.seams.in : p.seams.frames));
   /**
    * The handle's part, or null after a diagnostic carrying whatever sides the call has.
-   * @param {unknown} h @param {"out" | "in" | "frame"} want @param {At} at @param {string} call @param {{ from?: Side, to?: Side }} sides
+   * @param {unknown} h @param {"out" | "in" | "frame" | "param"} want @param {At} at @param {string} call @param {{ from?: Side, to?: Side }} sides
    */
   const resolve = (h, want, at, call, sides) => {
-    const what = want === "out" ? "output" : want === "in" ? "input" : "frame";
+    const what = want === "out" ? "output" : want === "in" ? "input" : want;
     if (!isHandle(h)) { add(at, "S102", `${call}: ${describe(h)} is not ${want === "frame" ? "a frame handle (part.frame.name)" : `an ${what} handle (part.${want}.name)`}`, want === "frame" ? '.frame(level.frame.cell, fx.frame.px, "fit")' : ".wire(level.out.picked, fx.in.burst)", sides); return null; }
     const p = parts.get(h.program);
     if (!p) { add(at, "S102", `${call}: ${handleText(h)} is a handle of a part not in the composition`, `add it first: .part(${h.part})`, sides); return null; }
-    if (h.side !== want) { add(at, "S102", `${call}: ${handleText(h)} is ${h.side === "frame" ? "a frame" : h.side === "out" ? "an output" : "an input"}, and this place takes ${want === "frame" ? "a frame" : `an ${what}`}`, want === "frame" ? ".frame(a.frame.x, b.frame.y, edge)" : ".wire(producer.out.x, consumer.in.y)", sides); return null; }
+    if (h.side !== want) { add(at, "S102", `${call}: ${handleText(h)} is ${h.side === "frame" ? "a frame" : h.side === "param" ? "a param" : h.side === "out" ? "an output" : "an input"}, and this place takes ${want === "frame" ? "a frame" : want === "in" ? "an input or a param" : `an ${what}`}`, want === "frame" ? ".frame(a.frame.x, b.frame.y, edge)" : ".wire(producer.out.x, consumer.in.y)", sides); return null; }
     if (!h.known) {
       const has = names(p, want);
-      add(at, "S111", `${call}: part '${p.name}' (${p.dialectName}${p.version ? ` ${p.version}` : ""}) has no ${what} '${h.name}'.${didYouMean(h.name, has)} Its ${what}s: ${has.length ? has.join(", ") : "none"}`, has.length ? `use one of: ${has.map((n) => `${p.name}.${want}.${n}`).join(", ")}` : `the ${p.dialectName} package declares no ${what}s`, sides);
+      add(at, "S111", `${call}: part '${p.name}' (${p.dialectName}${p.version ? ` ${p.version}` : ""}) has no ${what} '${h.name}'.${didYouMean(h.name, has)} Its ${what}s: ${has.length ? has.join(", ") : "none"}`, has.length ? `use one of: ${has.map((n) => `${p.name}.${want}.${n}`).join(", ")}` : want === "param" ? `the ${p.name} Program declares no params` : `the ${p.dialectName} package declares no ${what}s`, sides);
       return null;
     }
     return broken.has(p) ? null : p;
@@ -165,7 +167,7 @@ export function analyze(name, start, given, options) {
 
   /** @type {Wire[]} */
   const wires = [];
-  /** @type {Map<Handle, At>} */
+  /** Each wired input or param, by its handle's text. @type {Map<string, At>} */
   const wired = new Map();
   /** The inputs the glue wired, however the wire fared: a wire refused for its producer or its output is that wire's problem, not a missing one. @type {Set<string>} */
   const attempted = new Set();
@@ -174,20 +176,28 @@ export function analyze(name, start, given, options) {
     const at = c.at;
     if (isHandle(c.to) && c.to.side === "in" && c.to.known && parts.has(c.to.program)) attempted.add(`${c.to.part}.${c.to.name}`);
     const both = callSides(c.from, c.to);
-    const opts = wireOptions(c.options);
-    if (typeof opts === "string") { add(at, "S102", `.wire(…, …, ${describe(c.options)}): ${opts}`, ".wire(a.out.x, b.in.y, { rename: { pos: \"at\" }, delay: true, overflow: \"keepLast\" }), each optional", both); continue; }
-    const pa = resolve(c.from, "out", at, ".wire", both), pb = resolve(c.to, "in", at, ".wire", both);
+    const into = isHandle(c.to) && c.to.side === "param" ? "param" : "in";
+    const opts = into === "param" && c.options !== undefined ? "a param wire takes no options: it sets the param to the output's value, between instants" : wireOptions(c.options);
+    if (typeof opts === "string") { add(at, "S102", `.wire(…, …, ${describe(c.options)}): ${opts}`, into === "param" ? "remove the options" : ".wire(a.out.x, b.in.y, { rename: { pos: \"at\" }, set: { kind: \"coin\" }, delay: true, overflow: \"keepLast\" }), each optional", both); continue; }
+    const pa = resolve(c.from, "out", at, ".wire", both), pb = resolve(c.to, into, at, ".wire", both);
     if (!pa || !pb) continue;
     const ho = /** @type {Handle} */ (c.from), hi = /** @type {Handle} */ (c.to);
     const text = `${handleText(ho)} cannot feed ${handleText(hi)}`;
     const sides = { from: side(ho), to: side(hi) };
+    if (wired.has(handleText(hi))) { add(at, "S112", `${handleText(hi)} is already wired (line ${wired.get(handleText(hi))?.loc.start.line}); ${into === "param" ? "a param" : "an input"} takes one wire`, "remove one of the two wires", sides); continue; }
+    if (into === "param") {
+      wired.set(handleText(hi), at);
+      const problems = pa === pb ? [] : paramWireProblems(pa.seams.out[ho.name], hi, handleText(ho));
+      for (const p of problems) add(at, p.code, `${text}: ${p.message}`, p.fix, sides);
+      wires.push({ from: ho, to: hi, into, at, convert: [], rename: {}, set: {}, delay: false, overflow: null, dropped: [], fill: {}, ok: problems.length === 0 });
+      continue;
+    }
     if (pa === pb) { add(at, "S114", `${handleText(ho)} is wired to ${handleText(hi)}, an input of its own part; a cycle inside a part is the ${pa.dialectName} Dialect's business`, "wire an output of one part to an input of another", sides); continue; }
-    if (wired.has(hi)) { add(at, "S112", `${handleText(hi)} is already wired (line ${wired.get(hi)?.loc.start.line}); an input takes one wire`, "remove one of the two wires", sides); continue; }
-    wired.set(hi, at);
+    wired.set(handleText(hi), at);
     const po = pa.seams.out[ho.name], pi = pb.seams.in[hi.name];
     if (opts.overflow && pi.seam.kind !== "event") { add(at, "S102", `.wire(${handleText(ho)}, ${handleText(hi)}, { overflow: "${opts.overflow}" }): ${handleText(hi)} is a value input, which reads the latest value; overflow is for an Event wire`, "remove overflow", sides); continue; }
     /** @type {Wire} */
-    const wire = { from: ho, to: hi, at, convert: [], rename: opts.rename, delay: opts.delay, overflow: opts.overflow, dropped: [], fill: {}, ok: true };
+    const wire = { from: ho, to: hi, into, at, convert: [], rename: opts.rename, set: opts.set, delay: opts.delay, overflow: opts.overflow, dropped: [], fill: {}, ok: true };
     wires.push(wire);
     const renamed = applyRename(po.seam, pi.seam, opts.rename);
     if (renamed.problems.length) {
@@ -195,14 +205,21 @@ export function analyze(name, start, given, options) {
       wire.ok = false;
       continue;
     }
-    const cmp = compareSeams(renamed.seam, pi.seam);
+    // a wire constant's fields are the glue's, so the producer is compared with the rest of the consumer's record
+    const fixed = applySet(renamed.seam, pi.seam, opts.set);
+    if (fixed.problems.length) {
+      for (const p of fixed.problems) add(at, p.code, `${text}: ${p.message}`, p.fix, sides);
+      wire.ok = false;
+      continue;
+    }
+    const cmp = compareSeams(renamed.seam, fixed.seam);
     wire.dropped = cmp.dropped;
     wire.fill = cmp.filled;
     if (cmp.problems.length) wire.ok = false;
     for (const p of cmp.problems) add(at, p.code, `${text}: ${p.message}`, fixFor(p.code, po.seamText, pi.seamText), sides);
     /** A tagged leaf plans when a frame path joins its frames (and a quantity's path scales its axes alike): the test S251 and S254 apply below. @param {{ from: string, to: string, kind: string }} leaf */
     const plans = (leaf) => { const path = graph.path(node(pa, leaf.from), node(pb, leaf.to)); return !!path && (leaf.kind !== "quantity" || uniform(path.edge)); };
-    for (const m of maskedRenames(renamed.seam, pi.seam, cmp, plans)) {
+    for (const m of maskedRenames(renamed.seam, fixed.seam, cmp, plans)) {
       add(at, "S206", `${text}: the wire drops ${m.from}, which the input does not take, and fills ${m.to} (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) with its default; ${m.from} is the same kind of field`, `if ${m.from} was meant to feed ${m.to}, rename it: .wire(${handleText(ho)}, ${handleText(hi)}, { rename: { ${m.from}: "${m.to}" } }); if the default is intended, ignore this`, sides, "warning");
     }
     for (const leaf of cmp.tagged) {
@@ -244,7 +261,7 @@ export function analyze(name, start, given, options) {
 
   // a cycle of wires needs one delayed wire in it; which wire the glue wrote last never decides it
   const order = [...parts.values()].map((p) => p.name);
-  for (const { loop, hops } of undelayedLoops(order, wires.map((w) => ({ from: w.from.part, to: w.to.part, delay: w.delay, wire: w, key: `${handleText(w.from)} ${handleText(w.to)}` })))) {
+  for (const { loop, hops } of undelayedLoops(order, wires.filter((w) => w.into === "in").map((w) => ({ from: w.from.part, to: w.to.part, delay: w.delay, wire: w, key: `${handleText(w.from)} ${handleText(w.to)}` })))) {
     const first = hops[0][0];
     /** @param {Wire[]} hop */
     const calls = (hop) => hop.map((w) => `.wire(${handleText(w.from)}, ${handleText(w.to)}, { delay: true })`).join(" and ");
@@ -252,9 +269,26 @@ export function analyze(name, start, given, options) {
     add(first.at, "S115", `the wires make a loop with no delay: ${loop.join(" → ")} (${hops.flat().map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")}); each part would wait on the other within one instant`, `mark every wire of one hop of the loop delayed, so its consumer reads the previous instant's snapshot: ${hops.map((hop, i) => `${loop[i]} → ${loop[i + 1]}: ${calls(hop)}`).join("; or ")}`, { from: side(first.from), to: side(first.to) });
   }
 
+  // a param wire applies between instants, so a loop through a stepping part is no cycle; one of param wires alone is
+  for (const { loop, wires: ring } of paramLoops(order, wires.filter((w) => w.into === "param").map((w) => ({ from: w.from.part, to: w.to.part, wire: w, key: `${handleText(w.from)} ${handleText(w.to)}` })))) {
+    const first = ring[0];
+    for (const w of ring) w.ok = false;
+    const how = loop[0] === loop[1] ? `${handleText(first.from)} feeds ${handleText(first.to)}, a param of its own part` : `the param wires make a loop: ${loop.join(" → ")} (${ring.map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")})`;
+    add(first.at, "S117", `${how}; a rebuild runs init, which can change the output that sets the param again, with no step between`, "set the param from another part's output, or wire the output to an input the part reads each step", { from: side(first.from), to: side(first.to) });
+  }
+
+  if (options.runtimes?.length) {
+    // a param wire from a part that steps at a rate can change at every step, and each change rebuilds
+    for (const w of wires.filter((x) => x.ok && x.into === "param")) {
+      const pa = /** @type {Part} */ (parts.get(w.from.program));
+      const rate = rateOf(options.runtimes.find((r) => r.dialect.name === pa.dialectName), pa.record, pa.name);
+      if (rate) add(w.at, "S118", `${handleText(w.from)} → ${handleText(w.to)}: ${rate}, so ${handleText(w.from)} may change at every step, and each change sets ${w.to.part}.$.${w.to.name} and rebuilds ${w.to.part} when build-time code reads it`, `if the value changes rarely (a level, a mode), ignore this; if it changes often, wire it to an input of ${w.to.part}, which reads it each step`, { from: side(w.from), to: side(w.to) }, "warning");
+    }
+  }
+
   // with the parts' runtimes, each reliable Event wire's queue is sized from the clocks and per-step maxes
   if (options.runtimes?.length) {
-    const live = wires.filter((w) => w.ok);
+    const live = wires.filter((w) => w.ok && w.into === "in");
     const sized = [...parts.values()].filter((p) => !broken.has(p) && p.record).map((p) => ({ name: p.name, dialect: p.dialectName, record: /** @type {Record<string, any>} */ (p.record) }));
     const ends = live.map((w) => ({ from: { part: w.from.part, name: w.from.name }, to: { part: w.to.part, name: w.to.name }, delivery: /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name].delivery }));
     for (const pr of queueProblems(sized, ends, [...options.runtimes, pageRuntime], { catchUp: options.catchUp })) {
@@ -289,27 +323,38 @@ export function analyze(name, start, given, options) {
     name,
     parts: [...parts.values()].filter((p) => !broken.has(p)).map((p) => ({ name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record) })),
     wires: wires.filter((w) => w.ok).map((w) => {
-      const consumer = /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name];
-      return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, ...(w.overflow ? { overflow: w.overflow } : {}), dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(consumer.delivery ? { delivery: consumer.delivery } : {}) };
+      // a param wire's `to` is `<part>.param.<name>`: kit/run applies it between instants
+      const consumer = w.into === "in" ? /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name] : null;
+      return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, ...(w.overflow ? { overflow: w.overflow } : {}), dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(Object.keys(w.set).length ? { set: structuredClone(w.set) } : {}), ...(consumer?.delivery ? { delivery: consumer.delivery } : {}) };
     }),
     show: live ? live.name : null,
   };
-  const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${Object.keys(w.fill).length ? `; fills ${Object.entries(w.fill).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ")}` : ""}${w.delay ? "; delayed" : ""}${w.overflow ? `; overflow ${w.overflow}` : ""}`);
+  /** @param {Record<string, unknown>} o */
+  const values = (o) => Object.entries(o).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ");
+  const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${Object.keys(w.fill).length ? `; fills ${values(w.fill)}` : ""}${Object.keys(w.set).length ? `; sets ${values(w.set)}` : ""}${w.into === "param" ? "; sets the param between instants" : ""}${w.delay ? "; delayed" : ""}${w.overflow ? `; overflow ${w.overflow}` : ""}`);
   return { diagnostics: out, record, plan };
 }
 
-/** A wire's options, or why they are not `{ rename?, delay?, overflow? }`. @param {unknown} o @returns {{ rename: Record<string, string>, delay: boolean, overflow: Overflow | null } | string} */
+/** Literal data a wire constant may give: a number, a bool, a string, or a list of these. @param {unknown} v @returns {boolean} */
+const literal = (v) => typeof v === "number" || typeof v === "boolean" || typeof v === "string" || (Array.isArray(v) && v.every(literal));
+
+/**
+ * A wire's options, or why they are not `{ rename?, set?, delay?, overflow? }`.
+ * @param {unknown} o @returns {{ rename: Record<string, string>, set: Record<string, unknown>, delay: boolean, overflow: Overflow | null } | string}
+ */
 function wireOptions(o) {
-  if (o === undefined) return { rename: {}, delay: false, overflow: null };
-  if (o === null || typeof o !== "object" || Array.isArray(o)) return "a wire's options are { rename?, delay?, overflow? }";
+  if (o === undefined) return { rename: {}, set: {}, delay: false, overflow: null };
+  if (o === null || typeof o !== "object" || Array.isArray(o)) return "a wire's options are { rename?, set?, delay?, overflow? }";
   const x = /** @type {Record<string, unknown>} */ (o);
   const extra = Object.keys(x).filter((k) => !WIRE_OPTIONS.includes(k));
-  if (extra.length) return `a wire takes only rename, delay and overflow, not ${extra.map((k) => `'${k}'`).join(", ")}.${didYouMean(extra[0], WIRE_OPTIONS)}`;
+  if (extra.length) return `a wire takes only rename, set, delay and overflow, not ${extra.map((k) => `'${k}'`).join(", ")}.${didYouMean(extra[0], WIRE_OPTIONS)}`;
+  const st = x.set;
+  if (st !== undefined && (st === null || typeof st !== "object" || Array.isArray(st) || !Object.values(st).every(literal))) return `set is { consumerField: <value> }, each value a number, true or false, a string or a list of these, not ${describe(st)}`;
   if (x.delay !== undefined && typeof x.delay !== "boolean") return `delay is true or false, not ${describe(x.delay)}`;
   if (x.overflow !== undefined && !OVERFLOWS.includes(/** @type {string} */ (x.overflow))) return `overflow is "keepLast" (the newest records a step takes) or "keepFirst" (the first), not ${describe(x.overflow)}`;
   const r = x.rename;
   if (r !== undefined && (r === null || typeof r !== "object" || Array.isArray(r) || !Object.values(r).every((v) => typeof v === "string"))) return `rename is { producerField: "consumerField" }, not ${describe(r)}`;
-  return { rename: /** @type {Record<string, string>} */ ({ ...(r ?? {}) }), delay: x.delay === true, overflow: /** @type {Overflow | undefined} */ (x.overflow) ?? null };
+  return { rename: /** @type {Record<string, string>} */ ({ ...(r ?? {}) }), set: { ...(/** @type {Record<string, unknown> | undefined} */ (st) ?? {}) }, delay: x.delay === true, overflow: /** @type {Overflow | undefined} */ (x.overflow) ?? null };
 }
 
 /**

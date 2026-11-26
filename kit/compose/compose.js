@@ -1,7 +1,8 @@
 // compose(name): a glue program's composition. `.part(builder)`, `.frame(a, b, edge | "fit")`,
-// `.wire(out, in, { rename?, delay? })` and `.show(part)` record calls with the glue's line; `.check(options)` gives
-// every S diagnostic at once, `.build(options)` the composed record (or throws ComposeError), `.plan()` each wire's
-// conversions as text. Each part is a whole Program, built and lowered by its own Grammar; nothing runs here.
+// `.wire(out, in, { rename?, set?, delay?, overflow? })`, `.wire(out, <part>.param.<name>)` and `.show(part)` record
+// calls with the glue's line; `.check(options)` gives every S diagnostic at once, `.build(options)` the composed
+// record (or throws ComposeError), `.plan()` each wire's conversions as text. Each part is a whole Program, built
+// and lowered by its own Grammar; nothing runs here.
 
 import { analyze } from "./analyze.js";
 import { glueSite } from "./site.js";
@@ -21,9 +22,9 @@ import { formatDiagnostic } from "./format.js";
 /** @typedef {{ field: string, kind: "point" | "vector" | "quantity", rate?: true, from: string, to: string, scale: number[], offset: number[] }} Conversion */
 /**
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
- * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field) and (for an Event)
- * the consumer's delivery are data.
- * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null }} Composed
+ * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants
+ * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`.
+ * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null }} Composed
  */
 /**
  * What `.check` and `.build` take: the loaded packages (for each part's version: kit/package's loadPackage results,

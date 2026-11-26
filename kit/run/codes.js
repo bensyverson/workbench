@@ -11,6 +11,7 @@ export const RUN_CODES = Object.freeze({
   N005: "A replay diverged from its record: a state hash differs at an instant, so something is not deterministic",
   N006: "A runtime's clock(record) is not { tick: seconds }, { frame: true } or { demand: true }",
   N007: "A composed record's wire has an overflow that is neither \"keepLast\" nor \"keepFirst\" (a hand-edited record: compose's S102 refuses it at the glue)",
+  N008: "A param wire's value does not fit the param's declaration (its type, finite, min..max, options): the wire does not set it, and the part keeps its build; noted once per value",
 });
 
 /**

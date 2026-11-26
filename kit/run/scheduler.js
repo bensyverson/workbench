@@ -19,6 +19,7 @@ import { createFrameLog, framesTo, createSlowdown } from "./frames.js";
 import { running, nextInstant as instantAfter, awaitingFrame as waitsOnFrame, due } from "./instants.js";
 import { ends, makeWires, wireOrder, readInputs, intake } from "./wires.js";
 import { createDelivery } from "./delivery.js";
+import { createParamFeed, intoParam } from "./param-wires.js";
 
 /** @import { Q } from "../define/rational.js" */
 /** @import { Runtime } from "../define/runtime.js" */
@@ -101,7 +102,7 @@ export function createRun(composed, options) {
     parts.push(p);
   });
   const sized = composed.parts.map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
-  const sizedWires = composed.wires.filter((w) => w.overflow !== "keepLast" && w.overflow !== "keepFirst"); // a policy trims what a step takes (ruling 7)
+  const sizedWires = composed.wires.filter((w) => !intoParam(w) && w.overflow !== "keepLast" && w.overflow !== "keepFirst"); // a policy trims what a step takes (ruling 7)
   for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntime], { catchUp })) {
     refused.push({ code: "S116", message: `${pr.message}\n  fix: ${pr.fix}` });
   }
@@ -127,6 +128,12 @@ export function createRun(composed, options) {
   const report = (d) => { diagnostics.push({ severity: "error", ...d }); };
   const delivery = createDelivery(wires, byName, report);
   const { dropStopped } = delivery;
+  const params = createParamFeed(composed, byName, report);
+  /**
+   * After the last instant run: each param wire's input, stamped at the next instant (when none is due, the first
+   * millisecond after), so it takes effect there ahead of the steps (R2). Idempotent: what the log holds is not added twice.
+   */
+  const feedParams = () => { if (params.any && at.lastT) params.feed(at.lastT, nextInstant() ?? afterMs(at.lastT), inputs, insert); };
   /**
    * Stops a part: a stopped part takes no Events (Ben, 2026-11-26), so the records waiting for it are dropped and
    * counted, as are those sent to it until a rebuild restarts it with empty queues.
@@ -268,6 +275,7 @@ export function createRun(composed, options) {
     at.lastT = T;
     if (cmp(now, T) < 0) now = T;
     hashes.push({ T: qText(T), hash: stateHash(parts.map((p) => [p.name, p.revision, p.stopped, p.hash])), parts: Object.fromEntries(parts.map((p) => [p.name, p.hash])) });
+    feedParams();
     const lastCp = checkpoints.at(-1);
     if (!lastCp.T || cmp(sub(T, lastCp.T), every) >= 0) checkpoint();
     return { T: qText(T), stepped };
@@ -317,7 +325,7 @@ export function createRun(composed, options) {
       parts: parts.map((p) => Object.fromEntries(PART_FIELDS.map((f) => [f, f === "rng" ? [...p.rng] : p[f]]))),
       wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops, stopDrops: w.stopDrops, overflowDrops: w.overflowDrops })),
       lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length },
-      ...delivery.save(),
+      ...delivery.save(), ...params.save(),
       floor: at.floor, ...slowdown.save(),
     });
   }
@@ -410,12 +418,15 @@ export function createRun(composed, options) {
       wires.forEach((w, j) => Object.assign(w, cp.wires[j], { queue: [...cp.wires[j].queue] }));
       hashes.length = cp.lens.hashes; builds.length = cp.lens.builds; diagnostics.length = cp.lens.diagnostics;
       delivery.restore(cp);
+      params.restore(cp);
       slowdown.restore(cp);
       at.floor = cp.floor; at.lastT = cp.T;
       ({ now, cursor, revision } = cp);
       for (let k = inputs.length - 1; k >= cursor; k--) if (cmp(inputs[k].T, target) > 0) inputs.splice(k, 1);
       frameLog.dropAfter(target);
       advance(target);
+      // a param wire's input after the last instant is that instant's doing, not an outside input: made again
+      feedParams();
       return run;
     },
   };

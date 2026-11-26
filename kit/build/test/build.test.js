@@ -30,6 +30,27 @@ test("a part's content key: the kit version, the package's key and the canonical
   assert.equal(partKey({ package: null, record: rec }), sha256(`${KIT_VERSION}\0\0${canonical({ name: "level", grid: ["#.#"] })}`));
 });
 
+test("a param's value is not in the content key; its declaration is (ruled 2026-11-26, x3iG6D)", () => {
+  const rec = (/** @type {Record<string, unknown>} */ decl) => ({ name: "cave", grid: ["#.#"], params: { depth: { value: 0, min: 0, max: 9, ...decl }, seed: { value: 7 } } });
+  const k = partKey({ package: null, record: rec({}) });
+  // build-time code that made the same record from another value: the same key
+  assert.equal(partKey({ package: null, record: rec({ value: 3 }) }), k);
+  // the declaration's other fields stay in it, and so does the set of declared params
+  assert.notEqual(partKey({ package: null, record: rec({ max: 8 }) }), k);
+  assert.notEqual(partKey({ package: null, record: { ...rec({}), params: { depth: { value: 0, min: 0, max: 9 } } } }), k);
+  // what the build made from a value is still keyed
+  assert.notEqual(partKey({ package: null, record: { ...rec({ value: 3 }), grid: ["###"] } }), k);
+});
+
+test("a build event's record fields are compared as the key sees them: a param's new value alone is no field", () => {
+  const before = { key: "k1", revision: 1, record: { grid: ["#.#"], params: { depth: { value: 0 } } }, kernels: {} };
+  const after = { key: "k2", record: { grid: ["###"], params: { depth: { value: 3 } } }, kernels: {} };
+  const e = buildEvent({ part: "cave", boundary: { after: null, before: "0" }, trigger: paramTrigger({}, "depth", 0, 3), before, after, consumers: [] });
+  assert.deepEqual(e.record, ["grid"]);
+  const declared = buildEvent({ part: "cave", boundary: { after: null, before: "0" }, trigger: glueTrigger(), before, after: { ...after, record: { ...before.record, params: { depth: { value: 0, max: 9 } } } }, consumers: [] });
+  assert.deepEqual(declared.record, ["params"]);
+});
+
 test("a composition's key is its parts' keys by identity, sorted, and its wires as data", () => {
   const wires = [{ from: "a.out.x", to: "b.in.y" }];
   const k = compositionKey({ b: "k2", a: "k1" }, wires, "b");
@@ -85,7 +106,8 @@ test("stateHash is a fast, key-order-blind hash of plain data", () => {
 test("canonical tells Infinity, -Infinity, NaN and null apart, and -0 from 0, so content keys do too", () => {
   const forms = [Infinity, -Infinity, NaN, null, 0, -0].map((v) => canonical({ v }));
   assert.equal(new Set(forms).size, 6, forms.join(" "));
-  const rec = (/** @type {unknown} */ v) => ({ params: { depth: { value: v } } });
+  // a field the build made: a param's own value is not keyed (x3iG6D)
+  const rec = (/** @type {unknown} */ v) => ({ level: { depth: v } });
   const keys = [Infinity, NaN, null, 0, -0].map((v) => partKey({ package: null, record: rec(v) }));
   assert.equal(new Set(keys).size, 5);
   // plain JSON data keeps its JSON text, so ordinary keys do not move

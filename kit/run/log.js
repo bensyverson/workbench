@@ -1,7 +1,9 @@
 // The input log: every outside event of a run, stamped with the workbench time T it applies at (at the first instant
 // at or after it). A D-pad's state (`control`), a param change (`param`), a rebuild with its new record (`rebuild`),
 // and each display frame the real-time driver ran (`frame`, with `capped` when the frame was longer than the
-// catch-up cap). A run is a pure function of the composed record, the params and this log.
+// catch-up cap). A param wire's input is a `param` input with `wire`, the output it came from (param-wires.js): the
+// run makes it, and the log keeps it like any other. A run is a pure function of the composed record, the params and
+// this log.
 
 import { q, qText, sub, toNumber } from "../define/rational.js";
 
@@ -15,7 +17,7 @@ export const INPUT_KINDS = Object.freeze(["control", "param", "rebuild", "frame"
 
 /**
  * One input as the scheduler holds it (T a rational; the log prints it as text).
- * @typedef {{ kind: "control" | "param" | "rebuild" | "frame", T: Q, part?: string, name?: string, value?: unknown, record?: Record<string, any>, trigger?: any, package?: { content?: string | null }, capped?: { wall: number, kept: number } }} Entry
+ * @typedef {{ kind: "control" | "param" | "rebuild" | "frame", T: Q, part?: string, name?: string, value?: unknown, record?: Record<string, any>, trigger?: any, package?: { content?: string | null }, capped?: { wall: number, kept: number }, wire?: string }} Entry
  */
 
 /**

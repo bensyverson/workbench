@@ -2,7 +2,7 @@
 // record draft's "Why it rebuilt"; the human-facing text waits on its trial). Triggers come from what is already
 // recorded: a param's build-time reads (`record.reads`), a package's two content keys and file maps, a glue edit.
 
-import { canonical } from "./key.js";
+import { canonical, keyed } from "./key.js";
 
 /** @typedef {{ kind: "param", param: string, from: unknown, to: unknown, reads: Array<{ file: string, line: number, by: string | null }> }} ParamTrigger */
 /** @typedef {{ kind: "package", from: string | null, to: string | null, files: string[] }} PackageTrigger */
@@ -61,8 +61,10 @@ export const glueTrigger = (call) => ({ kind: "glue", call: call ?? null });
 export function buildEvent({ part, boundary, trigger, before, after, consumers, diagnostics = [], input }) {
   const ok = after !== null;
   const changed = ok && after.key !== before.key;
-  const keys = ok ? [...new Set([...Object.keys(before.record), ...Object.keys(after.record)])].filter((k) => k !== "reads").sort() : [];
-  const record = changed ? keys.filter((k) => canonical(before.record[k]) !== canonical(/** @type {BuildSide} */ (after).record[k])) : [];
+  // the fields are compared as the key sees them, so a param's new value alone is no changed field
+  const was = keyed(before.record), now = ok ? keyed(after.record) : was;
+  const keys = [...new Set([...Object.keys(was), ...Object.keys(now)])].sort();
+  const record = changed ? keys.filter((k) => canonical(was[k]) !== canonical(now[k])) : [];
   const a = before.kernels, b = ok ? after.kernels : before.kernels;
   const ids = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
   return {

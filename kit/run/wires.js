@@ -9,20 +9,23 @@ import { defaults, deepFreeze } from "./part.js";
 /** @import { Composed } from "../compose/compose.js" */
 /** @import { Part } from "./part.js" */
 
-/** @typedef {{ index: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire */
+/** @typedef {{ index: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire */
 /** What a consumer reads of a producer: its state and revision now, or as the instant began (the page's: no state, revision 1). @typedef {{ state: any, revision: number, part: Part | null }} View */
 
-/** @param {string} h  "level.out.picked" */
-export const ends = (h) => { const [part, , port] = h.split("."); return { part, port }; };
+/** @param {string} h  "level.out.picked", "cave.param.depth" */
+export const ends = (h) => { const [part, side, port] = h.split("."); return { part, side, port }; };
 
-/** The composed wires, each with an empty queue. @param {Composed} composed @param {Map<string, Part>} byName @returns {Wire[]} */
+/**
+ * The composed wires into inputs, each with an empty queue; a wire into a param is param-wires.js's.
+ * @param {Composed} composed @param {Map<string, Part>} byName @returns {Wire[]}
+ */
 export function makeWires(composed, byName) {
-  return composed.wires.map((w, index) => {
+  return composed.wires.filter((w) => ends(w.to).side !== "param").map((w, index) => {
     const from = ends(w.from), to = ends(w.to);
     const consumer = /** @type {Part} */ (byName.get(to.part));
     const event = consumer.runtime.dialect.seams.in[to.port].seam.kind === "event";
     const keepLast = w.delivery && typeof w.delivery === "object" ? w.delivery.keepLast : null;
-    return { index, from, to, event, delay: w.delay, keepLast, overflow: w.overflow ?? null, convert: w.convert, rename: w.rename, dropped: w.dropped, fill: w.fill, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
+    return { index, from, to, event, delay: w.delay, keepLast, overflow: w.overflow ?? null, convert: w.convert, rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
   });
 }
 

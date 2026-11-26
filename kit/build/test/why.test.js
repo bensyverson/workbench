@@ -44,9 +44,10 @@ test("consumers are said to have read the old revision before the boundary and t
   assert.match(formatBuild(paramBuild(), { log: LOG }), /consumers: +game\.in\.start, game\.in\.exit read cave@1 at every step before T=1\/3 \(0\.333 s\), and cave@2 \(\$rev 2\) from their first step at or after it/);
 });
 
-test("a record whose only change is its params' values says that nothing built from them changed", () => {
+test("a changed params field is a changed declaration, said as any other field (a param's value is not in the key)", () => {
   const text = formatBuild(paramBuild({ record: ["params"] }), { log: LOG });
-  assert.match(text, /\(record changed: params only: the param values differ, but nothing the build made from them does\)/);
+  assert.match(text, /\(record changed: params\)/);
+  assert.doesNotMatch(text, /params only/);
 });
 
 test("why() lists the log's inputs since the part's previous build, through this one", () => {

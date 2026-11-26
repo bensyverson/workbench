@@ -30,16 +30,32 @@ function text(x) {
 }
 
 /**
+ * A built record as its content key sees it: without its `reads`, and each param declaration under `params` without
+ * its `value`. The reads say where build-time code read a param (a file and line, which move when the glue's lines
+ * do), and what each read produced is already in the record; a value only Kernels read reaches them through `$`
+ * each step, never compiled in (ruled 2026-11-26, leaf x3iG6D). The declaration's other fields stay.
+ * @param {Record<string, any>} record @returns {Record<string, any>}
+ */
+export function keyed(record) {
+  const { reads: _reads, ...rest } = record;
+  const params = rest.params;
+  if (params === null || typeof params !== "object" || Array.isArray(params)) return rest;
+  /** @type {Record<string, unknown>} */
+  const decls = {};
+  for (const [n, d] of Object.entries(params)) {
+    if (d !== null && typeof d === "object" && !Array.isArray(d)) { const { value: _value, ...decl } = d; decls[n] = decl; } else decls[n] = d;
+  }
+  return { ...rest, params: decls };
+}
+
+/**
  * A part's content key: the hash of the kit version, the package's content key (kit/package's; "" when the host
- * has none) and the built record in canonical form. The record's `reads` are left out: they say where build-time
- * code read a param (a file and line, which move when the glue's lines do), and what each read produced is already
- * in the record.
+ * has none) and the built record in canonical form, as `keyed` gives it (no reads, no param values).
  * @param {{ package: string | null | undefined, record: Record<string, any>, kitVersion?: string }} o
  * @returns {string}
  */
 export function partKey({ package: pkg, record, kitVersion = KIT_VERSION }) {
-  const { reads: _reads, ...rest } = record;
-  return sha256(`${kitVersion}\0${pkg ?? ""}\0${canonical(rest)}`);
+  return sha256(`${kitVersion}\0${pkg ?? ""}\0${canonical(keyed(record))}`);
 }
 
 /**

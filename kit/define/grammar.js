@@ -13,7 +13,7 @@ import { freeNames, paramNames } from "./free.js";
 import { lowerRecord } from "./lower.js";
 import { unitOf, PLAIN } from "./scope.js";
 import { noteRoot, noteCall, noteConvention, misfit } from "./params.js";
-import { sideOf } from "./handles.js";
+import { sideOf, paramSideOf } from "./handles.js";
 import { INPUTS_NS } from "./validate-grammar.js";
 
 /** @import * as T from "./define.js" */
@@ -563,13 +563,14 @@ class Program {
         if (typeof prop === "symbol" || PROBES.has(prop)) return undefined;
         if (prop === "check") return (/** @type {T.BuildOptions | undefined} */ o) => program.analyze(o).diagnostics;
         if (prop === "build") return (/** @type {T.BuildOptions | undefined} */ o) => program.build(o);
-        for (let i = /** @type {Instance | null} */ (inst); i; i = i.parent) {
-          const c = i.construct;
-          const owner = i;
-          if (c.def.slots && Object.hasOwn(c.def.slots, prop)) return (/** @type {unknown[]} */ ...args) => { program.call(owner, prop, args); return owner === inst ? proxy : program.builder(owner); };
-          const child = c.children.find((x) => x.name === prop);
-          if (child) return (/** @type {unknown[]} */ ...args) => program.open(child, owner, args, callSite());
+        const method = member(prop);
+        // `.param.<name>` names a declared param for a param wire; where the param slot is itself `param`, its method answers them too
+        if (prop === "param") {
+          const part = instanceName(/** @type {Instance} */ (program.root));
+          if (!method) return paramSideOf(program, part, program.g.dialect.name);
+          if (program.paramSlot() === "param") return paramSideOf(program, part, program.g.dialect.name, method);
         }
+        if (method) return method;
         const rejected = Object.hasOwn(inst.construct.rejected, prop) ? inst.construct.rejected[prop] : undefined;
         if (rejected) return () => { program.diagnostics.push(diag("B009", `${inst.construct.name} does not offer .${prop}(): ${rejected.message}`, rejected.tip ?? (rejected.fix ? `write ${rejected.fix}` : ""), callSite(), rejected.fix ? { fix: rejected.fix } : {})); return proxy; };
         const methods = [...KIT_METHODS];
@@ -577,6 +578,17 @@ class Program {
         throw new BuildError([diag("B001", `${inst.construct.name} has no method "${prop}".${didYouMean(prop, methods)}`, `its methods are ${methods.join(", ")}`, callSite())]);
       },
     });
+    /** A slot's or a child construct's method on this builder or an ancestor's, or undefined. @param {string} prop @returns {Function | undefined} */
+    function member(prop) {
+      for (let i = /** @type {Instance | null} */ (inst); i; i = i.parent) {
+        const c = i.construct;
+        const owner = i;
+        if (c.def.slots && Object.hasOwn(c.def.slots, prop)) return (/** @type {unknown[]} */ ...args) => { program.call(owner, prop, args); return owner === inst ? proxy : program.builder(owner); };
+        const child = c.children.find((x) => x.name === prop);
+        if (child) return (/** @type {unknown[]} */ ...args) => program.open(child, owner, args, callSite());
+      }
+      return undefined;
+    }
     return proxy;
   }
 }

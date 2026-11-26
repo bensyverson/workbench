@@ -7,7 +7,7 @@
 // same text. Format and trial: project/2026-11-26-why-text-trial-findings.md.
 
 /** @typedef {import("./event.js").BuildEvent} BuildEvent */
-/** @typedef {{ kind: string, T: string, part?: string, name?: string, value?: unknown }} LogInput */
+/** `wire`: the output a param wire set the param from (kit/run marks the inputs it makes). @typedef {{ kind: string, T: string, part?: string, name?: string, value?: unknown, wire?: string }} LogInput */
 /** @typedef {{ header?: unknown, inputs: LogInput[] }} RunLog */
 /**
  * `inputs`: list the log's inputs after this time (exclusive) through the build's boundary; null from the run's
@@ -55,7 +55,8 @@ function because(e, o) {
   const t = /** @type {any} */ (e.trigger);
   if (t.kind === "param") {
     const input = setBy(o.log, e.part, t.param, t.to, e.boundary.before, e.input);
-    const first = `param ${e.part}.$.${t.param} changed ${val(t.from)} → ${val(t.to)}${input ? `, set by a param input stamped ${timeText(input.T)}` : ""}`;
+    const by = !input ? "" : input.wire ? `, set by the wire ${input.wire} → ${e.part}.param.${t.param}, in a param input stamped ${timeText(input.T)}` : `, set by a param input stamped ${timeText(input.T)}`;
+    const first = `param ${e.part}.$.${t.param} changed ${val(t.from)} → ${val(t.to)}${by}`;
     const reads = (/** @type {Array<{ file: string, line: number, by: string | null }>} */ (t.reads)).map((r) => `${where(r.file, o.base)}:${r.line}${r.by ? ` (before ${r.by})` : ""}`);
     return reads.length ? [first, `read at build time at ${reads.join(", ")}`] : [first];
   }
@@ -98,7 +99,7 @@ export function formatBuild(e, o = {}) {
   const rev = `${e.part}@${e.revision.after}`;
   out.push(e.changed ? `build ${rev} ${at}` : `build ${rev} ${at}: rebuilt, nothing changed; revision kept`);
   out.push(line("because", first), ...more.map((m) => line("", m)));
-  const fields = e.record.length === 1 && e.record[0] === "params" ? "params only: the param values differ, but nothing the build made from them does" : e.record.length ? e.record.join(", ") : "none";
+  const fields = e.record.length ? e.record.join(", ") : "none";
   out.push(line("key", e.changed ? `${short(e.key.before)} → ${short(e.key.after)} (record changed: ${fields})` : `${short(e.key.before)} unchanged`));
   out.push(line("kernels", kernelsText(e.kernels)));
   const who = e.consumers.join(", ");
@@ -113,7 +114,7 @@ export function formatBuild(e, o = {}) {
 /** One input of the log, short: `T=1/4 (0.25 s) game pad right`. @param {LogInput} e */
 function inputText(e) {
   const v = /** @type {any} */ (e.value);
-  if (e.kind === "param") return `${timeText(e.T)} ${e.part}.$.${e.name} = ${val(v)}`;
+  if (e.kind === "param") return `${timeText(e.T)} ${e.part}.$.${e.name} = ${val(v)}${e.wire ? ` (wire ${e.wire})` : ""}`;
   if (e.kind === "rebuild") return `${timeText(e.T)} ${e.part} rebuild`;
   const held = v && typeof v === "object" && Object.values(v).every((x) => typeof x === "boolean");
   return `${timeText(e.T)} ${e.part} ${e.name} ${held ? Object.keys(v).filter((k) => v[k]).join("+") || "none" : val(v)}`;

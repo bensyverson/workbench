@@ -9,6 +9,11 @@ const HEAD = 'import { compose } from "kit/compose";\nimport { maze } from "maze
 /** @param {string} body @returns {Array<[string, number]>} */
 const s301 = (body) => scanGlue(`${HEAD}${body}`, ["maze"]).diagnostics.filter((d) => d.code === "S301").map((d) => [d.code, /** @type {any} */ (d).line]);
 
+test("S301 for a param handle tested, as for a port's", () => {
+  assert.deepEqual(s301("if (level.param.depth) { c.show(level); }"), [["S301", 3]]);
+  assert.deepEqual(s301("const x = level.param.depth === undefined;"), [["S301", 3]]);
+});
+
 test("S301 for each form of a handle tested or compared, at its line", () => {
   const forms = [
     "if (level.out.picked) { c.show(level); }",
