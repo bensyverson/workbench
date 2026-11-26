@@ -1,0 +1,26 @@
+{
+  "name": "swarm",
+  "version": "0.2.0",
+  "kit": "0.4",
+  "description": "Groups of agents on open ground, each steering by its Program's rules and carrying the traits its Program declares.",
+  "entry": {
+    "dialect": "swarm.dialect.js",
+    "grammar": "swarm.grammar.js",
+    "ui": "swarm.ui.js",
+    "runtime": "swarm.runtime.js"
+  },
+  "examples": [
+    "examples/01.js",
+    "examples/02.js",
+    "examples/03.js"
+  ],
+  "files": {
+    "examples/01.js": "sha256-d5yWLQXIunyhX2ZX7r8jVx/iI2yv21gvWIaGvnmICBk=",
+    "examples/02.js": "sha256-r4Hn9/IXVh9GGmJfPKQ2XF2Q43aP00grgng+gP5WTPA=",
+    "examples/03.js": "sha256-g0Y0ZnKl34jTevKNshJGj2T7h+ANaJdB2fWjMJlNJvU=",
+    "swarm.dialect.js": "sha256-ehiC2w5CY3URraOj9zZXInW+DFrNwwa3DOjUfvVR7k0=",
+    "swarm.grammar.js": "sha256-jlDsbOxUKgeABEMTB48J5cA7rAD+CuFGjoJE94NHrfs=",
+    "swarm.runtime.js": "sha256-eaLzJDANs81yLp49oPRHpGEChKwb2Qy9kNarbACqRAk=",
+    "swarm.ui.js": "sha256-scnSmDj4l+SWb/DnWz4B/LuYDhBIDQlxhltBWuwh5sU="
+  }
+}

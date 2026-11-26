@@ -128,12 +128,27 @@ export function sampleOf(seam, point) {
 }
 
 /**
+ * A seam without the record fields an input gives a default for: what a stranger's producer may send. An output
+ * may not declare defaults (D028), and a probe that sends only these fields leaves the defaults for the wire to
+ * fill, as a stranger's wire would (a probe that sent every field would send its own made-up values instead).
+ * @param {any} seam @returns {any}
+ */
+export function withoutDefaults(seam) {
+  if (seam?.kind === "event") return { ...seam, of: withoutDefaults(seam.of) };
+  if (seam?.kind !== "record") return seam;
+  const { defaults = {}, ...rest } = seam;
+  return { ...rest, fields: Object.fromEntries(Object.entries(seam.fields).filter(([k]) => !Object.hasOwn(defaults, k)).map(([k, f]) => [k, withoutDefaults(f)])) };
+}
+
+/**
  * A probe part for an Event input of `target`'s Dialect: a Dialect with the same frames (no edges) and one Event
- * output of the input's seam, whose runtime pushes `record` once, at its step at `at` seconds.
+ * output of the input's seam less its defaulted fields, whose runtime pushes `record` (less those fields) once, at its
+ * step at `at` seconds.
  * @param {any} target  the consumer's Dialect @param {string} input @param {unknown} record @param {number} at
  */
 export function probeFor(target, input, record, at) {
-  const seam = target.seams.in[input].seam;
+  const seam = withoutDefaults(target.seams.in[input].seam);
+  const sent = seam.of?.kind === "record" && record && typeof record === "object" ? Object.fromEntries(Object.keys(seam.of.fields).map((k) => [k, /** @type {any} */ (record)[k]])) : record;
   /** @type {Record<string, { dims: 1 | 2 | 3, note: string }>} */
   const frames = {};
   for (const f of Object.values(/** @type {Record<string, any>} */ (target.seams.frames))) frames[f.name] = { dims: f.dims, note: "the probe's copy of the consumer's frame" };
@@ -149,7 +164,7 @@ export function probeFor(target, input, record, at) {
     clock: () => ({ tick }),
     init: () => ({ sent: false }),
     step(/** @type {any} */ s, /** @type {any} */ ctx) {
-      if (!s.sent && ctx.T >= at - 1e-9) { ctx.events.fire.push(structuredClone(record)); return { sent: true }; }
+      if (!s.sent && ctx.T >= at - 1e-9) { ctx.events.fire.push(structuredClone(sent)); return { sent: true }; }
       return s;
     },
     events: { out: { fire: 1 } },

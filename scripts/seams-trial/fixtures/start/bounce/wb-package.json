@@ -1,0 +1,20 @@
+{
+  "name": "bounce",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "Balls fly in a box and rebound off its walls; each ball carries numbers its Program declares.",
+  "entry": {
+    "dialect": "bounce.dialect.js",
+    "grammar": "bounce.grammar.js",
+    "ui": "bounce.ui.js"
+  },
+  "examples": [
+    "examples/01.js"
+  ],
+  "files": {
+    "bounce.dialect.js": "sha256-aSW80wHYgy6fp14SWSZzh7u/zqDFnZae80lJk3WyP/w=",
+    "bounce.grammar.js": "sha256-SZoBmun2MruEeWhcUYs4Tn7A+dlkFls93QY0kV4A0P8=",
+    "bounce.ui.js": "sha256-MrUkUxIyE7fj6rcV9jZlxOKkVce+RuveLpqIiYPqH0k=",
+    "examples/01.js": "sha256-DLZhgLzpjujTZztybMJazXWd4Q68F+uR62T83Isvdh8="
+  }
+}

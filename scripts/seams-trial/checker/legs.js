@@ -6,21 +6,22 @@
 // (G010, G011), and the composition run with the D-pad steering to a coin and a burst expected near the pickup's
 // converted position within half a second (G012, G013), then replayed (N005).
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { run as runProgram } from "../../../kit/define/index.js";
 import { createRun, replay, carry } from "../../../kit/run/index.js";
 import { MANIFEST_PATH } from "../../../kit/package/index.js";
 import { checkPackageDir } from "../../pkg-trial/checker/index.js";
-import { buildOptions } from "../../pkg-trial/checker/scope.js";
 import { loadPackageDir, loadCompose } from "./load.js";
 import { catching, silencing, steerToCoin, probeFor, sampleOf, startRun, PAD } from "./runs.js";
+import { num, pointText, runFindings, runWarnings, exampleOf } from "./common.js";
+import { portProblems2, runBounceExamples, runSwarmExamples, checkBounceCompose } from "./legs-bounce.js";
 
 /** @typedef {import("./load.js").Found} Found */
-/** @typedef {{ diagnostics: Found[], plan: string[], notes: string[] }} LegResult */
+/** @typedef {import("./common.js").LegResult} LegResult */
+/** @typedef {"maze" | "particles" | "bounce" | "swarm"} AuthorRole */
 
-/** How many examples each starting package has (scripts/pkg-trial/fixtures/valid). */
-const START_EXAMPLES = { maze: 1, particles: 6 };
+/** How many examples each starting package has (scripts/pkg-trial/fixtures/valid, scripts/seams-trial/fixtures/start). */
+const START_EXAMPLES = { maze: 1, particles: 6, bounce: 1, swarm: 2 };
 /** Seconds the checker runs each example, at least. */
 const RUN_FOR = 2;
 /** Seconds the D-pad may take to reach a coin: an example, a composition. */
@@ -29,11 +30,6 @@ const REACH = { example: 20, compose: 30 };
 const BURST_WITHIN = 0.5;
 /** The probe's record goes out at this instant, and the particles are watched until PROBE_UNTIL. */
 const PROBE_AT = 0.5, PROBE_UNTIL = 1;
-
-/** @param {number} v */
-const num = (v) => String(Math.round(v * 1000) / 1000);
-/** @param {unknown} p */
-const pointText = (p) => (Array.isArray(p) ? `(${p.map((v) => num(v)).join(", ")})` : num(/** @type {number} */ (p)));
 
 /**
  * What the run's state lacks that the checker reads (R3), by role.
@@ -53,10 +49,11 @@ export function stateProblems(state, role) {
 
 /**
  * The ports the author's task asks for that the Dialect lacks.
- * @param {any} dialect @param {"maze" | "particles"} role @param {{ grammar: string, examples: string[] }} text
+ * @param {any} dialect @param {AuthorRole} role @param {{ grammar: string, examples: string[] }} text
  * @returns {string[]}
  */
 export function portProblems(dialect, role, text) {
+  if (role === "bounce" || role === "swarm") return portProblems2(dialect, role);
   const outs = Object.values(/** @type {Record<string, any>} */ (dialect.seams.out ?? {}));
   const ins = Object.values(/** @type {Record<string, any>} */ (dialect.seams.in ?? {}));
   /** @type {string[]} */
@@ -76,35 +73,19 @@ export function portProblems(dialect, role, text) {
 }
 
 /**
- * Checks one leg.
- * @param {string} dir  a package folder (maze, particles), or the compose leg's folder
- * @param {"maze" | "particles" | "compose"} role
+ * Checks one leg. A compose leg is the pairing whose two package folders it holds: bounce/ and swarm/, or maze/ and
+ * particles/.
+ * @param {string} dir  a package folder (maze, particles, bounce, swarm), or the compose leg's folder
+ * @param {AuthorRole | "compose"} role
  * @returns {Promise<LegResult>}
  */
 export async function checkLeg(dir, role) {
-  return role === "compose" ? checkComposeLeg(dir) : checkPackageLeg(dir, role);
+  if (role !== "compose") return checkPackageLeg(dir, role);
+  return existsSync(join(dir, "bounce")) ? checkBounceCompose(dir) : checkComposeLeg(dir);
 }
 
 /**
- * A run's N diagnostics as findings at `file`. @param {any[]} diagnostics @param {(part?: string) => string} fileOf @param {string} [what]
- * @returns {Found[]}
- */
-const runFindings = (diagnostics, fileOf, what = "") => diagnostics.map((d) => ({ file: fileOf(d.part), line: 1, code: d.code, message: `${what}${d.message}${d.T !== undefined ? ` (at T = ${d.T})` : ""}`, fix: "see runtime.md, \"The rules a step keeps\"" }));
-
-/**
- * An example's builder, built at its params' declared values, and its build options.
- * @param {(path: string) => Promise<any>} importModule @param {string} path
- */
-async function exampleOf(importModule, path) {
-  const mod = await importModule(path);
-  const build = buildOptions(path, mod);
-  const built = runProgram(mod.default, build);
-  const values = Object.fromEntries(Object.entries(built.record?.params ?? {}).map(([k, v]) => [k, /** @type {any} */ (v).value]));
-  return { builder: mod.default(Object.freeze(values)), record: built.record, build };
-}
-
-/**
- * @param {string} dir @param {"maze" | "particles"} role
+ * @param {string} dir @param {AuthorRole} role
  * @returns {Promise<LegResult>}
  */
 async function checkPackageLeg(dir, role) {
@@ -128,8 +109,8 @@ async function checkPackageLeg(dir, role) {
   }
   const runtimeFile = manifest.entry.runtime;
   const pkgInfo = [{ name: loaded.name, content: loaded.content, version: loaded.version }];
-  if (role === "maze") await runMazeExamples(loaded, importModule, pkgInfo, runtimeFile, found, notes);
-  else await runParticlesExamples(loaded, importModule, pkgInfo, runtimeFile, found, notes);
+  const runners = { maze: runMazeExamples, particles: runParticlesExamples, bounce: runBounceExamples, swarm: runSwarmExamples };
+  await runners[role](loaded, importModule, pkgInfo, runtimeFile, found, notes);
   return { diagnostics: found, plan: [], notes };
 }
 
@@ -158,6 +139,7 @@ async function runMazeExamples(loaded, importModule, packages, runtimeFile, foun
     const st = s.run.state(part);
     if (st) for (const m of stateProblems(st, "maze")) found.push({ file: runtimeFile, line: 1, code: "G005", message: `${path}: ${m}`, fix: "keep player: { x, y } and grid in the state (rules.md, R3)" });
     found.push(...runFindings(s.run.diagnostics, () => runtimeFile, `${path}: `));
+    notes.push(...runWarnings(s.run.diagnostics, () => runtimeFile, `${path}: `));
   }
 }
 
@@ -208,7 +190,8 @@ async function runParticlesExamples(loaded, importModule, packages, runtimeFile,
     const st = alone.run.state(part);
     if (st) for (const m of stateProblems(st, "particles")) found.push({ file: runtimeFile, line: 1, code: "G005", message: `${path}: ${m}`, fix: "keep each particle's x and y in state.particles (rules.md, R3)" });
     found.push(...runFindings(alone.run.diagnostics, () => runtimeFile, `${path}: `));
-    if (alone.run.diagnostics.length) continue;
+    notes.push(...runWarnings(alone.run.diagnostics, () => runtimeFile, `${path}: `));
+    if (alone.run.diagnostics.some((/** @type {any} */ d) => d.severity !== "warning")) continue;
     const extents = loaded.grammar.lower(alone.composed.parts[0].record).seams?.extents ?? {};
     for (const input of events) {
       /** @type {number[]} */
@@ -251,6 +234,7 @@ async function checkComposeLeg(dir) {
   const notes = [];
   const r = await loadCompose(dir, ["maze", "particles"]);
   if (r.diagnostics.length) return { diagnostics: r.diagnostics, plan: [], notes };
+  notes.push(...r.warnings);
   /** @type {Found[]} */
   const found = [];
   const byName = Object.fromEntries(r.loaded.map((p) => [p.name, p]));
@@ -316,6 +300,7 @@ async function checkComposeLeg(dir) {
   else found.push({ file: "workbench.js", line: 1, code: "G013", message: `the coin at ${pointText(got.cell)} was picked up at T = ${num(got.T)}; its record reached ${wire.to} as ${JSON.stringify(carried)}, and no particles were born within ${where} by T = ${num(got.T + BURST_WITHIN)}`, fix: "relate the frames so the coin's cell lands where the particles' box shows it, and give the burst emitter a trigger and a spawn that places particles at the record" });
   run.runUntil(Math.max(run.seconds, got.T + 1));
   found.push(...runFindings(run.diagnostics, fileOf));
+  notes.push(...runWarnings(run.diagnostics, fileOf));
   const again = replay(composed, { runtimes: running, packages }, JSON.parse(JSON.stringify(run.record())));
   if (again.ok) notes.push("run: replayed, same state hashes at every instant");
   else found.push(...runFindings(again.diagnostics, fileOf, "replay: "));

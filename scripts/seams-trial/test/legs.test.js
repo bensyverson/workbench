@@ -121,6 +121,15 @@ test("S116 (from the runtimes' Event maxes) is a diagnostic at the glue's line, 
   assert.match(r.diagnostics[0].message, /takes at most 8 per step/);
 });
 
+test("with an overflow policy S116 is a warning: printed as a note, and the leg passes (leaf UTdvE6)", async () => {
+  const { codes: c, r } = await codes("compose", (d) => {
+    sub(d, "maze/maze.runtime.js", "const MAX_STEPS = 4;", "const MAX_STEPS = 64;");
+    sub(d, "workbench.js", '{ rename: { cell: "at" } }', '{ rename: { cell: "at" }, overflow: "keepLast" }');
+  });
+  assert.deepEqual(c, []);
+  assert.ok(r.notes.some((n) => /^workbench\.js:\d+: S116 \(warning\) .*keepLast/.test(n)), r.notes.join("\n"));
+});
+
 test("G005: the state the checker reads, by role", () => {
   assert.deepEqual(stateProblems({ player: { x: 1, y: 2 }, grid: ["#"] }, "maze"), []);
   assert.match(stateProblems({ hero: { x: 1, y: 2 }, grid: ["#"] }, "maze").join(), /player\.x/);

@@ -48,7 +48,14 @@ At each port the kit checks that your Dialect's own type has the seam type's sha
 | a record | `struct({ … })` with the same field names, each paired by these rules |
 | `list<T, max>` | `list(T, max)` with the same max or less |
 
-A type that does not fit is refused when the Dialect is defined, naming the port (a D code).
+A type that does not fit is refused when the Dialect is defined, naming the port (a D code). A vector type is declared once, in the Dialect's `types`, and then named wherever it is used (a port, a member, a `state` field); writing `vector(…)` inline in `state` is D023:
+
+```js
+// <package>.dialect.js
+import { defineDialect, vector } from "kit/define";
+
+types: { <vec>: vector(2, "f64") },        // then "<vec>" in members and state: { <path>: "<vec>" }
+```
 
 ## Ports, for a language's author
 
@@ -94,6 +101,7 @@ globals: { …, <inputs-name>: "<Object>" },
 
 - **A value input** (anything but an `Event`) has a `default`, read when nothing is wired, or `required: true` (the glue must wire it). A vector `default` is an array. Lambdas read value inputs through the one object `inputs` names, the way params are read through `$`: `<inputs-name>.<port3>` is an `f64`. A point or vector input reads as your one `vector` type of its dims; if you have several, say which with `type: "<type>"`. Your runtime gets them too (`runtime.md`).
 - **An `Event` input** delivers, before each of your steps, the records produced since your last step, in order, already converted into your frames. It takes no `default` or `required`.
+  - **A field of its record may declare a default**, `<field>: <type> = <value>` (a number, `true` or `false`, a `'<string>'`, or a list such as `[0, 1]` for a vector): `seam: "Event<{ <field1>: point2@<frame>, <field2>: f64 = 1 }>"`. A wire from a producer whose record lacks the field fills your default into every record; a producer that has the field gives its own value. A field with no default must come from the producer (S202). Only a top-level field of an Event input's record takes a default; one elsewhere, or one that does not fit its type, is D028.
   - `delivery: "reliable"` (the default) keeps every record. The composition checks that the queue can't overflow (S116, from the maxes in `runtime.md`). `delivery: { keepLast: n }` keeps the newest `n` and drops older ones, counting the drops.
   - `record: { name, slots }` lets lambdas read the record: lambdas of the listed slot conventions read its fields through the global `name` (`<record-name>.<field2>`). It is null when your runtime calls such a lambda without a record, so a lambda checks it first: `if (<record-name> != null) { … <record-name>.<field2> … }` or `if (<record-name> == null) return;` (an unchecked read is L008). No other lambda may read it (L004). Your runtime sets `name` before calling such a lambda, once per record (`runtime.md`). Without `record`, only your runtime sees the records.
 - **A Grammar can name an input** with `ref("in")`, as an argument or inside a `data({ … })` shape, checked against the inputs you declare, with a did-you-mean (B003). `ref("in", { kind: "event" })` accepts only Event inputs and `ref("in", { kind: "value" })` only value inputs. Then a Program can say, for example, which of its parts an input drives: `.<call>("<name>", { <option>: "<port>" })`. Your runtime reads the name from the record and the records from that input.
@@ -192,10 +200,11 @@ workbench.js:<line>: S202 <part1>.out.<port1> cannot feed <part2>.in.<port2>: th
 | S115 | a loop of wires with no delayed wire in it |
 | S116 | a reliable Event wire whose queue could hold more records at one step than the input's runtime takes; a warning, not an error, on a wire with `overflow` |
 | S201 | the kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate |
-| S202 | a field the input takes is missing from the output's record (after any rename), or is of another kind |
+| S202 | a field the input takes, with no default, is missing from the output's record (after any rename), or a field is of another kind |
 | S203 | an enum value the input does not accept |
 | S204 | a list longer than the input's max |
 | S205 | a rename naming a field either side lacks, two fields into one, or a rename on a wire with no record |
+| S206 | a **warning**, not an error: the wire drops a field the input does not take and fills one with its default, and the two are of compatible seams, so a `rename` may have been meant. Ignore it when the default is what you want |
 | S251 | both sides tagged, and no frame path joins them |
 | S252 | one side tagged, the other not |
 | S253 | two frame paths between the same frames disagree |

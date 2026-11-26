@@ -90,6 +90,47 @@ test("the packet switch: the default is docs/, PACKET=placeholder copies docs-pl
   assert.match(b.stderr, /PACKET/);
 });
 
+test("the second pairing (leaf UTdvE6): a bounce leg gets the pairing's rules, task and starting package; it needs PACKET=placeholder", () => {
+  const pair = join(REPO, "scripts/seams-trial/docs-placeholder/bounce-swarm");
+  const dir = join(scratch, "e-bounce");
+  const r = launch(["bounce", dir, "model-x"], { PACKET: "placeholder" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.started, dir);
+  assert.equal(readFileSync(join(dir, "rules.md"), "utf8"), readFileSync(join(pair, "rules.md"), "utf8"));
+  assert.equal(readFileSync(join(dir, "task.md"), "utf8"), readFileSync(join(pair, "task-bounce.md"), "utf8"));
+  assert.equal(readFileSync(join(dir, "runtime.md"), "utf8"), readFileSync(join(REPO, "scripts/seams-trial/docs-placeholder/runtime.md"), "utf8"));
+  for (const f of ["seams.md", "packaging.md", "check.sh", "hash.sh", "bounce/wb-package.json", "bounce/bounce.dialect.js"]) assert.ok(existsSync(join(dir, f)), f);
+  assert.match(r.brief, /one package folder, `bounce\/`/);
+  const c = spawnSync("sh", [join(dir, "check.sh")], { encoding: "utf8" });
+  assert.equal(c.status, 1, c.stderr);
+  assert.match(c.stdout, /G001/);
+  // the example packet has no second pairing
+  const plain = join(scratch, "e-bounce-example");
+  const b = launch(["swarm", plain, "model-x"]);
+  assert.equal(b.status, 2);
+  assert.equal(b.started, null);
+  assert.equal(existsSync(plain), false);
+  assert.match(b.stderr, /PACKET=placeholder/);
+});
+
+test("the second pairing's compose leg copies bounce/ and swarm/, and its check.sh passes the reference hand-in", () => {
+  const VALID_3 = join(REPO, "scripts/seams-trial/fixtures/valid-3");
+  const one = join(scratch, "legs3", "bounce-leg"), two = join(scratch, "legs3", "swarm-leg");
+  cpSync(join(VALID_3, "bounce"), join(one, "bounce"), { recursive: true });
+  cpSync(join(VALID_3, "swarm"), join(two, "swarm"), { recursive: true });
+  const dir = join(scratch, "e-compose");
+  const r = launch(["compose", dir, "model-x", one, two], { PACKET: "placeholder" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(join(dir, "task.md"), "utf8"), /rush to where a ball meets a wall/);
+  assert.match(readFileSync(join(dir, "reference.md"), "utf8"), /# bounce 0\.2\.0[\s\S]*`wall`[\s\S]*# swarm 0\.2\.0[\s\S]*`lure`/);
+  assert.match(r.brief, /two package folders, `bounce\/` and `swarm\/`/);
+  cpSync(join(VALID_3, "compose/workbench.js"), join(dir, "workbench.js"));
+  const c = spawnSync("sh", [join(dir, "check.sh")], { encoding: "utf8" });
+  assert.equal(c.status, 0, c.stdout + c.stderr);
+  assert.match(c.stdout, /S116 \(warning\)/);
+  assert.match(c.stdout, /more agents within 40 of/);
+});
+
 test("the guards hold with PACKET=placeholder too", () => {
   for (const dir of ["rel/x", join(REPO, "local", "KTrmEL-x"), join(fakeHome, ".claude", "x")]) {
     const r = launch(["maze", dir, "model-x"], { PACKET: "placeholder" });

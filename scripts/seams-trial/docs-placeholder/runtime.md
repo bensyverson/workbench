@@ -89,7 +89,7 @@ A slot a construct may call more than once (one without `once`) has no alias: it
   .<slot3>("<name2>", (<…>) => { <…> })
 ```
 
-has the ids `<part>.<slot3>#2` and `<part>.<slot3>#3`, because `<slot1>` is call 0 and `<slot2>` call 1. (A construct whose Grammar keeps its calls in call order, `record: "calls"`, counts them in the order the Program made them.) The record keeps such calls by the name each declares (`record.<slot3-key>.<name1>`), not by place, so list the ids (`Object.keys(ctx.kernels)`), sort them by their `#n`, and match them to the record's names in order. The kit does not match them for you.
+has the ids `<part>.<slot3>#2` and `<part>.<slot3>#3`, because `<slot1>` is call 0 and `<slot2>` call 1. (A construct whose Grammar keeps its calls in call order, `record: "calls"`, counts them in the order the Program made them.) The record keeps such calls by the name each declares (`record.<slot3-key>.<name1>`), not by place. Because each of these calls declares a name, each is also there by it: `kernels["<part>.<slot3>.<name1>"]` is the same function as `kernels["<part>.<slot3>#2"]`, so a runtime walks the record's names and looks each kernel up by `<instance>.<slot>.<name>`. A repeatable slot whose calls declare no name has only the `#n` ids: list them (`Object.keys(ctx.kernels)`), sort them by their `#n`, and match them to the record's list in order.
 
 - **A kernel takes its slot convention's params, in order**, and returns what the convention returns. Call it with plain values: a number, a string, a vector or a point as an array `[x, y]` (a one-dimensional point is a bare number).
 - **An instance param** (an object a lambda may change, such as an `<Object>` your Dialect declares) is a plain object you make, holding each member the lambda may read or write. The kernel changes it in place; read the members back afterwards. A member that is a function (a `<method>()`, say) is one you supply.
@@ -108,11 +108,38 @@ has the ids `<part>.<slot3>#2` and `<part>.<slot3>#3`, because `<slot1>` is call
 
 **Vectors and points.** At the runtime boundary a vector or a point is a plain array of its components: in the record's data, in `state`, in the Events you push and take (`{ <field>: [3, 4] }` for a `point2`; a `point1` is a bare number, `{ <field>: 8.5 }`), and in what you pass a kernel. `.x`, `.y` exist only in lambda source (`<param>.<member>.x`); the compiled kernel reads them as `v[0]`, `v[1]`, so your runtime reads `obj.<member>[0]`. Vectors are values: replace one (`obj.<member> = [x, y]`), don't change a component in place.
 
+## A Program's own data, in the state
+
+Your Dialect declares `state` once, but a Program may declare data of its own: a number every `<item>` carries, one per `.<decl>("<name>", …)` it writes. That data lives in the run's state like everything else. Mark **one** struct of your `state` extensible, and have `environment(program)` return a `state` field for each declaration, beside the `objects` it already returns:
+
+```js
+// <package>.dialect.js
+import { defineDialect, list, struct } from "kit/define";
+
+state: {
+  <path1>: "f64",
+  <items>: list(struct({ <field1>: "f64", <field2>: "f64", <own>: struct({}, { extensible: true }) }), <max>),
+},
+environment(program) {
+  const members = {}, state = {};
+  for (const n of Object.keys(program.<decls> ?? {})) {
+    members[n] = { value: "f64", write: true };   // what a lambda reads and writes on <Object>
+    state[n] = "f64";                             // and where its value lasts between steps: <items>[i].<own>.<n>
+  }
+  return { objects: { <Object>: { members } }, state };
+},
+```
+
+- **One struct may be extensible**, a member of `state` or the item of a state list (D023 for a second). It may have fields of its own; a Program's field named like one of them is D007, so the usual shape keeps the Program's fields in a struct of their own (`<own>` above).
+- **The run checks every state against the Program's fields:** each item's `<own>` holds exactly the fields its Program declares. One missing or of the wrong type is N002. A field the Program did not declare is **N003** in every run, development or not: memory kept outside the Program's state. There is no cap but the Program's own declarations.
+- **Your runtime fills them.** `init` sets each field to its declared starting value (read it from `record.<decls>`), and each step copies each item's fields into the object a lambda is handed and back out again (`<item>.<own>.<n>`), so what a lambda leaves in one lasts to the next step.
+- A UI's paths and a value output's `from` read only the Dialect's own fields, not a Program's.
+
 ## The rules a step keeps
 
 - **Return a new state; never change the one you are handed.** Copy what changes (`{ ...state, <path> }`).
 - **Keep no other memory:** no module-level variables, no `Math.random` (use `ctx.rng`), no clock or date. A run is a function of the record, the params and the inputs, so it can be replayed exactly.
-- **The state fits your Dialect's `state`**, after `init` and after every step (N002, naming the paths that don't).
+- **The state fits your Dialect's `state`**, with the fields the Program declares in its extensible struct, after `init` and after every step (N002, naming the paths that don't).
 - **Push no more Events than `events.out` declares**, and expect no more than `events.in` (N002).
 - An Event output is **pushed, never kept in state**.
 
@@ -135,8 +162,8 @@ In a development run (the default, and the checker's) every state is frozen and 
 | Code | When |
 |---|---|
 | N001 | the run fell behind real time and slowed (a warning), or a `keepLast` input dropped records (counted) |
-| N002 | a state that does not fit the Dialect's `state`; more Events pushed or taken than `events` declares |
-| N003 | in a development run, a step changed the state it was handed, or kept memory outside it |
+| N002 | a state that does not fit the Dialect's `state` (with the Program's fields); more Events pushed or taken than `events` declares |
+| N003 | in a development run, a step changed the state it was handed, or kept memory outside it; in any run, a field in the extensible struct that the Program does not declare |
 | N004 | an `init` or `step` threw |
 | N005 | a replay diverged from the recorded run |
 | N006 | `clock(record)` returned something that is not a clock |

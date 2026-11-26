@@ -1,8 +1,8 @@
 // The tests' fixture copies: a hand-in for one role made from fixtures/valid in a fresh temporary folder, edited,
 // and re-hashed (unless the edit is meant to leave a package's hashes stale). The compose hand-in is assembled
-// from the three: workbench.js beside copies of maze/ and particles/.
+// from the three: workbench.js beside copies of the two packages (maze/ and particles/, or bounce/ and swarm/).
 
-import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,21 +12,26 @@ import { hashDir } from "../pkg/dir.js";
 export const FIXTURES = fileURLToPath(new URL("./fixtures/valid", import.meta.url));
 /** The rerun's reference hand-ins (leaf WnmLua), written from the rerun's docs. */
 export const FIXTURES_2 = fileURLToPath(new URL("./fixtures/valid-2", import.meta.url));
+/** The second pairing's reference hand-ins (leaf UTdvE6): bounce, swarm and their glue, written from docs-placeholder/. */
+export const FIXTURES_3 = fileURLToPath(new URL("./fixtures/valid-3", import.meta.url));
+
+/** The packages a fixtures folder's composition uses. @param {string} from */
+export const composedOf = (from) => (existsSync(join(from, "bounce")) ? ["bounce", "swarm"] : ["maze", "particles"]);
 
 /**
  * A copy of the hand-in for `role` with `edit(dir)` applied, then each package in it re-hashed unless `stale`.
- * @param {"maze" | "particles" | "compose"} role @param {(dir: string) => void | Promise<void>} [edit] @param {{ stale?: boolean, from?: string }} [o]
+ * @param {"maze" | "particles" | "bounce" | "swarm" | "compose"} role @param {(dir: string) => void | Promise<void>} [edit] @param {{ stale?: boolean, from?: string }} [o]
  *   `from`: the fixtures folder (default fixtures/valid)
  */
 export async function handIn(role, edit = () => {}, { stale = false, from = FIXTURES } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "C0nNGy-st-"));
   if (role === "compose") {
     cpSync(join(from, "compose"), dir, { recursive: true });
-    for (const p of ["maze", "particles"]) cpSync(join(from, p), join(dir, p), { recursive: true });
+    for (const p of composedOf(from)) cpSync(join(from, p), join(dir, p), { recursive: true });
   } else cpSync(join(from, role), dir, { recursive: true });
   await edit(dir);
   if (!stale) {
-    if (role === "compose") for (const p of ["maze", "particles"]) await hashDir(join(dir, p));
+    if (role === "compose") for (const p of composedOf(from)) await hashDir(join(dir, p));
     else await hashDir(dir);
   }
   return dir;
