@@ -1,6 +1,6 @@
 // Run control and replay: headless runs step frame parts at a nominal 60 Hz; the real-time driver caps workbench
-// time per display frame, so T slows instead of anything dropping (R001), and logs each frame; a run is a pure
-// function of the composed record, the params and the input log (R005 when a replay diverges); rewind replays from
+// time per display frame, so T slows instead of anything dropping (N001), and logs each frame; a run is a pure
+// function of the composed record, the params and the input log (N005 when a replay diverges); rewind replays from
 // the nearest checkpoint; keepLast drops are counted.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -34,10 +34,10 @@ test("pause and step: a paused driver ignores display frames; step advances to t
   assert.ok(run.seconds > 1 / 30);
 });
 
-test("real time: a long frame is capped, T falls behind wall time, nothing is dropped, and R001 says how much", () => {
+test("real time: a long frame is capped, T falls behind wall time, nothing is dropped, and N001 says how much", () => {
   const { composed, runtimes } = bursts();
-  const run = createRun(composed, { runtimes, frames: "display", inputs: [rightAt(0)] });
-  const d = createDriver(run, { catchUp: 1 / 15 });
+  const run = createRun(composed, { runtimes, frames: "display", inputs: [rightAt(0)], catchUp: 1 / 15 });
+  const d = createDriver(run);
   for (let i = 0; i < 10; i++) d.frame(1 / 60);
   for (let i = 0; i < 4; i++) d.frame(0.5); // a stalled tab: four half-second frames
   d.frame(1 / 60);
@@ -46,7 +46,7 @@ test("real time: a long frame is capped, T falls behind wall time, nothing is dr
   const frames = run.log.inputs.filter((/** @type {any} */ e) => e.kind === "frame");
   assert.equal(frames.length, 15);
   assert.equal(frames.filter((/** @type {any} */ e) => e.capped).length, 4);
-  const r001 = run.diagnostics.filter((/** @type {any} */ x) => x.code === "R001");
+  const r001 = run.diagnostics.filter((/** @type {any} */ x) => x.code === "N001");
   assert.equal(r001.length, 1);
   assert.match(r001[0].message, /ran at 0\.13× for 2 s of wall time/);
   assert.deepEqual(run.stats().slowdowns.map((/** @type {any} */ s) => [s.wall, s.ratio]), [[2, 0.133]]);
@@ -67,7 +67,7 @@ test("replay: the same record, params and log give the same per-instant state ha
   assert.deepEqual(r.run.hashes, record.hashes);
 });
 
-test("R005: a replay that diverges names the first instant whose state hash differs", () => {
+test("N005: a replay that diverges names the first instant whose state hash differs", () => {
   const { composed, runtimes } = bursts();
   const run = createRun(composed, { runtimes, inputs: [rightAt(0)] });
   run.runUntil(1);
@@ -75,7 +75,7 @@ test("R005: a replay that diverges names the first instant whose state hash diff
   const M = mazeKit({ step: (/** @type {any} */ s, /** @type {any} */ c) => (++n === 6 ? { ...mazeStep(s, c), score: 99 } : mazeStep(s, c)) });
   const r = replay(composed, { runtimes: [M.runtime, runtimes[1]], dev: false }, run.record());
   assert.equal(r.ok, false);
-  assert.deepEqual(r.diagnostics.map((/** @type {any} */ x) => [x.code, x.T]), [["R005", "5/8"]]);
+  assert.deepEqual(r.diagnostics.map((/** @type {any} */ x) => [x.code, x.T]), [["N005", "5/8"]]);
   assert.match(r.diagnostics[0].message, /level/);
 });
 
@@ -96,12 +96,12 @@ test("rewind replays from the nearest checkpoint: the state at T is the state th
   assert.equal(run.log.inputs.some((/** @type {any} */ e) => e.T === "13/5"), false);
 });
 
-test("keepLast drops are counted, per wire, in stats and an R001", () => {
+test("keepLast drops are counted, per wire, in stats and an N001", () => {
   const { composed, runtimes } = bursts({ fx: fxKit({ clock: { tick: 1 / 4 }, delivery: { keepLast: 1 }, max: 1 }) });
   const run = createRun(composed, { runtimes, inputs: [rightAt(0)] });
   run.runUntil(1);
   // two picks between fx's steps at 0 and 1/4: the older is dropped
   assert.deepEqual(run.state("fx").seen.map((/** @type {any} */ s) => s.x), [45]);
   assert.deepEqual(run.stats().dropped, { "level.out.picked → fx.in.burst": 1 });
-  assert.match(run.diagnostics.find((/** @type {any} */ x) => x.code === "R001")?.message ?? "", /keeps the last 1/);
+  assert.match(run.diagnostics.find((/** @type {any} */ x) => x.code === "N001")?.message ?? "", /keeps the last 1/);
 });

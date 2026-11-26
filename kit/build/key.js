@@ -6,12 +6,27 @@ import { KIT_VERSION } from "../define/version.js";
 import { sha256 } from "./sha256.js";
 
 /**
- * Plain data as JSON with every object's keys sorted, so two equal values give one text whatever order their keys
- * were written in. Symbol keys and functions are left out, as JSON leaves them.
+ * Plain data as text, one text per value: JSON with every object's keys sorted, so two equal values give one text
+ * whatever order their keys were written in, and with the numbers JSON cannot write spelled out (`NaN`, `Infinity`,
+ * `-Infinity`, `-0`) instead of all becoming null or 0. Plain JSON data gives its JSON text. Undefined, symbols and
+ * functions are left out as JSON leaves them (null in an array); undefined alone gives undefined.
  * @param {unknown} v @returns {string}
  */
 export function canonical(v) {
-  return JSON.stringify(v, (_k, x) => (x !== null && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+  return /** @type {string} */ (text(v));
+}
+
+/** @param {unknown} x @returns {string | undefined} */
+function text(x) {
+  if (x === undefined || typeof x === "function" || typeof x === "symbol") return undefined;
+  if (typeof x === "number") return Number.isFinite(x) ? (Object.is(x, -0) ? "-0" : JSON.stringify(x)) : String(x);
+  if (x === null || typeof x !== "object") return JSON.stringify(x);
+  if (typeof (/** @type {any} */ (x)).toJSON === "function") return text(/** @type {any} */ (x).toJSON());
+  if (Array.isArray(x)) return `[${x.map((i) => text(i) ?? "null").join(",")}]`;
+  const o = /** @type {Record<string, unknown>} */ (x);
+  const parts = [];
+  for (const k of Object.keys(o).sort()) { const t = text(o[k]); if (t !== undefined) parts.push(`${JSON.stringify(k)}:${t}`); }
+  return `{${parts.join(",")}}`;
 }
 
 /**
@@ -51,7 +66,7 @@ export function nextRevision(previous, key) {
 }
 
 /**
- * A fast hash of plain data, for comparing a run's states instant by instant (R005); not a content key. 53 bits as
+ * A fast hash of plain data, for comparing a run's states instant by instant (N005); not a content key. 53 bits as
  * 14 hex digits, over the canonical text (cyrb53).
  * @param {unknown} v @returns {string}
  */

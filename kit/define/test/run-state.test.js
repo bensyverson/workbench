@@ -106,3 +106,7 @@ test("a nested plain object is refused with a tip to write struct", () => {
 test("U is reserved for the UI's codes: a check's ctx.error with a U code throws", () => {
   assert.ok(RESERVED_LETTERS.includes("U"));
 });
+
+test("N is reserved for kit/run's run-time codes: a Dialect's own code may not start with it", () => {
+  assert.ok(RESERVED_LETTERS.includes("N"));
+});

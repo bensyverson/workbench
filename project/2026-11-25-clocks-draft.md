@@ -124,6 +124,8 @@ What a revision *is* (an identity, a counter, a content key) and how the build r
 
 R is a new letter for run-time diagnostics, which no current code uses (B C D L P S U V are taken). Each carries the part, the instant `T`, and the revision.
 
+> **Corrected 2026-11-26 (Ben's ruling, leaf `p3OBui`):** R was not free. kit/lir already reports R001–R006 (the GLSL backend's refusals), and the particles packages use R as their own Dialect letter. The run's codes below are now **N001–N006** (same numbers, same meanings), and N is reserved in kit/define's `RESERVED_LETTERS`. The table keeps the draft's R spelling as written.
+
 | Code | When |
 |---|---|
 | R001 | ~~an Event queue overflowed; records were dropped~~ ruled 2026-11-26: the run fell behind wall time and `T` slowed (how long, how much); a `keepLast` input's drops are counted here too |

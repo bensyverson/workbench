@@ -23,7 +23,7 @@ buildEvent({ part: "level", boundary: { after: "12", before: "101/8" }, trigger:
 | `packageTrigger({ key, files? }, { key, files? })` | `{ kind: "package", from, to, files }`: the paths whose hashes differ, when both `files` maps are given |
 | `glueTrigger(call?)` | `{ kind: "glue", call }` |
 | `sha256(text)` | `"sha256-<base64>"` of the UTF-8 bytes, synchronous; equal to kit/package's `hashText` |
-| `canonical(value)` | JSON with every object's keys sorted |
+| `canonical(value)` | one text per value: JSON with every object's keys sorted, and `NaN`, `Infinity`, `-Infinity` and `-0` spelled out (JSON makes the first three null and the last 0), so a content key tells them apart; plain JSON data gives its JSON text |
 | `stateHash(value)` | a fast 53-bit hash of the canonical text (14 hex digits), for comparing a run's states instant by instant; not a content key |
 
 **A build event** is `{ kind: "build", part, boundary: { after, before }, trigger, ok, changed, key: { before, after }, revision: { before, after }, record, kernels: { changed, added, removed, unchanged }, consumers, diagnostics }`. `boundary` is the instant boundary it landed on, as rational text (`after` null before the first instant). `changed` is whether the key changed; when not, the revision is kept and the event is the answer to "why didn't my change do anything?". `record` lists the record's top-level keys that differ. `kernels` compares each lambda's emitted source by id. `consumers` are the inputs fed by the part's outputs, which see the new revision in `inputs.$rev`. The human-facing "why" text is written from these fields later, after its trial.

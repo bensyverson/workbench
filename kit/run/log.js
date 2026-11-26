@@ -35,7 +35,7 @@ const r3 = (x) => Math.round(x * 1000) / 1000;
 
 /**
  * The runs of capped frames in a log: each span's first and last frame, the wall time it took, the workbench time it
- * covered, and the ratio (R001: "ran at 0.13× for 2 s").
+ * covered, and the ratio (N001: "ran at 0.13× for 2 s").
  * @param {Entry[]} entries @returns {Array<{ from: string, to: string, wall: number, workbench: number, ratio: number }>}
  */
 export function slowdowns(entries) {

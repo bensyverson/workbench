@@ -11,9 +11,9 @@ const countCoins = (grid) => grid.reduce((n, row) => n + [...row].filter((c) => 
 export const mazeRuntime = defineRuntime(maze, {
   clock: (record) => ({ tick: record.tick ?? 1 / 8 }),
   init: (record) => ({ t: 0, score: 0, coinsLeft: countCoins(record.grid), player: { x: record.start.x, y: record.start.y }, grid: record.grid, picked: [] }),
-  step(state, { dt, part, kernels, controls, events }) {
+  step(state, { dt, kernels, controls, events }) {
     const pl = { x: state.player.x, y: state.player.y, dx: 0, dy: 0, steps: 0 };
-    kernels[`${part}.control`](pl, controls.pad ?? STILL);
+    kernels.control(pl, controls.pad ?? STILL);
     let { x, y } = state.player;
     let grid = state.grid, score = state.score, coinsLeft = state.coinsLeft;
     const picked = [];

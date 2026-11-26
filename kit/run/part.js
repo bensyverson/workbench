@@ -1,6 +1,6 @@
 // One part in a run: its build (record, compiled Kernels, clock, key, revision), its state and seeded stream, and
-// what its init and step are handed. The checks a run makes of a step live here: R002 (a state that does not fit,
-// or too many Events), R003 (a step that changed its input or kept memory, in development runs), R004 (a throw).
+// what its init and step are handed. The checks a run makes of a step live here: N002 (a state that does not fit,
+// or too many Events), N003 (a step that changed its input or kept memory, in development runs), N004 (a throw).
 
 import { clockOf } from "../define/runtime.js";
 import { canonical, stateHash } from "../build/index.js";
@@ -21,7 +21,7 @@ import { seedRng, next } from "./rng.js";
 /** A part's own fields a checkpoint copies (everything that changes while it runs). */
 export const PART_FIELDS = /** @type {const} */ (["record", "compiled", "clock", "key", "revision", "content", "state", "hash", "snapT", "stopped", "rng", "lastFrameT", "stepped", "rebuilt", "lastValues", "params", "controls"]);
 
-/** Freezes plain data all the way down, so a step that changes what it was handed throws (R003). @param {any} v */
+/** Freezes plain data all the way down, so a step that changes what it was handed throws (N003). @param {any} v */
 export function deepFreeze(v) {
   if (v === null || typeof v !== "object" || Object.isFrozen(v)) return v;
   Object.freeze(v);
@@ -59,6 +59,29 @@ function globalsFor(p, values) {
   return g;
 }
 
+/** Each compiled build's kernels with the part's own slots aliased, made once per build. @type {WeakMap<Compiled, Record<string, Function>>} */
+const aliased = new WeakMap();
+
+/**
+ * The kernels a part's init and step are handed: every lambda by its full id (`level.control`, `pop.spawn`), and
+ * the part's own, its root instance's, by slot name too (`control`). A full id holds a dot, so the two never meet;
+ * the aliases are not enumerable, so the keys stay the ids.
+ * @param {Part} p
+ */
+export function kernelsFor(p) {
+  const hit = aliased.get(p.compiled);
+  if (hit) return hit;
+  /** @type {Record<string, Function>} */
+  const out = { ...p.compiled.kernels };
+  const own = `${p.name}.`;
+  for (const [id, k] of Object.entries(p.compiled.kernels)) {
+    if (id.startsWith(own) && !id.slice(own.length).includes(".")) Object.defineProperty(out, id.slice(own.length), { value: k, enumerable: false });
+  }
+  Object.freeze(out);
+  aliased.set(p.compiled, out);
+  return out;
+}
+
 /**
  * The value inputs a part gets when nothing is wired: each input's default.
  * @param {Runtime} runtime
@@ -71,18 +94,18 @@ export function defaults(runtime) {
 }
 
 /**
- * Runs a part's init on its record: the state, or an error message (R004 when it threw, R002 when it does not fit).
+ * Runs a part's init on its record: the state, or an error message (N004 when it threw, N002 when it does not fit).
  * @param {Part} p @param {boolean} dev
- * @returns {{ state: any } | { code: "R002" | "R004", message: string }}
+ * @returns {{ state: any } | { code: "N002" | "N004", message: string }}
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
-  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: p.compiled.kernels, rng: () => next(p.rng), params: globals.$, controls: Object.freeze({ ...p.controls }), globals };
+  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals.$, controls: Object.freeze({ ...p.controls }), globals };
   /** @type {any} */
   let s;
-  try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "R004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
+  try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "N004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
   const bad = p.runtime.dialect.checkState?.(s) ?? [];
-  if (bad.length) return { code: "R002", message: `part '${p.name}': init returned a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
+  if (bad.length) return { code: "N002", message: `part '${p.name}': init returned a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
   return { state: dev ? deepFreeze(s) : s };
 }
 
@@ -99,29 +122,29 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     const globals = globalsFor(p, values);
     /** @type {Record<string, unknown[]>} */
     const events = Object.fromEntries(outs.map((n) => [n, []]));
-    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, controls: Object.freeze({ ...p.controls }), params: globals.$, kernels: p.compiled.kernels, rng: () => next(rng), events, globals };
+    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, controls: Object.freeze({ ...p.controls }), params: globals.$, kernels: kernelsFor(p), rng: () => next(rng), events, globals };
     const state = p.runtime.step(p.state, ctx);
     return { state, events, rng };
   };
   /** @type {{ state: any, events: Record<string, unknown[]>, rng: RngState }} */
   let r;
   try { r = attempt(); } catch (e) {
-    if (dev && isFrozenWrite(e)) return { code: "R003", message: `part '${p.name}' (${p.dialect}): step changed the state it was handed (${why(e)}); return a new state instead` };
-    return { code: "R004", message: `part '${p.name}' (${p.dialect}): step threw: ${why(e)}` };
+    if (dev && isFrozenWrite(e)) return { code: "N003", message: `part '${p.name}' (${p.dialect}): step changed the state it was handed (${why(e)}); return a new state instead` };
+    return { code: "N004", message: `part '${p.name}' (${p.dialect}): step threw: ${why(e)}` };
   }
   for (const n of outs) {
     const max = p.runtime.events.out[n], got = r.events[n].length;
-    if (got > max) return { code: "R002", message: `part '${p.name}': events.${n}: ${got} records, and the runtime declares at most ${max} per step (events: { out: { ${n}: … } })` };
+    if (got > max) return { code: "N002", message: `part '${p.name}': events.${n}: ${got} records, and the runtime declares at most ${max} per step (events: { out: { ${n}: … } })` };
   }
   const bad = p.runtime.dialect.checkState?.(r.state) ?? [];
-  if (bad.length) return { code: "R002", message: `part '${p.name}': step returned a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
+  if (bad.length) return { code: "N002", message: `part '${p.name}': step returned a state that does not fit: ${stateErrorMessage(p.dialect, bad)}` };
   if (dev) {
     // the same step on the same state must give the same result: anything else kept memory outside its state
     /** @type {any} */
     let again;
     try { again = attempt(); } catch (e) { again = { state: `threw: ${why(e)}`, events: {} }; }
     if (stateHash(again.state) !== stateHash(r.state) || canonical(again.events) !== canonical(r.events)) {
-      return { code: "R003", message: `part '${p.name}' (${p.dialect}): step kept memory outside its state: a second step on the same state and inputs gave another result (a module-level variable, Math.random or a clock?)` };
+      return { code: "N003", message: `part '${p.name}' (${p.dialect}): step kept memory outside its state: a second step on the same state and inputs gave another result (a module-level variable, Math.random or a clock?)` };
     }
     deepFreeze(r.state);
   }

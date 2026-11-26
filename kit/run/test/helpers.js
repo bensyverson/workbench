@@ -24,7 +24,7 @@ export function mazeKit(/** @type {{ step?: Function, max?: number, clock?: (r: 
 /** @param {any} s @param {any} ctx */
 export function mazeStep(s, ctx) {
   const pl = { x: s.player.x, y: s.player.y, dx: 0, dy: 0 };
-  ctx.kernels["level.control"](pl, ctx.controls.pad ?? { up: false, down: false, left: false, right: false });
+  ctx.kernels.control(pl, ctx.controls.pad ?? { up: false, down: false, left: false, right: false });
   const x = s.player.x + pl.dx, y = s.player.y + pl.dy;
   if (s.grid[y][x] === "#") return { ...s, t: s.t + ctx.dt };
   let { grid, score } = s;
@@ -118,4 +118,30 @@ export function tiny(n, d, rt) {
     constructs: { [n]: { opens: [name()], slots: { param: { kind: "decl", args: [name("param"), data({ value: "number" })], as: "params" }, k: { kind: "decl", args: [lambda("k")] }, size: { kind: "decl", args: [data("number")], once: true } } } },
   });
   return { grammar, runtime: defineRuntime(grammar, rt) };
+}
+
+/**
+ * A numbered-Event pair for queue windows: prod (`a`) pushes `per` records a step, numbered in order; cons (`b`)
+ * keeps each record's n, the T it took it at, and its largest batch. `extra` parts join the composition unwired.
+ * @param {{ prodClock: any, consClock: any, per?: number, max?: number, delivery?: any, wire?: any, prodStep?: Function, consStep?: Function, extra?: Array<{ part: any, runtime: any }> }} o
+ */
+export function pair(o) {
+  const per = o.per ?? 1;
+  const prod = tiny("prod", { state: { n: "f64" }, inputs: false, ports: { out: { e: { seam: "Event<{ n: f64 }>" } } } },
+    { clock: () => o.prodClock, init: () => ({ n: 0 }), step: o.prodStep ?? ((/** @type {any} */ s, /** @type {any} */ c) => { let n = s.n; for (let i = 0; i < per; i++) c.events.e.push({ n: n++ }); return { n }; }), events: { out: { e: per } } });
+  const consPort = { seam: "Event<{ n: f64 }>", ...(o.delivery ? { delivery: o.delivery } : {}) };
+  const cons = tiny("cons", { state: { got: list("f64", 100000), Ts: list("f64", 100000), biggest: "f64" }, inputs: false, ports: { in: { e: consPort } } },
+    { clock: () => o.consClock, init: () => ({ got: [], Ts: [], biggest: 0 }), step: o.consStep ?? ((/** @type {any} */ s, /** @type {any} */ c) => ({ got: [...s.got, ...c.inputs.e.map((/** @type {any} */ r) => r.n)], Ts: [...s.Ts, ...c.inputs.e.map(() => c.T)], biggest: Math.max(s.biggest, c.inputs.e.length) })), events: { in: { e: o.max ?? 8 } } });
+  const a = /** @type {any} */ (prod.grammar("a")), b = /** @type {any} */ (cons.grammar("b"));
+  let c = compose("p").part(a).part(b);
+  for (const x of o.extra ?? []) c = c.part(x.part);
+  c = c.wire(a.out.e, b.in.e, o.wire);
+  const runtimes = [prod.runtime, cons.runtime, ...(o.extra ?? []).map((x) => x.runtime)];
+  return { composed: c.build({ runtimes }), runtimes, prod, cons, built: c };
+}
+
+/** A part with no ports at a clock: it only makes instants. @param {string} n @param {any} clock */
+export function ticker(n, clock) {
+  const t = tiny(n, { state: { k: "f64" }, inputs: false, ports: { out: {}, in: {} } }, { clock: () => clock, init: () => ({ k: 0 }), step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
+  return { part: /** @type {any} */ (t.grammar(n + "x")), runtime: t.runtime };
 }

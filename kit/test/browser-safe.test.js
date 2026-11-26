@@ -9,14 +9,14 @@ import { fileURLToPath } from "node:url";
 const KIT = fileURLToPath(new URL("..", import.meta.url));
 
 /**
- * Every .js file under `dir`, skipping test directories.
+ * Every .js file under `dir`, skipping test and prerelease (slow test) directories.
  * @param {string} dir
  * @returns {string[]}
  */
 function sources(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name);
-    if (e.isDirectory()) return e.name === "test" ? [] : sources(p);
+    if (e.isDirectory()) return e.name === "test" || e.name === "prerelease" ? [] : sources(p);
     return e.name.endsWith(".js") ? [p] : [];
   });
 }

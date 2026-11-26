@@ -45,7 +45,7 @@ const toQ = (t) => {
 
 /**
  * Starts a run of a composed workbench: every part compiled, clocked and keyed, its init run. Throws a RunError when
- * a clock does not read (R006) or a reliable queue can overflow (S116).
+ * a clock does not read (N006) or a reliable queue can overflow (S116).
  * @param {Composed} composed @param {RunOptions} options
  */
 export function createRun(composed, options) {
@@ -68,6 +68,13 @@ export function createRun(composed, options) {
   const checkpoints = [];
   /** @type {Set<number>} */
   const dropNoted = new Set();
+  /** @typedef {{ from: Q, to: Q, wall: number, index: number }} Slow */
+  /** The run of capped frames under way, and its N001's index in diagnostics. @type {Slow | null} */
+  let slow = null;
+  /** An instant inputs were applied before while the run stood between instants: it runs next. @type {Q | null} */
+  let pinned = null;
+  /** The last frame applied (the run starts at one at T = 0). @type {Q} */
+  let lastFrameSeen = q(0);
 
   /** @type {Array<{ code: string, message: string }>} */
   const refused = [];
@@ -80,7 +87,7 @@ export function createRun(composed, options) {
     if (!compiled.ok) throw new RunError(compiled.diagnostics.map((d) => ({ code: /** @type {any} */ (d).code, message: `part '${cp.name}': ${/** @type {any} */ (d).message}` })));
     const content = options.packages?.find((p) => p.name === cp.dialect)?.content ?? null;
     const p = makePart({ name: cp.name, index, dialect: cp.dialect, runtime, record: cp.record, compiled, key: partKey({ package: content, record: cp.record }), content, seed, params: options.params?.[cp.name] });
-    if (typeof p === "string") { refused.push({ code: "R006", message: `part '${cp.name}' (${cp.dialect}): ${p}` }); return; }
+    if (typeof p === "string") { refused.push({ code: "N006", message: `part '${cp.name}' (${cp.dialect}): ${p}` }); return; }
     parts.push(p);
   });
   const sized = composed.parts.map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
@@ -138,10 +145,17 @@ export function createRun(composed, options) {
   const nextMultiple = (period) => (lastT === null ? q(0) : mul(period, q(floorDiv(lastT, period) + 1)));
   /** @param {Q} T @param {Q} period */
   const onGrid = (T, period) => { const r = mul(T, q(period.d, period.n)); return r.d === 1; };
-  const nextFrame = () => frameTs.find((t) => lastT === null || cmp(t, lastT) > 0) ?? null;
+  /** How many logged frames are at or before `t` (frameTs is sorted). @param {Q} t */
+  const framesThrough = (t) => { let lo = 0, hi = frameTs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (cmp(frameTs[m], t) <= 0) lo = m + 1; else hi = m; } return lo; };
+  // a display run starts at a frame at T = 0, as a headless one does: the first frame's window is then half-open
+  const nextFrame = () => (lastT === null ? q(0) : frameTs[framesThrough(lastT)] ?? null);
+  /** @param {Q} T */
+  const isFrame = (T) => T.n === 0 || (framesThrough(T) > 0 && cmp(frameTs[framesThrough(T) - 1], T) === 0);
 
   /** The next instant at which a tick or frame part is due, or null. @returns {Q | null} */
   function nextInstant() {
+    // inputs already applied before the pinned instant: nothing runs ahead of it
+    if (pinned && (!lastT || cmp(pinned, lastT) > 0)) return pinned;
     /** @type {Q | null} */
     let best = null;
     for (const p of parts) {
@@ -152,8 +166,13 @@ export function createRun(composed, options) {
     return best;
   }
 
-  /** Applies the log's inputs stamped at or before `T`, between instants. @param {Q} T */
-  function applyInputs(T) {
+  /**
+   * Applies the log's inputs stamped at or before `T`, between instants: just before the instant `at` (null when no
+   * part is due), which is where a rebuild's event says it landed. Returns how many it applied.
+   * @param {Q} T @param {Q | null} at
+   */
+  function applyInputs(T, at) {
+    const from = cursor;
     while (cursor < inputs.length && cmp(inputs[cursor].T, T) <= 0) {
       const e = inputs[cursor++];
       if (e.kind === "frame") { frameSlowdown(e); continue; }
@@ -161,54 +180,73 @@ export function createRun(composed, options) {
       if (!p) throw new Error(`an input names no part '${e.part}': the parts are ${parts.map((x) => x.name).join(", ")}`);
       if (e.kind === "control") p.controls = { ...p.controls, [/** @type {string} */ (e.name)]: deepFreeze(structuredClone(e.value)) };
       else if (e.kind === "param") {
-        const name = /** @type {string} */ (e.name), from = p.params[name];
+        const name = /** @type {string} */ (e.name), was = p.params[name];
         p.params = { ...p.params, [name]: e.value };
         if (needsRebuild(p.record, [name])) {
           if (!options.build) throw new Error(`the param ${p.name}.$.${name} is read at build time, so changing it rebuilds the part, and the run was given no build(part, params)`);
-          rebuild(p, options.build(p.name, { ...p.params }), paramTrigger(p.record, name, from, e.value), null);
+          rebuild(p, options.build(p.name, { ...p.params }), paramTrigger(p.record, name, was, e.value), null, at);
         }
       } else if (e.kind === "rebuild") {
         const trigger = e.trigger ?? (e.package ? packageTrigger({ key: p.content }, { key: e.package.content ?? null }) : glueTrigger());
-        rebuild(p, /** @type {Record<string, any>} */ (e.record), trigger, e.package ?? null);
+        rebuild(p, /** @type {Record<string, any>} */ (e.record), trigger, e.package ?? null, at);
       }
     }
+    return cursor - from;
   }
 
-  /** A run of capped frames closes with an R001 at the first frame that is not capped. @param {Entry} e */
+  /**
+   * A run of capped frames is one N001, written at its first capped frame and rewritten at each one after, so a run
+   * that never catches up still says so; the first frame that is not capped closes it.
+   * @param {Entry} e
+   */
   function frameSlowdown(e) {
-    if (e.capped) return;
-    const prev = inputs.slice(0, cursor - 1).findLast((x) => x.kind === "frame");
-    if (!prev?.capped) return;
-    const last = /** @type {any} */ (slowdowns(inputs.slice(0, cursor)).at(-1));
-    report({ code: "R001", severity: "warning", message: `the run fell behind wall time: it ran at ${last.ratio.toFixed(2)}× for ${last.wall} s of wall time (T advanced ${last.workbench} s, from ${last.from} to ${last.to}); no record was dropped`, T: last.to });
+    if (!e.capped) {
+      if (slow) diagnostics[slow.index] = slowReport(slow, false);
+      slow = null; lastFrameSeen = e.T; return;
+    }
+    if (!slow) { slow = { from: lastFrameSeen, to: e.T, wall: 0, index: diagnostics.length }; diagnostics.push(/** @type {any} */ (null)); }
+    slow = { ...slow, to: e.T, wall: slow.wall + e.capped.wall };
+    lastFrameSeen = e.T;
+    diagnostics[slow.index] = slowReport(slow, true);
+  }
+  /** The N001 for a run of capped frames, open (still behind) or closed. @param {Slow} sp @param {boolean} open @returns {RunDiagnostic} */
+  function slowReport(sp, open) {
+    const r3 = (/** @type {number} */ x) => Math.round(x * 1000) / 1000;
+    const wall = r3(sp.wall), work = r3(toNumber(sub(sp.to, sp.from))), ratio = r3(work / sp.wall);
+    const span = `for ${wall} s of wall time (T advanced ${work} s, from ${qText(sp.from)} to ${qText(sp.to)})`;
+    return { code: "N001", severity: "warning", T: qText(sp.to), message: open ? `the run is behind wall time: it has run at ${ratio.toFixed(2)}× ${span}, and has not caught up; no record was dropped` : `the run fell behind wall time: it ran at ${ratio.toFixed(2)}× ${span}; no record was dropped` };
   }
 
   /**
    * A rebuild between instants: the new record compiled and keyed; the revision bumps only when the key changes,
-   * when init runs again; the Event queues are kept. A failed rebuild keeps the previous revision running.
+   * when init runs again; the Event queues are kept. A failed rebuild (one that does not lower, whose clock does not
+   * read, or whose init throws or returns a state that does not fit) keeps the previous revision running.
    * @param {Part} p @param {Record<string, any>} record @param {any} trigger @param {{ content?: string | null } | null} pkg
+   * @param {Q | null} at  the instant it lands before
    */
-  function rebuild(p, record, trigger, pkg) {
-    const next = nextInstant();
-    const boundary = { after: lastT ? qText(lastT) : null, before: next ? qText(next) : qText(now) };
+  function rebuild(p, record, trigger, pkg, at) {
+    const boundary = { after: lastT ? qText(lastT) : null, before: at ? qText(at) : qText(now) };
     const consumers = wires.filter((w) => w.from.part === p.name).map((w) => `${w.to.part}.in.${w.to.port}`);
     const before = { key: p.key, revision: p.revision, record: p.record, kernels: p.compiled.sources };
     const compiled = compilePart(p.runtime, record);
     const clock = compiled.ok ? clockOf(p.runtime, record) : null;
     if (!compiled.ok || !clock?.ok) {
-      const diags = !compiled.ok ? compiled.diagnostics : [{ code: "R006", message: `part '${p.name}' (${p.dialect}): ${/** @type {any} */ (clock).error}` }];
+      const diags = !compiled.ok ? compiled.diagnostics : [{ code: "N006", message: `part '${p.name}' (${p.dialect}): ${/** @type {any} */ (clock).error}` }];
       builds.push(buildEvent({ part: p.name, boundary, trigger, before, after: null, consumers, diagnostics: diags }));
       return;
     }
     const content = pkg && pkg.content !== undefined ? pkg.content : p.content;
     const key = partKey({ package: content, record });
-    const ev = buildEvent({ part: p.name, boundary, trigger, before, after: { key, record, kernels: compiled.sources }, consumers });
-    builds.push(ev);
-    if (!ev.changed) return;
-    Object.assign(p, { record, compiled, clock: clock.clock, key, content, revision: nextRevision({ key: before.key, revision: before.revision }, key), lastFrameT: null, rebuilt: true, snapT: null, stopped: false });
+    const after = { key, record, kernels: compiled.sources };
+    if (key === before.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before, after, consumers })); return; }
+    // init runs on a trial copy, so a throw or a state that does not fit leaves the running part as it was
+    const next = { record, compiled, clock: clock.clock, key, content, revision: nextRevision({ key: before.key, revision: before.revision }, key), rng: /** @type {Part["rng"]} */ ([...p.rng]) };
+    const r = runInit({ ...p, ...next }, dev);
+    if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }] })); return; }
+    builds.push(buildEvent({ part: p.name, boundary, trigger, before, after, consumers }));
+    Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false });
     revision++;
-    const r = runInit(p, dev);
-    if ("state" in r) commitState(p, r.state); else stop(p, r, lastT);
+    commitState(p, r.state);
   }
 
   /** What a wire's consumer reads of its producer: now, or as the instant began. @param {Wire} w */
@@ -244,17 +282,34 @@ export function createRun(composed, options) {
     return w.queue.splice(0, n).map((x) => x.record);
   }
 
+  /**
+   * Why a part's step at T would take more records from an Event input than its runtime declares, or null. S116
+   * sized each reliable queue for a window this run honors; a step past it is refused rather than handed the excess
+   * (a log whose frames are farther apart than the cap, say).
+   * @param {Part} p @param {Q} T @returns {string | null}
+   */
+  function intake(p, T) {
+    for (const i of Object.values(/** @type {Record<string, any>} */ (p.runtime.dialect.seams.in))) {
+      if (i.seam.kind !== "event") continue;
+      const w = wireTo.get(`${p.name}.${i.name}`);
+      const n = w ? ready(w, T) : 0, max = p.runtime.events.in[i.name];
+      if (w && max !== undefined && n > max) return `part '${p.name}': in.${i.name}: ${n} records are ready, and the runtime declares at most ${max} per step (events: { in: { ${i.name}: … } }); ${w.text} was sized for steps at most ${qText(catchUp)} s apart (the catch-up cap) or its clocks' own spacing, and this step comes later than that; none were taken`;
+    }
+    return null;
+  }
+
   /** @param {Part} p @param {Q} T */
   function due(p, T) {
     if (p.stopped || p.state === null) return false;
     if (p.clock.kind === "tick") return onGrid(T, p.clock.period);
-    if (p.clock.kind === "frame") return frames === "nominal" ? onGrid(T, NOMINAL_FRAME) : frameTs.some((t) => cmp(t, T) === 0);
+    if (p.clock.kind === "frame") return frames === "nominal" ? onGrid(T, NOMINAL_FRAME) : isFrame(T);
     return true;
   }
 
   /** One instant: inputs applied, the due parts stepped in wire order, the state hashes recorded. @param {Q} T */
   function instant(T) {
-    applyInputs(T);
+    if (pinned && cmp(pinned, T) <= 0) pinned = null;
+    applyInputs(T, T);
     startView = new Map(parts.map((p) => [p.name, { state: p.state, revision: p.revision, part: p }]));
     /** @type {string[]} */
     const stepped = [];
@@ -265,6 +320,8 @@ export function createRun(composed, options) {
       if (p.clock.kind === "demand" && p.stepped && !p.rebuilt && pending === 0 && shown === p.lastValues) continue;
       /** @type {Record<string, unknown>} */
       const inputs = { ...values, $rev: Object.freeze(rev) };
+      const over = intake(p, T);
+      if (over) { stop(p, { code: "N002", message: over }, T); continue; }
       for (const i of Object.values(/** @type {Record<string, any>} */ (p.runtime.dialect.seams.in))) {
         if (i.seam.kind !== "event") continue;
         const w = wireTo.get(`${p.name}.${i.name}`);
@@ -283,7 +340,7 @@ export function createRun(composed, options) {
           const n = w.queue.length - w.keepLast;
           w.queue.splice(0, n);
           w.drops += n;
-          if (!dropNoted.has(w.index)) { dropNoted.add(w.index); report({ code: "R001", severity: "warning", message: `${w.text}: ${w.to.part}.in.${w.to.port} keeps the last ${w.keepLast} records (its delivery), and ${n} were dropped here; stats().dropped counts every drop`, part: w.to.part, T: qText(T) }); }
+          if (!dropNoted.has(w.index)) { dropNoted.add(w.index); report({ code: "N001", severity: "warning", message: `${w.text}: ${w.to.part}.in.${w.to.port} keeps the last ${w.keepLast} records (its delivery), and ${n} were dropped here; stats().dropped counts every drop`, part: w.to.part, T: qText(T) }); }
         }
       }
     }
@@ -302,6 +359,7 @@ export function createRun(composed, options) {
       wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops })),
       lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length },
       dropNoted: [...dropNoted],
+      slow, lastFrameSeen, pinned, slowDiag: slow ? diagnostics[slow.index] : null,
     });
   }
   checkpoint();
@@ -311,6 +369,12 @@ export function createRun(composed, options) {
     get T() { return now; },
     /** The time the run has reached, in seconds. */
     get seconds() { return toNumber(now); },
+    /** The most workbench time one display frame may cover (the real-time driver reads it), as a rational. */
+    get catchUp() { return catchUp; },
+    /** The last frame at or before the time the run has reached: a display run starts at one at T = 0. */
+    get lastFrame() { const i = framesThrough(now); return i > 0 ? frameTs[i - 1] : q(0); },
+    /** Whether a part steps on frames now. */
+    get framed() { return parts.some((p) => p.clock.kind === "frame" && !p.stopped && p.state !== null); },
     /** The composition's revision: bumps when any part's does. */
     get revision() { return revision; },
     /** The composition's content key: its parts' keys by identity and its wires (kit/build). */
@@ -320,6 +384,8 @@ export function createRun(composed, options) {
     get log() { return { header: { name: composed.name, seed, frames, catchUp: qText(catchUp), params: options.params ?? {} }, inputs: inputs.map((e) => ({ ...e, T: qText(e.T) })) }; },
     /** What a replay compares: the log, each instant's state hashes, the build events. */
     record() { return { log: run.log, hashes: [...hashes], builds: [...builds] }; },
+    /** The next instant a part is due at, not run; null when none is. */
+    nextInstant() { return nextInstant(); },
     /** The next instant, run; null when no part has a clock. */
     step() {
       const T = nextInstant();
@@ -330,7 +396,10 @@ export function createRun(composed, options) {
     runUntil(t) {
       const target = toQ(t);
       for (let T = nextInstant(); T && cmp(T, target) <= 0; T = nextInstant()) instant(T);
-      applyInputs(target);
+      // inputs applied here land before the instant due now, which then runs even if a rebuild moved a clock off it,
+      // as it would had the run gone on without stopping at `target` (and as a replay does)
+      const at = nextInstant();
+      if (applyInputs(target, at) && at) pinned = at;
       if (cmp(now, target) < 0) now = target;
       return run;
     },
@@ -368,6 +437,8 @@ export function createRun(composed, options) {
       wires.forEach((w, j) => { w.queue = [...cp.wires[j].queue]; w.drops = cp.wires[j].drops; });
       hashes.length = cp.lens.hashes; builds.length = cp.lens.builds; diagnostics.length = cp.lens.diagnostics;
       dropNoted.clear(); for (const n of cp.dropNoted) dropNoted.add(n);
+      ({ slow, lastFrameSeen, pinned } = cp);
+      if (slow) diagnostics[slow.index] = cp.slowDiag;
       ({ T: lastT, now, cursor, revision } = cp);
       for (let k = inputs.length - 1; k >= cursor; k--) if (cmp(inputs[k].T, target) > 0) inputs.splice(k, 1);
       for (let k = frameTs.length - 1; k >= 0; k--) if (cmp(frameTs[k], target) > 0) frameTs.splice(k, 1);

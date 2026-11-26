@@ -1,5 +1,5 @@
 // Replay: a run is a pure function of the composed record, the params and the input log, so running the log again
-// must give the same state hash at every instant. The first instant that differs is R005, naming the parts whose
+// must give the same state hash at every instant. The first instant that differs is N005, naming the parts whose
 // states differ.
 
 import { createRun } from "./scheduler.js";
@@ -28,15 +28,15 @@ export function replay(composed, options, record) {
     const want = record.hashes[i], got = run.hashes[i];
     if (want && got && want.T === got.T && want.hash === got.hash) continue;
     if (!want || !got || want.T !== got.T) {
-      diagnostics.push({ code: "R005", severity: "error", message: `the replay's instants differ from the record's: the record has ${want ? want.T : "no instant"} where the replay has ${got ? got.T : "none"}`, T: (want ?? got).T });
+      diagnostics.push({ code: "N005", severity: "error", message: `the replay's instants differ from the record's: the record has ${want ? want.T : "no instant"} where the replay has ${got ? got.T : "none"}`, T: (want ?? got).T });
       break;
     }
     const parts = Object.keys(want.parts).filter((p) => want.parts[p] !== got.parts[p]);
-    diagnostics.push({ code: "R005", severity: "error", message: `the replay diverged at T = ${want.T}: ${parts.length ? `the state of ${parts.join(", ")} differs` : "a part's revision or stop differs"}; something in ${parts.length ? parts.join(", ") : "the run"} is not a function of the record, params and input log`, T: want.T, ...(parts.length === 1 ? { part: parts[0] } : {}) });
+    diagnostics.push({ code: "N005", severity: "error", message: `the replay diverged at T = ${want.T}: ${parts.length ? `the state of ${parts.join(", ")} differs` : "a part's revision or stop differs"}; something in ${parts.length ? parts.join(", ") : "the run"} is not a function of the record, params and input log`, T: want.T, ...(parts.length === 1 ? { part: parts[0] } : {}) });
     break;
   }
   if (!diagnostics.length && JSON.stringify(run.builds) !== JSON.stringify(record.builds)) {
-    diagnostics.push({ code: "R005", severity: "error", message: "the replay's build events differ from the record's: a rebuild landed elsewhere or gave another key", T: last ? last.T : null });
+    diagnostics.push({ code: "N005", severity: "error", message: "the replay's build events differ from the record's: a rebuild landed elsewhere or gave another key", T: last ? last.T : null });
   }
   return { ok: diagnostics.length === 0, diagnostics, run };
 }

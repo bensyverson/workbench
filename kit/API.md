@@ -111,7 +111,7 @@ export const program = defineGrammar(myLang, {
 - `lambda(convention)` is a Runtime Lambda. It also accepts a top-level helper's name or source text; nothing requires an arrow written in place.
 - `opt(spec)` and `rest(spec)` go last. `rest(spec)` is for a decl slot only: an opening argument is one value under one record key, so `opens` refuses it (D019). An opening argument's spec takes `{ as: "key" }` last to name its record key.
 
-**Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. Your checks report with `ctx.error(code, message, { tip, arg, suggest, fix })`; the code is one letter of your own and three digits (not `B C D L P S U V`, which the kit keeps; `ctx.error` with one throws). `fix` prints as `fix: write <fix>`, so put advice in `tip`. Read [docs/codes.md](docs/codes.md) before you write checks, or when a code is new to you.
+**Slot options:** `once`, `required`, `as` (the record key), `check(call, ctx)`. Your checks report with `ctx.error(code, message, { tip, arg, suggest, fix })`; the code is one letter of your own and three digits (not `B C D L N P S U V`, which the kit keeps; `ctx.error` with one throws). `fix` prints as `fix: write <fix>`, so put advice in `tip`. Read [docs/codes.md](docs/codes.md) before you write checks, or when a code is new to you.
 
 **The record** is what `.build()` returns, and what checks, `environment`, `init` and conventions read. The example Program below builds to:
 
@@ -186,9 +186,9 @@ import { maze } from "./maze.grammar.js";
 export const mazeRuntime = defineRuntime(maze, {
   clock: (record) => ({ tick: record.tick ?? 1 / 8 }),      // or { frame: true }, or { demand: true }
   init: (record, ctx) => ({ t: 0, score: 0, player: { x: record.start.x, y: record.start.y }, grid: record.grid }),
-  step(state, { dt, part, kernels, controls, inputs, events, rng }) {
+  step(state, { dt, kernels, controls, inputs, events, rng }) {
     const pl = { x: state.player.x, y: state.player.y, dx: 0, dy: 0 };
-    kernels[`${part}.control`](pl, controls.pad);              // the Program's lambdas, compiled; ids are <instance>.<slot>
+    kernels.control(pl, controls.pad);                          // the part's own lambda by slot; any by id: kernels["pop.spawn"]
     // … move, pick coins …
     for (const at of pickedNow) events.picked.push({ at });    // an Event output is pushed, never kept in state
     return { ...state, t: state.t + dt };                       // a new state: never change the one you are handed
@@ -197,7 +197,7 @@ export const mazeRuntime = defineRuntime(maze, {
 });
 ```
 
-- **`step` returns the next state** and keeps no other memory: no module-level variables, no `Math.random` (use `ctx.rng`), no clock. The state must fit your Dialect's `state` (R002). A development run freezes it and runs each step twice to check (R003).
+- **`step` returns the next state** and keeps no other memory: no module-level variables, no `Math.random` (use `ctx.rng`), no clock. The state must fit your Dialect's `state` (N002). A development run freezes it and runs each step twice to check (N003).
 - **`ctx.inputs`** holds each value input converted into your frames, and each Event input's records since your last step, in order; `ctx.globals` is what your lambdas' globals read (set an Event record's name, `ctx.globals.ev = record`, before calling a lambda that reads it).
 - **Every Event port needs its max** in `events` (D033). The composition sizes each queue from the maxes and the clocks, and refuses a reliable wire that could overflow (S116).
 

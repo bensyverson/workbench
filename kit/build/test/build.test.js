@@ -81,3 +81,16 @@ test("stateHash is a fast, key-order-blind hash of plain data", () => {
   assert.notEqual(stateHash({ a: 1 }), stateHash({ a: 2 }));
   assert.match(stateHash({ a: 1 }), /^[0-9a-f]{14}$/);
 });
+
+test("canonical tells Infinity, -Infinity, NaN and null apart, and -0 from 0, so content keys do too", () => {
+  const forms = [Infinity, -Infinity, NaN, null, 0, -0].map((v) => canonical({ v }));
+  assert.equal(new Set(forms).size, 6, forms.join(" "));
+  const rec = (/** @type {unknown} */ v) => ({ params: { depth: { value: v } } });
+  const keys = [Infinity, NaN, null, 0, -0].map((v) => partKey({ package: null, record: rec(v) }));
+  assert.equal(new Set(keys).size, 5);
+  // plain JSON data keeps its JSON text, so ordinary keys do not move
+  assert.equal(canonical({ b: [1, "x", true, null], a: 2.5 }), '{"a":2.5,"b":[1,"x",true,null]}');
+  assert.equal(canonical([undefined, () => 0]), "[null,null]");
+  assert.equal(canonical({ a: undefined, b: 1 }), '{"b":1}');
+  assert.equal(canonical(undefined), undefined);
+});

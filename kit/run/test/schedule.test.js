@@ -107,3 +107,37 @@ test("a step gets the Program's Kernels, its own seeded rng, dt, T, and its cont
   createRun(b2.composed, { runtimes: b2.runtimes, seed: 7, dev: false }).runUntil(1 / 8);
   assert.deepEqual(again, calls.map((c) => c.r), "the same seed gives the same stream");
 });
+
+test("ctx.kernels.<slot> is the part's own lambda: kernels.control is kernels[`${part}.control`]; full ids still work", () => {
+  /** @type {any[]} */
+  const seen = [];
+  const M = mazeKit({ step: (/** @type {any} */ s, /** @type {any} */ c) => {
+    seen.push([typeof c.kernels.control, c.kernels.control === c.kernels[`${c.part}.control`], c.kernels.spawn]);
+    const pl = { x: 0, y: 0, dx: 0, dy: 0 };
+    c.kernels.control(pl, { up: false, down: false, left: false, right: true });
+    return { ...s, t: s.t + c.dt, player: { x: s.player.x + pl.dx, y: s.player.y } };
+  } });
+  /** @type {any[]} */
+  const fxSeen = [];
+  const F = fxKit({ step: (/** @type {any} */ s, /** @type {any} */ c) => { fxSeen.push([typeof c.kernels["pop.spawn"], c.kernels.spawn]); return s; } });
+  const { composed, runtimes } = bursts({ maze: M, fx: F });
+  const run = createRun(composed, { runtimes, dev: false });
+  run.runUntil(1 / 8);
+  assert.deepEqual(seen[0], ["function", true, undefined]);
+  assert.equal(run.state("level").player.x, 3);
+  // an emitter's lambda is a child instance's, not the part's: only its full id names it
+  assert.deepEqual(fxSeen[0], ["function", undefined]);
+});
+
+test("a nested field the consumer does not take never reaches it (kit/seam lists it by path)", () => {
+  const prod = tiny("prod", { state: { t: "f64" }, inputs: false, ports: { out: { e: { seam: "Event<{ inner: { a: f64, x: f64 }, keep: f64 }>" } } } },
+    { clock: () => ({ tick: 1 }), init: () => ({ t: 0 }), step: (/** @type {any} */ s, /** @type {any} */ c) => { c.events.e.push({ inner: { a: 1, x: 2 }, keep: 3 }); return s; }, events: { out: { e: 1 } } });
+  const cons = tiny("cons", { state: { got: "str" }, inputs: false, ports: { in: { e: { seam: "Event<{ inner: { a: f64 } }>" } } } },
+    { clock: () => ({ tick: 1 }), init: () => ({ got: "" }), step: (/** @type {any} */ s, /** @type {any} */ c) => (c.inputs.e.length ? { got: JSON.stringify(c.inputs.e[0]) } : s), events: { in: { e: 1 } } });
+  const a = /** @type {any} */ (prod.grammar("a")), b = /** @type {any} */ (cons.grammar("b"));
+  const composed = compose("n").part(a).part(b).wire(a.out.e, b.in.e).build();
+  assert.deepEqual(composed.wires[0].dropped, ["keep", "inner.x"]);
+  const run = createRun(composed, { runtimes: [prod.runtime, cons.runtime] });
+  run.step();
+  assert.equal(run.state("b").got, '{"inner":{"a":1}}');
+});

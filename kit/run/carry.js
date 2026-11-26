@@ -1,7 +1,8 @@
-// Values crossing a wire, as kit/compose planned them: the producer's record fields renamed (data only), the fields
-// the consumer does not take dropped, then each tagged leaf converted along its frame path. A conversion's `field`
-// names the consumer's field, after the rename, so the rename comes first. A point converts by scale and offset per
-// axis, a vector (or a rate of one) by scale, a quantity by its one magnitude.
+// Values crossing a wire, as kit/compose planned them: the producer's record fields renamed (data only; for a list of
+// records, each item's), the fields the consumer does not take dropped by path (`keep`, `inner.x`, `pts[].x`, a
+// list's `[].k`), then each tagged leaf converted along its frame path. A conversion's `field` and a dropped path
+// name the consumer's fields, after the rename, so the rename comes first. A point converts by scale and offset per
+// axis (a point1 is one number), a vector (or a rate of one) by scale, a quantity by its one magnitude.
 
 /** @import { Conversion } from "../compose/compose.js" */
 
@@ -10,6 +11,7 @@
  */
 function convertLeaf(v, c) {
   if (c.kind === "quantity") return typeof v === "number" ? v * c.scale[0] : v;
+  if (c.kind === "point" && typeof v === "number") return v * (c.scale[0] ?? 1) + (c.offset[0] ?? 0);
   if (!Array.isArray(v)) return v;
   return v.map((x, i) => (typeof x === "number" ? x * (c.scale[i] ?? 1) + (c.kind === "point" ? c.offset[i] ?? 0 : 0) : x));
 }
@@ -30,24 +32,35 @@ function convertAt(v, path, c) {
 /** A leaf path as segments: `pts[].at` is pts, [], at. @param {string} field */
 const segments = (field) => (field === "" ? [] : field.replace(/\[\]/g, ".[]").split(".").filter((s) => s !== ""));
 
+/** A record's fields renamed; a list's items' (the record a list carries). @param {unknown} v @param {Record<string, string>} rename @returns {unknown} */
+function renamed(v, rename) {
+  if (Array.isArray(v)) return v.map((x) => renamed(x, rename));
+  if (v === null || typeof v !== "object") return v;
+  /** @type {Record<string, unknown>} */
+  const r = {};
+  for (const [k, x] of Object.entries(/** @type {Record<string, unknown>} */ (v))) r[Object.hasOwn(rename, k) ? rename[k] : k] = x;
+  return r;
+}
+
+/** The value with the field at a path removed, in a copy; a path that meets no record leaves it be. @param {unknown} v @param {string[]} path @returns {unknown} */
+function dropAt(v, path) {
+  const [head, ...rest] = path;
+  if (head === "[]") return Array.isArray(v) ? v.map((x) => dropAt(x, rest)) : v;
+  if (v === null || typeof v !== "object" || Array.isArray(v) || !Object.hasOwn(v, head)) return v;
+  const o = /** @type {Record<string, unknown>} */ (v);
+  if (rest.length === 0) { const { [head]: _gone, ...kept } = o; return kept; }
+  return { ...o, [head]: dropAt(o[head], rest) };
+}
+
 /**
- * One value or record carried across a wire: renamed, dropped, converted. A value that is no record skips the
- * first two.
+ * One value or record carried across a wire: renamed, dropped, converted.
  * @param {unknown} v @param {{ rename: Record<string, string>, dropped: string[], convert: Conversion[] }} wire
  * @returns {unknown}
  */
 export function carry(v, wire) {
-  let out = v;
-  if (out !== null && typeof out === "object" && !Array.isArray(out) && (Object.keys(wire.rename).length || wire.dropped.length)) {
-    /** @type {Record<string, unknown>} */
-    const r = {};
-    for (const [k, x] of Object.entries(/** @type {Record<string, unknown>} */ (out))) {
-      const name = Object.hasOwn(wire.rename, k) ? wire.rename[k] : k;
-      // kit/compose lists dropped fields by their names after the rename
-      if (!wire.dropped.includes(name)) r[name] = x;
-    }
-    out = r;
-  }
+  let out = Object.keys(wire.rename).length ? renamed(v, wire.rename) : v;
+  // kit/compose lists dropped fields by their paths after the rename
+  for (const d of wire.dropped) out = dropAt(out, segments(d));
   for (const c of wire.convert) out = convertAt(out, segments(c.field), c);
   return out;
 }

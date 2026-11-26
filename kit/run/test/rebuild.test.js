@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { createRun, replay } from "../index.js";
 import { partKey, compositionKey } from "../../build/index.js";
 import { run as runProgram, KIT_VERSION } from "../../define/index.js";
-import { bursts, mazeKit, fxKit, rightAt, CORRIDOR, STEER } from "./helpers.js";
+import { compose } from "../../compose/index.js";
+import { bursts, mazeKit, fxKit, rightAt, CORRIDOR, STEER, tiny } from "./helpers.js";
 
 const LONG = ["#########", "#..cc.cc#", "#########"];
 
@@ -118,4 +119,51 @@ test("replay reproduces rebuilds, and so revisions and build events, exactly", (
   assert.equal(r.ok, true);
   assert.deepEqual(r.run.builds, run.builds);
   assert.equal(KIT_VERSION.length > 0, true);
+});
+
+/** A one-part workbench whose clock is its record's: size 5 ticks every 1/5 s, anything else every 1/4 s; size 13's init throws. */
+function clocked() {
+  const P = tiny("prod", { state: { k: "f64" }, ports: { out: { v: { seam: "f64", from: "k" } } } },
+    { clock: (/** @type {any} */ r) => ({ tick: r.size === 5 ? 1 / 5 : 1 / 4 }), init: (/** @type {any} */ r) => { if (r.size === 13) throw new Error("13 is unlucky"); return { k: 0 }; }, step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
+  const C = tiny("cons", { state: { v: "f64", rev: "f64" }, ports: { in: { v: { seam: "f64", default: 0 } } } },
+    { clock: () => ({ tick: 1 / 4 }), init: () => ({ v: 0, rev: 0 }), step: (/** @type {any} */ _s, /** @type {any} */ c) => ({ v: c.inputs.v, rev: c.inputs.$rev.v }) });
+  const a = /** @type {any} */ (P.grammar("a").size(1)), b = /** @type {any} */ (C.grammar("b"));
+  const composed = compose("f").part(a).part(b).wire(a.out.v, b.in.v).build();
+  /** @param {number} n */
+  const sized = (n) => /** @type {any} */ (P.grammar("a").size(n)).build();
+  return { composed, runtimes: [P.runtime, C.runtime], sized };
+}
+
+test("a rebuild whose init throws keeps the previous revision running: the event fails with the diagnostics", () => {
+  const { composed, runtimes, sized } = clocked();
+  const run = createRun(composed, { runtimes, inputs: [{ kind: "rebuild", T: 0.6, part: "a", record: sized(13) }] });
+  const key = run.key("a");
+  run.runUntil(2);
+  const e = run.builds[0];
+  assert.equal(e.ok, false);
+  assert.equal(e.changed, false);
+  assert.deepEqual(e.revision, { before: 1, after: 1 });
+  assert.deepEqual(e.diagnostics.map((/** @type {any} */ d) => d.code), ["N004"]);
+  assert.match(/** @type {any} */ (e.diagnostics[0]).message, /init threw: 13 is unlucky/);
+  assert.deepEqual(run.snapshot("a"), { state: { k: 9 }, revision: 1, T: "2" });
+  assert.equal(run.key("a"), key);
+  assert.equal(run.revision, 1);
+  assert.deepEqual(run.state("b"), { v: 9, rev: 1 });
+  assert.deepEqual(run.diagnostics, []);
+});
+
+test("a rebuild that changes a clock lands at the same instant however the run is chunked; replay agrees", () => {
+  const { composed, runtimes, sized } = clocked();
+  const inputs = [{ kind: "rebuild", T: 0.6, part: "a", record: sized(5) }, { kind: "rebuild", T: 0.65, part: "a", record: sized(1) }, { kind: "rebuild", T: 0.65, part: "a", record: sized(5) }];
+  const whole = createRun(composed, { runtimes, inputs });
+  whole.runUntil(2);
+  const chunked = createRun(composed, { runtimes, inputs });
+  chunked.runUntil(0.6);
+  chunked.runUntil(0.7);
+  chunked.runUntil(2);
+  assert.deepEqual(chunked.hashes, whole.hashes);
+  // every rebuild landed after 1/2 and before 3/4, the instant the run was due at when they arrived
+  assert.deepEqual(whole.builds.map((/** @type {any} */ b) => b.boundary), Array(3).fill({ after: "1/2", before: "3/4" }));
+  assert.deepEqual(chunked.builds, whole.builds);
+  assert.equal(replay(composed, { runtimes }, chunked.record()).ok, true);
 });

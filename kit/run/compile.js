@@ -25,7 +25,7 @@ export function compilePart(runtime, record) {
   const dialect = runtime.dialect;
   /** @type {any} */
   let low;
-  try { low = runtime.grammar.lower(record); } catch (e) { return { ok: false, diagnostics: [{ code: "R004", message: `lowering threw: ${/** @type {Error} */ (e)?.message ?? String(e)}` }] }; }
+  try { low = runtime.grammar.lower(record); } catch (e) { return { ok: false, diagnostics: [{ code: "N004", message: `lowering threw: ${/** @type {Error} */ (e)?.message ?? String(e)}` }] }; }
   const errors = low.diagnostics.filter((/** @type {any} */ d) => d.severity === "error" || d.severity === undefined);
   if (errors.length) return { ok: false, diagnostics: errors };
   /** @type {Record<string, any>} */
