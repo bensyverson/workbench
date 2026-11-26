@@ -120,6 +120,13 @@ test("R002: a value with no form in the LIR (a string, a list, an entity) is ref
   assert.ok(refused(listed).every((code) => code === "R002"));
 });
 
+test("R002: a list concatenation has no GLSL form either, and is named a list", () => {
+  const cat = /** @type {import("../../ir/ir.js").Expr} */ ({ k: "concat", parts: [c.array([c.f32(1)], "f32"), c.array([c.f32(2)], "f32")], t: { list: "f32", max: 2, len: 2 }, span: [0, 1] });
+  const k = c.kernel({ name: "k#0", returns: "f32", body: [c.ret(c.index(cat, c.num(0), "f32"))] });
+  assert.deepEqual(refused(k), ["R002"]);
+  assert.match(lower(k).diagnostics[0].message, /a list/);
+});
+
 test("R003: an intrinsic with no spelling is refused", () => {
   assert.deepEqual(refused(c.kernel({ name: "k#0", returns: "f32", body: [c.ret(c.call("nosuch", "f32", [c.f32(1)]))] })), ["R003"]);
 });

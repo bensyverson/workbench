@@ -88,6 +88,7 @@ function compute(f, e, path) {
     }
     case "index": return /** @type {Value[]} */ (evalExpr(f, e.of, `${path}.of`))[/** @type {number} */ (evalExpr(f, e.index, `${path}.index`))];
     case "array": return evalAll(f, e.items, `${path}.items`);
+    case "concat": return evalAll(f, e.parts, `${path}.parts`).flat(1);
     case "list": return [];
     case "vec": return evalAll(f, e.items, `${path}.items`);
   }

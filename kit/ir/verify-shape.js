@@ -23,6 +23,7 @@ const EXPR = {
   field: { of: "expr", name: "string" },
   index: { of: "expr", index: "expr" },
   array: { items: "exprs" },
+  concat: { parts: "exprs" },
   list: {},
   vec: { items: "exprs" },
 };

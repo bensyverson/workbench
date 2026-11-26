@@ -71,7 +71,7 @@ function describe(e) {
   switch (e.k) {
     case "str": return "a string";
     case "null": case "undef": return "null or undefined";
-    case "array": case "list": case "index": return "a list";
+    case "array": case "concat": case "list": case "index": return "a list";
     case "struct": return "a struct";
     case "global": return `the global '${e.name}'`;
     case "method": return `the method ${e.owner}.${e.name}`;

@@ -132,8 +132,8 @@ export const SUBSET_RULES = [
     ? { code: "S107", message: `${n.operator} is not in the runtime subset.`, tip: "Fields and types are fixed at compile time; test a declared field or kind instead." } : null },
   { code: "S108", rule: (n) => n.type === "SequenceExpression"
     ? { code: "S108", message: "The comma operator is not in the runtime subset.", tip: "Write each expression as its own statement." } : null },
-  { code: "S109", rule: (n) => n.type === "SpreadElement"
-    ? { code: "S109", message: "Spread (...) is not in the runtime subset.", tip: "List the elements or arguments explicitly." } : null },
+  { code: "S109", rule: (n, ctx) => n.type === "SpreadElement" && ctx.parent?.type !== "ArrayExpression"
+    ? { code: "S109", message: "Spread (...) is not in the runtime subset outside an array literal.", tip: "List the arguments or fields explicitly; only a list may be spread, inside [ … ]." } : null },
   { code: "S110", rule: (n, ctx) => n.type === "VariableDeclaration" && n.kind === "var"
     ? { code: "S110", message: "var is not in the runtime subset.", tip: "Use let, or const if the value never changes; the fixit uses let when that cannot change the meaning.",
       edits: varToLetIsSafe(n, ctx) ? [{ range: [n.range[0], n.range[0] + 3], text: "let" }] : undefined, range: [n.range[0], n.range[0] + 3] } : null },

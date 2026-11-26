@@ -34,7 +34,7 @@ if (r.ok) {
 | S106 | `typeof`, `void`, `delete` | |
 | S107 | `in`, `instanceof` | |
 | S108 | Comma operator | |
-| S109 | Spread `...` | |
+| S109 | Spread `...` outside an array literal (inside one it is list concatenation, checked by kit/lower) | |
 | S110 | `var` | to `let`, when safe (see below) |
 | S111 | An arrow that is not a call argument (a closure) | |
 | S112 | A `for` loop with no condition | |

@@ -115,6 +115,8 @@ export type Expr =
   | (ExprBase & { k: "index"; of: Expr; index: Expr })
   /** An array literal: its type is `{ list, max, len }`, both the number of items; items are evaluated in order. */
   | (ExprBase & { k: "array"; items: Expr[] })
+  /** Whole-list concatenation, `[...a, x, ...b]`: each part is a list (a plain item run is an `array` part), in order. Its type is `{ list, max }` with the parts' maxes summed, and `len` the parts' lengths summed when every part has one. */
+  | (ExprBase & { k: "concat"; parts: Expr[] })
   /** A new empty list, filled by `push`. */
   | (ExprBase & { k: "list" })
   /** A vector built from its components, evaluated in order: one item per component, each of the vector's scalar type. */

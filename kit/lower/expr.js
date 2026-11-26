@@ -630,6 +630,7 @@ function array(L, node) {
     L.error("L012", node, "An empty array literal has no item type.", "Use a declared list (w.board, w.pool(name)), or write the items out.");
     return bad(node);
   }
+  if (node.elements.some((el) => el?.type === "SpreadElement")) return concat(L, node, /** @type {Array<AST.Expression | AST.SpreadElement>} */ (node.elements));
   // A baked constant's numbers stay untyped until each use (see `settleTree`).
   const keep = L.slot.kind === "const";
   const items = seq(L, elements.map((el) => () => (keep ? expr(L, el) : settle(L, expr(L, el)))));
@@ -644,6 +645,67 @@ function array(L, node) {
     item = joined;
   });
   return L.ex({ k: "array", items, t: item === "unknown" ? "unknown" : { list: item, max: items.length, len: items.length }, span: spanOf(node) });
+}
+
+/**
+ * An array literal with a spread, `[x, ...a, ...b]`: whole-list concatenation. A run of plain items is
+ * one `array` part, a spread's operand is a part as it is; the result's max is the parts' maxes summed,
+ * its item type the strict join of theirs, and its `len` the lengths summed when every part has one.
+ * An operand that is not a list (including a possibly-empty one) is L003; parts that do not join, L003.
+ * @param {Lowerer} L
+ * @param {AST.ArrayExpression} node
+ * @param {Array<AST.Expression | AST.SpreadElement>} elements
+ * @returns {Expr}
+ */
+function concat(L, node, elements) {
+  if (L.slot.kind === "const") {
+    L.error("L012", node, "A baked constant cannot spread a list: its items have no type until each use.", "List the items of the constant out, or spread in the lambda that reads it.");
+    return bad(node);
+  }
+  /** @type {Array<() => Expr>} */
+  const thunks = [];
+  /** @type {AST.Expression[]} */
+  const at = [];
+  for (let i = 0; i < elements.length; ) {
+    const el = elements[i];
+    if (el.type === "SpreadElement") { thunks.push(() => expr(L, el.argument)); at.push(el.argument); i++; continue; }
+    /** @type {AST.Expression[]} */
+    const run = [];
+    for (; i < elements.length; i++) {
+      const x = elements[i];
+      if (x.type === "SpreadElement") break;
+      run.push(x);
+    }
+    thunks.push(() => {
+      const items = seq(L, run.map((x) => () => settle(L, expr(L, x))));
+      const item = items.reduce((/** @type {Type | null} */ a, e) => (a === null ? null : strictJoin(a, e.t)), "unknown");
+      return L.ex({ k: "array", items, t: item === null || item === "unknown" ? "unknown" : { list: item, max: items.length, len: items.length }, span: spanOf(node) });
+    });
+    at.push(run[0]);
+  }
+  const parts = seq(L, thunks);
+  /** @type {Type} */
+  let item = "unknown";
+  let max = 0;
+  /** @type {number | undefined} */
+  let len = 0;
+  for (const [i, p] of parts.entries()) {
+    if (p.t === "unknown") return bad(node);
+    if (!(typeof p.t === "object" && "list" in p.t)) {
+      L.error("L003", at[i], `Only a list can be spread into an array, but this is ${describe(p.t)}.`, "Spread a list (w.board, a list parameter), and check a possibly-empty one for null first.");
+      return bad(node);
+    }
+    const joined = strictJoin(item, p.t.list);
+    if (joined === null) {
+      L.error("L003", at[i], `A concatenated list's parts share one item type, but this is ${describe(p.t.list)} and the parts before it are ${describe(item)}.`, "Use parts of one item type; a pair of different things is an object: { name: \"up\", dx: 0 }.");
+      return bad(node);
+    }
+    item = joined;
+    max += p.t.max;
+    len = len === undefined || p.t.len === undefined ? undefined : len + p.t.len;
+  }
+  if (item === "unknown") return bad(node);
+  return L.ex({ k: "concat", parts, t: { list: item, max, ...(len === undefined ? {} : { len }) }, span: spanOf(node) });
 }
 
 /**

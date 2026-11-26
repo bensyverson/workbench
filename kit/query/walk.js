@@ -92,5 +92,6 @@ function exprChildren(e) {
     case "field": return [e.of];
     case "index": return [e.of, e.index];
     case "array": case "vec": return e.items;
+    case "concat": return e.parts;
   }
 }

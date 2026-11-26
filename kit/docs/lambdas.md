@@ -17,9 +17,9 @@ Nothing else is free, not even `Math` or `NaN` unless the Dialect declares it (B
 
 ## The Runtime Subset
 
-Allowed: `const`/`let` (destructuring too), numbers, strings, booleans, `null`, array and object literals, arithmetic (`**` too), comparisons, `&& || !`, bitwise operators, `if`, ternaries, `for…of` over a list, counted loops `for (let i = 0; i < n; i++)`, and calls to the free names above. A counted loop starts at an integer (`0.5` is L007), and `n` is a constant, a list's length or a size (a member `{ value: "f64", size: true }`).
+Allowed: `const`/`let` (destructuring too), numbers, strings, booleans, `null`, array and object literals (an array may spread lists: `[x, ...a, ...b]` is a list whose max is the sum of the parts' maxes), arithmetic (`**` too), comparisons, `&& || !`, bitwise operators, `if`, ternaries, `for…of` over a list, counted loops `for (let i = 0; i < n; i++)`, and calls to the free names above. A counted loop starts at an integer (`0.5` is L007), and `n` is a constant, a list's length or a size (a member `{ value: "f64", size: true }`).
 
-Not allowed: `while`, `new`, `this`, `async`, template literals, `?.`, spread, and closures that escape.
+Not allowed: `while`, `new`, `this`, `async`, template literals, `?.`, spread outside an array literal (inside one, `[...a, ...b]` concatenates lists), and closures that escape.
 
 The subset is wider than many specs want, and no option narrows it. A local or parameter may shadow a Dialect name (`const Math = 1` inside a lambda passes). If your spec refuses any of these, report it as a gap.
 

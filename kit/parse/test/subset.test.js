@@ -64,7 +64,10 @@ test("S106 typeof, void and delete", () => {
 
 test("S107 in and instanceof", () => { one('(a) => "x" in a', "S107"); one("(a) => a instanceof Array", "S107"); });
 test("S108 comma operator", () => { one("(a) => (a.x = 1, a.y = 2)", "S108"); });
-test("S109 spread", () => { one("(a) => [...a]", "S109"); one("(a) => f(...a)", "S109"); });
+test("S109 spread outside an array literal; inside one it is list concatenation, which lowering checks", () => {
+  one("(a) => f(...a)", "S109"); one("(a) => ({ ...a })", "S109");
+  assert.deepEqual(check("(a) => [...a]"), []);
+});
 
 test("S110 var, with a fixit to let only when that is safe", () => {
   const src = "(a) => { var n = 1; return n; }";

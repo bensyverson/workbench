@@ -116,6 +116,7 @@ export function expr(e) {
     case "field": return `${expr(e.of)}.${e.name}`;
     case "index": return `${expr(e.of)}[${expr(e.index)}]`;
     case "array": return `[${e.items.map(expr).join(", ")}]`;
+    case "concat": return `[${e.parts.map((p) => `...${expr(p)}`).join(", ")}]`;
     case "list": return "[]";
     case "vec": return `${showType(e.t)}(${e.items.map(expr).join(", ")})`;
   }

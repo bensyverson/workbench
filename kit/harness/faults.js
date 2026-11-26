@@ -46,6 +46,7 @@ function* walk(e) {
     case "field": yield* walk(e.of); break;
     case "index": yield* walk(e.of); yield* walk(e.index); break;
     case "array": case "vec": for (const i of e.items) yield* walk(i); break;
+    case "concat": for (const p of e.parts) yield* walk(p); break;
     case "load": yield* walk(e.place.recv); break;
     default: break;
   }

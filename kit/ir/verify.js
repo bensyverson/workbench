@@ -389,6 +389,23 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
     if (n === 0 || item === null) { bad(n === 0 ? "An array literal has at least one item." : "An array literal's items share one type."); return; }
     if (!(typeof e.t === "object" && "list" in e.t) || !sameType(e.t, { list: item, max: n, len: n })) bad(`An array of ${n} ${showSafe(item)} is ${showSafe({ list: item, max: n, len: n })} with len ${n}, not ${showSafe(e.t)}.`);
   },
+  concat: ({ e, sub, bad }) => {
+    e.parts.forEach((a, i) => sub(a, `parts[${i}]`));
+    /** @type {Type | null} */
+    let item = "unknown";
+    let max = 0;
+    /** @type {number | undefined} */
+    let len = 0;
+    for (const a of e.parts) {
+      if (!(typeof a.t === "object" && "list" in a.t)) { bad(`Only a list is concatenated, not ${showSafe(a.t)}.`); return; }
+      item = item === null ? null : strictJoin(item, a.t.list);
+      max += a.t.max;
+      len = len === undefined || a.t.len === undefined ? undefined : len + a.t.len;
+    }
+    if (e.parts.length === 0 || item === null) { bad(e.parts.length === 0 ? "A concatenation has at least one part." : "A concatenation's parts share one item type."); return; }
+    const want = { list: item, max, ...(len === undefined ? {} : { len }) };
+    if (!(typeof e.t === "object" && "list" in e.t) || !sameType(e.t, want)) bad(`A concatenation of these parts is ${showSafe(want)}, not ${showSafe(e.t)}.`);
+  },
   list: ({ e, bad }) => {
     if (!(typeof e.t === "object" && "list" in e.t) || e.t.len !== undefined) bad(`A new list is a list type without a fixed length, not ${JSON.stringify(e.t)}.`);
   },

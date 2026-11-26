@@ -206,6 +206,7 @@ function raw(e, cx) {
     case "field": return isVec(e.of.t) ? `${member(e.of, cx)}[${COMPONENTS.indexOf(e.name)}]` : `${member(e.of, cx)}.${e.name}`;
     case "index": return `${member(e.of, cx)}[${top(e.index, cx)}]`;
     case "array": return `[${e.items.map(sub).join(", ")}]`;
+    case "concat": return `[${e.parts.map((p) => `...${sub(p)}`).join(", ")}]`;
     case "list": return "[]";
     case "op": return opSource(e, cx);
     case "cond": return `(${sub(e.test)} ? ${sub(e.then)} : ${sub(e.else)})`;

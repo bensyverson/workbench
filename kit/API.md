@@ -221,7 +221,7 @@ export default ($) => program("sales")
 
 The exported function runs once, at build time; its lambdas run later. Read [docs/params.md](docs/params.md) when your language has params or build-time code branches.
 
-A lambda sees only its parameters and locals, the Dialect's globals, intrinsics and library, `.fn` and `.const` units, `$`, and the file's top-level `const` arrows and plain data. The Runtime Subset has `if`, ternaries, bounded `for` loops, strings, arrays and `**`, but no `while`, `new`, template literals, `?.` or spread. Read [docs/lambdas.md](docs/lambdas.md) when a lambda or helper is refused for a name or construct, or your spec limits what a lambda may write.
+A lambda sees only its parameters and locals, the Dialect's globals, intrinsics and library, `.fn` and `.const` units, `$`, and the file's top-level `const` arrows and plain data. The Runtime Subset has `if`, ternaries, bounded `for` loops, strings, arrays (`[...a, ...b]` concatenates lists, the max being the sum) and `**`, but no `while`, `new`, template literals, `?.` or spread anywhere else. Read [docs/lambdas.md](docs/lambdas.md) when a lambda or helper is refused for a name or construct, or your spec limits what a lambda may write.
 
 ## Pitfalls
 
