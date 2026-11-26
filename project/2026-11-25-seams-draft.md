@@ -2,6 +2,8 @@
 
 *2026-11-25, leaf `MajmbQ` (under `hjdIRt`, M4 Composition, `SPPLaM`). A design draft for Ben, not built and not ruled; written while he was away, so every choice is a recommendation (questions at the end). Inputs: [the architecture synthesis](2026-11-24-architecture-synthesis.md) §3.4, §3.5; [the composition trial](2026-11-24-composition-trial.md) and its draft (`scripts/compose-trial/docs/composition-draft.md`); [the package trial](2026-11-25-package-trial-findings.md), whose three agents could not say "a burst where the actor reaches the goal"; [the package format](2026-11-25-package-format-draft.md); the Definition API as built (`kit/API.md`). Clocks and the scheduler (`f2dMku`) and the build record (`HKNInI`) are separate leaves; this draft says only what it needs from them.*
 
+> **Tested 2026-11-25 ([the relay trial](2026-11-25-seams-relay-trial-findings.md)):** nine blind legs (three relays of maze author, particles author and composer) all checked clean. All three composers wired the strangers' packages with no package edit and no hand conversion, but the reference's example was the task's own pairing, so whether strangers' field names meet unprompted is still untested. The trial adds four design items (questions 8 to 11 below) and moves the host contract to `f2dMku` and the composed page to its own leaf.
+
 ## What changed since the composition trial
 
 The composition trial's three dialects were written together: `tiles` knew `cave`'s cells and supplied `tile()`, and the references' examples showed every seam. Ben's pattern is different: "I have a DSL at `bensyverson/mydsl` and one on disk; use both to do XYZ." The two packages were written in separate sessions, and **neither author knew the other existed**. The package trial showed what that costs: maze has no event out, particles no trigger in, the two have different coordinate spaces, clocks, `$`s and `t`s, and nothing in either can name the other.
@@ -226,6 +228,11 @@ Two package-trial items belong to the host, not the seams: two versions of one p
 5. **Each part keeps its own params**; a shared glue `$` is parked. Recommended.
 6. **One wire per input**; no merging of Events in v0. Recommended.
 7. **Ports live in the Dialect, not the manifest**; the package's generated reference prints them, so a composer reads them without running code. Recommended, as for `elements`, which kit/package checks against the UI rather than duplicating.
+
+8. **A kind filter on `ref("in")`** (`ref("in", { kind: "event" })`), since all three particles authors needed a `trigger` that cannot name a value input. Recommended.
+9. **Event records reach lambdas.** An Event input names the lambda slots that see its record and the name it is read by (particles' `spawn` reads `ev.at`), instead of the host placing particles by prose. Recommended. All three particles authors asked for it.
+10. **Kit-wide units and rates:** a few 1-D frames the kit declares for every package (`s`), and rates written `vec2@px/s` that convert by both the space edge and the unit. Recommended, as the smallest form covering the trial's three rate findings and the per-package seconds.
+11. **Output lambdas may build a vector** from scalar state (`(s) => [s.player.x, s.player.y]`). Recommended. All three maze authors duplicated state without it.
 
 ## Next
 

@@ -121,7 +121,7 @@ An **edge** is `{ scale, offset }`: a value in `from` becomes `value * scale + o
 ```js
 // workbench.js
 import { compose } from "kit/compose";
-import { maze } from "maze";              // each package's Grammar, by the package's name
+import { maze } from "maze";              // a package's name: its Grammar entry module, so this is its Grammar export
 import { particles } from "particles";
 
 const GRID = ["#####", "#c..#", "#.#c#", "#####"];
@@ -139,6 +139,8 @@ export default ($) => {
     .show(fx);
 };
 ```
+
+A glue program is not a package: it may import `kit/compose`, `kit/define` and each package it composes by the package's `name`, which resolves to the module the manifest's `entry.grammar` names.
 
 | Call | Does |
 |---|---|

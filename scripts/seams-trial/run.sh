@@ -40,7 +40,7 @@ case "$DIR/" in
   "$REPO"/*|"$CLAUDE_HOME"/*) echo "run.sh: $DIR must be outside the repository and ~/.claude" >&2; exit 2 ;;
 esac
 mkdir -p "$DIR"
-cp "$REPO/scripts/seams-trial/docs/seams.md" "$REPO/scripts/seams-trial/docs/rules.md" "$REPO/scripts/pkg-trial/docs/packaging.md" "$DIR/"
+cp "$REPO/scripts/seams-trial/docs/seams.md" "$REPO/scripts/seams-trial/docs/rules.md" "$REPO/scripts/seams-trial/docs/packaging.md" "$DIR/"
 cp "$REPO/scripts/seams-trial/docs/task-$ROLE.md" "$DIR/task.md"
 if [ "$ROLE" = compose ]; then
   cp -R "$MAZE_LEG/maze" "$PART_LEG/particles" "$DIR/"

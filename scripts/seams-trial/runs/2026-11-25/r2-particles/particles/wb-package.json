@@ -1,0 +1,68 @@
+{
+  "name": "particles",
+  "version": "0.2.0",
+  "kit": "0.4",
+  "description": "Emitters, particles and fields: a particle system written as rules.",
+  "entry": {
+    "dialect": "particles.dialect.js",
+    "grammar": "particles.grammar.js",
+    "ui": "particles.ui.js"
+  },
+  "elements": [
+    "particles-field.js"
+  ],
+  "examples": [
+    "examples/01.js",
+    "examples/02.js",
+    "examples/03.js",
+    "examples/04.js",
+    "examples/05.js",
+    "examples/06.js",
+    "examples/07.js"
+  ],
+  "refusals": [
+    {
+      "module": "refusals/r01.js",
+      "code": "L004"
+    },
+    {
+      "module": "refusals/r02.js",
+      "code": "L013"
+    },
+    {
+      "module": "refusals/r03.js",
+      "code": "L004"
+    },
+    {
+      "module": "refusals/r04.js",
+      "code": "B013"
+    },
+    {
+      "module": "refusals/r05.js",
+      "code": "L017"
+    },
+    {
+      "module": "refusals/r06.js",
+      "code": "L004"
+    }
+  ],
+  "files": {
+    "examples/01.js": "sha256-vQ+Jipf26q53261jSwGKj9ycPSLDH4WBEmWl3v8df2g=",
+    "examples/02.js": "sha256-Db/GtRB5r5TsM4SRkvvNXt/OMFzp3paHnQS2/9qrhfU=",
+    "examples/03.js": "sha256-mFirAmAT0kMvm9La7DEHJdqFcUltBx1iwi62LBxqzw0=",
+    "examples/04.js": "sha256-luVxeLEU6wxKN0bEsMtQiK9CT0bX9wZIpVvIxXV1aRQ=",
+    "examples/05.js": "sha256-Ga41mDolLtBhwmqNYjI3rW4/5/7uzSO5RyygFiLPM3s=",
+    "examples/06.js": "sha256-PRcdAos/oBDacb/L2loioKEhrr9G4xuyS9NXIsTcJ58=",
+    "examples/07.js": "sha256-imVEdp7brgmsxw/Gpq9SwKBYQdcm89C3QKDXdNm2IoM=",
+    "particles-field.js": "sha256-RLZvdiaFq9b7K8oKtYzmEWlfqsLSEo3nX0tLB0CIKSs=",
+    "particles.dialect.js": "sha256-rPGchfASadSqN5S5zmvb+ghRVjrXAPGSpG7+kKpp4VM=",
+    "particles.grammar.js": "sha256-xmmwC3ae4MoRAY6kb4goGQYIT/ZtZAEY8CH1MSvaij0=",
+    "particles.ui.js": "sha256-cgTAcDqn67WVnpJqNekwNBBCkrnwLgNrt/tVQcRP7Pc=",
+    "refusals/r01.js": "sha256-lpoISmkPd8VXD7ao+1q6FWgerjJ5cduu34okZJ/OzXY=",
+    "refusals/r02.js": "sha256-0EjmQ4hlFuCRaMpWZ5KPhdNNfQIQHp9BQCv0KQOBKY4=",
+    "refusals/r03.js": "sha256-7dNV/7s7560DwVQZitX7bJgl6IRJ/3M3nGY9dyIeR7A=",
+    "refusals/r04.js": "sha256-WUUlB8SVWE+H3VmPIklw3ngqdmWXmmto88UG3Xnlp0s=",
+    "refusals/r05.js": "sha256-bddMsYxphoaGoMQFy1qPhwr0aeViS87eAKH0Q4b2vL4=",
+    "refusals/r06.js": "sha256-mEdCmcJqf14MqUuu3J6iTOyViO3cxnt/wwCGDVMZb8w="
+  }
+}

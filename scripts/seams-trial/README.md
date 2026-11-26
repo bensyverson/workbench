@@ -91,3 +91,5 @@ Not run yet. The integrator writes `docs/` (the reference, rules, task sheets, t
 ## Running the trial
 
 A relay is three legs: the maze and particles legs run in parallel, then the compose leg on their hand-ins. Copy each leg's directory to `runs/<date>/<relay>-<role>/` afterwards. G005 trusts the package hashes, so a composer who edits a package and re-hashes it passes it: when recording a compose leg, `diff -r` its `maze/` and `particles/` against the author legs' hand-ins.
+
+Run 2026-11-25: three relays, nine legs, all clean ([the findings](../../project/2026-11-25-seams-relay-trial-findings.md)); records in `runs/2026-11-25/r{1,2,3}-{maze,particles,compose}/`. After that run, `docs/packaging.md` became this trial's own copy of the package trial's (its stale "No ports or seams" line replaced) and `seams.md` says how a glue program's bare names resolve.
