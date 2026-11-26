@@ -5,4 +5,4 @@ Answers the [package format draft](../../project/2026-11-25-package-format-draft
 - **Page:** `index.html` plus siblings `kit-define-stub.js`, `uses-bare.js`, `pkg/tiles/{lib,tiles.dialect}.js`.
 - **Published** 2026-11-25 with capability `db` as https://claude.ai/artifact/JKj2gqGw6ixnYHknugiiWb (private to Ben). Republish the same files to update it.
 - **Results:** open the page; it saves to the artifact database, collection `pkgprobe`, doc `results` (read with `ArtifactData get`). The upload row is manual: pick any folder of `.js` files.
-- **Not yet run** in a browser as of 2026-11-25.
+- **Run 2026-11-25** in Safari 27.2 (macOS), every row ok: static and run-time import maps both resolve bare names; a `blob:` module cannot resolve `./lib.js`; the rewritten `blob:` graph loads; SHA-256 and `DecompressionStream` are present; folder upload works. Chrome and Firefox not yet run.

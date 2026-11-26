@@ -21,6 +21,8 @@
 
 ## Questions for Ben
 
+> **Ruled 2026-11-25 (Ben), all as recommended:** the package draft's questions (see its end); list maxima (b); `stat.max` red at the max; no list queries in UI lambdas yet; `kQu7xe` refused structurally in `defineUI`.
+
 1. **The package draft's six questions**, at its end.
 2. **List maxima in a run's state.** All three trial agents had to guess one. The options are in the trial findings; the recommendation is (b), `list(type)` without a max, allowed in `state` only.
 3. **Whether `stat.max` goes red at the max rather than past it.** All three agents added a `badIf` to get "red when full".
