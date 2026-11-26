@@ -53,3 +53,7 @@ Claude Code sends periodic reminders to use TaskCreate/TaskUpdate, and on 2026-1
 ## 2026-11-25: browser-safe.test.js flags the text `import(` anywhere in kit/ outside comments
 
 The kit's browser-safety test scans kit/ sources for dynamic imports with a regex, so the spelling inside a string or template literal (a diagnostic message, say) fails it too. kit/package words its message as "a dynamic import expression". Write it that way, or fix the test to skip strings. The test reads only `.js` files, so the vendored acorn build (`kit/vendor/acorn/acorn.mjs`) is not scanned by it; `kit/package/test/vendor.test.js` holds that line.
+
+## 2026-11-26: parallel branches that are each green can break each other when one tightens a contract
+
+Twice this day a squash of a parallel agent's branch broke tests that had been green on both branches: the draw trial's fixtures had unguarded `ev` reads after L008 landed, and the Draw renderer fixes wrote builders as plain JS (an object spread, an over-ceiling concat) after the other branch made builders Bench code. Before you squash a branch that refuses something new, grep the other branches' new tests and fixtures for the pattern it now refuses, and run the suite on the combined tree before committing.
