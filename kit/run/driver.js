@@ -9,13 +9,10 @@
 
 import { q, add, cmp, sub, toNumber } from "../define/rational.js";
 import { MIN_FRAME, NOMINAL_FRAME } from "../compose/queues.js";
-
-/** @import { Q } from "../define/rational.js" */
+import { afterMs } from "./log.js";
 
 /** The nearest millisecond to `t` seconds. @param {number} t */
 const roundMs = (t) => q(Math.round(t * 1000), 1000);
-/** The first millisecond after `t`. @param {Q} t */
-const afterMs = (t) => q(Math.floor((t.n * 1000) / t.d) + 1, 1000);
 
 /**
  * A real-time driver over a run created with `frames: "display"`. The page calls `frame(wallSeconds)` once per

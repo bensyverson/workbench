@@ -114,8 +114,11 @@ export function queueProblems(parts, wires, runtimes, o = {}) {
     if (per === undefined || max === undefined) return;
     const pc = a.clock, cc = b.clock;
     // a demand consumer is woken by the Event, and a frame consumer of a frame producer steps on the same frames: either
-    // takes one producer step's records
-    const steps = cc.kind === "demand" || (cc.kind === "frame" && pc.kind === "frame") ? 1 : stepsIn(pc, cc.kind === "tick" ? cc.period : catchUp, all);
+    // takes one producer step's records. A frame consumer's window (its last frame, this frame] holds one frame, so a
+    // demand producer steps there at most once for it and once per tick instant in the cap.
+    const steps = cc.kind === "demand" || (cc.kind === "frame" && pc.kind === "frame") ? 1
+      : cc.kind === "frame" && pc.kind === "demand" ? 1 + tickInstants(all.flatMap((x) => (x.kind === "tick" ? [x.period] : [])), catchUp)
+      : stepsIn(pc, cc.kind === "tick" ? cc.period : catchUp, all);
     const bound = steps * per;
     if (bound <= max) return;
     const rate = (/** @type {Clock} */ c, /** @type {string} */ n) => (c.kind === "tick" ? `${n} ticks every ${qText(c.period)} s` : c.kind === "frame" ? `${n} steps once per display frame, at most every ${qText(MIN_FRAME)} s` : `${n} steps on demand, at most once per instant`);

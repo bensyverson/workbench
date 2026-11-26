@@ -13,14 +13,16 @@ import { parseQ, toNumber } from "../define/rational.js";
  * Runs a recorded run's log again and compares each instant's state hashes, and the build events.
  * @param {Composed} composed
  * @param {Omit<RunOptions, "inputs" | "seed" | "frames" | "params" | "catchUp">} options  the runtimes (and a build function, packages, dev)
- * @param {{ log: { header: { seed: number, frames: "nominal" | "display", catchUp: string, params: Record<string, Record<string, unknown>> }, inputs: Array<Record<string, any>> }, hashes: InstantHash[], builds: unknown[] }} record  what run.record() gave
+ * @param {{ log: { header: { seed: number, frames: "nominal" | "display", catchUp: string, params: Record<string, Record<string, unknown>> }, inputs: Array<Record<string, any>> }, hashes: InstantHash[], builds: unknown[], T?: string }} record  what run.record() gave
  * @returns {{ ok: boolean, diagnostics: RunDiagnostic[], run: ReturnType<typeof createRun> }}
  */
 export function replay(composed, options, record) {
   const h = record.log.header;
   const run = createRun(composed, { ...options, seed: h.seed, frames: h.frames, catchUp: toNumber(parseQ(h.catchUp)), params: h.params, inputs: record.log.inputs });
   const last = record.hashes.at(-1);
-  if (last) run.runUntil(parseQ(last.T));
+  // to the T the run reached, so the inputs it applied after its last instant are applied here too
+  const to = record.T ?? last?.T;
+  if (to) run.advance(parseQ(to));
   /** @type {RunDiagnostic[]} */
   const diagnostics = [];
   const n = Math.max(record.hashes.length, run.hashes.length);

@@ -3,9 +3,12 @@
 // and each display frame the real-time driver ran (`frame`, with `capped` when the frame was longer than the
 // catch-up cap). A run is a pure function of the composed record, the params and this log.
 
-import { qText, sub, toNumber } from "../define/rational.js";
+import { q, qText, sub, toNumber } from "../define/rational.js";
 
 /** @import { Q } from "../define/rational.js" */
+
+/** The first millisecond after `t`: frame stamps are kept to the millisecond. @param {Q} t */
+export const afterMs = (t) => q(Math.floor((t.n * 1000) / t.d) + 1, 1000);
 
 /** The kinds of input. */
 export const INPUT_KINDS = Object.freeze(["control", "param", "rebuild", "frame"]);
