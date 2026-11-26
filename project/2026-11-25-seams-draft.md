@@ -1,8 +1,17 @@
 # Draft: seams — seam types, ports and frames, and diagnostics that name both sides
 
-*2026-11-25, leaf `MajmbQ` (under `hjdIRt`, M4 Composition, `SPPLaM`). A design draft for Ben, not built and not ruled; written while he was away, so every choice is a recommendation (questions at the end). Inputs: [the architecture synthesis](2026-11-24-architecture-synthesis.md) §3.4, §3.5; [the composition trial](2026-11-24-composition-trial.md) and its draft (`scripts/compose-trial/docs/composition-draft.md`); [the package trial](2026-11-25-package-trial-findings.md), whose three agents could not say "a burst where the actor reaches the goal"; [the package format](2026-11-25-package-format-draft.md); the Definition API as built (`kit/API.md`). Clocks and the scheduler (`f2dMku`) and the build record (`HKNInI`) are separate leaves; this draft says only what it needs from them.*
+*2026-11-25, leaf `MajmbQ` (under `hjdIRt`, M4 Composition, `SPPLaM`). A design draft for Ben, written while he was away; ruled 2026-11-26 (the rulings block below). Inputs: [the architecture synthesis](2026-11-24-architecture-synthesis.md) §3.4, §3.5; [the composition trial](2026-11-24-composition-trial.md) and its draft (`scripts/compose-trial/docs/composition-draft.md`); [the package trial](2026-11-25-package-trial-findings.md), whose three agents could not say "a burst where the actor reaches the goal"; [the package format](2026-11-25-package-format-draft.md); the Definition API as built (`kit/API.md`). Clocks and the scheduler (`f2dMku`) and the build record (`HKNInI`) are separate leaves; this draft says only what it needs from them.*
 
 > **Tested 2026-11-25 ([the relay trial](2026-11-25-seams-relay-trial-findings.md)):** nine blind legs (three relays of maze author, particles author and composer) all checked clean. All three composers wired the strangers' packages with no package edit and no hand conversion, but the reference's example was the task's own pairing, so whether strangers' field names meet unprompted is still untested. The trial adds four design items (questions 8 to 11 below) and moves the host contract to `f2dMku` and the composed page to its own leaf.
+
+> **Ruled 2026-11-26 (Ben, leaf `oEgyLA`).** This draft is now the build's spec (`wwG0JR`), with these rulings:
+> - **Questions 1–3, 5–9 and 11: as recommended.**
+> - **Question 4 is superseded** by [the clocks draft](2026-11-25-clocks-draft.md)'s question 3: a runtime pushes Event records in `step`, so an Event output has no `from`. A value output still reads the state by a path or a value lambda.
+> - **Question 10, capped:** the kit declares one shared unit, `s`, for every package. A rate is written only per second (`vec2@px/s`, `f64@cell/s`) and converts by the space edge alone, since `s` is the same everywhere. No general unit algebra.
+> - **Field names that don't meet (new):** a wire may rename record fields, as data: `.wire(level.out.picked, fx.in.burst, { rename: { pos: "at" } })`. Each source name must be a producer field and each target a consumer field (S-coded, both sides named). The glue gets no lambdas. Before, a name mismatch between strangers had no fix but a package edit (the relay findings, item 8).
+> - **Cycles (new):** a cycle of wires is an S error naming the loop, unless one wire in it is marked `{ delay: true }`; that wire's consumer reads the previous instant's snapshot. Glue line order never decides it (the clocks draft's ruling on its question 2).
+> - **Event delivery (new):** an Event input declares its delivery: `"reliable"` (the default) or `{ keepLast: n }` (lossy by the consumer's choice). A reliable wire whose queue can overflow is an S error at composition. See the clocks draft's ruling on its question 4.
+> - **The composed page:** `.show(part)` stays. A workbench that wants to combine stages adds a root part, in a Dialect of its own, that takes the others' outputs as inputs and draws what it likes. Layer order is that Program's business, not a kit rule. What a part's drawing looks like on a wire is leaf `FqsPVJ`.
 
 ## What changed since the composition trial
 
@@ -103,7 +112,7 @@ ports: { out: {
 
 - **An output reads the run's state**, the one the Dialect's `state` declares, `checkState` checks and the UI's views read. `from` is either a path (as the UI's paths are) or a value lambda `(s) => …`, lowered and typed exactly as a UI value lambda is (same rules, same L codes, no list queries). Reusing the UI's machinery means a port adds no new runtime contract: the host already commits that state after each step.
 - **An Event output is a state list the host refills each step** with what happened during it, and clears at the start of the next. The kit snapshots the list when the host commits. This is the one rule a host author must know; the Dialect's reference prints it beside the port.
-> **See also 2026-11-25:** [the clocks draft](2026-11-25-clocks-draft.md) (question 3) proposes that a runtime pushes Event records in its `step` instead of refilling a state list, so an Event output would have no `from`.
+> **Superseded 2026-11-26 (ruled):** a runtime pushes Event records in its `step` ([the clocks draft](2026-11-25-clocks-draft.md), question 3), so an Event output has no `from` and the host refills nothing. The paragraph above and the `picked` example's `from: "picked"` are the earlier proposal.
 
 - `note` is required for a tagged or Event port and optional otherwise. It is what a composer reads to decide what to wire, and the package reference prints it.
 

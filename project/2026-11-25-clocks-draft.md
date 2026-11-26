@@ -1,11 +1,20 @@
 # Draft: clocks, the runtime contract and the snapshot scheduler
 
-*2026-11-25, leaf `IBo0RD` (under `f2dMku`, M4 Composition, `SPPLaM`). A design draft for Ben, not built and not ruled. Ben was away when it was written, so every choice is a recommendation, and the questions are at the end. Inputs:*
+*2026-11-25, leaf `IBo0RD` (under `f2dMku`, M4 Composition, `SPPLaM`). A design draft for Ben, written while he was away; ruled 2026-11-26 (the rulings block below). Inputs:*
 - *[the architecture synthesis](2026-11-24-architecture-synthesis.md) §3.5 (Time) and §3.8 (replay);*
 - *[the composition trial](2026-11-24-composition-trial.md) (the double descent, `lerp` across a reload);*
 - *[the seams draft](2026-11-25-seams-draft.md) ("What the host must do") and [the relay trial](2026-11-25-seams-relay-trial-findings.md), whose three composers asked the questions this answers, and whose authors described their hosts in prose because there was nowhere else.*
 
 *The build record (identity, revision, content key: `HKNInI`) is a separate leaf. This draft says only what it needs from it.*
+
+> **Ruled 2026-11-26 (Ben, leaf `ETSYfC`).** This draft is now the build's spec (`ZH4KWX`), with these rulings:
+> - **Questions 1, 3, 5, 6 and 7: as recommended.**
+> - **Question 2, same-instant wire order: as recommended, but a cycle no longer breaks by glue order.** Breaking it "at the wire the glue added last" would let a harmless-looking reorder of two `.wire` lines change behavior silently. A cycle of wires is now an S error naming the loop, unless one wire in it is marked `{ delay: true }`; that wire's consumer reads the previous instant's snapshot. Simulink's algebraic loops and Lustre's `pre` work the same way.
+> - **Question 4 is replaced: reliable by default, checked at composition; overload slows time and never drops Events.** "Exactly once" and "drop the oldest" contradicted each other, and dropping Events doesn't help performance anyway. Queues live in workbench time, which is deterministic, so a queue's length depends only on rates and per-step maximums, never on the machine. Each pressure gets its own fix:
+>   - *Queues: sized at composition, as in synchronous dataflow.* A `tick → tick` wire's bound follows from the two rational periods and the producer's per-step max. A `demand` consumer is woken by the Event, so its bound is the producer's max. A `frame` consumer's bound follows from the catch-up cap below. A reliable wire whose bound exceeds the consumer's list max is an S error naming both sides. It offers two fixes: raise the max, or opt into `{ keepLast: n }`.
+>   - *Delivery policy per input, as in ROS 2 / DDS:* `"reliable"` (the default for Events) or `{ keepLast: n }`, lossy by the consumer's choice and counted in the run record.
+>   - *Wall time: a capped fixed-timestep loop.* The page runs at most K steps per display frame. When a machine can't keep up, `T` falls behind wall time (slow motion) and no Event is lost. The capped frames are in the input log, so replay matches.
+>   - R001 changes meaning: a run statistic ("ran at 0.8× for 2 s"), not "records dropped".
 
 ## The problem in one paragraph
 
@@ -68,9 +77,11 @@ One kit scheduler runs every part of a workbench on one **workbench time** `T`, 
 
 1. **Instants.** The scheduler finds the next instant at which any part is due: a `tick` part every `s`, a `frame` part at each display frame, and a `demand` part right after anything it reads has changed. A `tick` part's instants are exact multiples of `s` in rational arithmetic, so `1/8` and `1/30` meet exactly every half second, with no drift.
 2. **Order within an instant.** The parts due at one instant step in **wire order**: a producer before its consumers (a topological sort of the wires). Ties go by `.part` order. A cycle of wires is broken at the wire the glue added last, and that consumer reads the previous instant's snapshot: the one-step delay the synthesis describes, now at a stated place.
+   > **Ruled 2026-11-26:** a cycle is an S error unless one of its wires is marked `{ delay: true }`; glue order does not break it (rulings block, top).
 3. **Commit.** After a part steps, its outputs are read from the new state and its Events are stamped with `T`. That is the part's **snapshot**. Nobody ever sees a part halfway through a step.
 4. **Reads.** A consumer stepping at `T` reads each value input from its producer's latest snapshot at or before `T`. Wire order means a same-instant producer has already committed. So a burst wired from a pickup plays **at the same instant** as the pickup, with no extra delay, unless the wire closes a cycle.
 5. **Events are delivered exactly once, in order.** Each wire keeps a queue. A consumer's step takes every record stamped at or before its `T` that it has not yet taken, in stamp order, and then the order the producer pushed them. A fast consumer gets each record once; a slow consumer gets several producer steps' records together, still in order. The queue is bounded by the consumer's input list max (`Event<R>` pairs with a list of max `n`). Past that, the oldest records are dropped and counted, and the run record says how many (R001, below).
+   > **Ruled 2026-11-26:** no drop-oldest. A reliable wire's bound is checked at composition, a `{ keepLast: n }` input drops by its own choice, and overload slows `T` instead (rulings block, top).
 6. **Conversions** (`wires[i].convert` from the seams draft) are applied as records and values cross.
 
 So the composers' questions have answers:
@@ -115,7 +126,7 @@ R is a new letter for run-time diagnostics, which no current code uses (B C D L 
 
 | Code | When |
 |---|---|
-| R001 | an Event queue overflowed; records were dropped (how many, which wire) |
+| R001 | ~~an Event queue overflowed; records were dropped~~ ruled 2026-11-26: the run fell behind wall time and `T` slowed (how long, how much); a `keepLast` input's drops are counted here too |
 | R002 | `step` returned a state that does not fit the Dialect's `state` (the `checkState` paths) |
 | R003 | `step` changed the state it was handed, or kept memory outside it (a development-run check) |
 | R004 | `step` or `init` threw: the part stops, and the others run on with its last snapshot |
