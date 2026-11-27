@@ -8,17 +8,27 @@
 export const NUMBER_DIGITS = 15;
 
 /**
- * A number rounded to a step (a multiple of it, written with the step's decimals) or, with none, to NUMBER_DIGITS
- * significant digits when that only removes float noise; -0 is 0, and a non-finite number is unchanged.
- * @param {number} n @param {number} [step]
+ * A number rounded to a step (a multiple of it, counted from `min` when there is one, written with the step's
+ * decimals) and kept inside `min` and `max`, or, with no step, to NUMBER_DIGITS significant digits when that only
+ * removes float noise; -0 is 0, a non-finite number is unchanged, and a finite one never becomes non-finite.
+ * @param {number} n @param {number} [step] @param {{ min?: number, max?: number }} [bounds]
  */
-export function roundNumber(n, step) {
+export function roundNumber(n, step, bounds = {}) {
   if (!Number.isFinite(n)) return n;
-  if (step) {
+  if (step && Number.isFinite(step)) {
     // the step's decimals from its exponent form, which String() gives below 1e-6 ("1e-7" has seven)
-    const [mantissa, exponent] = step.toExponential().split("e");
-    const decimals = Math.min(100, Math.max(0, (mantissa.split(".")[1] ?? "").length - Number(exponent)));
-    return Number((Math.round(n / step) * step).toFixed(decimals)) + 0;
+    const decimals = (/** @type {number} */ x) => {
+      const [mantissa, exponent] = x.toExponential().split("e");
+      return Math.max(0, (mantissa.split(".")[1] ?? "").length - Number(exponent));
+    };
+    const { min, max } = bounds;
+    const from = typeof min === "number" ? min : 0;
+    const digits = Math.min(100, Math.max(decimals(step), typeof min === "number" ? decimals(min) : 0));
+    let x = Number((from + Math.round((n - from) / step) * step).toFixed(digits));
+    // a range whose max is no multiple of the step keeps its max: the snap is clamped back inside
+    if (typeof max === "number" && x > max) x = max;
+    if (typeof min === "number" && x < min) x = min;
+    return Number.isFinite(x) ? x + 0 : n;
   }
   // only float noise goes: a whole number, or a value the 15-digit form would move by more than a few ulps (a typed
   // 1234567890123456, 2**53, MAX_VALUE whose 15-digit form overflows), is kept as it is

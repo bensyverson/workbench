@@ -139,3 +139,7 @@ test("40c. a preview whose build fails is skipped with a page diagnostic: the fr
   assert.ok(t.pg.diagnostics.some((x) => x.code === "H012" && /B004 radius/.test(x.message)));
   assert.deepEqual(d2.release(), { to: "arg.b.lens#0:0.radius", value: 10 }, "nothing built: the value at the down");
 });
+
+test("a stepped Grip at its max stays at the max when the max is no multiple of the step (reviewer-80)", () => {
+  assert.equal(gripValue({ kind: "length", v0: 1.9, p0: [0, 0], p: [10, 0], axis: [1, 0], step: 0.7, min: 0, max: 2 }), 2);
+});

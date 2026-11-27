@@ -131,7 +131,7 @@ export function createControls(seams) {
     if (typeof to !== "string") return null;
     if (disabled) { if (c.local) throw new Error(`${disabled.code} ${disabled.message}`); return null; }
     if (!record || !("value" in record)) throw new TypeError(`the Control '${name}' writes its record's value back to ${to}, and ${JSON.stringify(record)} has none`);
-    const part = /** @type {string} */ (c.part), value = typeof record.value === "number" ? roundNumber(record.value, typeof c.decl?.step === "number" ? c.decl.step : undefined) : record.value;
+    const part = /** @type {string} */ (c.part), value = typeof record.value === "number" ? roundNumber(record.value, typeof c.decl?.step === "number" ? c.decl.step : undefined, { min: c.decl?.min, max: c.decl?.max }) : record.value;
     if (c.local) {
       const key = `${part} ${to}`;
       if (phase === "preview") { waiting.set(key, { part, to, value, what: `the Control ${what}` }); return null; }

@@ -27,3 +27,17 @@ test("a finite number never becomes non-finite", () => {
   assert.ok(Number.isNaN(roundNumber(NaN)));
   assert.equal(roundNumber(Infinity), Infinity);
 });
+
+test("a stepped value snaps from its minimum and stays inside its bounds (reviewer-80, snap.probe.js)", () => {
+  assert.equal(roundNumber(2, 0.7, { min: 0, max: 2 }), 2, "the max of a range that is no multiple of the step");
+  assert.equal(roundNumber(1, 0.4, { max: 1 }), 1, "a snap past the max is clamped");
+  assert.equal(roundNumber(0.25, 0.5, { min: 0.1, max: 2 }), 0.1, "a grid that starts at the minimum");
+  assert.equal(roundNumber(0.8, 0.5, { min: 0.1, max: 2 }), 0.6, "a grid that starts at the minimum");
+  assert.equal(roundNumber(-3, 1, { min: -2 }), -2, "a snap below the min is clamped");
+  assert.equal(roundNumber(1.3, 0.25), 1.25, "with no bounds, multiples of the step");
+});
+
+test("a stepped value never becomes non-finite", () => {
+  assert.equal(roundNumber(1.7e308, 0.5), 1.7e308);
+  assert.equal(roundNumber(5, Infinity), 5);
+});

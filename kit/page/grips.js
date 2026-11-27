@@ -36,7 +36,7 @@ export function gripValue(d) {
     if (typeof d.min === "number") x = Math.max(d.min, x);
     if (typeof d.max === "number") x = Math.min(d.max, x);
     if (d.whole) return Math.round(x);
-    return roundNumber(x, d.step && !d.alt ? d.step : undefined);
+    return roundNumber(x, d.step && !d.alt ? d.step : undefined, { min: d.min, max: d.max });
   };
   switch (d.kind) {
     case "translate": {
