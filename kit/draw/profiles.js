@@ -4,11 +4,12 @@
 // limit; nothing is dropped silently.
 
 import { OP_KINDS, nativeSize, gridCells } from "./ops.js";
+import { orderProblems } from "./order.js";
 
 /** @typedef {import("./ops.js").Op} Op */
 /** @typedef {import("./ops.js").Image} Image */
 /** @typedef {import("./ops.js").Box} Box */
-/** @typedef {{ width: number, height: number, sprites: number, perRow: number, tile: number, shades: number, layers: number }} GameBoyLimits */
+/** @typedef {{ width: number, height: number, sprites: number, perRow: number, bgTiles: number, tile: number, shades: number, layers: number }} GameBoyLimits */
 /** @typedef {{ name: string, label: string, kinds: readonly string[], limits?: GameBoyLimits }} Profile */
 /** @typedef {{ code: string, message: string }} DrawDiagnostic */
 
@@ -17,7 +18,7 @@ export const CANVAS = Object.freeze({ name: "canvas", label: "Canvas 2D", kinds:
 /** The Game Boy (DMG): tiles as its background and window, image cells as sprites, text as sprites (one per character). @type {Profile} */
 export const GAMEBOY = Object.freeze({
   name: "gameboy", label: "Game Boy (DMG)", kinds: Object.freeze(["image", "tiles", "text"]),
-  limits: Object.freeze({ width: 160, height: 144, sprites: 40, perRow: 10, tile: 8, shades: 4, layers: 2 }),
+  limits: Object.freeze({ width: 160, height: 144, sprites: 40, perRow: 10, bgTiles: 256, tile: 8, shades: 4, layers: 2 }),
 });
 /** The profiles by name. */
 export const PROFILES = Object.freeze({ canvas: CANVAS, gameboy: GAMEBOY });
@@ -61,6 +62,12 @@ function gameBoy(profile, gb, list, images, frame) {
   let sprites = 0, chars = 0;
   /** @type {Array<{ op: Op, i: number }>} */
   const layers = [];
+  /** the 8 by 8 objects each sprite or text op draws, in list order @type {Array<{ i: number, x: number, y: number }>} */
+  const objects = [];
+  /** the on-screen corners of each tiles op's drawn (non-negative) cells @type {Array<{ i: number, cells: number[][] }>} */
+  const grids = [];
+  /** distinct background tiles, by sheet and number @type {Set<string>} */
+  const bgTiles = new Set();
   /** @param {number} top @param {number} height @param {number} n */
   const charge = (top, height, n) => { for (let y = Math.max(0, top); y < Math.min(gb.height, top + height); y++) rows[y] = (rows[y] ?? 0) + n; };
   const w = box.max[0] - box.min[0], h = box.max[1] - box.min[1];
@@ -75,6 +82,8 @@ function gameBoy(profile, gb, list, images, frame) {
         const across = native[0] / gb.tile;
         sprites += across * (native[1] / gb.tile);
         charge(Math.floor(Math.min(op.at[1], op.at[1] + (op.size?.[1] ?? 0)) - box.min[1]), native[1], across);
+        const left = Math.min(op.at[0], op.at[0] + (op.size?.[0] ?? 0)), top = Math.min(op.at[1], op.at[1] + (op.size?.[1] ?? 0));
+        for (let r = 0; r < native[1] / gb.tile; r++) for (let c = 0; c < across; c++) objects.push({ i, x: left + c * gb.tile, y: top + r * gb.tile });
         return;
       }
       case "tiles": {
@@ -84,6 +93,9 @@ function gameBoy(profile, gb, list, images, frame) {
           if (op.size[0] < 0 || op.size[1] < 0) { say("J041", `op ${i}: tiles of ${op.image} mirrored (a negative cell size, or a flipping wire): the background cannot be mirrored`); return; }
         } else if (op.size) { say("J041", `op ${i}: tiles of ${op.image} with cells drawn at ${by(op.size)}, not ${by(c)}: background cells don't scale (a scaling wire, or a size)`); return; }
         layers.push({ op, i });
+        const cells = gridCells(op);
+        grids.push({ i, cells: cells.flatMap((row, r) => row.flatMap((n, k) => (n < 0 ? [] : [[op.at[0] + k * c[0], op.at[1] + r * c[1]]]))) });
+        for (const n of cells.flat()) if (n >= 0) bgTiles.add(`${op.image}:${n}`);
         return;
       }
       case "text": {
@@ -92,6 +104,7 @@ function gameBoy(profile, gb, list, images, frame) {
         chars += n;
         sprites += n;
         charge(Math.floor(op.at[1] - box.min[1]), gb.tile, n);
+        [...String(op.str)].forEach((ch, k) => { if (!/\s/.test(ch)) objects.push({ i, x: op.at[0] + k * gb.tile, y: op.at[1] }); });
         return;
       }
       default: say("J042", `op ${i} is a ${op.op}; the ${profile.label} draws ${profile.kinds.join(", ")}`);
@@ -102,6 +115,8 @@ function gameBoy(profile, gb, list, images, frame) {
     const problem = windowProblem(op, gb, box, images);
     if (problem) say("J041", `op ${i}: a second tiles layer is the window, and ${problem}`);
   }
+  if (bgTiles.size > gb.bgTiles) say("J040", `${bgTiles.size} distinct background tiles; its limit is ${gb.bgTiles}`);
+  orderProblems(gb, box, objects, grids).forEach(([code, m]) => say(code, m));
   if (sprites > gb.sprites) say("J040", `${sprites} sprites; its limit is ${gb.sprites}`);
   const perRow = Math.max(0, ...rows.filter((n) => n !== undefined));
   if (perRow > gb.perRow) say("J040", `${perRow} sprites on pixel row ${rows.findIndex((n) => n === perRow)}; its limit is ${gb.perRow} a row`);

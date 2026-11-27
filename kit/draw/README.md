@@ -76,9 +76,20 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 | Profile | Draws | Draw-time checks |
 |---|---|---|
 | `CANVAS` | every op | none |
-| `GAMEBOY` | `image` cells as sprites (a negative size is the flip bit), `tiles` as the background and window, `text` as sprites | J042 another kind; J041 an image whose cells are not 8 by 8 multiples, an image drawn at another size than its own (a scaling wire or a `size`; a mirror is fine), tiles with a size or a mirror, a second tiles layer that is not exactly the window; J040 more than 40 sprites (a 16-by-16 cell is 4; each non-space text character is 1), more than 10 on a pixel row, more than 2 tiles layers, a stage past 160 by 144 |
+| `GAMEBOY` | `image` cells as sprites (a negative size is the flip bit), `tiles` as the background and window, `text` as sprites | J042 another kind; J041 an image whose cells are not 8 by 8 multiples, an image drawn at another size than its own (a scaling wire or a `size`; a mirror is fine), tiles with a size or a mirror, a second tiles layer that is not exactly the window; J040 more than 40 sprites (a 16-by-16 cell is 4; each non-space text character is 1), more than 10 on a pixel row, more than 2 tiles layers, more than 256 distinct background tiles, a stage past 160 by 144; J043 a tiles op listed after a sprite or text it overlaps; J044 overlapping sprites listed against the hardware's x priority |
 
 **Game Boy text** is always charged as sprites, one 8-by-8 sprite per character that is not a space, against the 40 total and the 10 a row; the window layer is not used for text (modeling it was more than a small change). A **second tiles layer** is the window, and is refused (J041) unless the hardware can draw it exactly: every cell a tile (no `-1`, no ragged row), at a multiple of 8 from the stage's corner, and reaching the stage's right and bottom edges. A first layer is the background. A frame with no extent (`box` null) is judged against the screen.
+
+**Game Boy painter's order.** A list means later covers earlier, but the DMG draws every sprite (and text) above the background and window, and among overlapping sprites the one with the **smaller x** on top, a tie going to the earlier OAM entry (the earlier op in the list). The profile checks both, per 8-by-8 object (a wide image's cells are objects with their own x; text is one object per non-space character), counting only overlap that is on the stage:
+
+- **J043**: a `tiles` op listed after a sprite or text op it overlaps (any drawn cell, so a `-1` cell does not count). List the tiles first.
+- **J044**: a sprite listed after one it overlaps, unless its x is strictly smaller than the earlier object's. A tie is refused too: painter's order shows the later one, the hardware the earlier. One diagnostic per pair of ops.
+- Overlap is of the 8-by-8 boxes, not of visible pixels: a sprite's transparent pixels are not known to the profile, so a list that happens to draw the same pixels is still refused. The sprite's BG-priority bit is not modeled (the op set cannot express it): sprites are always above.
+- Not checked: tiles over tiles (the window over the background is the hardware's own order), and a sprite hidden by the 10-a-row limit (J040 already refuses).
+
+**Assumed 8-by-8 sprite mode.** The DMG's 8x16 object mode is one global switch (LCDC bit 2), not a per-sprite choice, so the profile models the default 8x8 mode: a 16-tall image is two objects, and the counts and the x-priority above use that. Modeling 8x16 would be a profile option that halves object counts for tall images and refuses any 8-tall one; nothing needs it yet, so it is left out.
+
+**VRAM.** The background and window share one tile map of at most 256 distinct tiles; more distinct (sheet, number) tiles in `tiles` grids is J040. The 384-tile total cannot be exceeded from what the profile sees (256 background tiles plus at most 40 sprite tiles), so it is not checked. Text's font tiles, which a sprite text op would also need, are not counted: the profile does not know the font.
 
 ## Codes
 
@@ -94,6 +105,8 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 | J040 | a profile's limit passed at draw time |
 | J041 | an op a profile cannot draw exactly |
 | J042 | an op kind a profile does not draw, found at draw time |
+| J043 | a tiles op listed after a sprite it overlaps, which the Game Boy would draw beneath it |
+| J044 | overlapping sprites listed in an order other than the Game Boy's x priority |
 
 J is reserved for the kit (kit/define's `RESERVED_LETTERS`), so a Dialect's own codes cannot take it.
 
