@@ -4,7 +4,7 @@
 
 /** Each code and what it means; the tests check that every one has a case. */
 export const RUN_CODES = Object.freeze({
-  N001: "The run fell behind wall time and T slowed (how long, how much; written while it lasts, rewritten as it grows); also an input that keeps the last n records dropped some (counted), or records sent to a stopped part were dropped (counted in stats().stopped), or a wire's overflow policy dropped records a step could not take (counted in stats().overflow)",
+  N001: "The run fell behind wall time and T slowed (how long, how much; written while it lasts, rewritten as it grows); also an input that keeps the last n records dropped some (counted), or records sent to a stopped part were dropped (counted in stats().stopped), or a wire's overflow policy, or a page wire's fold into the latest held state, dropped records a step could not take (counted in stats().overflow)",
   N002: "A step returned a state that does not fit the Dialect's state (the checkState paths), pushed more records into an Event output than its runtime declares, or would take more from an Event input than it declares",
   N003: "A step or init kept memory outside its state: in any run, a field in the extensible state struct that the Program does not declare; in a development run, a step that changed the state it was handed, or gave another result on a second step on the same state",
   N004: "A step or init threw: the part stops, and the others run on with its last snapshot",

@@ -1,7 +1,8 @@
 // A page input's edges: every press and release reaches each consumer wired to the control, in order, each at its own
 // stamp (Ben, 2026-11-26, reversing ada0afe's latest-value coalescing); kit/compose sizes a page wire for a press and
-// a release per control per frame, and past that the wire's overflow policy, or N002, says what happened; copied and
-// checked when logged; routed only when the composition has the built-in page part.
+// a release per control per frame, and past that the wire's overflow policy trims, or with none the wire folds the
+// excess into the latest held state (Ben, 2026-11-26), counted and noted, never stopping the part; copied and checked
+// when logged; routed only when the composition has the built-in page part.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRun, replay } from "../index.js";
@@ -73,7 +74,8 @@ test("compose sizes a page wire for a press and a release per control per frame"
   assert.equal(PAGE_CHANGES_PER_FRAME, 2);
   for (const c of Object.keys(PAGE_CONTROLS)) assert.equal(pageRuntime.events.out[c], PAGE_CHANGES_PER_FRAME, c);
   const W = walker({ frame: true }, 1), h = /** @type {any} */ (W.grammar("hero"));
-  assert.deepEqual(compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime] }).map((d) => d.code), ["S116"], "a frame consumer taking one");
+  // a warning since Ben's ruling of 2026-11-26 that a page wire past its size folds; until then an error (3bfd8ee)
+  assert.deepEqual(compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime] }).map((d) => [d.code, d.severity]), [["S116", "warning"]], "a frame consumer taking one");
   assert.equal(smallest({ frame: true }), 2);
   assert.equal(smallest({ tick: 1 / 4 }), 120, "60 frames of at most 1/240 s in a quarter second, two changes each");
 });
@@ -101,15 +103,71 @@ test("past the bound, a page wire's overflow policy trims what a step takes, cou
   assert.deepEqual(run.diagnostics.map((d) => [d.code, d.severity]), [["N001", "warning"]]);
 });
 
-test("past the bound on a page wire with no policy, the consumer's step is refused (N002) and the records are counted", () => {
+// Reversed by Ben's ruling of 2026-11-26 (a page wire past its size folds into the latest held state, never stops its
+// part): this test expected N002, the consumer stopped and its three records counted in stats().stopped (3bfd8ee).
+test("past the bound on a page wire with no policy, a step takes the first max-1 in order and the latest, the fold counted and noted (N001), never refused", () => {
   const W = walker({ frame: true }, PAGE_CHANGES_PER_FRAME);
   const composed = wired(W);
-  const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, press("61/3600", true), press("62/3600", false), press("63/3600", true)];
+  const ins = ["61/3600", "62/3600", "63/3600", "64/3600", "65/3600"].map((T, i) => press(T, i % 2 === 0));
+  const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, { kind: "frame", T: "3/60" }, ...ins, press("121/3600", false)];
   const run = createRun(composed, { runtimes: [W.runtime], frames: "display", inputs });
-  run.runUntil(2 / 60);
-  assert.deepEqual(run.state("hero").rights, [], "none were taken");
-  assert.deepEqual(run.diagnostics.map((d) => d.code), ["N002", "N001"]);
-  assert.deepEqual(run.stats().stopped, { "page.out.pad → hero.in.pad": 3 });
+  run.runUntil(3 / 60);
+  assert.deepEqual(run.state("hero").rights.slice(0, 2), [1, 1], "the first, then the latest held state (keepLast would give [0, 1], keepFirst [1, 0])");
+  assert.deepEqual(run.state("hero").seen.slice(0, 2), [61 / 3600, 65 / 3600], "each keeps its own stamp");
+  assert.deepEqual(run.state("hero").rights, [1, 1, 0], "the part keeps running and takes the next frame's record");
+  assert.deepEqual(run.stats().overflow, { "page.out.pad → hero.in.pad": 3 });
+  assert.deepEqual(run.stats().stopped, {});
+  assert.deepEqual(run.diagnostics.map((d) => [d.code, d.severity]), [["N001", "warning"]]);
+  assert.match(run.diagnostics[0].message, /latest/);
+  assert.equal(replay(composed, { runtimes: [W.runtime] }, JSON.parse(JSON.stringify(run.record()))).ok, true);
+});
+
+test("a page consumer that takes one per step gets only the latest held state, so a tap inside one frame leaves the button up", () => {
+  const W = walker({ frame: true }, 1), h = /** @type {any} */ (W.grammar("hero"));
+  const ds = compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime] });
+  assert.deepEqual(ds.map((d) => [d.code, d.severity]), [["S116", "warning"]], "a warning naming the fold, not a refusal");
+  assert.match(ds[0].message, /fold/);
+  const composed = wired(W);
+  const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, { kind: "frame", T: "3/60" }, press("61/3600", true), press("62/3600", false), press("121/3600", true)];
+  const run = createRun(composed, { runtimes: [W.runtime], frames: "display", inputs });
+  run.runUntil(3 / 60);
+  assert.deepEqual(run.state("hero").rights, [0, 1], "the release, then the next frame's press");
+  assert.deepEqual(run.stats().overflow, { "page.out.pad → hero.in.pad": 1 });
+  assert.deepEqual(run.diagnostics.map((d) => d.code), ["N001"]);
+});
+
+test("a glue's own overflow policy on a page wire still wins over the fold", () => {
+  const W = walker({ frame: true }, PAGE_CHANGES_PER_FRAME);
+  const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, ...["61/3600", "62/3600", "63/3600", "64/3600", "65/3600"].map((T, i) => press(T, i % 2 === 0))];
+  for (const [overflow, rights] of /** @type {const} */ ([["keepLast", [0, 1]], ["keepFirst", [1, 0]]])) {
+    const run = createRun(wired(W, { overflow }), { runtimes: [W.runtime], frames: "display", inputs });
+    run.runUntil(2 / 60);
+    assert.deepEqual(run.state("hero").rights, rights, overflow);
+    assert.match(run.diagnostics[0].message, new RegExp(overflow));
+  }
+});
+
+test("a folding page wire replays, runs chunked and rewinds to the straight run's records and hashes", () => {
+  const W = walker({ tick: 1 / 4 }, 3);
+  const composed = wired(W);
+  const bursts = [0.1, 0.6, 1.3, 2.05].flatMap((t, b) => Array.from({ length: 4 + b }, (_, i) => press(t + i * 0.001, (i + b) % 2 === 0)));
+  const straight = createRun(composed, { runtimes: [W.runtime], inputs: bursts, checkpointEvery: 0.5 });
+  straight.runUntil(3);
+  assert.ok(Object.values(straight.stats().overflow)[0] > 0, "the bursts were folded");
+  assert.deepEqual(straight.state("hero").rights.slice(0, 3), [1, 0, 0], "the first burst: two in order, then its latest (a release)");
+  const chunked = createRun(composed, { runtimes: [W.runtime], inputs: bursts, checkpointEvery: 0.5 });
+  for (const t of [0.4, 1.31, 2.2, 3]) chunked.runUntil(t);
+  assert.deepEqual(chunked.hashes, straight.hashes);
+  for (const back of [2.1, 1.0, 0.05]) {
+    chunked.rewind(back);
+    for (const e of bursts) if (Number(e.T) > back) chunked.input(e);
+    chunked.runUntil(3);
+    assert.deepEqual(chunked.hashes, straight.hashes);
+    assert.deepEqual(chunked.state("hero").seen, straight.state("hero").seen);
+    assert.deepEqual(chunked.stats().overflow, straight.stats().overflow);
+  }
+  const r = replay(composed, { runtimes: [W.runtime] }, JSON.parse(JSON.stringify(straight.record())));
+  assert.equal(r.ok, true, r.ok ? "" : r.diagnostics.map((/** @type {any} */ d) => d.message).join("\n"));
 });
 
 test("changes in separate instants each arrive, and the same run chunked live is the same as scripted", () => {

@@ -102,14 +102,15 @@ export function createRun(composed, options) {
     parts.push(p);
   });
   const sized = composed.parts.map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
-  const sizedWires = composed.wires.filter((w) => !intoParam(w) && w.overflow !== "keepLast" && w.overflow !== "keepFirst"); // a policy trims what a step takes (ruling 7)
+  // a policy trims what a step takes (ruling 7), and a page wire past its size folds (Ben, 2026-11-26): neither is refused
+  const sizedWires = composed.wires.filter((w) => !intoParam(w) && w.overflow !== "keepLast" && w.overflow !== "keepFirst" && !(hasPage && ends(w.from).part === PAGE));
   for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntime], { catchUp })) {
     refused.push({ code: "S116", message: `${pr.message}\n  fix: ${pr.fix}` });
   }
   if (refused.length) throw new RunError(refused);
   const byName = new Map(parts.map((p) => [p.name, p]));
 
-  const wires = makeWires(composed, byName);
+  const wires = makeWires(composed, byName, hasPage ? PAGE : null);
   /** @type {Map<string, Wire>} */
   const wireTo = new Map(wires.map((w) => [`${w.to.part}.${w.to.port}`, w]));
   const order = wireOrder(parts, wires);

@@ -24,8 +24,8 @@ export const PAGE_CONTROLS = Object.freeze({
 /**
  * The most records the page is sized to send on one control in one display frame: a press and a release (Ben,
  * 2026-11-26: "we need tap and release"). For the pad, any two changes of the held directions. The host does not
- * enforce it; past it, the wire's overflow policy trims what a step takes, or with none the consumer's step is
- * refused (kit/run's N002), both reported.
+ * enforce it; past it, the wire's overflow policy trims what a step takes, or with none kit/run folds the excess into
+ * the latest record, the control's held state (Ben, 2026-11-26), both reported; the consumer is never stopped for it.
  */
 export const PAGE_CHANGES_PER_FRAME = 2;
 

@@ -12,7 +12,7 @@ export const COMPOSE_CODES = Object.freeze({
   S113: "A required input with no wire",
   S114: "A part wired to itself",
   S115: "A cycle of wires with no wire in it marked { delay: true } (names the loop)",
-  S116: "A reliable Event wire whose queue can hold more records at one consumer step than the consumer's runtime takes (from the two clocks and the producer's per-step max; checked when .check or .build is given the runtimes): names both sides and the fixes, raise the max, { keepLast: n } on the input, or { overflow } on the wire; with { overflow: \"keepLast\" | \"keepFirst\" } on the wire it is a warning naming the policy",
+  S116: "A reliable Event wire whose queue can hold more records at one consumer step than the consumer's runtime takes (from the two clocks and the producer's per-step max; checked when .check or .build is given the runtimes): names both sides and the fixes, raise the max, { keepLast: n } on the input, or { overflow } on the wire; with { overflow: \"keepLast\" | \"keepFirst\" } on the wire it is a warning naming the policy, and on a page wire with no policy a warning naming the fold into the latest held state",
   S117: "A param wire from the part's own output, or a loop of param wires alone: each rebuild would change the output that sets the next (names the loop)",
   S118: "A warning, not an error: a param wire fed by a part that steps at a rate (a tick or frame clock): each change of the value rebuilds the param's part if build-time code reads it",
   S201: "Seam kinds differ: an Event into a value input, a record into a scalar, a rate into a non-rate",

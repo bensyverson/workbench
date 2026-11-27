@@ -1,7 +1,8 @@
 // How records cross a run's Event wires: pushed (stamped with the producer's instant, $T), trimmed by a `keepLast`
 // input, dropped when the consumer is stopped, and taken by a step, trimmed by the wire's overflow policy (Ben's
-// ruling 7, 2026-11-26). Each kind of drop is counted per wire and noted once as an N001 warning: a keepLast drop
-// once per run, a stopped drop and an overflow drop once per stop of the consumer (a restart clears the note).
+// ruling 7, 2026-11-26) or, on a page wire with none, folded into the latest held state. Each kind of drop is counted
+// per wire and noted once as an N001 warning: a keepLast drop once per run, a stopped drop and an overflow (or fold)
+// drop once per stop of the consumer (a restart clears the note).
 
 import { qText } from "../define/rational.js";
 import { carry } from "./carry.js";
@@ -54,19 +55,26 @@ export function createDelivery(wires, byName, report) {
 
   /**
    * Takes a wire's ready records for a step at T, in stamp then push order; with an overflow policy, at most `max`,
-   * the newest (keepLast) or the first (keepFirst), dropping and counting the rest.
+   * the newest (keepLast) or the first (keepFirst), dropping and counting the rest. A page wire with no policy folds
+   * (Ben, 2026-11-26): the first max-1 in order, then the latest, which is the control's held state, so a release is
+   * never lost and no button sticks down; the folded records are counted as overflow.
    * @param {Wire} w @param {Q} T @param {number | undefined} max
    */
   function take(w, T, max) {
     const all = w.queue.splice(0, ready(w, T)).map((x) => x.record);
-    if (!w.overflow || max === undefined || all.length <= max) return all;
+    if ((!w.overflow && !w.fromPage) || max === undefined || all.length <= max) return all;
     const n = all.length - max;
     w.overflowDrops += n;
     if (!overflowNoted.has(w.index)) {
       overflowNoted.add(w.index);
-      report({ code: "N001", severity: "warning", message: `${w.text}: ${all.length} records were ready and ${w.to.part}.in.${w.to.port} takes at most ${max} per step, so the wire's { overflow: "${w.overflow}" } kept the ${w.overflow === "keepLast" ? "newest" : "first"} ${max} and dropped ${n}; stats().overflow counts every drop`, part: w.to.part, T: qText(T) });
+      const how = w.overflow
+        ? `the wire's { overflow: "${w.overflow}" } kept the ${w.overflow === "keepLast" ? "newest" : "first"} ${max} and dropped ${n}`
+        : `the page wire ${max === 1 ? "kept only the latest" : `kept the first ${max - 1} in order and folded the rest into the latest`} (the control's held state) and dropped ${n}`;
+      report({ code: "N001", severity: "warning", message: `${w.text}: ${all.length} records were ready and ${w.to.part}.in.${w.to.port} takes at most ${max} per step, so ${how}; stats().overflow counts every drop`, part: w.to.part, T: qText(T) });
     }
-    return w.overflow === "keepLast" ? all.slice(n) : all.slice(0, max);
+    if (w.overflow === "keepLast") return all.slice(n);
+    if (w.overflow === "keepFirst") return all.slice(0, max);
+    return [...all.slice(0, max - 1), all[all.length - 1]];
   }
 
   return {
