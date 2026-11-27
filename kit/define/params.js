@@ -10,6 +10,7 @@ import { callSite } from "./site.js";
 import { didYouMean } from "./codes.js";
 import { PROBES, OBJECT_PROBES } from "./validate-grammar.js";
 import { BuildError, programOf } from "./grammar.js";
+import { applyArgs, parseAddress } from "./sites.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Loc } from "../parse/ast.js" */
@@ -36,7 +37,7 @@ import { BuildError, programOf } from "./grammar.js";
 /** The open run, while `programFn` runs. @type {Run | null} */
 let current = null;
 
-const RUN_KEYS = ["values", "scope", "sources", "buildTime", "buildTimeBindings", "keywords", "shadowed", "file"];
+const RUN_KEYS = ["values", "args", "scope", "sources", "buildTime", "buildTimeBindings", "keywords", "shadowed", "file"];
 
 /**
  * A Program opened its root: the first one in a run is the run's Program. A Program file builds one Program, so
@@ -220,14 +221,16 @@ function paramsProxy(run) {
  * or collected) comes back in `diagnostics`, with no record. The record keeps the values build-time code read
  * where they went, and the reads under `reads`.
  * @param {(params: any) => unknown} programFn
- * @param {{ values?: Record<string, unknown> } & T.BuildOptions} [options]  `values` replace the params' declared values
+ * @param {{ values?: Record<string, unknown>, args?: Record<string, unknown> } & T.BuildOptions} [options]  `values` replace the params' declared values; `args` put a value in at one call's argument, by Argument address (sites.js), before the Program's checks
  * @returns {{ record: Record<string, any> | null, diagnostics: T.BuildDiagnostic[] }}
  */
 export function run(programFn, options = {}) {
   if (typeof programFn !== "function") throw new TypeError("run(programFn): programFn is the Program file's default export, ($) => program(…)…, not a builder chain");
   if (options === null || typeof options !== "object" || Array.isArray(options)) throw new TypeError(`run(programFn, options): options are { ${RUN_KEYS.join(", ")} }`);
   for (const k of Object.keys(options)) if (!RUN_KEYS.includes(k)) throw new TypeError(`run(programFn, options): unknown key '${k}'; it takes { ${RUN_KEYS.join(", ")} }`);
-  const { values = {}, ...build } = options;
+  const { values = {}, args, ...build } = options;
+  if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) throw new TypeError("run({ args }): args are values by Argument address, { \"<instance>.<slot>#<n>:<i>.<key>\": <value> }");
+  for (const k of Object.keys(args ?? {})) if (!parseAddress(k)) throw new TypeError(`run({ args }): '${k}' is not an Argument address: <instance>.<slot>#<n>:<i> then .<key> or [<i>] (no # for a once slot)`);
   // The Program's own function is not one of its helpers, though the file declares it at the top level.
   if (build.scope && typeof build.scope === "object" && !Array.isArray(build.scope)) build.scope = Object.fromEntries(Object.entries(build.scope).filter(([, v]) => v !== programFn));
   if (values === null || typeof values !== "object" || Array.isArray(values)) throw new TypeError("run({ values }): values are the params' values, by name");
@@ -283,6 +286,10 @@ export function run(programFn, options = {}) {
     if (!declared.has(k)) throw new TypeError(`run({ values }): the Program declares no param '${k}'.${didYouMean(k, [...declared.keys()])}`);
     const decl = declared.get(k);
     if (isObject(decl)) checkValue(k, v, decl); // a malformed declaration is the Program's B004, found below
+  }
+  if (args) {
+    const missing = applyArgs(program, args);
+    if (missing.length) throw new TypeError(`run({ args }): no call of the Program is at ${missing.map((m) => `'${m}'`).join(", ")}: an address is a call's Ref id, :<i>, then a path into that argument`);
   }
   program.useValues(values);
   const diagnostics = program.analyze(build).diagnostics;

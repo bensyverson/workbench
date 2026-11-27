@@ -1,7 +1,7 @@
 {
   "name": "gemgrid",
   "version": "0.1.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "A grid game: walk a level, steered by a D-pad, and pick up gems.",
   "entry": {
     "dialect": "gemgrid.dialect.js",
@@ -23,7 +23,7 @@
     "gemgrid.dialect.js": "sha256-xngd0M9VBXN/6bGgJbVh6p5cvol9YbOFHjlVwNmoHzk=",
     "gemgrid.grammar.js": "sha256-gkmtDtLi5TX/T4olXe0afqhQJsw03rS7Fpe1fH8t86I=",
     "gemgrid.runtime.js": "sha256-LATUo+4Ve78PCgfZgQOnLDReELLRC09JlD0TbMdGkbs=",
-    "gemgrid.ui.js": "sha256-n0Iz0e6eJOK6KUDM8+X6zjVkBYJ6z07cqnSjAtSCdrQ=",
+    "gemgrid.ui.js": "sha256-ygOnayMQWqReafg+0Pj0LljheTg/lOnI23D58BDW/UI=",
     "refusals/two-starts.js": "sha256-JH75/yo9u8H+YpbtdDGuKd5+dafAO3Szzi5qMvBZqJQ=",
     "sprites.png": "sha256-wVOZWeMW9DDm1K4yptwaCrzKZjAKzhtRJgYbJ8X7YiU="
   }

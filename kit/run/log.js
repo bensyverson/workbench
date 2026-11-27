@@ -1,5 +1,6 @@
 // The input log: every outside event of a run, stamped with the workbench time T it applies at (at the first instant
-// at or after it). A page control's state (`control`), one record on an unwired Event input (`in`), a param change (`param`), a rebuild with its new record (`rebuild`),
+// at or after it). A page Control's record (`control`), one record on an unwired Event input (`in`), a pointer event
+// on a part's stage (`pointer`, delivered to the pointer input its UI names), a param change (`param`), a rebuild with its new record (`rebuild`),
 // and each display frame the real-time driver ran (`frame`, with `capped` when the frame was longer than the
 // catch-up cap). A param wire's input is a `param` input with `wire`, the output it came from (param-wires.js): the
 // run makes it, stamped with the instant that made it, and applies it right after that instant; the log keeps it
@@ -14,11 +15,11 @@ import { q, qText, sub, toNumber } from "../define/rational.js";
 export const afterMs = (t) => q(Math.floor((t.n * 1000) / t.d) + 1, 1000);
 
 /** The kinds of input. */
-export const INPUT_KINDS = Object.freeze(["control", "param", "rebuild", "frame", "in"]);
+export const INPUT_KINDS = Object.freeze(["control", "param", "rebuild", "frame", "in", "pointer"]);
 
 /**
  * One input as the scheduler holds it (T a rational; the log prints it as text).
- * @typedef {{ kind: "control" | "param" | "rebuild" | "frame" | "in", T: Q, part?: string, name?: string, value?: unknown, record?: Record<string, any>, trigger?: any, package?: { content?: string | null }, capped?: { wall: number, kept: number }, wire?: string }} Entry
+ * @typedef {{ kind: "control" | "param" | "rebuild" | "frame" | "in" | "pointer", T: Q, output?: string, part?: string, name?: string, value?: unknown, record?: Record<string, any>, trigger?: any, package?: { content?: string | null }, capped?: { wall: number, kept: number }, wire?: string }} Entry
  */
 
 /**

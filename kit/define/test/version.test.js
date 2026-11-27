@@ -5,7 +5,8 @@ import { KIT_VERSION } from "../index.js";
 import { KIT_VERSION as direct } from "../version.js";
 
 test("KIT_VERSION is major.minor, exported from the index", () => {
-  assert.equal(KIT_VERSION, "0.4");
+  // 0.5 since declared Controls (2026-11-27): a UI with inputs, and a manifest with elements, no longer load
+  assert.equal(KIT_VERSION, "0.5");
   assert.equal(direct, KIT_VERSION);
   assert.match(KIT_VERSION, /^\d+\.\d+$/);
 });

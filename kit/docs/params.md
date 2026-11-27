@@ -28,3 +28,7 @@ The exported function may branch and loop on params, and a block body may return
 ## A param that bounds a loop
 
 A counted loop in a lambda needs a bound the kit can trust. A member `{ value: "f64", size: true }` promises it stays small (say, a param with a small `max`, added by `environment`), so it may bound a `for` loop.
+
+## A param's look, and write-back
+
+A param is a Control with no declaration (declared Controls, 2026-11-27): a number with `min` and `max` is a slider, a string with `options` a menu, a bool a checkbox. A package's UI may give it a look with `annotate: { params: { <param>: { look: "slider" | "knob" | "field", curve: "linear" | "log", step: <n> } } }`; a log curve needs `min` above 0, so a param that must reach zero is linear or has a small floor as its `min`. An edit is still a logged `param` input. A Grip or a Control whose target is `param.<name>` writes its release into the param declaration's `value` literal in the Program's text (kit/page's `writeBack`), and since a param's value is not in the content key, the rebuild that follows changes no revision. An argument written as `$.<name>` is that param, so a Grip on it writes the param.

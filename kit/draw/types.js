@@ -26,7 +26,8 @@ function fieldTypes(num) {
   /** @type {Type} */
   const pair = { list: num, max: 2 };
   return {
-    point2: pair, vec2: pair, f64: num, bool: "bool", str: "str", color: "str", image: "str", cell: num,
+    // a color is a name or hex text, or a vec3 of components from 0 to 1 (ruling 7), written [r, g, b]
+    point2: pair, vec2: pair, f64: num, bool: "bool", str: "str", color: { union: ["str", { list: num, max: 3 }] }, image: "str", cell: num,
     font: { enum: [...FONTS] }, flip: { enum: ["x", "xy", "y"] },
     points: { list: pair, max: OPEN },
     grid: { union: [{ list: { list: num, max: OPEN }, max: OPEN }, { list: "str", max: OPEN }] },

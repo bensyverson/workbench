@@ -45,6 +45,8 @@ export async function drivenPage(built) {
     decode: (_bytes, info) => ({ width: info.width, height: info.height }),
   });
   await page.ready;
+  // the person's one gesture (declared Controls: a page whose Controls take keys starts locked), so the checker plays
+  page.unlock();
   page.start();
   /** Runs `n` frames of FRAME_MS each. @param {number} n */
   const frames = (n) => {

@@ -217,7 +217,8 @@ export async function loadPreset(input, env) {
   const build = scopeOf(out, "preset", out.source, mod, input.example);
   if (!build) return out;
   // kit/page composes it alone: built through kit/define's run, so a build-time read of $ is answered and recorded
-  const preset = examplePreset(pkg.name, mod.default, build, { wirePage: input.wirePage ?? true });
+  // its declared Controls wired by name to the inputs they play (declared Controls, 2026-11-27)
+  const preset = examplePreset(pkg.name, mod.default, build, { ui: pkg.loaded.ui ?? null, wirePage: input.wirePage ?? true });
   if (!preset.composition) { out.diagnostics.push(...preset.diagnostics.map((d) => hostDiagnostic("preset", { ...d, file: input.example }))); return out; }
   out.rebuild = preset.build;
   finish(out, preset.composition, build, input.example, input.profile);

@@ -1,16 +1,14 @@
 // The workbench page's wiring: the URL query, the pickers, a session on a canvas, and the panels. Thin: every
 // decision is the kit's (kit/package, kit/compose, kit/run, kit/page) or in the modules beside this one.
 
-import { DEFAULT_KEYS } from "../index.js";
 import { h, fill } from "./dom.js";
 import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic, elementModuleUrl, runLoadedTests, packagesWithTests } from "./load.js";
 import { createSession } from "./session.js";
 import { parseQuery, importedPackages, fetchPackage, fetchGlue, groupUpload, packageFromBundle, contentOf, glueOf } from "./sources.js";
-import { diagnosticsView, componentView, paramEditor, codeView, chart } from "./views.js";
+import { diagnosticsView, componentView, paramEditor, codeView, chart, controlForm } from "./views.js";
 
 const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
 const PANEL_MS = 100;
-const PAD_KEYS = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", a: "KeyX", b: "KeyZ", start: "Enter", select: "ShiftLeft" };
 
 /** @typedef {{ loaded: import("./load.js").Loaded, session: ReturnType<typeof createSession> | null, elements: Map<string, any> }} Current */
 
@@ -126,6 +124,7 @@ export function start({ importModule }) {
     canvas.hidden = !size;
     if (size) { canvas.width = size.width; canvas.height = size.height; canvas.style.aspectRatio = `${size.width} / ${size.height}`; }
     buildParts(loaded, session);
+    buildControls(session);
     await session.page.ready;
     // Open on a failed test: paused at the instant the expectation read, not running on
     if (opening) { session.seek(opening.at); opening = null; } else session.start();
@@ -137,13 +136,10 @@ export function start({ importModule }) {
     const snap = session.snapshot();
     fill($("parts"), snap.parts.map((/** @type {any} */ p) => {
       const dialect = loaded.composed.parts.find((/** @type {any} */ q) => q.name === p.part)?.dialect;
-      const ui = loaded.packages.find((q) => q.name === dialect)?.loaded.ui;
       const record = loaded.composed.parts.find((/** @type {any} */ q) => q.name === p.part).record;
-      const buttons = ui?.inputs ? inputButtons(session, p.part, ui.inputs) : null;
       const params = Object.entries(record.params ?? {});
       return h("section", { class: "part", id: `part-${p.part}` },
         h("h3", null, p.part, h("span", { class: "tag" }, dialect)),
-        buttons,
         h("div", { class: "tiles", "data-tiles": p.part }),
         params.length ? h("details", { open: true }, h("summary", null, "Params"), h("div", { "data-params": p.part }, paramEditors(session, p, params))) : null,
         h("details", null, h("summary", null, "Traces"), h("div", { "data-traces": p.part })),
@@ -169,17 +165,15 @@ export function start({ importModule }) {
     }
   }
 
-  /** @param {ReturnType<typeof createSession>} session @param {string} part @param {any} inputs */
-  function inputButtons(session, part, inputs) {
-    /** @type {Record<string, boolean>} */
-    const held = Object.fromEntries(Object.keys(inputs.buttons).map((k) => [k, false]));
-    /** @param {string} k @param {boolean} down */
-    const set = (k, down) => { if (held[k] === down) return; held[k] = down; session.control(part, held); };
-    return h("div", { class: "inputs" }, Object.entries(inputs.buttons).map(([k, b]) => h("button", {
-      class: "btn", onpointerdown: (/** @type {any} */ e) => { e.target.setPointerCapture?.(e.pointerId); set(k, true); },
-      onpointerup: () => set(k, false), onpointercancel: () => set(k, false), onlostpointercapture: () => set(k, false),
-    }, /** @type {any} */ (b).label ?? k)));
+  /** The generated controls view: an on-screen form per wired Control, in declaration order. @param {ReturnType<typeof createSession>} session */
+  function buildControls(session) {
+    const forms = session.forms();
+    fill($("controls"), forms.map((f) => controlForm(f, (record) => refused(session.control(f.name, record)), (on) => session.page.focus(on ? f.name : null))));
+    $("keys").textContent = forms.map((f) => Object.keys(f.keys ?? {}).length || Array.isArray(f.keys) ? `${f.label ?? f.name}: ${JSON.stringify(f.keys)}` : null).filter(Boolean).join(" · ");
+    showLock(session);
   }
+  /** The lock overlay, shown while the page waits for its one gesture. @param {ReturnType<typeof createSession>} session */
+  function showLock(session) { $("lock").hidden = !session.page.locked; }
 
   /** @param {import("./session.js").Snapshot} snap */
   function panels(snap) {
@@ -271,12 +265,6 @@ export function start({ importModule }) {
   $("step").onclick = () => { const s = current?.session; if (s) { s.pause(); s.step(); } };
   $("scrub").oninput = (/** @type {any} */ e) => { const s = current?.session; if (!s) return; s.scrub(Number(e.target.value)); refreshParams(s); };
   $("profile").onchange = (/** @type {any} */ e) => { input.profile = e.target.value; if (input.glue || current) loadGlue(); };
-  for (const [name, code] of Object.entries(PAD_KEYS)) {
-    const b = $(`pad-${name}`);
-    b.onpointerdown = (/** @type {any} */ e) => { b.setPointerCapture?.(e.pointerId); current?.session?.key({ type: "keydown", code }); };
-    const up = () => current?.session?.key({ type: "keyup", code });
-    b.onpointerup = up; b.onpointercancel = up; b.onlostpointercapture = up;
-  }
   /** @param {KeyboardEvent} e */
   const onKey = (e) => {
     const t = /** @type {HTMLElement} */ (e.target);
@@ -285,7 +273,23 @@ export function start({ importModule }) {
   };
   addEventListener("keydown", onKey);
   addEventListener("keyup", onKey);
-  $("keys").textContent = [...new Set(Object.entries(DEFAULT_KEYS).filter(([, v]) => v === "a" || v === "b").map(([k]) => k))].join(", ");
+  // focus leaves the page: every held Control is let go, so nothing sticks down (requirement 13)
+  addEventListener("blur", () => current?.session?.page.blur());
+  // the pointer on the stage, in canvas pixels, to the part under it (kit/page routes it)
+  const canvas = $("stage");
+  /** @param {PointerEvent | WheelEvent} e */
+  const onPointer = (e) => {
+    const s = current?.session;
+    if (!s) return;
+    const r = canvas.getBoundingClientRect();
+    const x = ((e.clientX - r.left) * canvas.width) / r.width, y = ((e.clientY - r.top) * canvas.height) / r.height;
+    const taken = s.page.pointer({ type: e.type, x, y, pointerId: /** @type {any} */ (e).pointerId ?? 0, buttons: e.buttons, detail: e.detail, deltaX: /** @type {any} */ (e).deltaX ?? 0, deltaY: /** @type {any} */ (e).deltaY ?? 0, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, timeStamp: e.timeStamp });
+    if (taken) e.preventDefault();
+    showLock(s);
+  };
+  for (const t of ["pointerdown", "pointermove", "pointerup", "pointercancel", "pointerleave", "wheel"]) canvas.addEventListener(t, onPointer);
+  // one gesture unlocks everything: focus, the hooks a Control needs (MIDI), and the run (requirement 13)
+  $("lock").onclick = () => { const s = current?.session; if (!s) return; s.page.unlock(); canvas.focus?.(); showLock(s); };
 
   // ---- uploads ----
   $("up-folder").onchange = async (/** @type {any} */ e) => {

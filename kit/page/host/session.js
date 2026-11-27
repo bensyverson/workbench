@@ -1,7 +1,7 @@
 // A loaded workbench, running: kit/page's page, plus what the host adds on top of it: the scrubber (a rewind through
 // the run, a step while paused), a param edit and a UI button as run inputs, and a snapshot for the panels each frame.
 // It takes the canvas context and the frame source from the host, so Node tests drive it by hand. The UI's values,
-// its control name, its annotations and its sweeps are the kit's (kit/define's ui.compile, kit/page's sweepRuns).
+// its Controls, its annotations and its sweeps are the kit's (kit/define's ui.compile, kit/page's sweepRuns).
 
 import { createPage, sweepRuns } from "../index.js";
 import { RunError } from "../../run/index.js";
@@ -140,13 +140,27 @@ export function createSession(loaded, options) {
       notify();
       return [];
     },
-    /** A UI button change: the buttons held, sent as the page control the part's UI names (kit/define's `ui.control`), which the composition wires to the part. @param {string} part @param {Record<string, boolean>} held */
-    control(part, held) {
-      const name = uiOf(part)?.control;
-      if (!name) throw new Error(`part ${part}'s UI has no inputs, so it takes no button`);
-      page.run.input({ kind: "control", part: "page", name, value: { ...held } });
+    /**
+     * A declared Control's change from an on-screen form or a custom element's wb-control: logged as the page's
+     * input, stamped from the event's own time when it has one (kit/page's stampOf). Throws for a Control the page
+     * does not wire, and a run's refusal (N012: a value that does not fit) comes back as its diagnostics.
+     * @param {string} control @param {Record<string, unknown>} value @param {{ timeStamp?: number }} [event]
+     * @returns {Array<{ code: string, message: string }>}
+     */
+    control(control, value, event = {}) {
+      if (!page.controls().some((c) => c.name === control)) throw new Error(`the page wires no Control '${control}': its Controls are ${page.controls().map((c) => c.name).join(", ") || "none"}`);
+      try { page.run.input({ kind: "control", part: "page", name: control, value: { ...value }, ...(typeof event.timeStamp === "number" ? { T: page.stampOf(event.timeStamp) } : {}) }); } catch (e) {
+        if (e instanceof RunError) { notify(); return /** @type {any[]} */ (e.diagnostics); }
+        throw e;
+      }
       notify();
+      return [];
     },
+    /**
+     * The on-screen forms the generated controls view shows: each wired Control, in declaration order, with what a
+     * form needs (its kind, label and kind keys). An unwired Control has no form.
+     */
+    forms: () => page.controls().map((c) => ({ name: c.name, kind: c.kind, records: c.records, ...(c.decl.label ? { label: c.decl.label } : {}), ...c.decl })),
     /** A param's annotation in the params view (the compiled UI's `annotation`). @param {string} part @param {string} name @param {any} state @param {Record<string, any>} params */
     paramAnnotation: (part, name, state, params) => compiledOf(part)?.annotation("params", name, state, params) ?? {},
     /**

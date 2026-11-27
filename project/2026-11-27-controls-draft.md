@@ -346,6 +346,8 @@ tiles: { <tile>: { title: "<title>", place: { tabWith: "stage" }, body: [{ kind:
 actions: { <action>: { label: "<label>", module: "./<file>.js", export: "<name>", gives: "file" } },
 ```
 
+> **Corrected 2026-11-27 (the build, leaf `FhnOhO`):** the `#${<n>}` address above is wrong whenever an earlier slot of the instance has calls. A Ref id's `#<n>` counts the instance's calls across all its slots, in the slots' declaration order, not the slot's own calls: in `g("s").param(…).op("a", …)` the op is `s.op#1`. An `each` lambda that builds the address from a list index must offset it by the calls before that slot; kit/define/README.md says how a Ref id is numbered.
+
 - The runtime writes each Grip's target into its state item, for example `"arg." + <the address>`, from the record it builds geometry from.
 - `<control>` is part-local, because its name is not an input. Picking a row writes the key's literal back at once, as a release.
 - The glue wires `page.out.<input2>` like any Control. The pointer and the Grips need no wire.

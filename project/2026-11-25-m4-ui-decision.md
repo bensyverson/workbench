@@ -54,6 +54,8 @@ Nothing is handwaved: every host behavior a package relies on lives in one of th
 
 Input is declared as **events a host lowers**, never as raw key handling inside a package. A Dialect declares its inputs, for example DMG's D-pad and A/B buttons. Each host maps them to what it has: keys, an on-screen pad or a gamepad. The probe drove the same declared events from keys and from an on-screen D-pad in an artifact. Programmatic focus needs one click from the viewer first, so a host shows a "click to play" state until it has focus.
 
+> **Corrected 2026-11-27 (declared Controls, leaf `FhnOhO`; [the controls draft](2026-11-27-controls-draft.md)):** the Dialect's inputs are now declared as **Controls in the package's UI**, each named by the Event input it plays and checked against its seam; the kit knows no control of its own (the DMG pad and buttons, `PAGE_CONTROLS`, retired, and the DMG pad is the DMG package's own declaration). Write-back is built (kit/page's `writeBack`, from kit/define's `siteOf`), and the "click to play" state is requirement 13's one gesture: a page whose Controls take keys, MIDI or a gamepad is created locked, and one click focuses, runs every unlock hook and starts the run.
+
 ### 4. Stages
 
 Stages differ more than any other part: DMG's pixel screen, shaders, particles, tables, drafting sheets, maps. So a stage is a **contract**, not a component:

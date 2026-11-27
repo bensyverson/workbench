@@ -1,7 +1,7 @@
 {
   "name": "scoretimer",
   "version": "0.1.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "One timed round that keeps its score.",
   "entry": {
     "dialect": "scoretimer.dialect.js",

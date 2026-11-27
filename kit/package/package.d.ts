@@ -44,7 +44,8 @@ export interface Manifest {
   entry: { dialect: string; grammar: string; ui?: string; runtime?: string };
   lib?: string[];
   foreign?: ForeignModule[];
-  elements?: string[];
+  /** every trusted module the UI names: its custom elements' and its actions' (KIT_VERSION 0.5; once `elements`) */
+  modules?: string[];
   examples?: string[];
   refusals?: Refusal[];
   tests?: ManifestTest[];

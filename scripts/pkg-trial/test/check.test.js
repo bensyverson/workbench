@@ -173,14 +173,15 @@ test("K014: a refusal refused with another code, naming both", async () => {
   assert.match(r.diagnostics[0].message, /L004/);
 });
 
-test("K015: a UI element module the manifest's elements does not list", async () => {
-  const r = await check("particles", (d) => manifest(d, (m) => { delete m.elements; }));
+// the manifest's elements is modules since KIT_VERSION 0.5 (declared Controls, 2026-11-27)
+test("K015: a UI element module the manifest's modules does not list", async () => {
+  const r = await check("particles", (d) => manifest(d, (m) => { delete m.modules; }));
   assert.deepEqual(codes(r), ["K015"]);
   assert.match(r.diagnostics[0].message, /particles-field\.js/);
 });
 
-test("K016: an elements entry no UI element names", async () => {
-  const r = await check("particles", (d) => manifest(d, (m) => { m.elements.push("examples/01.js"); }));
+test("K016: a modules entry no UI element names", async () => {
+  const r = await check("particles", (d) => manifest(d, (m) => { m.modules.push("examples/01.js"); }));
   assert.deepEqual(codes(r), ["K016"]);
   assert.match(r.diagnostics[0].message, /examples\/01\.js/);
 });
@@ -253,7 +254,7 @@ test("CLI: violations print as file:line: code message, then a fix line; exit 1"
   try {
     const r = cli([dir]);
     assert.equal(r.status, 1);
-    assert.match(r.stdout, new RegExp(`${dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/wb-package\\.json:\\d+: K003 .*0\\.3.*0\\.4`));
+    assert.match(r.stdout, new RegExp(`${dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/wb-package\\.json:\\d+: K003 .*0\\.3.*0\\.5`));
     assert.match(r.stdout, /\n {2}fix: /);
     assert.match(r.stdout, /1 violation\b/);
   } finally { rmSync(dir, { recursive: true, force: true }); }

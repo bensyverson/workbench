@@ -1,7 +1,7 @@
 // Shared by kit/run's tests (no test here): the seams fixtures' maze and particles with runtimes, and a tiny Dialect
 // factory for wires the two do not have. Each call makes fresh Dialects, so a case can change one.
 
-import { defineDialect, defineGrammar, defineRuntime, exact, list, struct, vector, name, data, lambda } from "../../define/index.js";
+import { defineDialect, defineGrammar, defineRuntime, exact, list, struct, vector, name, data, lambda, defineUI } from "../../define/index.js";
 import { compose } from "../../compose/index.js";
 import { mazeDecl, particlesDecl, mazeGrammar, particlesGrammar } from "../../define/fixtures/seams-dialects.js";
 
@@ -158,3 +158,13 @@ export function ticker(n, clock) {
   const t = tiny(n, { state: { k: "f64" }, inputs: false, ports: { out: {}, in: {} } }, { clock: () => clock, init: () => ({ k: 0 }), step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
   return { part: /** @type {any} */ (t.grammar(n + "x")), runtime: t.runtime };
 }
+
+/**
+ * The packages a composition reads a part's declared Controls from (declared Controls, 2026-11-27): one entry with a
+ * UI declaring `controls` on the tiny part `t`.
+ * @param {{ grammar: any }} t @param {Record<string, any>} controls
+ */
+export const controlsOf = (t, controls) => [{ name: String(t.grammar.dialect.name), ui: defineUI(t.grammar, { controls }) }];
+
+/** A buttons Control of the four directions, as the page's D-pad once was: a test's own Control, no longer the kit's. */
+export const FOUR = Object.freeze({ kind: "buttons", buttons: ["up", "down", "left", "right"] });

@@ -18,7 +18,7 @@ import { drawAfter, NONE } from "./draw.js";
  * (null for init's state); `lastValues` the canonical value inputs it last read (a demand part's wake test);
  * `draws` its committed state's Draw lists, by port; `drawValues` and `drawParams` the value and Draw inputs and the
  * params they were built with, which a checkpoint copies so a rewind can build them again (`redraw`).
- * @typedef {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, clock: Clock, key: string, revision: number, content: string | null, state: any, hash: string, snapT: Q | null, stopped: boolean, rng: RngState, lastFrameT: Q | null, stepped: boolean, rebuilt: boolean, lastValues: string | null, drawValues: Record<string, unknown> | null, drawParams: Record<string, unknown> | null, params: Record<string, unknown>, draws: import("./draw.js").Draws }} Part
+ * @typedef {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, clock: Clock, key: string, revision: number, content: string | null, state: any, hash: string, snapT: Q | null, stopped: boolean, rng: RngState, lastFrameT: Q | null, stepped: boolean, rebuilt: boolean, lastValues: string | null, drawValues: Record<string, unknown> | null, drawParams: Record<string, unknown> | null, params: Record<string, unknown>, draws: import("./draw.js").Draws, files: Readonly<Record<string, unknown>> }} Part
  */
 
 /** A part's own fields a checkpoint copies (everything that changes while it runs). */
@@ -125,7 +125,7 @@ function stateProblem(p, s, what) {
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
-  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals.$, globals };
+  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals.$, globals, files: p.files };
   /** @type {any} */
   let s;
   try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "N004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
@@ -150,7 +150,7 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     const globals = globalsFor(p, values);
     /** @type {Record<string, unknown[]>} */
     const events = Object.fromEntries(outs.map((n) => [n, []]));
-    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, params: globals.$, kernels: kernelsFor(p), rng: () => next(rng), events, globals };
+    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, params: globals.$, kernels: kernelsFor(p), rng: () => next(rng), events, globals, files: p.files };
     const state = p.runtime.step(p.state, ctx);
     return { state, events, rng };
   };
@@ -181,9 +181,24 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
   return "code" in d ? d : { ...r, draws: d.draws };
 }
 
+/** A part whose package holds no data files. */
+const NO_FILES = Object.freeze({});
+
+/**
+ * A package's data files as a runtime reads them (`ctx.files`, ruling 5 of the declared Controls draft): each file the
+ * Dialect names under `files`, decoded (kit/package's `data`), by its name, frozen deeply.
+ * @param {any} pkg  kit/package's loadPackage result, or null @returns {Readonly<Record<string, unknown>>}
+ */
+export function filesOf(pkg) {
+  /** @param {unknown} v @returns {unknown} */
+  const freeze = (v) => { if (v !== null && typeof v === "object" && !Object.isFrozen(v)) { for (const x of Object.values(v)) freeze(x); Object.freeze(v); } return v; };
+  const out = Object.fromEntries(Object.values(/** @type {Record<string, any>} */ (pkg?.data ?? {})).filter((d) => typeof d?.from === "string" && d.from.startsWith("files.")).map((d) => [d.from.slice(6), freeze(structuredClone(d.value ?? d.text))]));
+  return Object.keys(out).length ? Object.freeze(out) : NO_FILES;
+}
+
 /**
  * A fresh part for the run: compiled, clocked, keyed, seeded. Init is the caller's.
- * @param {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, key: string, content: string | null, seed: number, params?: Record<string, unknown> }} o
+ * @param {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, key: string, content: string | null, seed: number, params?: Record<string, unknown>, files?: Readonly<Record<string, unknown>> }} o
  * @returns {Part | string}  the part, or why its clock does not read
  */
 export function makePart(o) {
@@ -193,6 +208,7 @@ export function makePart(o) {
     name: o.name, index: o.index, dialect: o.dialect, runtime: o.runtime, record: o.record, compiled: o.compiled, clock: c.clock,
     key: o.key, revision: 1, content: o.content, state: null, hash: stateHash(null), snapT: null, stopped: false, rng: seedRng(o.seed, o.name),
     lastFrameT: null, stepped: false, rebuilt: false, lastValues: null, drawValues: null, drawParams: null, params: paramsOf(o.record, o.params), draws: NONE,
+    files: o.files ?? NO_FILES,
   };
 }
 

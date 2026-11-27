@@ -49,13 +49,13 @@ const tile = (...body) => ({ tiles: { t: { title: "T", place: { splitBelow: "sta
 const stat = (/** @type {Record<string, unknown>} */ extra) => tile({ kind: "stat", label: "x", value: "t", ...extra });
 
 test("every U code is documented in UI_CODES, U006 is retired, and each is exercised below", () => {
-  assert.deepEqual(Object.keys(UI_CODES), ["U001", "U002", "U003", "U004", "U005", "U007", "U008", "U009", "U010", "U011", "U012", "U013", "U014"]);
+  // U009 (emits) and U010 (inputs) retired with declared Controls, 2026-11-27; U015 to U020 are theirs
+  assert.deepEqual(Object.keys(UI_CODES), ["U001", "U002", "U003", "U004", "U005", "U007", "U008", "U011", "U012", "U013", "U014", "U015", "U016", "U017", "U018", "U019", "U020"]);
 });
 
 test("a valid UI is frozen, remembers its package, and U-less", () => {
   const ui = defineUI(orbits, {
-    stage: { element: "orbits-sky", module: "./orbits-sky.js", emits: ["select"] },
-    inputs: { object: "Pad", buttons: { left: { role: "dpad.left" }, right: { role: "dpad.right", label: "Go" } } },
+    stage: { element: "orbits-sky", module: "./orbits-sky.js" },
     tiles: {
       bodies: { title: "Bodies", place: { splitLeft: "stage", size: 0.25 }, body: [
         { kind: "stat", label: "n", value: (s) => s.bodies.length, max: "t", badIf: (s) => Math.abs(s.t) > 1 },
@@ -194,24 +194,19 @@ test("U008: a custom element's tag, module and definition; the module checks nee
   assert.deepEqual(codes(twice, { moduleText: () => 'customElements.define("orbits-s", class extends HTMLElement {});' }), ["U008"], "one tag used twice");
 });
 
-test("U009: an event the contract does not have, and emits without an element", () => {
+// U009 and U010 retired (2026-11-27, declared Controls): `emits` and `inputs` are now unknown keys, U001, whose tips say
+// what replaced them. These two tests replace the U009 and U010 tests, whose cases no longer exist.
+test("emits, U009 once, is U001 saying a custom element dispatches wb-control", () => {
   const stage = (/** @type {unknown} */ emits) => ({ stage: { element: "orbits-sky", module: "./orbits-sky.js", emits } });
-  assert.match(refused(stage(["pick", "click"]))[0].message, /click/);
-  assert.deepEqual(codes(stage(["pick", "click"])), ["U009"]);
-  assert.deepEqual(codes(stage(["pick", "select", "param"])), []);
-  assert.deepEqual(codes(stat({ emits: ["pick"] })), ["U009"]);
+  assert.deepEqual(codes(stage(["pick"])), ["U001"]);
+  assert.match(refused(stage(["pick"]))[0].tip, /wb-control/);
+  assert.deepEqual(codes(stat({ emits: ["pick"] })), ["U001"]);
 });
 
-test("U010: inputs against the Dialect's object", () => {
-  const inputs = (/** @type {Record<string, unknown>} */ o) => ({ inputs: { object: "Pad", buttons: { left: {}, right: {} }, ...o } });
-  assert.deepEqual(codes(inputs({})), []);
-  assert.match(refused(inputs({ object: "Pads" }))[0].message, /Did you mean 'Pad'\?/);
-  assert.deepEqual(codes(inputs({ buttons: { left: {} } })), ["U010"], "buttons are the members exactly");
-  assert.deepEqual(codes(inputs({ buttons: { left: {}, right: {}, up: {} } })), ["U010"]);
-  assert.deepEqual(codes(inputs({ buttons: { left: { role: "dpad.lft" }, right: {} } })), ["U010"]);
-  assert.deepEqual(codes(inputs({ buttons: { left: { role: "a" }, right: { role: "a" } } })), ["U010"], "a role once");
-  assert.match(refused(inputs({ buttons: {} })).map((d) => d.message).join(" "), /no buttons/);
-  assert.deepEqual(codes(inputs({ object: "Params", buttons: { mass: {} } })), ["U010"], "members that are not bool");
+test("inputs, U010 once, is U001 saying to declare controls", () => {
+  const ds = refused({ inputs: { object: "Pad", buttons: { left: {}, right: {} } } });
+  assert.deepEqual(ds.map((d) => d.code), ["U001"]);
+  assert.match(ds[0].tip, /controls/);
 });
 
 test("U012: values of the wrong form", () => {
@@ -259,6 +254,8 @@ test("every problem is collected in one DefinitionError, with its path", () => {
 });
 
 test("every UI code was refused by a test above, and U006 is retired", () => {
-  for (const c of Object.keys(UI_CODES)) assert.ok(seen.has(c), `no test triggers ${c}`);
+  // the declared Controls' codes are exercised in ui-controls.test.js, ui-grips.test.js and ui-actions.test.js
+  const elsewhere = ["U015", "U016", "U017", "U018", "U019", "U020"];
+  for (const c of Object.keys(UI_CODES)) if (!elsewhere.includes(c)) assert.ok(seen.has(c), `no test triggers ${c}`);
   assert.ok(!("U006" in UI_CODES) && !seen.has("U006"));
 });

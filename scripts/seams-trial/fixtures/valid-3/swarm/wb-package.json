@@ -1,7 +1,7 @@
 {
   "name": "swarm",
   "version": "0.2.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "Groups of agents on open ground, each steering by its Program's rules and carrying the traits its Program declares.",
   "entry": {
     "dialect": "swarm.dialect.js",

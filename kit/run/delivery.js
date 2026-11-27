@@ -14,14 +14,17 @@ import { ready, stamped } from "./wires.js";
 /** @import { Wire } from "./wires.js" */
 /** @import { RunDiagnostic } from "./codes.js" */
 
-/** The notes a checkpoint keeps: which wires have had each kind of drop noted. @typedef {{ dropNoted: number[], stopNoted: number[], overflowNoted: number[] }} Noted */
+/** Whether a record is a pointer move. @param {unknown} r */
+const isMove = (r) => r !== null && typeof r === "object" && /** @type {any} */ (r).phase === "move";
+
+/** The notes a checkpoint keeps: which wires have had each kind of drop, and a carry-over, noted. @typedef {{ dropNoted: number[], stopNoted: number[], overflowNoted: number[], carryNoted: number[] }} Noted */
 
 /**
  * @param {Wire[]} wires @param {Map<string, Part>} byName
  * @param {(d: Omit<RunDiagnostic, "severity"> & { severity?: "error" | "warning" }) => void} report
  */
 export function createDelivery(wires, byName, report) {
-  const dropNoted = new Set(), stopNoted = new Set(), overflowNoted = new Set();
+  const dropNoted = new Set(), stopNoted = new Set(), overflowNoted = new Set(), carryNoted = new Set();
   /** @param {Q | null} T */
   const at = (T) => (T ? qText(T) : null);
   /** @param {number} n */
@@ -43,7 +46,13 @@ export function createDelivery(wires, byName, report) {
    */
   function deliver(w, recs, T) {
     if (!running(/** @type {Part} */ (byName.get(w.to.part)))) { if (recs.length) dropStopped(w, recs.length, T); return; }
-    for (const rec of recs) w.queue.push({ T, record: stamped(carry(rec, w), T) });
+    for (const rec of recs) {
+      const made = { T, record: stamped(carry(rec, w), T) };
+      // a run of pointer moves with nothing between them is one move: its last (requirement 5)
+      const last = w.queue.at(-1);
+      if (w.pointer && isMove(made.record) && last && isMove(last.record)) w.queue[w.queue.length - 1] = made;
+      else w.queue.push(made);
+    }
     if (w.keepLast === null || w.queue.length <= w.keepLast) return;
     const n = w.queue.length - w.keepLast;
     w.queue.splice(0, n);
@@ -61,18 +70,47 @@ export function createDelivery(wires, byName, report) {
    * @param {Wire} w @param {Q} T @param {number | undefined} max
    */
   function take(w, T, max) {
-    const all = w.queue.splice(0, ready(w, T)).map((x) => x.record);
+    const n = ready(w, T);
+    // a delta record (a trigger, a pointer event) is never folded or dropped: past the max it waits for the next step
+    if (w.records === "delta" && !w.overflow && max !== undefined && n > max) {
+      // each record that waits counts once, however many steps it waits (marked on a copy, so a checkpoint's is not)
+      for (let i = max; i < n; i++) if (!w.queue[i].carried) { w.queue[i] = { ...w.queue[i], carried: true }; w.carried += 1; }
+      if (!carryNoted.has(w.index)) {
+        carryNoted.add(w.index);
+        report({ code: "N001", severity: "warning", message: `${w.text}: ${n} records were ready and ${w.to.part}.in.${w.to.port} takes at most ${max} per step, so the step took the first ${max} and the rest carry over to the next steps, in order, each with its own $T; stats().carried counts every one`, part: w.to.part, T: qText(T) });
+      }
+      return w.queue.splice(0, max).map((x) => x.record);
+    }
+    // a keyed state Control's waiting records fold to each key's latest; keys past the max wait for the next step
+    if (w.keyed && !w.overflow && max !== undefined && n > max) {
+      const items = w.queue.splice(0, n);
+      /** @type {Map<unknown, number>} */
+      const lastOf = new Map();
+      items.forEach((x, i) => lastOf.set(/** @type {any} */ (x.record)?.key, i));
+      const kept = [...lastOf.values()].sort((a, b) => a - b).map((i) => items[i]);
+      const folded = n - kept.length;
+      if (folded) {
+        w.overflowDrops += folded;
+        if (!overflowNoted.has(w.index)) {
+          overflowNoted.add(w.index);
+          report({ code: "N001", severity: "warning", message: `${w.text}: ${n} records were ready and ${w.to.part}.in.${w.to.port} takes at most ${max} per step, so the keyed Control's records folded to each key's latest, dropping ${folded}; stats().overflow counts every drop`, part: w.to.part, T: qText(T) });
+        }
+      }
+      if (kept.length > max) { const wait = kept.slice(max).map((x) => (x.carried ? x : (w.carried += 1, { ...x, carried: /** @type {const} */ (true) }))); w.queue.unshift(...wait); }
+      return kept.slice(0, max).map((x) => x.record);
+    }
+    const all = w.queue.splice(0, n).map((x) => x.record);
     if ((!w.overflow && !w.fromPage) || max === undefined || all.length <= max) return all;
-    const n = all.length - max;
-    w.overflowDrops += n;
+    const over = all.length - max;
+    w.overflowDrops += over;
     if (!overflowNoted.has(w.index)) {
       overflowNoted.add(w.index);
       const how = w.overflow
-        ? `the wire's { overflow: "${w.overflow}" } kept the ${w.overflow === "keepLast" ? "newest" : "first"} ${max} and dropped ${n}`
-        : `the page wire ${max === 1 ? "kept only the latest" : `kept the first ${max - 1} in order and folded the rest into the latest`} (the control's held state) and dropped ${n}`;
+        ? `the wire's { overflow: "${w.overflow}" } kept the ${w.overflow === "keepLast" ? "newest" : "first"} ${max} and dropped ${over}`
+        : `the page wire ${max === 1 ? "kept only the latest" : `kept the first ${max - 1} in order and folded the rest into the latest`} (the control's held state) and dropped ${over}`;
       report({ code: "N001", severity: "warning", message: `${w.text}: ${all.length} records were ready and ${w.to.part}.in.${w.to.port} takes at most ${max} per step, so ${how}; stats().overflow counts every drop`, part: w.to.part, T: qText(T) });
     }
-    if (w.overflow === "keepLast") return all.slice(n);
+    if (w.overflow === "keepLast") return all.slice(over);
     if (w.overflow === "keepFirst") return all.slice(0, max);
     return [...all.slice(0, max - 1), all[all.length - 1]];
   }
@@ -82,10 +120,10 @@ export function createDelivery(wires, byName, report) {
     /** A part a rebuild restarted: a drop after a later stop, or a later overflow, is noted again (ruling R3). @param {string} part */
     restarted(part) { for (const w of wires) if (w.to.part === part) { stopNoted.delete(w.index); overflowNoted.delete(w.index); } },
     /** @returns {Noted} */
-    save: () => ({ dropNoted: [...dropNoted], stopNoted: [...stopNoted], overflowNoted: [...overflowNoted] }),
+    save: () => ({ dropNoted: [...dropNoted], stopNoted: [...stopNoted], overflowNoted: [...overflowNoted], carryNoted: [...carryNoted] }),
     /** @param {Noted} cp */
     restore(cp) {
-      for (const [set, from] of /** @type {const} */ ([[dropNoted, cp.dropNoted], [stopNoted, cp.stopNoted], [overflowNoted, cp.overflowNoted]])) { set.clear(); for (const n of from) set.add(n); }
+      for (const [set, from] of /** @type {const} */ ([[dropNoted, cp.dropNoted], [stopNoted, cp.stopNoted], [overflowNoted, cp.overflowNoted], [carryNoted, cp.carryNoted]])) { set.clear(); for (const n of from) set.add(n); }
     },
     /** Drops per wire, by kind, as stats() reports them. */
     counts() {
@@ -95,8 +133,10 @@ export function createDelivery(wires, byName, report) {
       const stopped = {};
       /** @type {Record<string, number>} */
       const overflow = {};
-      for (const w of wires) { if (w.drops) dropped[w.text] = w.drops; if (w.stopDrops) stopped[w.text] = w.stopDrops; if (w.overflowDrops) overflow[w.text] = w.overflowDrops; }
-      return { dropped, stopped, overflow };
+      /** @type {Record<string, number>} */
+      const carried = {};
+      for (const w of wires) { if (w.drops) dropped[w.text] = w.drops; if (w.stopDrops) stopped[w.text] = w.stopDrops; if (w.overflowDrops) overflow[w.text] = w.overflowDrops; if (w.carried) carried[w.text] = w.carried; }
+      return { dropped, stopped, overflow, carried };
     },
   };
 }

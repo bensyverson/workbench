@@ -59,3 +59,16 @@ The glue is unchanged. Builders, layers, colors and the op fields the packet cho
 - **arcade:** the view read `LINE`, a top-level const (L001), now `library: { LINE: { const: String(LINE) } }` (1 line).
 
 Nothing in a builder's own text changed but the maze floor's one line: the op literals, the ternaries over two op kinds, the concatenation of two Draw inputs with a HUD, and the pen's `for…of` all lowered as written.
+
+## Massage for declared Controls (2026-11-27, leaf `FhnOhO`)
+
+[Declared Controls](../../project/2026-11-27-controls-draft.md) retired the kit's own pad (`PAGE_CONTROLS`), defineUI's `inputs` and `emits`, and the manifest's `elements`, and raised `KIT_VERSION` to 0.5. Every fixture and run record a test loads was massaged to the new API; run records no test loads stay as handed in. Sizes are `git diff --numstat` against `b115e90` (lines added / removed); a manifest's count includes its rehash (`node scripts/pkg/hash.js <dir>`).
+
+| File | Size | What |
+|---|---|---|
+| `fixtures/valid/maze/maze.ui.js, massaged/2026-11-26-compose/maze/maze.ui.js` | +7 / −10 each | `inputs` replaced by the package's own `pad` Control (as the seams trial's maze) |
+| `fixtures/valid/{maze,arcade}/wb-package.json, massaged/…/{maze,arcade}/wb-package.json` | +1–2 / −1–2 each | `"kit": "0.5"`, rehash |
+| `fixtures/valid/particles/*, massaged/…/particles/*` | +1 / −1 (ui), +3 / −3 (manifest) | `emits` removed; `"kit": "0.5"`, `elements` renamed `modules` |
+| `runs/2026-11-26/compose/maze/maze.ui.js` | +5 / −9 | a run record a test loads (W024): `inputs` replaced by a declared `pad` Control |
+| `runs/2026-11-26/compose/{maze,particles,arcade}/wb-package.json` | +1–3 / −1–3 each | `"kit": "0.5"`, `elements` renamed `modules` (particles), rehash |
+| `runs/2026-11-26/compose/particles/particles.ui.js` | +1 / −1 | `emits` removed |

@@ -101,7 +101,7 @@ const argSpecs = (c, call) => (call.slot === OPENS ? /** @type {any[]} */ (c.def
  * @param {import("./grammar.js").Compiled} g @param {Record<string, any>} record
  * @returns {RecInstance[]}
  */
-function instancesOf(g, record) {
+export function instancesOf(g, record) {
   /** @type {RecInstance[]} */
   const out = [];
   const walk = (/** @type {Construct} */ c, /** @type {Record<string, any>} */ rec) => {

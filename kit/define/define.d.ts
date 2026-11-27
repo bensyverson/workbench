@@ -324,14 +324,34 @@ export type GrammarBuilder = ((...args: unknown[]) => any) & { dialect: Dialect;
 
 /** The UI declaration `defineUI` takes: what is left after the generated views. The run's state is not here; the Dialect declares it. A value is a path into the Dialect's state ("bounds.width") or a lambda `(s, $) => …` (a table column's: `(row, s, $) => …`). */
 export interface UIDef {
-  /** What draws the stage: a custom element, `{ element: "<pkg>-<name>", module: "./<file>.js", emits?: ["pick" | "select" | "param"] }`, or the Dialect's own Draw output, `{ draw: "<output>" }`; none is the text view. */
+  /** What draws the stage: a custom element, `{ element: "<pkg>-<name>", module: "./<file>.js" }`, or the Dialect's own Draw output, `{ draw: "<output>", pointer?: "<input>" }`; none is the text view. */
   stage?: Record<string, unknown>;
-  /** `{ object: "Pad", buttons: { left: { role: "dpad.left" }, … } }`: the Dialect object whose bool members are the buttons. */
-  inputs?: Record<string, unknown>;
+  /** The declared Controls, by the name of the Event input each plays (or, with `to`, part-local): `{ kind, label?, … }`, a kind from the closed table (ui/controls.js). */
+  controls?: Record<string, Record<string, unknown>>;
+  /** Draggable stage objects, each bound to a target: `{ each?, kind, at, to, axis?, center?, unit?, step?, label? }`. */
+  grips?: Record<string, Record<string, unknown>>;
+  /** Trusted functions the host runs: `{ label, module: "./<file>.js", export: "<name>", gives: "file" | "edits" }`. */
+  actions?: Record<string, Record<string, unknown>>;
   /** Your panels by id: `{ title, place, body: [components] }`. */
   tiles?: Record<string, Record<string, unknown>>;
   /** Marks on the generated `traces` and `params` views. */
   annotate?: Record<string, Record<string, Record<string, unknown>>>;
+}
+
+/** One declared Control as the UI holds it. */
+export interface UIControl {
+  readonly kind: string;
+  /** The record seam it makes: `Event<{ … }>`, with `key: str` when it is keyed. */
+  readonly seam: string;
+  readonly records: "state" | "delta";
+  readonly perFrame: number;
+  /** The Event input it plays, by its name; null when it is part-local (it has `to` and no input). */
+  readonly input: string | null;
+  readonly local: boolean;
+  readonly keyed: boolean;
+  readonly label?: string;
+  readonly latency?: "direct";
+  readonly decl: Readonly<Record<string, any>>;
 }
 
 /** What a host passes defineUI beyond the declaration. */
@@ -346,7 +366,9 @@ export interface UI {
   readonly builder: GrammarBuilder;
   readonly dialect: Dialect;
   readonly stage?: Readonly<Record<string, unknown>>;
-  readonly inputs?: Readonly<Record<string, unknown>>;
+  readonly controls: Readonly<Record<string, UIControl>>;
+  readonly grips: Readonly<Record<string, Readonly<Record<string, any>>>>;
+  readonly actions: Readonly<Record<string, Readonly<Record<string, any>>>>;
   readonly tiles: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly annotate: Readonly<Record<string, unknown>>;
   /**
@@ -364,6 +386,4 @@ export interface UI {
    * `value(id, ...args)` one value by its id, `annotation(view, key, state, $)` one key's marks.
    */
   compile(record: Record<string, any>): import("./ui/compile.js").UICompiled;
-  /** The page control the inputs are: `inputs.object` with its first letter lowercased; null with no inputs. */
-  readonly control: string | null;
 }

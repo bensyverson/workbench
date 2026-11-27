@@ -280,7 +280,7 @@ export function runDraw(decl, { state, record, max, paint, part, fns }) {
 /** An op as it leaves its part: each color "#rrggbbaa", the image named `<part>.<image>`. @param {Op} op @param {Paint} paint @param {string} part @returns {Op} */
 function carryOp(op, paint, part) {
   const o = { ...op };
-  for (const k of ["fill", "stroke"]) if (typeof o[k] === "string") o[k] = resolveColor(o[k], paint.colors) ?? o[k];
+  for (const k of ["fill", "stroke"]) if (typeof o[k] === "string" || Array.isArray(o[k])) o[k] = resolveColor(o[k], paint.colors) ?? o[k];
   if (typeof o.image === "string") o.image = `${part}.${o.image}`;
   return o;
 }

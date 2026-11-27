@@ -73,3 +73,8 @@ In the M4 trial (leaf `IhJ35P`) every `claude -p` leg's transcript shows it read
 ## 2026-11-27: a worktree agent's first `job claim` without `--db` writes to the worktree's tracked log
 
 `.jobs/log/*.jsonl` is tracked, so a worktree has its own copy, and `job` there without `--db` writes the claim into the worktree's log instead of the main database (anchor-dogfood-54 left an untracked `.jobs/log/<id>.jsonl` that a squash would have carried to main). Briefs now say "pass --db on EVERY job call, the first claim included"; at integration, check `git -C <worktree> status --porcelain .jobs` and delete any stray log file before the snapshot.
+
+## 2026-11-27: a `data:` URL built with encodeURIComponent gives its calls no site
+
+kit/define's `callSite` (site.js) reads a frame's URL with a pattern that stops at `(` and `)`, which `encodeURIComponent` leaves as they are, so a Program imported from `data:text/javascript,${encodeURIComponent(text)}` has every call at its caller's place: `siteOf` then finds one place for all of them (H011, "runs n times"). Build such a URL with base64 (`data:text/javascript;base64,…`), as kit/page/host's tests do; a browser's `blob:` URL is matched by its inner `https:` (leaf `FhnOhO`).
+

@@ -10,11 +10,12 @@ import { q, cmp, sub, toNumber, qText, parseQ, fromNumber } from "../define/rati
 import { needsRebuild, misfit } from "../define/params.js";
 import { clockOf } from "../define/runtime.js";
 import { queueProblems, catchUpOf } from "../compose/queues.js";
-import { PAGE, pageRuntime, pageInputProblem } from "../compose/page.js";
+import { PAGE, pageRuntimeFor } from "../compose/page.js";
+import { parseSeam, valueProblem } from "../seam/index.js";
 import { partKey, compositionKey, canonical, stateHash, nextRevision, buildEvent, paramTrigger, packageTrigger, glueTrigger, why as buildWhy } from "../build/index.js";
 import { compilePart } from "./compile.js";
 import { RunError } from "./codes.js";
-import { makePart, runInit, runStep, deepFreeze, redraw, defaults, PART_FIELDS } from "./part.js";
+import { makePart, filesOf, runInit, runStep, deepFreeze, redraw, defaults, PART_FIELDS } from "./part.js";
 import { slowdowns, inputEntry, afterMs } from "./log.js";
 import { createFrameLog, framesTo, createSlowdown } from "./frames.js";
 import { running, nextInstant as instantAfter, awaitingFrame as waitsOnFrame, due } from "./instants.js";
@@ -92,6 +93,11 @@ export function createRun(composed, options) {
 
   /** Whether the composition has the built-in page part; a user part that happens to be named "page" is not it. */
   const hasPage = composed.parts.some((cp) => cp.dialect === PAGE && cp.name === PAGE);
+  /** The page's Controls, as the composed record lists them (declared Controls), each with its parsed seam. */
+  const pageControls = /** @type {Record<string, any>} */ (composed.parts.find((cp) => cp.dialect === PAGE && cp.name === PAGE)?.controls ?? {});
+  const controlSeams = new Map(Object.entries(pageControls).map(([n, c]) => [n, /** @type {any} */ (parseSeam(c.seam)).type]));
+  /** Each part's pointer inputs, by part: its UI's stage and view tiles, as composed. */
+  const pointers = new Map(composed.parts.filter((cp) => cp.pointer).map((cp) => [cp.name, /** @type {Record<string, string>} */ (cp.pointer)]));
   /** @type {Array<{ code: string, message: string }>} */
   const refused = [];
   if (!Array.isArray(composed.frames)) refused.push({ code: "N007", message: "the composed record has no `frames` list (kit/compose gives every record one, empty when the glue relates no frames), so a rebuild could not plan its glue edges again" });
@@ -108,15 +114,16 @@ export function createRun(composed, options) {
     if (!runtime) throw new Error(`part '${cp.name}' (${cp.dialect}) has no runtime: pass the ${cp.dialect} package's defineRuntime result in runtimes`);
     const compiled = compilePart(runtime, cp.record);
     if (!compiled.ok) throw new RunError(compiled.diagnostics.map((d) => ({ code: /** @type {any} */ (d).code, message: `part '${cp.name}': ${/** @type {any} */ (d).message}` })));
-    const content = options.packages?.find((p) => p.name === cp.dialect)?.content ?? null;
-    const p = makePart({ name: cp.name, index, dialect: cp.dialect, runtime, record: cp.record, compiled, key: partKey({ package: content, record: cp.record }), content, seed, params: options.params?.[cp.name] });
+    const pkg = options.packages?.find((p) => p.name === cp.dialect) ?? null;
+    const content = pkg?.content ?? null;
+    const p = makePart({ name: cp.name, index, dialect: cp.dialect, runtime, record: cp.record, compiled, key: partKey({ package: content, record: cp.record }), content, seed, params: options.params?.[cp.name], files: filesOf(pkg) });
     if (typeof p === "string") { refused.push({ code: "N006", message: `part '${cp.name}' (${cp.dialect}): ${p}` }); return; }
     parts.push(p);
   });
   const sized = composed.parts.filter((p) => !isLayerEntry(p)).map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
   // a policy trims what a step takes (ruling 7), and a page wire past its size folds (Ben, 2026-11-26): neither is refused
   const sizedWires = composed.wires.filter((w) => !intoParam(w) && w.overflow !== "keepLast" && w.overflow !== "keepFirst" && !(hasPage && ends(w.from).part === PAGE));
-  for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntime], { catchUp })) {
+  for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntimeFor(pageControls)], { catchUp })) {
     refused.push({ code: "S116", message: `${pr.message}\n  fix: ${pr.fix}` });
   }
   const byName = new Map(parts.map((p) => [p.name, p]));
@@ -126,7 +133,7 @@ export function createRun(composed, options) {
 
   const wires = makeWires(composed, byName, hasPage ? PAGE : null, new Set(layers.keys()));
   const fed = new Set(wires.map((w) => `${w.to.part}.${w.to.port}`));
-  wires.push(...outsideWires(parts, wires));
+  wires.push(...outsideWires(parts, wires, new Set([...pointers].flatMap(([part, m]) => Object.values(m).map((i) => `${part}.${i}`)))));
   const taps = createTaps(options.taps ?? [], parts);
   /** @type {Map<string, Wire>} */
   const wireTo = new Map(wires.map((w) => [`${w.to.part}.${w.to.port}`, w]));
@@ -199,8 +206,13 @@ export function createRun(composed, options) {
     } else if (e.kind === "control" && e.part === PAGE && hasPage) {
       // the log holds its own copy, checked as it is copied: a host that reuses or changes its object changes nothing
       e = { ...e, value: structuredClone(e.value) };
-      const bad = pageInputProblem(/** @type {string} */ (e.name), e.value);
-      if (bad) throw new Error(bad);
+      const name = /** @type {string} */ (e.name);
+      const names = Object.keys(pageControls);
+      if (!Object.hasOwn(pageControls, name)) throw new RunError([{ code: "N013", message: `a control input at ${qText(e.T)} names the Control '${name}', which the composed page lacks (its Controls: ${names.join(", ") || "none"}), so it is not logged and the run is unchanged` }]);
+      const bad = valueProblem(controlSeams.get(name).of, e.value);
+      if (bad) throw new RunError([{ code: "N012", message: `a control input at ${qText(e.T)} to page.out.${name}: the value does not fit the Control's seam, ${pageControls[name].seam}: ${bad}, so it is not logged and the run is unchanged` }]);
+    } else if (e.kind === "pointer" && byName.has(e.part ?? "")) {
+      e = checkedPointer(e);
     } else if (e.kind === "control" && byName.has(e.part ?? "")) {
       throw new RunError([{ code: "N011", part: e.part, message: `a control input at ${qText(e.T)} names the part '${e.part}': only the built-in page takes control inputs, and a part takes a control as an Event input with that control's seam (an in input, or a wire from page.out.${e.name}), so it is not logged and the run is unchanged` }]);
     } else if (e.kind !== "frame" && !byName.has(e.part ?? "")) {
@@ -209,6 +221,23 @@ export function createRun(composed, options) {
     if (e.kind === "param") paramProblem(e, i);
     inputs.splice(i, 0, e);
     if (e.kind === "frame") frameLog.add(e.T);
+  }
+
+  /**
+   * A pointer input, checked before it is logged: the part takes the pointer (its UI names a pointer input on a Draw
+   * output: N013 otherwise), and the value fits that input's seam (N012). Returns the entry, its `name` the input.
+   * @param {Entry} e @returns {Entry}
+   */
+  function checkedPointer(e) {
+    const p = /** @type {Part} */ (byName.get(/** @type {string} */ (e.part)));
+    const m = pointers.get(p.name);
+    const input = m ? (typeof e.output === "string" ? m[e.output] : Object.values(m)[0]) : undefined;
+    if (input === undefined) throw new RunError([{ code: "N013", part: p.name, message: `a pointer input at ${qText(e.T)} to ${p.name}${typeof e.output === "string" ? `'s out.${e.output}` : ""}: the part takes no pointer${m ? ` there (it takes it on ${Object.keys(m).join(", ")})` : " (its UI names no pointer input)"}, so it is not logged and the run is unchanged` }]);
+    const value = structuredClone(e.value);
+    const seam = /** @type {any} */ (p.runtime.dialect.seams.in)[input].seam;
+    const bad = valueProblem(seam.of, value);
+    if (bad) throw new RunError([{ code: "N012", part: p.name, message: `a pointer input at ${qText(e.T)} to ${p.name}.in.${input}: the value does not fit the input's seam: ${bad}, so it is not logged and the run is unchanged` }]);
+    return { ...e, name: input, value };
   }
 
   /**
@@ -277,7 +306,7 @@ export function createRun(composed, options) {
       if (e.kind === "control" && e.part === PAGE && hasPage) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T); continue; }
       // insert refused an input naming no part (N009)
       const p = /** @type {Part} */ (byName.get(e.part ?? ""));
-      if (e.kind === "in") delivery.deliver(/** @type {Wire} */ (wireTo.get(`${p.name}.${e.name}`)), [delivered(p, /** @type {string} */ (e.name), e.value)], e.T);
+      if (e.kind === "in" || e.kind === "pointer") delivery.deliver(/** @type {Wire} */ (wireTo.get(`${p.name}.${e.name}`)), [delivered(p, /** @type {string} */ (e.name), e.value)], e.T);
       else if (e.kind === "param") {
         // judged against the record in force now: one logged behind a rebuild or a build-time edit was not knowable
         const no = paramMisfit(p, e, p.record);
@@ -431,7 +460,7 @@ export function createRun(composed, options) {
     checkpoints.push({
       T: at.lastT, now, cursor, revision,
       parts: parts.map((p) => Object.fromEntries(PART_FIELDS.map((f) => [f, f === "rng" ? [...p.rng] : p[f]]))),
-      wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops, stopDrops: w.stopDrops, overflowDrops: w.overflowDrops })),
+      wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops, stopDrops: w.stopDrops, overflowDrops: w.overflowDrops, carried: w.carried })),
       lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length }, taps: taps.save(),
       ...delivery.save(), ...params.save(), plan: planner.save(),
       floor: at.floor, ...slowdown.save(),

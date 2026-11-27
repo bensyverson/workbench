@@ -127,11 +127,12 @@ function mapBox(b, e) {
  * run's in force (`run.composed`: a rebuild plans them again), else `composed`'s. When the composition was built
  * with a renderer profile (the composed record's `profile`), `check` is that profile's draw-time check of the list
  * (kit/draw's checkDraw: J040–J044, the counts and positions composition cannot judge), else null; the list is
- * never trimmed to pass it.
+ * never trimmed to pass it. `parts` and `ports`, beside `list`, name the part and output that made each op (a layer's
+ * ops come from its inputs), so the page can route the pointer to the part under it.
  * @param {{ snapshot: (part: string) => { state: any, draws?: Record<string, readonly Op[]> }, composed?: Shown }} run @param {Shown} given
  * @param {any[]} runtimes  kit/define's defineRuntime results, matched by Dialect name
  * @param {string} [part]
- * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: Box | null, check: ReturnType<typeof checkDraw> | null }}
+ * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: Box | null, check: ReturnType<typeof checkDraw> | null, parts?: readonly string[], ports?: readonly string[] }}
  */
 export function pageView(run, given, runtimes, part) {
   const composed = run.composed ?? given;
@@ -147,7 +148,7 @@ export function pageView(run, given, runtimes, part) {
     const box = layerBox(composed, name, runtimeOf);
     const list = run.snapshot(name).draws?.view ?? [];
     const check = profile ? checkDraw(profile, [...list], { images, box: box ?? { min: [0, 0], max: [0, 0] } }) : null;
-    return { part: name, port: "view", list, images, box, check };
+    return { part: name, port: "view", list, images, box, check, ...producers(run, composed, name, list.length) };
   }
   const rt = runtimeOf(cp.dialect);
   const ports = rt ? drawPorts(rt) : [];
@@ -156,5 +157,33 @@ export function pageView(run, given, runtimes, part) {
   const box = outputBox(composed, name, port.name, runtimeOf);
   const list = run.snapshot(name).draws?.[port.name] ?? [];
   const check = profile ? checkDraw(profile, [...list], { images, box: box ?? { min: [0, 0], max: [0, 0] } }) : null;
-  return { part: name, port: port.name, list, images, box, check };
+  return { part: name, port: port.name, list, images, box, check, parts: Object.freeze(list.map(() => name)), ports: Object.freeze(list.map(() => port.name)) };
+}
+
+/**
+ * The producing part and output of each op of a layer's list, bottom first, as the layer concatenates its inputs
+ * (layers.js): the page names the part under a pointer by them (requirement 6).
+ * @param {any} run @param {any} composed @param {string} name @param {number} length
+ * @returns {{ parts: readonly string[], ports: readonly string[] }}
+ */
+function producers(run, composed, name, length) {
+  /** @type {string[]} */
+  const parts = [];
+  /** @type {string[]} */
+  const ports = [];
+  /** @param {string} layer */
+  const walk = (layer) => {
+    const entry = composed.parts.find((/** @type {any} */ p) => p.name === layer);
+    for (const h of /** @type {string[]} */ (entry?.layer?.inputs ?? [])) {
+      const [part, , port] = h.split(".");
+      const under = composed.parts.find((/** @type {any} */ p) => p.name === part);
+      if (under?.layer !== undefined) { walk(part); continue; }
+      const n = (run.snapshot(part).draws?.[port] ?? []).length;
+      for (let i = 0; i < n; i++) { parts.push(part); ports.push(port); }
+    }
+  };
+  walk(name);
+  // a list the layer trimmed or a part that drew nothing yet: name what is known, and the layer for the rest
+  while (parts.length < length) { parts.push(name); ports.push("view"); }
+  return { parts: Object.freeze(parts.slice(0, length)), ports: Object.freeze(ports.slice(0, length)) };
 }

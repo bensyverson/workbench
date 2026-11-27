@@ -14,17 +14,19 @@ export const OUTSIDE = "$in";
 
 /**
  * One queue per Event input of a stepping part that no wire feeds.
+ * A pointer input's queue carries its records over rather than drop any, and coalesces a run of moves to its last.
  * @param {Part[]} parts @param {Wire[]} wires  the composition's, whose indexes the new ones continue
+ * @param {Set<string>} [pointers]  the pointer inputs, "<part>.<input>"
  * @returns {Wire[]}
  */
-export function outsideWires(parts, wires) {
+export function outsideWires(parts, wires, pointers = new Set()) {
   /** @type {Wire[]} */
   const out = [];
   for (const p of parts) {
     for (const i of Object.values(/** @type {Record<string, any>} */ (p.runtime.dialect.seams.in))) {
       if (i.seam.kind !== "event" || wires.some((w) => w.to.part === p.name && w.to.port === i.name)) continue;
       const keepLast = i.delivery && typeof i.delivery === "object" ? i.delivery.keepLast ?? null : null;
-      out.push({ index: wires.length + out.length, from: { part: OUTSIDE, port: i.name }, to: { part: p.name, port: i.name }, event: true, delay: false, fromPage: false, keepLast, overflow: null, convert: [], rename: {}, dropped: [], queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `in → ${p.name}.in.${i.name}` });
+      out.push({ index: wires.length + out.length, from: { part: OUTSIDE, port: i.name }, to: { part: p.name, port: i.name }, event: true, delay: false, fromPage: false, records: pointers.has(`${p.name}.${i.name}`) ? "delta" : null, keyed: false, pointer: pointers.has(`${p.name}.${i.name}`), keepLast, overflow: null, convert: [], rename: {}, dropped: [], queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, carried: 0, text: `in → ${p.name}.in.${i.name}` });
     }
   }
   return out;

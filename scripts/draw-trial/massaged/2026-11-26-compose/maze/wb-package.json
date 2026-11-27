@@ -1,7 +1,7 @@
 {
   "name": "maze",
   "version": "0.3.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "A player walks a grid of walls and coins, steered by a D-pad and two buttons.",
   "entry": {
     "dialect": "maze.dialect.js",
@@ -19,6 +19,6 @@
     "maze.dialect.js": "sha256-qU3xZic/KJVjFHLuUhvE1qZ5Hc//+kswVx6ADfmaMqo=",
     "maze.grammar.js": "sha256-gqqT02cbfpveiC+JuFyleapy1GTZvdn85WuGwuOqZ4U=",
     "maze.runtime.js": "sha256-yvAs8thnZayST6QU6XwgHIKulfkG5HXx3Z0HQT6YVyc=",
-    "maze.ui.js": "sha256-FPb793yDKIvTFwO8ThxfpBYyYkHF9Mp0SWFSuDf2IxA="
+    "maze.ui.js": "sha256-wOzT8fYG0tpCwrlu3oafUp5piz7rF+/1u3x8hYvcpZA="
   }
 }

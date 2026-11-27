@@ -1,19 +1,8 @@
 import { defineUI } from "kit/define";
 import { maze } from "./maze.grammar.js";
 
-// The passing fixture for the maze package: inputs onto the Dialect's Pad, a text-view stage, two readouts.
+// The passing fixture for the maze package: a text-view stage, two readouts (its retired inputs removed).
 export const mazeUI = defineUI(maze, {
-  inputs: {
-    object: "Pad",
-    buttons: {
-      up: { role: "dpad.up" },
-      down: { role: "dpad.down" },
-      left: { role: "dpad.left" },
-      right: { role: "dpad.right" },
-      a: { role: "a", label: "Dash" },
-      b: { role: "b", label: "Wait" },
-    },
-  },
   tiles: {
     score: {
       title: "Score",

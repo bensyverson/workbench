@@ -76,25 +76,25 @@ test("refusals come back as the manifest wrote them", async () => {
   assert.deepEqual((await load(await files())).refusals, []);
 });
 
-test("the UI's custom element modules must be exactly the manifest's elements: one K code each way", async () => {
+test("the UI's custom element modules must be exactly the manifest's modules: one K code each way", async () => {
   const modules = { ...MODULES, "alpha.ui.js": { u: UI_ELEMENTS } };
-  const ok = await load(await files({ elements: ["alpha-field.js"] }), modules);
+  const ok = await load(await files({ modules: ["alpha-field.js"] }), modules);
   assert.deepEqual(ok.diagnostics, []);
   const missing = await load(await files(), modules);
   assert.deepEqual(codes(missing), ["K015"]);
   assert.match(missing.diagnostics[0].message, /alpha-field\.js/);
   assert.equal(missing.diagnostics[0].file, "wb-package.json");
-  const extra = await load(await files({ elements: ["alpha-field.js", "alpha-pad.js"] }), modules);
+  const extra = await load(await files({ modules: ["alpha-field.js", "alpha-pad.js"] }), modules);
   assert.deepEqual(codes(extra), ["K016"]);
   assert.match(extra.diagnostics[0].message, /alpha-pad\.js/);
-  // a UI with no custom elements, or no UI at all, leaves nothing for elements to list
-  assert.deepEqual(codes(await load(await files({ elements: ["alpha-pad.js"] }))), ["K016"]);
-  assert.deepEqual(codes(await load(await files({ elements: ["alpha-pad.js"] }, false))), ["K016"]);
+  // a UI with no custom elements, or no UI at all, leaves nothing for modules to list
+  assert.deepEqual(codes(await load(await files({ modules: ["alpha-pad.js"] }))), ["K016"]);
+  assert.deepEqual(codes(await load(await files({ modules: ["alpha-pad.js"] }, false))), ["K016"]);
 });
 
-test("the elements check normalizes the UI's ./ paths and counts a module used twice once", async () => {
+test("the modules check normalizes the UI's ./ paths and counts a module used twice once", async () => {
   const ui = defineUI(A.grammar, { stage: { element: "alpha-field", module: "./alpha-field.js" }, tiles: {} });
-  const r = await load(await files({ elements: ["alpha-field.js"] }), { ...MODULES, "alpha.ui.js": { u: ui } });
+  const r = await load(await files({ modules: ["alpha-field.js"] }), { ...MODULES, "alpha.ui.js": { u: ui } });
   assert.deepEqual(r.diagnostics, []);
 });
 

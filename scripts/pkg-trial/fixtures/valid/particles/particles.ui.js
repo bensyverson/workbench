@@ -3,7 +3,7 @@ import { particles } from "./particles.grammar.js";
 
 // The passing fixture for the particles package: the draft's worked example plus one of each other piece.
 export const particlesUI = defineUI(particles, {
-  stage: { element: "particles-field", module: "./particles-field.js", emits: ["pick", "select"] },
+  stage: { element: "particles-field", module: "./particles-field.js" }, // emits retired 2026-11-27: an element dispatches wb-control
   tiles: {
     health: {
       title: "Health",

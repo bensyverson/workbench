@@ -28,6 +28,11 @@ The kit's terms, as ruled on 2026-11-23 ([nomenclature decision](../project/2026
 - **Glue program**: the workbench's own file (`workbench.js`) that builds each part with its package's Grammar and composes them with `kit/compose`: `.part`, `.frame`, `.wire`, `.show`. It owns every fact that spans two parts, and holds no lambdas.
 - **Part**: one Program in a composition, named by its root's opening name (`maze("level")` is the part `level`).
 - **Handle**: `part.out.<port>`, `part.in.<port>` or `part.frame.<name>` on any builder: a read-only name of one part's port or frame, passed to kit/compose's `.wire` and `.frame`. Not a value.
+- **Control**: a named source of records a person makes, declared in a package's UI with a kind from the kit's closed list, and bound by its name to the Dialect's Event input of that name (or, with `to`, to a param or an argument). In a composition, a Control with an input is `page.out.<control>`.
+- **Grip**: a draggable object on the stage, declared in a package's UI, placed by the Dialect from state, and bound to one Target. It is not a Handle, which names a port.
+- **Target**: `param.<name>` or `arg.<address>`, what a Grip, a Control with `to`, a custom element's `wb-edit` or an action's edit changes.
+- **Argument address**: one argument of one builder call: the call's Ref id, `:<i>`, and a path (`.<key>`, `[<i>]`).
+- **Write-back**: a release, an action's edits or an applied edit, written into the Program's text as literals, one undo step each.
 - **Runtime**: a package's runtime module (`defineRuntime`): its `clock`, `init` and `step`, plain JavaScript over the Dialect's state. Not a Runtime Lambda, which is lowered; a runtime is trusted and calls the Program's compiled lambdas.
 - **Workbench time** (`T`): the one clock a composed workbench runs on, in seconds from 0, in exact rationals ([kit/run](run/README.md)).
 - **Instant**: a value of `T` at which at least one part is due (a tick part's multiple of its period, a display frame). Within an instant, parts step in wire order.

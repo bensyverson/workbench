@@ -8,7 +8,7 @@ const good = () => ({
   name: "tiles", version: "0.4.0", kit: "0.4", description: "A grid.",
   entry: { dialect: "tiles.dialect.js", grammar: "tiles.grammar.js", ui: "tiles.ui.js" },
   lib: ["lib/noise.js"], foreign: [{ module: "foreign/svg.js", targets: ["js"], why: "SVG export" }],
-  elements: ["elements/board.js"], examples: ["examples/01.js"],
+  modules: ["elements/board.js"], examples: ["examples/01.js"],
   files: Object.fromEntries(["tiles.dialect.js", "tiles.grammar.js", "tiles.ui.js", "lib/noise.js", "foreign/svg.js", "elements/board.js", "examples/01.js"].map((p) => [p, H])),
 });
 const codes = (/** @type {unknown} */ m) => checkManifest(typeof m === "string" ? m : JSON.stringify(m)).diagnostics.map((d) => d.code);
@@ -76,8 +76,8 @@ test("description, when present, is a string", () => {
   assert.ok(codes({ ...good(), description: 3 }).includes("K002"));
 });
 
-test("lib, elements and examples are arrays of exact paths; globs are refused", () => {
-  for (const k of ["lib", "elements", "examples"]) {
+test("lib, modules and examples are arrays of exact paths; globs are refused", () => {
+  for (const k of ["lib", "modules", "examples"]) {
     assert.ok(codes({ ...good(), [k]: "a.js" }).includes("K002"), `${k} not array`);
     assert.ok(codes({ ...good(), [k]: [3] }).includes("K002"), `${k} not strings`);
     assert.ok(codes({ ...good(), [k]: ["examples/*.js"] }).includes("K002"), `${k} glob`);
@@ -107,20 +107,20 @@ test("files maps paths to sha256-<base64>", () => {
 });
 
 test("a file the manifest names but does not list in files is K004", () => {
-  for (const edit of [(/** @type {any} */ m) => { m.entry.dialect = "other.js"; }, (/** @type {any} */ m) => { m.lib.push("lib/more.js"); }, (/** @type {any} */ m) => { m.foreign[0].module = "foreign/x.js"; }, (/** @type {any} */ m) => { m.elements = ["e.js"]; }, (/** @type {any} */ m) => { m.examples = ["ex.js"]; }]) {
+  for (const edit of [(/** @type {any} */ m) => { m.entry.dialect = "other.js"; }, (/** @type {any} */ m) => { m.lib.push("lib/more.js"); }, (/** @type {any} */ m) => { m.foreign[0].module = "foreign/x.js"; }, (/** @type {any} */ m) => { m.modules = ["e.js"]; }, (/** @type {any} */ m) => { m.examples = ["ex.js"]; }]) {
     const m = good(); edit(m);
     assert.deepEqual(codes(m), ["K004"]);
   }
 });
 
-test("entry, lib, elements, examples and foreign.module must name .js files: anything else is K002", () => {
+test("entry, lib, modules, examples and foreign.module must name .js files: anything else is K002", () => {
   /** @type {Array<(m: any, p: string) => void>} */
   const places = [
     (m, p) => { m.entry.dialect = p; },
     (m, p) => { m.entry.grammar = p; },
     (m, p) => { m.entry.ui = p; },
     (m, p) => { m.lib = [p]; },
-    (m, p) => { m.elements = [p]; },
+    (m, p) => { m.modules = [p]; },
     (m, p) => { m.examples = [p]; },
     (m, p) => { m.foreign[0].module = p; },
   ];

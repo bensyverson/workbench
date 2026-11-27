@@ -5,18 +5,27 @@ import { didYouMean } from "../codes.js";
 import { resolvePath, describe, kindOf } from "./shapes.js";
 import { checkLambda } from "./lambda.js";
 import { tagOk, definesTag } from "./elements.js";
+import { controlProblems, controlSeam, pointerSeam } from "./controls.js";
+import { parseSeam, printSeam, compareSeams } from "../../seam/index.js";
 
 /** @import { Type } from "../../ir/ir.js" */
 
 /** The generated views, by id (ui-draft.md, "Generated views"). */
-export const VIEWS = ["stage", "text", "params", "traces", "pad", "events", "ir", "graph", "code", "diagnostics", "reference", "presets", "editor", "agent", "book"];
+export const VIEWS = ["stage", "text", "params", "traces", "controls", "events", "ir", "graph", "code", "diagnostics", "reference", "presets", "editor", "agent", "book"];
 export const ANNOTATABLE = ["traces", "params"];
 export const DIRECTIONS = ["splitRight", "splitLeft", "splitAbove", "splitBelow", "tabWith"];
-export const ROLES = ["dpad.up", "dpad.down", "dpad.left", "dpad.right", "a", "b", "start", "select"];
-export const EVENTS = ["pick", "select", "param"];
 export const TONES = ["good", "warn", "bad", "dim"];
-const TOP = ["stage", "inputs", "tiles", "annotate"];
-const ELEMENT_KEYS = ["element", "module", "emits"];
+const TOP = ["stage", "controls", "grips", "actions", "tiles", "annotate"];
+const ELEMENT_KEYS = ["element", "module"];
+/** The kinds of a Grip, and what each needs beside at and to. */
+export const GRIP_KINDS = ["translate", "length", "rotate", "scale"];
+const GRIP_KEYS = ["each", "at", "to", "kind", "axis", "center", "unit", "step", "label"];
+/** What an action gives the host. */
+export const GIVES = ["file", "edits"];
+const ACTION_KEYS = ["label", "module", "export", "gives"];
+/** A param's on-screen looks and curves (annotate.params). */
+const PARAM_LOOKS = ["slider", "knob", "field"];
+const CURVES = ["linear", "log"];
 
 /** Each component kind: its required and optional keys; a layout takes no element. */
 /** @type {Record<string, { req: string[], opt?: string[], layout?: true }>} */
@@ -29,6 +38,10 @@ export const KINDS = {
   text: { req: ["value"] },
   row: { req: ["items"], layout: true },
   col: { req: ["items"], layout: true },
+  control: { req: ["control"], layout: true },
+  param: { req: ["param"], layout: true },
+  action: { req: ["action"], layout: true },
+  view: { req: ["draw"], opt: ["pointer"], layout: true },
 };
 
 const IDENT = /^[A-Za-z_$][\w$]*$/;
@@ -51,7 +64,9 @@ const MODULE_RE = /^\.\/(?!.*\.\.)[\w./-]+\.js$/;
  * @property {Record<string, Record<string, string>>} aliases  the Dialect's vector component aliases, by vector name
  * @property {Set<string>} free  the free names the Dialect gives a lambda
  * @property {Record<string, any>} globalObjects  the object each of the Dialect's globals names, by global name
- * @property {Record<string, { seam: string, draw: boolean }>} outputs  the Dialect's output ports: each one's printed seam, and whether it is a Draw seam
+ * @property {Record<string, { seam: string, draw: boolean, frame: string | null }>} outputs  the Dialect's output ports: each one's printed seam, whether it is a Draw seam, and a Draw seam's frame
+ * @property {Record<string, { seam: any, seamText: string }>} inputs  the Dialect's input ports, each with its parsed seam
+ * @property {Record<string, any>} files  the Dialect's data files, by name
  * @property {((path: string) => string | null) | null} moduleText  a package file's text, or null when it is not a readable file; the option itself null when the host cannot read files (the module checks are then skipped)
  */
 
@@ -79,6 +94,8 @@ export function validate(decl, env) {
     for (const k of Object.keys(o)) {
       if (allowed.includes(k)) continue;
       if (k === "state" && at.length === 0) { add("U001", [...at, k], "defineUI's declaration has no key 'state': the run's state is declared in the Dialect", "declare it in defineDialect({ ..., state: { score: \"f64\", ... } }), and read it here by path or lambda"); continue; }
+      if (k === "inputs" && at.length === 0) { add("U001", [...at, k], "defineUI's declaration has no key 'inputs': a package declares Controls, each named by the Event input it plays", 'write controls: { <input>: { kind: "buttons", buttons: ["<button>", …] } }'); continue; }
+      if (k === "emits") { add("U001", [...at, k], `${what} has no key 'emits': a custom element dispatches wb-control, wb-param or wb-edit, which the host checks against the declarations`, "remove emits, and dispatch wb-control ({ control, value }), wb-param or wb-edit from the element"); continue; }
       const mean = didYouMean(k, allowed);
       const m = mean.match(/'(.+)'/);
       if (m) meant.add(m[1]);
@@ -87,7 +104,7 @@ export function validate(decl, env) {
     for (const k of required) if (!(k in o) && !meant.has(k)) add("U001", at, `${what} needs '${k}'`, `add ${k}: …`);
   }
 
-  if (!isObj(decl)) { add("U001", [], "defineUI's second argument is not an object", "pass { stage?, inputs?, tiles?, annotate? }"); return out; }
+  if (!isObj(decl)) { add("U001", [], "defineUI's second argument is not an object", "pass { stage?, controls?, grips?, actions?, tiles?, annotate? }"); return out; }
   keys(decl, [], TOP, [], "defineUI's declaration");
 
   /** @type {Type | null} */
@@ -122,7 +139,6 @@ export function validate(decl, env) {
   /** @type {Map<string, string>} */
   const tags = new Map();
   function element(/** @type {Record<string, any>} */ o, /** @type {Array<string | number>} */ at) {
-    if ("emits" in o && !("element" in o)) add("U009", [...at, "emits"], "emits without an element: only a custom element dispatches events", "remove emits, or add element and module");
     if (!("element" in o)) {
       if ("module" in o) add("U008", [...at, "module"], "a module without an element", `add element: "${env.pkg}-<name>"`);
       return;
@@ -143,17 +159,37 @@ export function validate(decl, env) {
       if (text === null) add("U008", [...at, "module"], `the module '${mod}' is not a readable file in the package`, `write ${mod}, an ES module that calls customElements.define("${tag}", …)`);
       else if (isTag && !definesTag(text, /** @type {string} */ (tag))) add("U008", [...at, "module"], `'${mod}' does not call customElements.define("${tag}", …)`, `define the tag in ${mod}: customElements.define("${tag}", class extends HTMLElement { … })`);
     }
-    if ("emits" in o) {
-      if (!Array.isArray(o.emits)) add("U012", [...at, "emits"], `emits is ${str(o.emits)}, not a list`, 'write emits: ["pick"]');
-      else for (const [i, e] of o.emits.entries()) if (!EVENTS.includes(e)) add("U009", [...at, "emits", i], `${str(e)} is not an event of the contract.${typeof e === "string" ? didYouMean(e, EVENTS) : ""}`, `emit one of: ${EVENTS.join(", ")} (dispatched as wb-${EVENTS.join(", wb-")})`);
-    }
   }
+
+  /** The Draw outputs, by name. */
+  const drawn = Object.entries(env.outputs).filter(([, o]) => o.draw).map(([n]) => n);
+  /** The Event inputs, by name. */
+  const events = Object.entries(env.inputs).filter(([, i]) => i.seam?.kind === "event").map(([n]) => n);
 
   // stage
   if ("stage" in decl) {
     if (!isObj(decl.stage)) add("U012", ["stage"], "stage is not an object", 'write stage: { element: "<pkg>-<name>", module: "./<file>.js" }, or stage: { draw: "<output>" }, or leave it out for the text view');
     else if ("draw" in decl.stage) drawStage(decl.stage);
-    else { keys(decl.stage, ["stage"], [...ELEMENT_KEYS, "draw"], ["element"], "stage"); element(decl.stage, ["stage"]); }
+    else {
+      keys(decl.stage, ["stage"], [...ELEMENT_KEYS, "draw", "pointer"], ["element"], "stage");
+      element(decl.stage, ["stage"]);
+      if ("pointer" in decl.stage) add("U014", ["stage", "pointer"], "a pointer goes with a Draw stage: the kit maps the pointer into a Draw output's frame, and a custom element handles its own", 'show a Draw output, stage: { draw: "<output>", pointer: "<input>" }, or dispatch wb-control from the element');
+    }
+  }
+  /**
+   * A pointer input on a Draw output: an Event input of the Dialect (U015) whose seam is the pointer's, in the
+   * output's frame (U016, printing the seam to copy).
+   * @param {unknown} input @param {string} output @param {Array<string | number>} at
+   */
+  function pointer(input, output, at) {
+    const frame = env.outputs[output]?.frame;
+    if (!frame) return;
+    const want = pointerSeam(frame);
+    if (typeof input !== "string" || !Object.hasOwn(env.inputs, input) || env.inputs[input].seam?.kind !== "event") {
+      return add("U015", at, `the pointer names ${str(input)}, which is not an Event input of the ${env.pkg} Dialect.${typeof input === "string" ? didYouMean(input, events) : ""}`, `declare it in ports.in: ${typeof input === "string" ? input : "pointer"}: { seam: "${want}", note: "the pointer on the stage" }`);
+    }
+    const have = printSeam(env.inputs[input].seam);
+    if (have !== want) add("U016", at, `in.${input} is ${have}, not the pointer's seam on out.${output} (frame ${frame})`, `write its seam as ${want}`);
   }
   /** The third form: the Dialect's own Draw output, by name. */
   function drawStage(/** @type {Record<string, any>} */ st) {
@@ -161,45 +197,103 @@ export function validate(decl, env) {
     const tip = drawn.length ? drawn.map((n) => `draw: "${n}"`).join(", or ") : `declare a Draw output in defineDialect's ports.out (seam: "Draw<max>@<frame>"), or use a custom element`;
     const mixed = Object.keys(st).filter((k) => ELEMENT_KEYS.includes(k));
     if (mixed.length) add("U014", ["stage"], `a stage is a custom element or a Draw output, not both: it has draw and ${mixed.join(", ")}`, "keep draw, or keep element and module");
-    keys(st, ["stage"], ["draw", ...ELEMENT_KEYS], ["draw"], "stage");
+    keys(st, ["stage"], ["draw", "pointer", ...ELEMENT_KEYS], ["draw"], "stage");
     const name = st.draw;
     if (typeof name !== "string") return add("U014", ["stage", "draw"], `draw is ${str(name)}; it names one of the ${env.pkg} Dialect's Draw outputs`, tip);
     if (!Object.hasOwn(env.outputs, name)) return add("U014", ["stage", "draw"], `the ${env.pkg} Dialect has no output '${name}'.${didYouMean(name, Object.keys(env.outputs))}`, tip);
     const o = env.outputs[name];
-    if (!o.draw) add("U014", ["stage", "draw"], `out.${name} is ${o.seam}, not a Draw seam: the stage draws a Draw output`, tip);
+    if (!o.draw) return add("U014", ["stage", "draw"], `out.${name} is ${o.seam}, not a Draw seam: the stage draws a Draw output`, tip);
+    if ("pointer" in st) pointer(st.pointer, name, ["stage", "pointer"]);
   }
 
-  // inputs
-  if ("inputs" in decl) inputs(decl.inputs);
-  function inputs(/** @type {unknown} */ inp) {
-    if (!isObj(inp)) return add("U012", ["inputs"], "inputs is not an object", 'write inputs: { object: "Pad", buttons: { … } }');
-    keys(inp, ["inputs"], ["object", "buttons"], ["object", "buttons"], "inputs");
-    const objName = inp.object;
-    const obj = typeof objName === "string" && Object.hasOwn(env.objects, objName) ? env.objects[objName] : null;
-    if ("object" in inp && !obj) add("U010", ["inputs", "object"], `${str(objName)} is not an object of the Dialect.${typeof objName === "string" ? didYouMean(objName, Object.keys(env.objects)) : ""}`, `name the Dialect object whose bool members are the buttons: ${Object.keys(env.objects).join(", ")}`);
-    if (!("buttons" in inp)) return;
-    if (!isObj(inp.buttons)) return add("U012", ["inputs", "buttons"], "buttons is not an object", "write buttons: { left: { role: \"dpad.left\" }, … }");
-    if (Object.keys(inp.buttons).length === 0) add("U010", ["inputs", "buttons"], "inputs has no buttons", `declare one button per bool member of ${typeof objName === "string" ? objName : "the object"}: left: { role: "dpad.left" }, …`);
-    /** @type {Map<string, string>} */
-    const roles = new Map();
-    for (const [name, b] of Object.entries(inp.buttons)) {
-      const at = ["inputs", "buttons", name];
-      if (!isObj(b)) { add("U012", at, `the button '${name}' is not an object`, "write { role?, label? }"); continue; }
-      keys(b, at, ["role", "label"], [], `the button '${name}'`);
-      if ("label" in b) string(b.label, [...at, "label"]);
-      if ("role" in b) {
-        if (!ROLES.includes(b.role)) add("U010", [...at, "role"], `${str(b.role)} is not a role.${typeof b.role === "string" ? didYouMean(b.role, ROLES) : ""}`, `use one of: ${ROLES.join(", ")}, or leave role out`);
-        else if (roles.has(b.role)) add("U010", [...at, "role"], `the role '${b.role}' is taken by '${roles.get(b.role)}' too`, "give each role to one button");
-        else roles.set(b.role, name);
+  // controls
+  const controlNames = isObj(decl.controls) ? Object.keys(decl.controls) : [];
+  if ("controls" in decl) {
+    if (!isObj(decl.controls)) add("U012", ["controls"], "controls is not an object of Controls by name", 'write controls: { <input>: { kind: "<kind>", … } }');
+    else for (const [n, c] of Object.entries(decl.controls)) control(n, c);
+  }
+  /** One Control: its declaration (U017), then its binding by name to the Event input it plays (U015, U016). */
+  function control(/** @type {string} */ n, /** @type {unknown} */ c) {
+    const at = ["controls", n];
+    const before = out.length;
+    out.push(...controlProblems(c, at, { files: env.files }));
+    if (out.length > before || !isObj(c)) return;
+    const input = Object.hasOwn(env.inputs, n) ? env.inputs[n] : null;
+    if (!input || input.seam?.kind !== "event") {
+      if (c.to !== undefined || c.each !== undefined) {
+        if (input) add("U015", at, `'${n}' is a value input of the ${env.pkg} Dialect, not an Event input: a Control with that name would play it`, `rename the Control, or make in.${n} an Event input`);
+        return;
+      }
+      if (input) return add("U015", at, `the Control '${n}' names in.${n}, a value input (${input.seamText}); a Control plays an Event input`, `declare in.${n} as an Event input, Event<{ … }>, or give the Control a to ("param.<name>" or "arg.<address>") and another name`);
+      return add("U015", at, `the Control '${n}' names no Event input of the ${env.pkg} Dialect.${didYouMean(n, events)} Its Event inputs: ${events.join(", ") || "none"}`, `name an Event input, or give it to: "param.<name>" or "arg.<address>" to make it part-local`);
+    }
+    const text = controlSeam(c);
+    const parsed = /** @type {any} */ (parseSeam(text));
+    if (!parsed.ok) return add("U017", at, `the Control '${n}' makes no seam: ${parsed.error}`, "check its buttons, options and carry");
+    const cmp = compareSeams(parsed.type, input.seam);
+    if (c.each !== undefined && !Object.hasOwn(input.seam.of?.fields ?? {}, "key")) cmp.problems.push(/** @type {any} */ ({ code: "S202", field: "key", message: "a keyed Control (each) sends key: str, which the input does not take" }));
+    if (cmp.problems.length) add("U016", at, `the Control '${n}' sends ${printSeam(parsed.type)}, and in.${n} takes ${input.seamText}: ${cmp.problems.map((/** @type {any} */ p) => p.message).join("; ")}`, `change the Control's kind or keys, or in.${n}'s seam, so the record fits${c.each !== undefined ? " (a keyed Control's record has key: str)" : ""}`);
+  }
+
+  // grips
+  if ("grips" in decl) {
+    if (!isObj(decl.grips)) add("U012", ["grips"], "grips is not an object of Grips by name", "write grips: { <grip>: { kind, at, to, … } }");
+    else for (const [n, g] of Object.entries(decl.grips)) grip(n, g);
+  }
+  function grip(/** @type {string} */ n, /** @type {unknown} */ g) {
+    const at = ["grips", n];
+    const bad = (/** @type {Array<string | number>} */ p, /** @type {string} */ m, /** @type {string} */ tip) => add("U018", p, m, tip);
+    if (!isObj(g)) return bad(at, `the Grip '${n}' is ${str(g)}, not an object`, "write { kind, at, to }");
+    const top = /** @type {Record<string, any>} */ (decl);
+    const hasDraw = isObj(top.stage) && typeof top.stage.draw === "string";
+    if (!hasDraw) bad(at, `the Grip '${n}' needs a Draw stage: the host draws a Grip over the stage's Draw output, in its frame`, 'show a Draw output: stage: { draw: "<output>" }');
+    for (const k of Object.keys(g)) if (!GRIP_KEYS.includes(k)) bad([...at, k], `a Grip has no key '${k}'.${didYouMean(k, GRIP_KEYS)}${k === "min" || k === "max" ? " A Grip's range is its target's own: the Grammar's bounds or the param's min and max" : ""}`, `use: ${GRIP_KEYS.join(", ")}`);
+    for (const k of ["at", "to", "kind"]) if (!(k in g)) bad(at, `the Grip '${n}' needs '${k}'`, `add ${k}: …`);
+    if ("kind" in g && !GRIP_KINDS.includes(g.kind)) bad([...at, "kind"], `${str(g.kind)} is not a Grip kind.${typeof g.kind === "string" ? didYouMean(g.kind, GRIP_KINDS) : ""}`, `use one of: ${GRIP_KINDS.join(", ")}`);
+    if (g.kind === "length" && !("axis" in g)) bad(at, `a length Grip needs axis: where one unit of the value moves it`, "add axis: (<item>, s, $) => [<dx>, <dy>]");
+    if ((g.kind === "rotate" || g.kind === "scale") && !("center" in g)) bad(at, `a ${g.kind} Grip needs center`, "add center: (<item>, s, $) => [<x>, <y>]");
+    if ("unit" in g && g.unit !== "deg" && g.unit !== "rad") bad([...at, "unit"], `unit is ${str(g.unit)}; it is "deg" or "rad"`, 'write unit: "deg"');
+    if ("step" in g && !(typeof g.step === "number" && g.step > 0)) bad([...at, "step"], `step is ${str(g.step)}; it takes a number above 0`, "write step: 1");
+    if ("label" in g) string(g.label, [...at, "label"]);
+    /** @type {Type | null} */
+    let item = null;
+    if ("each" in g) {
+      if (typeof g.each !== "string") bad([...at, "each"], `each is ${str(g.each)}; it names a state list with a max`, 'write each: "<list>"');
+      else if (root) {
+        const r = resolvePath(root, g.each, env.aliases);
+        if ("error" in r) bad([...at, "each"], r.error, r.fix);
+        else if (kindOf(r.type) !== "list") bad([...at, "each"], `'${g.each}' is ${describe(kindOf(r.type))}; each names a state list with a max`, "name a list in the Dialect's state");
+        else item = /** @type {any} */ (typeof r.type === "object" && "opt" in r.type ? r.type.opt : r.type).list;
       }
     }
-    if (obj) {
-      const members = /** @type {Record<string, any>} */ (obj.members ?? {});
-      const names = Object.keys(members), buttons = Object.keys(inp.buttons);
-      const missing = names.filter((n) => !buttons.includes(n)), extra = buttons.filter((n) => !names.includes(n));
-      if (missing.length || extra.length) add("U010", ["inputs", "buttons"], `the buttons are not exactly ${objName}'s members${missing.length ? `: missing ${missing.join(", ")}` : ""}${extra.length ? `${missing.length ? ";" : ":"} ${objName} has no ${extra.join(", ")}` : ""}`, `declare one button per member of ${objName}: ${names.join(", ")}`);
-      const notBool = names.filter((n) => (typeof members[n] === "string" ? members[n] : members[n]?.value) !== "bool");
-      if (notBool.length) add("U010", ["inputs", "object"], `${objName}'s members ${notBool.join(", ")} are not "bool"`, `a button is a "bool" member: declare ${notBool[0]}: "bool" in the Dialect`);
+    for (const k of ["at", "to", "axis", "center"]) {
+      if (!(k in g)) continue;
+      if (typeof g[k] !== "function") { bad([...at, k], `${k} is ${str(g[k])}, not a lambda`, `write ${k}: ${"each" in g ? "(<item>, s, $)" : "(s, $)"} => …`); continue; }
+      lambda(g[k], [...at, k], "each" in g ? { params: ["item", "s", "$"], shapes: [item, root, null], free: env.free, objects: env.globalObjects, aliases: env.aliases } : viewLambda);
+    }
+  }
+
+  // actions
+  if ("actions" in decl) {
+    if (!isObj(decl.actions)) add("U012", ["actions"], "actions is not an object of actions by name", 'write actions: { <action>: { label, module: "./<file>.js", export: "<name>", gives: "file" } }');
+    else for (const [n, a] of Object.entries(decl.actions)) action(n, a);
+  }
+  function action(/** @type {string} */ n, /** @type {unknown} */ a) {
+    const at = ["actions", n];
+    const bad = (/** @type {Array<string | number>} */ p, /** @type {string} */ m, /** @type {string} */ tip) => add("U019", p, m, tip);
+    if (!isObj(a)) return bad(at, `the action '${n}' is ${str(a)}, not an object`, 'write { label, module: "./<file>.js", export: "<name>", gives: "file" }');
+    for (const k of Object.keys(a)) if (!ACTION_KEYS.includes(k)) bad([...at, k], `an action has no key '${k}'.${didYouMean(k, ACTION_KEYS)}`, `use: ${ACTION_KEYS.join(", ")}`);
+    for (const k of ACTION_KEYS) if (!(k in a)) bad(at, `the action '${n}' needs '${k}'`, `add ${k}: …`);
+    if ("label" in a && typeof a.label !== "string") bad([...at, "label"], `label is ${str(a.label)}, not a string`, 'write label: "…"');
+    const modOk = typeof a.module === "string" && MODULE_RE.test(a.module);
+    if ("module" in a && !modOk) bad([...at, "module"], `${str(a.module)} is not one of the package's files: a module is "./<file>.js"`, 'write module: "./<file>.js"');
+    const expOk = typeof a.export === "string" && IDENT.test(a.export);
+    if ("export" in a && !expOk) bad([...at, "export"], `${str(a.export)} is not an export's name: it is an identifier`, 'write export: "<name>"');
+    if ("gives" in a && !GIVES.includes(a.gives)) bad([...at, "gives"], `gives is ${str(a.gives)}; an action gives "file" or "edits"`, 'write gives: "file"');
+    if (modOk && expOk && env.moduleText) {
+      const text = env.moduleText(a.module);
+      if (text === null) bad([...at, "module"], `the module '${a.module}' is not a readable file in the package`, `write ${a.module}, an ES module that exports ${a.export}`);
+      else if (!exportsName(text, a.export)) bad([...at, "export"], `'${a.module}' has no export '${a.export}'`, `export it from ${a.module}: export function ${a.export}({ record, state, params, files, signal, progress, pause }) { … }`);
     }
   }
 
@@ -253,7 +347,7 @@ export function validate(decl, env) {
       const name = local(target, [...at, dir]);
       if (name !== null) {
         if (VIEWS.includes(name)) { /* a generated view */ } else if (tileIds.includes(name)) edges.set(id, name);
-        else add("U003", [...at, dir], `'${target}' is no view or tile.${didYouMean(name, [...VIEWS, ...tileIds])}`, `name a generated view (${VIEWS.join(", ")}) or one of your tiles`);
+        else add("U003", [...at, dir], `'${target}' is no view or tile.${name === "pad" ? " Did you mean 'controls'? The generated view pad is now controls, the page's Controls." : didYouMean(name, [...VIEWS, ...tileIds])}`, `name a generated view (${VIEWS.join(", ")}) or one of your tiles`);
       }
     }
     if ("size" in p) {
@@ -286,6 +380,17 @@ export function validate(decl, env) {
     if ("steps" in c) number(c.steps, k("steps"), 2, 50, { whole: true });
     if ("seconds" in c) number(c.seconds, k("seconds"), 0, 3600, { open: true });
     if ("param" in c && (typeof c.param !== "string" || !IDENT.test(c.param))) add("U012", k("param"), `param is ${str(c.param)}; it takes a param's name`, 'write param: "rate"');
+    if (c.kind === "control" && "control" in c && !controlNames.includes(c.control)) add("U020", k("control"), `${str(c.control)} names no Control of this UI.${typeof c.control === "string" ? didYouMean(c.control, controlNames) : ""}`, controlNames.length ? `name one of: ${controlNames.join(", ")}` : "declare it under controls");
+    if (c.kind === "action" && "action" in c) {
+      const top = /** @type {Record<string, any>} */ (decl);
+      const actions = isObj(top.actions) ? Object.keys(top.actions) : [];
+      if (!actions.includes(c.action)) add("U020", k("action"), `${str(c.action)} names no action of this UI.${typeof c.action === "string" ? didYouMean(c.action, actions) : ""}`, actions.length ? `name one of: ${actions.join(", ")}` : "declare it under actions");
+    }
+    if (c.kind === "view" && "draw" in c) {
+      if (typeof c.draw !== "string" || !Object.hasOwn(env.outputs, c.draw)) add("U014", k("draw"), `a view draws ${str(c.draw)}, which is not an output of the ${env.pkg} Dialect.${typeof c.draw === "string" ? didYouMean(c.draw, drawn) : ""}`, drawn.length ? `name a Draw output: ${drawn.join(", ")}` : "declare a Draw output in ports.out");
+      else if (!env.outputs[c.draw].draw) add("U014", k("draw"), `out.${c.draw} is ${env.outputs[c.draw].seam}, not a Draw seam: a view draws a Draw output`, drawn.length ? `name a Draw output: ${drawn.join(", ")}` : "declare a Draw output in ports.out");
+      else if ("pointer" in c) pointer(c.pointer, c.draw, k("pointer"));
+    }
     if (c.kind === "runs") {
       if ("from" in c) number(c.from, k("from"), -Infinity, Infinity);
       if ("to" in c) number(c.to, k("to"), -Infinity, Infinity);
@@ -346,8 +451,12 @@ export function validate(decl, env) {
       }
       if (view === "params" && key !== "*" && !IDENT.test(key)) add("U012", kat, `'${key}' is not a param name`, 'key it by a param name, or "*" for every param');
       if (!isObj(a)) { add("U012", kat, `the annotation '${key}' is not an object`, 'write { note: "…" }'); continue; }
-      keys(a, kat, ["note", "badge", "tone"], [], `the annotation '${key}'`);
-      if (!("note" in a || "badge" in a || "tone" in a)) add("U001", kat, `the annotation '${key}' has none of note, badge, tone`, 'add note: "…"');
+      const marks = view === "params" ? ["note", "badge", "tone", "look", "curve", "step"] : ["note", "badge", "tone"];
+      keys(a, kat, marks, [], `the annotation '${key}'`);
+      if (!marks.some((m) => m in a)) add("U001", kat, `the annotation '${key}' has none of ${marks.join(", ")}`, 'add note: "…"');
+      if ("look" in a && !PARAM_LOOKS.includes(a.look)) add("U012", [...kat, "look"], `look is ${str(a.look)}; a param looks like ${PARAM_LOOKS.join(", ")}`, 'write look: "knob"');
+      if ("curve" in a && !CURVES.includes(a.curve)) add("U012", [...kat, "curve"], `curve is ${str(a.curve)}; it is "linear" or "log"`, 'write curve: "log"');
+      if ("step" in a && !(typeof a.step === "number" && Number.isFinite(a.step) && a.step > 0)) add("U012", [...kat, "step"], `step is ${str(a.step)}; it takes a number above 0`, "write step: 0.1");
       if ("note" in a) string(a.note, [...kat, "note"]);
       if ("badge" in a) { if (typeof a.badge === "function") lambda(a.badge, [...kat, "badge"], viewLambda); else string(a.badge, [...kat, "badge"]); }
       if ("tone" in a) {
@@ -357,4 +466,18 @@ export function validate(decl, env) {
     }
   }
   return out;
+}
+
+/**
+ * Whether a module's text exports `name`: a function, class or binding declared with export, or a name in an
+ * export list (`export { a, b as name }`). A text check, as the custom element check is.
+ * @param {string} text @param {string} name
+ */
+export function exportsName(text, name) {
+  const n = name.replace(/\$/g, "\\$");
+  if (new RegExp(`\\bexport\\s+(?:async\\s+)?(?:function\\s*\\*?|class|const|let|var)\\s+${n}\\b`).test(text)) return true;
+  for (const m of text.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
+    for (const part of m[1].split(",")) { const bits = part.trim().split(/\s+as\s+/); if ((bits[1] ?? bits[0]).trim() === name) return true; }
+  }
+  return false;
 }

@@ -91,3 +91,45 @@ export function codeView(text, name) {
   const lines = text.split("\n");
   return h("div", { class: "code", "aria-label": `source of ${name}` }, lines.map((l, i) => h("div", { class: "ln" }, h("span", { class: "no" }, String(i + 1)), h("code", null, l || " "))));
 }
+
+/**
+ * One declared Control's on-screen form (the generated `controls` view), from its declaration: buttons laid out by
+ * its grid (else in a row), a row of triggers, a slider, a checkbox, a menu, a text field, a color well; vectors,
+ * points and picks as a JSON field until their own widgets land. `send(record)` logs the Control's record;
+ * `focus(on)` tells the page a text field has the keys. A keyed Control (`each`) shows nothing here: its instances
+ * are a Program's, which a tile's control component places.
+ * @param {any} form  a session form @param {(record: Record<string, unknown>) => void} send @param {(on: boolean) => void} focus
+ */
+export function controlForm(form, send, focus) {
+  if (form.each) return null;
+  const label = h("span", { class: "dim" }, form.label ?? form.name);
+  /** A button that is held while pressed. @param {string} text @param {(down: boolean) => void} set */
+  const hold = (text, set) => h("button", {
+    class: "btn", onpointerdown: (/** @type {any} */ e) => { e.target.setPointerCapture?.(e.pointerId); set(true); },
+    onpointerup: () => set(false), onpointercancel: () => set(false), onlostpointercapture: () => set(false),
+  }, text);
+  switch (form.kind) {
+    case "buttons": {
+      /** @type {Record<string, boolean>} */
+      const held = Object.fromEntries(form.buttons.map((/** @type {string} */ b) => [b, false]));
+      const button = (/** @type {string} */ b) => hold(b, (down) => { if (held[b] === down) return; held[b] = down; send({ ...held }); });
+      if (!form.grid) return h("div", { class: "control" }, label, h("div", { class: "inputs" }, form.buttons.map(button)));
+      const cols = Math.max(...form.grid.map((/** @type {unknown[]} */ r) => r.length));
+      return h("div", { class: "control" }, label, h("div", { class: "grid", style: `grid-template-columns: repeat(${cols}, 44px)` },
+        form.grid.flat().map((/** @type {string | null} */ b) => (b === null ? h("span") : button(b)))));
+    }
+    case "triggers": {
+      const first = form.first ?? 0;
+      return h("div", { class: "control" }, label, h("div", { class: "inputs" }, Array.from({ length: form.count }, (_, i) => hold(String(first + i), (on) => send({ index: first + i, on, velocity: 1 })))));
+    }
+    case "number": return h("label", { class: "control" }, label, h("input", { type: "range", min: form.min, max: form.max, step: form.step ?? "any", value: form.value, oninput: (/** @type {any} */ e) => send({ value: Number(e.target.value) }) }));
+    case "toggle": return h("label", { class: "control" }, label, h("input", { type: "checkbox", checked: !!form.value, onchange: (/** @type {any} */ e) => send({ value: e.target.checked }) }));
+    case "choice": return h("label", { class: "control" }, label, h("select", { onchange: (/** @type {any} */ e) => send({ value: e.target.value }) }, form.options.map((/** @type {string} */ o) => h("option", { value: o, ...(o === form.value ? { selected: true } : {}) }, o))));
+    case "text": return h("label", { class: "control" }, label, h("input", { type: "text", value: form.value ?? "", maxlength: form.max ?? 256, onfocus: () => focus(true), onblur: () => focus(false), oninput: (/** @type {any} */ e) => send({ value: e.target.value }) }));
+    case "color": {
+      const hex = (/** @type {number[]} */ c) => `#${c.map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("")}`;
+      return h("label", { class: "control" }, label, h("input", { type: "color", value: hex(form.value), oninput: (/** @type {any} */ e) => send({ value: [1, 3, 5].map((i) => parseInt(e.target.value.slice(i, i + 2), 16) / 255) }) }));
+    }
+    default: return h("label", { class: "control" }, label, h("input", { type: "text", value: JSON.stringify(form.value ?? null), onfocus: () => focus(true), onblur: () => focus(false), onchange: (/** @type {any} */ e) => { try { send({ value: JSON.parse(e.target.value) }); } catch { /* not JSON yet: nothing is sent */ } } }));
+  }
+}

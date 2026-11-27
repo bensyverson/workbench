@@ -1,7 +1,7 @@
 {
   "name": "bounce",
   "version": "0.1.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "Balls fly in a box and rebound off its walls; each ball carries numbers its Program declares.",
   "entry": {
     "dialect": "bounce.dialect.js",

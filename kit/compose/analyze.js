@@ -14,7 +14,7 @@ import { compareSeams, printValue, printSeam, FrameGraph, edgeText, convertText,
 import { applyRename, applySet, undelayedLoops } from "./wires.js";
 import { paramWireProblems, paramLoops, rateOf } from "./param-wires.js";
 import { queueProblems } from "./queues.js";
-import { withPage, pageRuntime, isPageHandle } from "./page.js";
+import { withPage, pageRuntimeFor, isPageHandle, pageControls, pageSeams, uiFor } from "./page.js";
 import { layerOf, registerLayers, planLayers, layerHandleProblem, LAYER } from "./layer.js";
 import { glueEdge, derived, edgeFor, derivationText, edgeForms, noPathFix } from "./edges.js";
 import { planOf, notesOf } from "./replan.js";
@@ -81,6 +81,17 @@ export function analyze(name, start, given, options) {
     part.seams = withDrawMaxes(part.seams, lowered.seams?.draws);
   }
 
+  // the page's outputs are the composed parts' declared Controls (declared Controls, 2026-11-27)
+  const withUI = [...parts.values()].filter((p) => !broken.has(p)).map((p) => ({ name: p.name, dialectName: p.dialectName, ui: uiFor(options.packages, p.dialect), part: p })).filter((x) => x.ui && x.dialectName !== "page");
+  const { controls, clashes, sharedKeys } = pageControls(withUI);
+  const pagePart = [...parts.values()].find((p) => p.dialectName === "page" && p.name === "page");
+  if (pagePart) pagePart.seams = { ...pagePart.seams, out: pageSeams(controls) };
+  for (const c of clashes) {
+    const at = withUI.find((x) => x.name === c.second.part)?.part.at ?? start;
+    add(at, "S119", `the Control '${c.name}' is declared by part '${c.first.part}' (${c.first.dialect}) as ${JSON.stringify(c.first.decl)} and by part '${c.second.part}' (${c.second.dialect}) as ${JSON.stringify(c.second.decl)}: one name is one Control on the page, so two parts may share it only with equal declarations, and neither with each or to`, `rename one part's Control (and its Event input), or make the two declarations equal`);
+  }
+  for (const k of sharedKeys) add(start, "S121", `the key ${k.code} is bound by two Controls, '${k.controls[0]}' and '${k.controls[1]}': one keyboard has one meaning per key, so '${k.controls[0]}', declared first, takes it`, `give '${k.controls[1]}' another code, or override the key map in the host`, {}, "warning");
+
   /** A part's side, with no port. @param {Part} p @returns {Side} */
   function partSide(p) { return { part: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}) }; }
   /** A known handle's side. @param {Handle} h @returns {Side} */
@@ -113,6 +124,13 @@ export function analyze(name, start, given, options) {
     if (!p) { add(at, "S102", `${call}: ${handleText(h)} is a handle of a part not in the composition`, `add it first: .part(${h.part})`, sides); return null; }
     if (h.side !== want) { add(at, "S102", `${call}: ${handleText(h)} is ${h.side === "frame" ? "a frame" : h.side === "param" ? "a param" : h.side === "out" ? "an output" : "an input"}, and this place takes ${want === "frame" ? "a frame" : want === "in" ? "an input or a param" : `an ${what}`}`, want === "frame" ? ".frame(a.frame.x, b.frame.y, edge)" : ".wire(producer.out.x, consumer.in.y)", sides); return null; }
     if (!h.known && p.layer !== undefined) { const lp = layerHandleProblem(p, h); add(at, "S111", `${call}: ${lp.message}`, lp.fix, sides); return null; }
+    if (!h.known && p === pagePart && want === "out" && Object.hasOwn(controls, h.name)) return broken.has(p) ? null : p;
+    if (!h.known && p === pagePart) {
+      const has = names(p, want);
+      const given = (options.packages ?? []).some((x) => x?.ui);
+      add(at, "S111", `${call}: the page has no Control '${h.name}'.${didYouMean(h.name, has)} Its Controls: ${has.length ? has.join(", ") : "none"}`, given ? (has.length ? `use one of: ${has.map((n) => `page.out.${n}`).join(", ")}, or declare it in a part's UI: controls: { ${h.name}: { kind: … } }` : `declare it in a part's UI: controls: { ${h.name}: { kind: … } }`) : "the page's Controls come from the parts' UIs: pass the loaded packages (kit/package's loadPackage results) in the options' packages", sides);
+      return null;
+    }
     if (!h.known) {
       const has = names(p, want);
       add(at, "S111", `${call}: part '${p.name}' (${p.dialectName}${p.version ? ` ${p.version}` : ""}) has no ${what} '${h.name}'.${didYouMean(h.name, has)} Its ${what}s: ${has.length ? has.join(", ") : "none"}`, has.length ? `use one of: ${has.map((n) => `${p.name}.${want}.${n}`).join(", ")}` : want === "param" ? `the ${p.name} Program declares no params` : `the ${p.dialectName} package declares no ${what}s`, sides);
@@ -286,6 +304,14 @@ export function analyze(name, start, given, options) {
     }
   }
 
+  // a declared Control whose input nothing feeds: the person cannot play it here
+  for (const x of withUI) {
+    for (const [n, c] of Object.entries(/** @type {Record<string, any>} */ (/** @type {any} */ (x.ui).controls))) {
+      if (c.local || attempted.has(`${x.name}.${c.input}`)) continue;
+      add(x.part.at, "S120", `part '${x.name}' (${x.dialectName}) declares the Control '${n}', and nothing wires ${x.name}.in.${c.input}, so the person cannot play it in this composition`, `wire it: .wire(page.out.${n}, ${x.name}.in.${c.input}), or wire that input from another part`, { to: { ...partSide(x.part), port: `in.${c.input}` } }, "warning");
+    }
+  }
+
   // a cycle of wires needs one delayed wire in it; which wire the glue wrote last never decides it
   const order = [...parts.values()].map((p) => p.name);
   for (const { loop, hops } of undelayedLoops(order, wires.filter((w) => w.into === "in").map((w) => ({ from: w.from.part, to: w.to.part, delay: w.delay, wire: w, key: `${handleText(w.from)} ${handleText(w.to)}` })))) {
@@ -320,11 +346,18 @@ export function analyze(name, start, given, options) {
     const live = wires.filter((w) => w.ok && w.into === "in");
     const sized = [...parts.values()].filter((p) => !broken.has(p) && p.record).map((p) => ({ name: p.name, dialect: p.dialectName, record: /** @type {Record<string, any>} */ (p.record) }));
     const ends = live.map((w) => ({ from: { part: w.from.part, name: w.from.name }, to: { part: w.to.part, name: w.to.name }, delivery: /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name]?.delivery }));
-    for (const pr of queueProblems(sized, ends, [...options.runtimes, pageRuntime], { catchUp: options.catchUp })) {
+    for (const pr of queueProblems(sized, ends, [...options.runtimes, pageRuntimeFor(controls)], { catchUp: options.catchUp })) {
       const w = live[pr.wire];
       // a person is the one sender no party controls, so a page wire past its size folds rather than stops its consumer
       // (Ben, 2026-11-26): the composer is told, as with a policy, and the build goes on
-      if (!w.overflow && isPageHandle(w.from)) { add(w.at, "S116", `${pr.message}; a page wire past its size ${pr.max === 1 ? "folds what is waiting into the latest at each step" : `keeps the first ${pr.max - 1} in order at each step and folds the rest into the latest`} (the control's held state), counted in the run's stats().overflow`, `if every press and release matters, ${pr.fix}; if only the held state matters, ignore this`, { from: side(w.from), to: side(w.to) }, "warning"); continue; }
+      if (!w.overflow && isPageHandle(w.from)) {
+        const delta = controls[w.from.name]?.records === "delta";
+        const how = delta
+          ? `carries over what a step cannot take: the step takes the first ${pr.max} in order and the rest wait for the next, each with its own $T (a ${controls[w.from.name]?.kind} Control's records are never dropped), counted in the run's stats().carried`
+          : `folds: ${pr.max === 1 ? "a step takes only the latest of what is waiting" : `a step takes the first ${pr.max - 1} in order, then the latest`} (the Control's state now), counted in the run's stats().overflow`;
+        add(w.at, "S116", `${pr.message}; a page wire past its size ${how}`, delta ? `if latency matters, ${pr.fix}; nothing is lost either way` : `if every change matters, ${pr.fix}; if only the latest state matters, ignore this`, { from: side(w.from), to: side(w.to) }, "warning");
+        continue;
+      }
       if (!w.overflow) { add(w.at, "S116", pr.message, `${pr.fix}; or, on this wire, { overflow: "keepLast" } (the newest ${pr.max} at each step) or { overflow: "keepFirst" } (the first ${pr.max})`, { from: side(w.from), to: side(w.to) }); continue; }
       const kept = w.overflow === "keepLast" ? `the newest ${pr.max}` : `the first ${pr.max}`;
       add(w.at, "S116", `${pr.message}; the wire's { overflow: "${w.overflow}" } keeps ${kept} at each step and drops the rest, counted in the run's stats().overflow${isPageHandle(w.from) ? "; on a page wire it replaces the page wire's fold, so the latest held state may not arrive (a button can stay down)" : ""}`, `if every record matters, ${pr.fix}, and remove overflow; if dropping is intended, ignore this`, { from: side(w.from), to: side(w.to) }, "warning");
@@ -358,7 +391,9 @@ export function analyze(name, start, given, options) {
     name,
     parts: [...parts.values()].filter((p) => !broken.has(p)).map((p) => (p.layer
       ? { name: p.name, dialect: LAYER, record: {}, layer: { inputs: p.layer.inputs.map(handleText), max: p.layer.max, frame: p.layer.frameNode } }
-      : { name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record) })),
+      : p === pagePart
+        ? { name: p.name, dialect: p.dialectName, record: /** @type {Record<string, any>} */ (p.record), controls: Object.fromEntries(Object.entries(controls).map(([n, { parts: _, ...c }]) => [n, c])) }
+        : { name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record), ...pointerOf(withUI.find((x) => x.part === p)?.ui) })),
     wires: wires.filter((w) => w.ok).map((w) => {
       // a param wire's `to` is `<part>.param.<name>`: kit/run applies it between instants
       const consumer = w.into === "in" ? /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name] : null;
@@ -449,4 +484,19 @@ function describe(v) {
   const p = programOf(v);
   if (p) return instanceName(/** @type {any} */ (p).root);
   return showValue(v);
+}
+
+/**
+ * A part's pointer inputs, by Draw output, from its UI's stage and its view tiles: `{ pointer: { <output>: <input> } }`,
+ * or nothing when it takes none.
+ * @param {any} ui
+ */
+function pointerOf(ui) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  if (ui?.stage?.draw && ui.stage.pointer) out[ui.stage.draw] = ui.stage.pointer;
+  /** @param {any[]} list */
+  const walk = (list) => { for (const c of list ?? []) { if (c.kind === "view" && c.pointer) out[c.draw] = c.pointer; walk(c.items); } };
+  for (const t of Object.values(ui?.tiles ?? {})) walk(/** @type {any} */ (t).body);
+  return Object.keys(out).length ? { pointer: out } : {};
 }

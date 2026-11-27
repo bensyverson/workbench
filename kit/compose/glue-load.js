@@ -5,7 +5,9 @@
 // never `undefined`.
 
 import { scanGlue, GLUE_SPECIFIERS } from "./glue.js";
-import { isComposition } from "./compose.js";
+import { isComposition, partsOf } from "./compose.js";
+import { programOf } from "../define/grammar.js";
+import { applyArgs } from "../define/sites.js";
 import { glueSite } from "./site.js";
 
 /** @import { Loc } from "../parse/ast.js" */
@@ -67,10 +69,14 @@ function glueParams(refusals, path) {
  * Calls a glue's default export with the glue's `$`: the composition, or why there is none. A build-time read of
  * `$` is S104; an export that is not a function, throws, or returns something other than a composition is S103; a
  * thrown error that carries kit diagnostics (`diagnostics`) or a kit code (`code`, such as a handle's S301) keeps them.
+ * With `args`, each value is put in at the call its Argument address names, in whichever part's Program holds it,
+ * before the parts are checked (kit/define's run, `args`): a Grip's preview inside a glue. An address no part's call
+ * reaches is a TypeError, the host's mistake.
  * @param {unknown} exported  the module's default export @param {string} [path]  how messages name the file
+ * @param {{ args?: Record<string, unknown> }} [options]
  * @returns {{ composition: any, diagnostics: GlueLoadDiagnostic[] }}
  */
-export function callGlue(exported, path = "workbench.js") {
+export function callGlue(exported, path = "workbench.js", options = {}) {
   /** @param {string} message @returns {{ composition: null, diagnostics: GlueLoadDiagnostic[] }} */
   const refused = (message) => ({ composition: null, diagnostics: [{ code: "S103", severity: "error", message, fix: SHAPE, file: path }] });
   if (typeof exported !== "function") return refused(`${path}'s default export is ${exported === undefined ? "missing" : `${typeof exported}, not a function`}: a glue is a function ($) => composition`);
@@ -88,5 +94,16 @@ export function callGlue(exported, path = "workbench.js") {
   }
   if (refusals.length) return { composition: null, diagnostics: refusals };
   if (!isComposition(out)) return refused(`${path}'s default export returned ${out === undefined ? "nothing" : out instanceof Promise ? "a Promise" : "something that is not a composition"}: a glue returns compose(…)…, built synchronously`);
+  if (options.args) {
+    const reached = new Set();
+    for (const part of partsOf(/** @type {object} */ (out))) {
+      const program = programOf(/** @type {any} */ (part));
+      if (!program) continue;
+      const missing = applyArgs(program, options.args);
+      for (const k of Object.keys(options.args)) if (!missing.includes(k)) reached.add(k);
+    }
+    const none = Object.keys(options.args).filter((k) => !reached.has(k));
+    if (none.length) throw new TypeError(`callGlue({ args }): no part's call is at ${none.map((n) => `'${n}'`).join(", ")}: an address is a call's Ref id, :<i>, then a path`);
+  }
   return { composition: out, diagnostics: [] };
 }

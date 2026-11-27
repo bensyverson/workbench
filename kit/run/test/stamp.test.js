@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createRun, replay } from "../index.js";
 import { compose, page } from "../../compose/index.js";
 import { list, struct } from "../../define/index.js";
-import { tiny, pair } from "./helpers.js";
+import { tiny, pair, controlsOf, FOUR } from "./helpers.js";
 
 const EXPECT = [0, 0.25, 0.5, 0.75, 1];
 const seeing = (/** @type {any} */ s, /** @type {any} */ c) => ({ got: [...s.got, ...c.inputs.e.map((/** @type {any} */ r) => r.$T ?? -1)], Ts: s.Ts, biggest: 0 });
@@ -60,7 +60,7 @@ test("a delivered record is frozen, read-only in $T, and not enumerable", () => 
   for (const r of kept) { assert.equal(Object.isFrozen(r), true); assert.deepEqual(Object.keys(r), ["n"]); assert.equal(typeof r.$T, "number"); }
 });
 
-/** A walker fed by the page. */
+/** A walker fed by the page, through its own declared pad (declared Controls, 2026-11-27). */
 function walker() {
   return tiny("walk", { state: { x: "f64", seen: list("f64", 1000) }, inputs: false, ports: { in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "the pad" } } } },
     { clock: () => ({ tick: 1 / 4 }), init: () => ({ x: 0, seen: [] }), events: { in: { pad: 120 } },
@@ -70,7 +70,7 @@ function walker() {
 test("the host's own pad object is never frozen or stamped, so it can be reused; $T is each input's stamp", () => {
   const W = walker();
   const w = /** @type {any} */ (W.grammar("hero"));
-  const composed = compose("walk").part(w).wire(page.out.pad, w.in.pad).build({ runtimes: [W.runtime] });
+  const composed = compose("walk").part(w).wire(page.out.pad, w.in.pad).build({ runtimes: [W.runtime], packages: controlsOf(W, { pad: FOUR }) });
   const pad = { up: false, down: false, left: false, right: true };
   const run = createRun(composed, { runtimes: [W.runtime] });
   run.input({ kind: "control", T: 0.1, part: "page", name: "pad", value: pad });
@@ -86,7 +86,7 @@ test("the host's own pad object is never frozen or stamped, so it can be reused;
 test("a frozen host object gets $T too, and a JSON round-tripped log replays", () => {
   const W = walker();
   const w = /** @type {any} */ (W.grammar("hero"));
-  const composed = compose("walk").part(w).wire(page.out.pad, w.in.pad).build({ runtimes: [W.runtime] });
+  const composed = compose("walk").part(w).wire(page.out.pad, w.in.pad).build({ runtimes: [W.runtime], packages: controlsOf(W, { pad: FOUR }) });
   const pad = Object.freeze({ up: false, down: false, left: false, right: true });
   const run = createRun(composed, { runtimes: [W.runtime] });
   run.input({ kind: "control", T: 0.1, part: "page", name: "pad", value: pad });

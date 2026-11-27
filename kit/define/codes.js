@@ -42,21 +42,29 @@ export const DEFINE_CODES = Object.freeze({
   D034: "A malformed files declaration (a Dialect's data files): not { <name>: { kind, path, note } }, a kind other than text, json or csv (an image is declared in images, with its file), a path that is missing or a .js module, no note, or a path two declarations name",
 });
 
-/** defineUI's codes: U… is a UI declaration refused when defineUI is called. U006 is retired (its job, a bad state, is D023's); its number is not reused. */
+/**
+ * defineUI's codes: U… is a UI declaration refused when defineUI is called, or, for an `each`'s instances and a param
+ * component, when the UI is lowered against one Program. Retired, numbers not reused: U006 (its job, a bad state, is
+ * D023's), U009 (`emits`) and U010 (`inputs`), which declared Controls replaced (2026-11-27).
+ */
 export const UI_CODES = Object.freeze({
-  U001: "An unknown key (with a did-you-mean), or a required key missing; a `state` key, which belongs to defineDialect",
+  U001: "An unknown key (with a did-you-mean), or a required key missing; a `state` key, which belongs to defineDialect; `inputs`, whose tip says to declare controls, and `emits`, whose tip says to dispatch wb-control",
   U002: "A component kind that does not exist",
-  U003: "A place or annotate that names no view or tile, or tiles placed in a cycle",
+  U003: "A place or annotate that names no view or tile (`pad` suggests `controls`), or tiles placed in a cycle",
   U004: "A place without exactly one direction, or a bad size",
   U005: "A path that names nothing in the Dialect's state, or names the wrong type for its key",
   U007: "A lambda that does not parse, leaves the subset, takes too many parameters or a destructuring pattern as one, assigns anything but its own let locals, reads an undeclared state member or a free name the Dialect does not give, starts a member chain anywhere but at a parameter or a Dialect global (a local that is not a const set to exactly a parameter chain, a conditional, a call, an array), holds state in a local other than that const (a let or const set from a struct, list or optional that is not exactly a parameter chain, a destructuring, a for…of binding), or uses a list with no declared max other than by its length and an index",
   U008: "A custom element without the package prefix or a valid tag, without a module, with a module that is not a package file or does not define the tag, or a tag used twice",
-  U009: "An emits event that is not pick, select or param, or emits without an element",
-  U010: "Inputs whose object is not a Dialect object, whose buttons are not exactly its bool members, or with an unknown or repeated role",
   U011: "A tile id that is not an identifier or is a generated view's id",
-  U012: "A value of the wrong form: a non-string label, title or note, a number out of range or not whole, a bad columns entry, an empty body or items",
+  U012: "A value of the wrong form: a non-string label, title or note, a number out of range or not whole, a bad columns entry, an empty body or items, a param annotation's look, curve or step",
   U013: "defineUI given something other than the package's Grammar builder, or a Dialect that declares no state",
-  U014: "A Draw stage (`stage: { draw }`) naming an output the Dialect lacks (with a did-you-mean) or one that is not a Draw seam, or a stage that is both a Draw output and a custom element",
+  U014: "A Draw stage (`stage: { draw }`) naming an output the Dialect lacks (with a did-you-mean) or one that is not a Draw seam, a stage that is both a Draw output and a custom element, a `view` component naming no Draw output, or a `pointer` on a stage with no Draw output",
+  U015: "A Control (or a pointer) that names no Event input of the Dialect and has no `to` (with a did-you-mean; a value input is named as one)",
+  U016: "A Control's record, or the pointer's seam, that does not fit its input's seam (both seams printed; the pointer's to copy)",
+  U017: "A malformed Control: an unknown kind or key, a missing key, min not below max, a value outside the range or not among the options, a log curve with min at or below 0, buttons that are not identifiers or repeat, a grid naming an unknown button or one twice, a code that is not a KeyboardEvent.code, more keys than count, a MIDI number outside 0..127, a perFrame that is not whole and at least 1, an each that is not a function, an unknown latency; at lower, an each that does not give a list of instances, a repeated key, or an instance that misfits its kind",
+  U018: "A malformed Grip: a UI with no Draw stage, an each that is not a state list with a max, an unknown kind, a length Grip with no axis, a rotate or scale Grip with no center, or an unknown key",
+  U019: "A malformed action: a module that is not \"./<file>.js\", an export that is not an identifier, an unknown gives, an unknown key, or (given moduleText) a module with no export of that name",
+  U020: "A control, param or action component naming nothing declared (a param's is judged at lower, against the Program's params)",
 });
 
 /** The generated builder's codes. */

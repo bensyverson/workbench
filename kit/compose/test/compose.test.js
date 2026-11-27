@@ -340,7 +340,8 @@ test("S116: a frame consumer is bounded by the catch-up cap, and the cap is an o
 });
 
 /** The codes of a wire constant and a param wire (wire-set-param.test.js has their cases), and of loading a glue (glue-load.test.js). */
-const ELSEWHERE = ["S103", "S104", "S117", "S118", "S207", "S208"];
+// S119 to S121 (declared Controls) are page-controls.test.js's
+const ELSEWHERE = ["S103", "S104", "S117", "S118", "S119", "S120", "S121", "S207", "S208"];
 
 test("every S code has a failing case above (or in wire-set-param.test.js, glue-load.test.js, or draw.test.js for S4…)", () => {
   for (const c of Object.keys(COMPOSE_CODES)) if (!c.startsWith("S4")) assert.ok(seen.has(c) || ELSEWHERE.includes(c), `no case for ${c}`);

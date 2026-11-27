@@ -57,3 +57,15 @@ Per the leaf: one Opus, one Sonnet and one Haiku agent, each `run.sh <fresh dir 
 - `runs/2026-11-25-rerun/` (agents d–f): the rerun, after the first round's changes (`runs.seconds`, the element's update order and size) and with every example moved to `orbits`.
 
 Findings: [project/2026-11-25-ui-trial-findings.md](../../project/2026-11-25-ui-trial-findings.md). After the rerun the draft took four more wording fixes (`Math.abs` in the example, `stage` always present, `:host { display: block }`, strings in lambdas), which no agent has run against yet.
+
+## Massage for declared Controls (2026-11-27, leaf `FhnOhO`)
+
+[Declared Controls](../../project/2026-11-27-controls-draft.md) retired the kit's own pad (`PAGE_CONTROLS`), defineUI's `inputs` and `emits`, and the manifest's `elements`, and raised `KIT_VERSION` to 0.5. Every fixture and run record a test loads was massaged to the new API; run records no test loads stay as handed in. Sizes are `git diff --numstat` against `b115e90` (lines added / removed); a manifest's count includes its rehash (`node scripts/pkg/hash.js <dir>`).
+
+| File | Size | What |
+|---|---|---|
+| `fixtures/valid/maze.ui.js` | +1 / −12 | its `inputs` onto the Pad object removed: this Dialect has no Event input for a Control |
+| `fixtures/valid/particles.ui.js` | +1 / −1 | `emits` removed from the stage |
+| `test/check.test.js` | +13 / −28 | the four U009 and U010 cases replaced by one U001 case for `emits` and `inputs`; the codes-in-the-docs check skips U015–U020, which came after the trial |
+
+The size is the finding: the trial UIs used two mechanisms that retired (`inputs`, `emits`), and neither had a Dialect input to become a Control.

@@ -37,3 +37,15 @@ What it does not do: run a host, or sandbox the package (it does import and buil
 ## Running the trial
 
 Run 2026-11-25 ([the findings](../../project/2026-11-25-package-trial-findings.md); records in `runs/2026-11-25/`). To rerun: fresh agents (a spread of models) each `run.sh <fresh dir under /private/tmp> <model>`; copy each directory to `runs/<date>/agent-x/` afterwards, record what each guessed, which codes it hit and how much its output needed changing, and write the findings as a dated doc under `project/`.
+
+## Massage for declared Controls (2026-11-27, leaf `FhnOhO`)
+
+[Declared Controls](../../project/2026-11-27-controls-draft.md) retired the kit's own pad (`PAGE_CONTROLS`), defineUI's `inputs` and `emits`, and the manifest's `elements`, and raised `KIT_VERSION` to 0.5. Every fixture and run record a test loads was massaged to the new API; run records no test loads stay as handed in. Sizes are `git diff --numstat` against `b115e90` (lines added / removed); a manifest's count includes its rehash (`node scripts/pkg/hash.js <dir>`).
+
+| File | Size | What |
+|---|---|---|
+| `fixtures/valid/maze/maze.ui.js` | +1 / −12 | `inputs` removed (this maze Dialect has no ports) |
+| `fixtures/valid/maze/wb-package.json` | +2 / −2 | `"kit": "0.5"`, rehash |
+| `fixtures/valid/particles/particles.ui.js` | +1 / −1 | `emits` removed |
+| `fixtures/valid/particles/wb-package.json` | +3 / −3 | `"kit": "0.5"`, `elements` renamed `modules`, rehash |
+| `test/check.test.js` | +6 / −5 | K015 and K016 cases name `modules`; the K003 CLI case expects 0.5 |

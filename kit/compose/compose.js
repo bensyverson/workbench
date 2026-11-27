@@ -27,7 +27,7 @@ import { makeLayer, SHORTHAND } from "./layer.js";
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
  * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants
  * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`. The renderer profile `check`/`build` was given (resolved from its name) is `profile`; the glue's edges are `frames`.
- * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any>, layer?: { inputs: string[], max: number, frame: string } }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, frames: GlueFrame[], show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
+ * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any>, layer?: { inputs: string[], max: number, frame: string }, controls?: Record<string, import("./page.js").PageControl>, pointer?: Record<string, string> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, frames: GlueFrame[], show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
  */
 /**
  * One glue `.frame` call that planned, in glue order: its two frames (`<part>.<frame>`), its line, the edge as written
@@ -41,7 +41,7 @@ import { makeLayer, SHORTHAND } from "./layer.js";
  * With `runtimes` (kit/define's defineRuntime results, matched to parts by Dialect name), each reliable Event wire's queue
  * is sized (S116), a frame consumer's by `catchUp`, the most workbench time one display frame may cover (seconds,
  * default 1/15).
- * @typedef {{ packages?: Array<{ name: string, version: string, dialect?: unknown }>, build?: import("../define/define.js").BuildOptions, runtimes?: import("../define/runtime.js").Runtime[], catchUp?: number, profile?: import("../draw/profiles.js").Profile | string }} ComposeOptions
+ * @typedef {{ packages?: Array<{ name: string, version?: string, dialect?: unknown, ui?: unknown }>, build?: import("../define/define.js").BuildOptions, runtimes?: import("../define/runtime.js").Runtime[], catchUp?: number, profile?: import("../draw/profiles.js").Profile | string }} ComposeOptions
  */
 /** @typedef {{ kind: "part", value: unknown } | { kind: "frame", a: unknown, b: unknown, edge: unknown } | { kind: "wire", from: unknown, to: unknown, options: unknown } | { kind: "show", value: unknown }} GlueCall */
 
@@ -59,6 +59,11 @@ export class ComposeError extends Error {
 const MADE = new WeakSet();
 /** @param {unknown} v */
 export const isComposition = (v) => v !== null && typeof v === "object" && MADE.has(v);
+
+/** Each composition's calls, so a host can reach its parts' Programs (callGlue's args). @type {WeakMap<object, Array<{ kind: string, value?: unknown }>>} */
+const CALLS = new WeakMap();
+/** The values a composition's .part calls were given, in order. @param {object} composition */
+export const partsOf = (composition) => (CALLS.get(composition) ?? []).filter((c) => c.kind === "part").map((c) => c.value);
 
 /**
  * Starts a composition. Its name is the workbench's, in addresses (`lab:<name>#level.out.picked`).
@@ -91,5 +96,6 @@ export function compose(name) {
     plan: (o) => run(o).plan,
   });
   MADE.add(api);
+  CALLS.set(api, calls);
   return api;
 }

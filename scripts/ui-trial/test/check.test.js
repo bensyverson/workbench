@@ -77,10 +77,14 @@ test("the maze fixture checks clean", async () => {
   assert.equal(r.ok, true);
 });
 
+/** The UI codes added after the trial, by declared Controls (2026-11-27). */
+const LATER = ["U015", "U016", "U017", "U018", "U019", "U020"];
+
 test("every UI code is documented in ui-draft.md and rules.md", () => {
   for (const doc of ["docs/ui-draft.md", "docs/rules.md"]) {
     const text = readFileSync(join(TRIAL, doc), "utf8");
-    for (const c of Object.keys(UI_CODES)) assert.ok(text.includes(`| ${c} |`), `${doc} lacks ${c}`);
+    // the trial's documents are as the trial had them: the declared Controls' codes came later (2026-11-27)
+    for (const c of Object.keys(UI_CODES)) if (!LATER.includes(c)) assert.ok(text.includes(`| ${c} |`), `${doc} lacks ${c}`);
   }
 });
 
@@ -213,28 +217,16 @@ test("U008: a module that is missing, not a package file, or does not define the
   only(await check("particles", [], { "particles-field.js": "export const x = 1;\n" }), "U008");
 });
 test("U008: an element without a module", async () => {
-  only(await check("particles", [['element: "particles-field", module: "./particles-field.js", emits: ["pick", "select"]', 'element: "particles-field", emits: ["pick"]']]), "U008");
+  only(await check("particles", [['element: "particles-field", module: "./particles-field.js" }', 'element: "particles-field" }']]), "U008");
 });
 
-// U009
-test("U009: an event the contract does not have, and emits without an element", async () => {
-  const d = only(await check("particles", [['emits: ["pick", "select"]', 'emits: ["pick", "click"]']]), "U009");
-  assert.match(d.message, /click/);
-  only(await check("maze", [['{ kind: "stat", label: "score", value: "score" }', '{ kind: "stat", label: "score", value: "score", emits: ["pick"] }']]), "U009");
-});
-
-// U010
-test("U010: an inputs object that is not a Dialect object", async () => {
-  const d = only(await check("maze", [['object: "Pad"', 'object: "Pads"']]), "U010");
-  assert.match(d.message, /Did you mean 'Pad'\?/);
-});
-test("U010: buttons that are not exactly the object's members", async () => {
-  only(await check("maze", [['b: { role: "b", label: "Wait" },', ""]]), "U010");
-  only(await check("maze", [['b: { role: "b", label: "Wait" },', 'b: { role: "b", label: "Wait" },\n      start: { role: "start" },']]), "U010");
-});
-test("U010: an unknown role, and a role used twice", async () => {
-  only(await check("maze", [['role: "dpad.left"', 'role: "dpad.lft"']]), "U010");
-  only(await check("maze", [['role: "dpad.left"', 'role: "dpad.right"']]), "U010");
+// U009 and U010 retired with declared Controls (2026-11-27): emits and inputs are unknown keys, U001. This test
+// replaces the trial's four U009 and U010 cases, whose mechanisms no longer exist.
+test("U001: emits and inputs, once U009 and U010, are unknown keys whose tips say what replaced them", async () => {
+  const emits = only(await check("particles", [['module: "./particles-field.js" }', 'module: "./particles-field.js", emits: ["pick"] }']]), "U001");
+  assert.match(emits.fix, /wb-control/);
+  const inputs = only(await check("maze", [["defineUI(maze, {", 'defineUI(maze, {\n  inputs: { object: "Pad", buttons: {} },']]), "U001");
+  assert.match(inputs.fix, /controls/);
 });
 
 // U011
@@ -335,13 +327,6 @@ test("U007: members of Object.prototype are not declared state", async () => {
   only(await check("particles", [["row.live / Math.max", "row.hasOwnProperty / Math.max"]]), "U007");
   only(await check("maze", [['value: "score" }', 'value: "constructor" }']]), "U005");
   only(await check("maze", [['value: "score" }', 'value: "player.toString" }']]), "U005");
-});
-
-test("U010: inputs with no buttons are refused", async () => {
-  const noButtons = [['object: "Pad"', 'object: "Params"'], ['up: { role: "dpad.up" },\n      down: { role: "dpad.down" },\n      left: { role: "dpad.left" },\n      right: { role: "dpad.right" },\n      a: { role: "a", label: "Dash" },\n      b: { role: "b", label: "Wait" },', ""]];
-  const r = await check("maze", /** @type {Array<[string, string]>} */ (noButtons));
-  assert.ok(codes(r).includes("U010"), JSON.stringify(r.diagnostics));
-  assert.match(r.diagnostics.find((d) => d.code === "U010")?.message ?? "", /no buttons/);
 });
 
 test("U008: a module path that is a directory is a diagnostic, not a crash", async () => {

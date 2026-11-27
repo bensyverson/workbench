@@ -11,6 +11,9 @@ import { GLYPH, nativeSize, gridCells, ringed } from "./ops.js";
 /** The color an image without pixel data draws its box in. */
 const PLACEHOLDER = "#808080ff";
 
+/** A color as Canvas takes it: hex text as it is, a vec3 of components from 0 to 1 as "#rrggbb" (ruling 7). @param {unknown} c */
+const css = (c) => (Array.isArray(c) ? `#${c.map((x) => Math.round(Number(x) * 255).toString(16).padStart(2, "0")).join("")}` : c);
+
 /**
  * Draws a list on a Canvas 2D context.
  * @param {Context2D} ctx @param {Op[]} list
@@ -20,22 +23,22 @@ export function drawCanvas(ctx, list, { images, sources = {} }) {
   for (const op of list) {
     switch (op.op) {
       case "rect":
-        if (op.fill) { ctx.fillStyle = op.fill; ctx.fillRect(op.at[0], op.at[1], op.size[0], op.size[1]); }
-        if (op.stroke) { ctx.strokeStyle = op.stroke; ctx.lineWidth = 1; ctx.strokeRect(op.at[0], op.at[1], op.size[0], op.size[1]); }
+        if (op.fill) { ctx.fillStyle = css(op.fill); ctx.fillRect(op.at[0], op.at[1], op.size[0], op.size[1]); }
+        if (op.stroke) { ctx.strokeStyle = css(op.stroke); ctx.lineWidth = 1; ctx.strokeRect(op.at[0], op.at[1], op.size[0], op.size[1]); }
         break;
       case "ellipse":
         ctx.beginPath();
         ctx.ellipse(op.at[0], op.at[1], Math.abs(op.r[0]), Math.abs(op.r[1]), 0, 0, 2 * Math.PI);
-        if (op.fill) { ctx.fillStyle = op.fill; ctx.fill(); }
-        if (op.stroke) { ctx.strokeStyle = op.stroke; ctx.lineWidth = 1; ctx.stroke(); }
+        if (op.fill) { ctx.fillStyle = css(op.fill); ctx.fill(); }
+        if (op.stroke) { ctx.strokeStyle = css(op.stroke); ctx.lineWidth = 1; ctx.stroke(); }
         break;
       case "line":
         ctx.beginPath();
         op.points.forEach((/** @type {number[]} */ p, /** @type {number} */ i) => (i === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
         if (op.closed) ctx.closePath();
-        if (op.closed && op.fill) { ctx.fillStyle = op.fill; ctx.fill(); }
+        if (op.closed && op.fill) { ctx.fillStyle = css(op.fill); ctx.fill(); }
         ctx.lineWidth = op.width;
-        ctx.strokeStyle = op.stroke;
+        ctx.strokeStyle = css(op.stroke);
         ctx.stroke();
         break;
       case "image": {
@@ -63,7 +66,7 @@ export function drawCanvas(ctx, list, { images, sources = {} }) {
       case "text":
         ctx.font = `${GLYPH}px monospace`;
         ctx.textBaseline = "top";
-        ctx.fillStyle = op.fill;
+        ctx.fillStyle = css(op.fill);
         // a monospace face is about 0.6 em wide, so stretch the string to GLYPH units a character, as the op table promises
         const width = typeof ctx.measureText === "function" ? ctx.measureText("M")?.width : undefined;
         if (!(width > 0)) { ctx.fillText(op.str, op.at[0], op.at[1]); break; }

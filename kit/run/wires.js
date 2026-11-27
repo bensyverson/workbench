@@ -11,10 +11,13 @@ import { imagesOf } from "./draw.js";
 /** @import { Part } from "./part.js" */
 
 /**
- * `fromPage`: the wire leaves the built-in page part, so with no overflow policy a step past its max folds (delivery.js).
+ * `fromPage`: the wire leaves the built-in page part. `records` is how a step past the consumer's max treats what is
+ * waiting, with no overflow policy (delivery.js): a page Control's `"state"` folds, its `"delta"` (and a pointer
+ * queue's) carries over; null for any other wire, which S116 sized. `keyed` folds a state Control per key; `pointer`
+ * coalesces a run of moves; `carried` counts the records carried to a later step.
  * `source` is the wire's index in the composed record, which a re-plan after a rebuild reads (replan.js); an outside
  * wire (outside.js) has none.
- * @typedef {{ index: number, source?: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, fromPage: boolean, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire
+ * @typedef {{ index: number, source?: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, fromPage: boolean, records: "state" | "delta" | null, keyed: boolean, pointer: boolean, carried: number, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown, carried?: true }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire
  */
 /** What a consumer reads of a producer: its state and revision now, or as the instant began (the page's: no state, revision 1). @typedef {{ state: any, revision: number, part: Part | null, draws?: import("./draw.js").Draws }} View */
 
@@ -32,12 +35,16 @@ export function makeWires(composed, byName, page, layers = new Set()) {
   /** @type {Record<string, any>} */
   const images = {};
   for (const p of byName.values()) Object.assign(images, imagesOf(p.name, p.runtime));
+  /** The page's Controls, as composed: each one's class (state or delta) and whether it is keyed. @type {Record<string, any>} */
+  const controls = composed.parts.find((p) => p.name === page)?.controls ?? {};
   return composed.wires.map((w, source) => ({ w, source })).filter(({ w }) => ends(w.to).side !== "param" && !layers.has(ends(w.to).part)).map(({ w, source }, index) => {
     const from = ends(w.from), to = ends(w.to);
     const consumer = /** @type {Part} */ (byName.get(to.part));
     const event = consumer.runtime.dialect.seams.in[to.port].seam.kind === "event";
     const keepLast = w.delivery && typeof w.delivery === "object" ? w.delivery.keepLast : null;
-    return { index, source, from, to, event, delay: w.delay, fromPage: page !== null && from.part === page, keepLast, overflow: w.overflow ?? null, convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)), rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
+    const fromPage = page !== null && from.part === page;
+    const control = fromPage ? controls[from.port] : undefined;
+    return { index, source, from, to, event, delay: w.delay, fromPage, records: fromPage ? control?.records ?? "state" : null, keyed: !!control?.keyed, pointer: false, carried: 0, keepLast, overflow: w.overflow ?? null, convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)), rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
   });
 }
 
@@ -118,7 +125,7 @@ export function intake(p, T, wireTo, catchUp) {
     if (i.seam.kind !== "event") continue;
     const w = wireTo.get(`${p.name}.${i.name}`);
     const n = w ? ready(w, T) : 0, max = p.runtime.events.in[i.name];
-    if (w && !w.overflow && !w.fromPage && max !== undefined && n > max) return `part '${p.name}': in.${i.name}: ${n} records are ready, and the runtime declares at most ${max} per step (events: { in: { ${i.name}: … } }); ${w.text} was sized for steps at most ${qText(catchUp)} s apart (the catch-up cap) or its clocks' own spacing, and this step comes later than that; none were taken`;
+    if (w && !w.overflow && !w.fromPage && w.records === null && max !== undefined && n > max) return `part '${p.name}': in.${i.name}: ${n} records are ready, and the runtime declares at most ${max} per step (events: { in: { ${i.name}: … } }); ${w.text} was sized for steps at most ${qText(catchUp)} s apart (the catch-up cap) or its clocks' own spacing, and this step comes later than that; none were taken`;
   }
   return null;
 }

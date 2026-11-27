@@ -6,10 +6,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPage, DEFAULT_KEYS, PAGE_CODES, MAX_PAGE_DIAGNOSTICS } from "../index.js";
-import { PAGE_CONTROLS } from "../../compose/index.js";
+import { createPage, PAGE_CODES, MAX_PAGE_DIAGNOSTICS, keyTargets } from "../index.js";
 import { RESERVED_LETTERS } from "../../define/codes.js";
-import { bench, fakeContext, frames } from "../fixtures/bench.js";
+import { bench, fakeContext, frames, WALKER_CONTROLS } from "../fixtures/bench.js";
 
 /** A page on the bench, with a decoder that records what it was handed. @param {Parameters<typeof bench>[0]} [b] @param {Record<string, any>} [o] */
 async function mount(b, o = {}) {
@@ -19,6 +18,9 @@ async function mount(b, o = {}) {
   const decoded = [];
   const decode = async (/** @type {Uint8Array} */ bytes, /** @type {any} */ info) => { decoded.push({ bytes, ...info }); return { bitmap: info.name }; };
   const p = createPage({ composed, runtimes, packages, context: ctx, requestFrame: f.requestFrame, decode, ...o });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
+  // the bench's Controls take keys, so the page starts locked (declared Controls, 2026-11-27): the person's gesture
+  p.unlock();
   await p.ready;
   return { page: p, ctx, f, decoded, composed };
 }
@@ -26,15 +28,13 @@ const named = (/** @type {any} */ ctx, /** @type {string} */ n) => /** @type {an
 /** Display frames every 16 ms from `from` to `to` (both in ms, `to` included), as a 60 Hz screen gives them; the driver caps one long frame at the run's catch-up (1/15 s). @param {ReturnType<typeof frames>} f @param {number} from @param {number} to */
 const play = (f, from, to) => { for (let ms = from + 16; ms < to; ms += 16) f.tick(ms); f.tick(to); };
 
-test("the default key map is the DMG host's: arrows and WASD for the pad, X and K for A, Z and J for B, Enter, Shift", () => {
-  assert.deepEqual(DEFAULT_KEYS, {
-    ArrowUp: "pad.up", ArrowDown: "pad.down", ArrowLeft: "pad.left", ArrowRight: "pad.right",
-    KeyW: "pad.up", KeyS: "pad.down", KeyA: "pad.left", KeyD: "pad.right",
-    KeyX: "a", KeyK: "a", KeyZ: "b", KeyJ: "b", Enter: "start", ShiftLeft: "select", ShiftRight: "select",
-  });
-  // every value is a page control, or one of the pad's directions
-  for (const v of Object.values(DEFAULT_KEYS)) assert.ok(Object.hasOwn(PAGE_CONTROLS, v.split(".")[0]), v);
-  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003", "H004", "H005", "H006", "H007", "H008", "H009", "H010"]);
+// Rewritten for declared Controls (2026-11-27): the page has no key map of its own (DEFAULT_KEYS and PAGE_CONTROLS
+// retired); its keys are the bench walker's declared ones. H009 retired, H011 to H014 added.
+test("the page knows no key of its own: its keys are the declared Controls'", () => {
+  assert.deepEqual(keyTargets({}), []);
+  const controls = /** @type {any} */ (Object.fromEntries(Object.entries(WALKER_CONTROLS).map(([n, decl]) => [n, { kind: decl.kind, decl }])));
+  assert.deepEqual(keyTargets(controls), ["pad.up", "pad.down", "pad.left", "pad.right", "fire.held", "jump.held"]);
+  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003", "H004", "H005", "H006", "H007", "H008", "H010", "H011", "H012", "H013", "H014"]);
   assert.ok(RESERVED_LETTERS.includes("H"), "H is the kit's, so a Dialect's own codes cannot take it");
 });
 
@@ -109,14 +109,14 @@ test("keys are page inputs: a held direction is one pad record per change, a but
   const inputs = p.run.log.inputs.filter((/** @type {any} */ e) => e.part === "page");
   assert.deepEqual(inputs.map((/** @type {any} */ e) => [e.name, e.value]), [
     ["pad", { up: false, down: false, left: false, right: true }],
-    ["a", { held: true }],
-    ["a", { held: false }],
+    ["fire", { held: true }],
+    ["fire", { held: false }],
   ]);
   key("keyup", "ArrowRight");
   assert.deepEqual(p.run.log.inputs.at(-1)?.value, { up: false, down: false, left: false, right: false });
 });
 
-test("a host may give its own key map", async () => {
+test("a host may override a target's keys", async () => {
   const { page: p, f } = await mount(undefined, { keys: { KeyL: "pad.right" } });
   p.start();
   f.tick(0);
@@ -124,7 +124,7 @@ test("a host may give its own key map", async () => {
   assert.equal(p.key({ type: "keydown", code: "KeyL" }), true);
   play(f, 0, 250);
   assert.equal(p.run.state("hero").x, 1);
-  assert.throws(() => createPage({ ...p.options, keys: { KeyL: "pad.forward" } }), /pad\.forward is not a page control: the controls are pad\.up, pad\.down, pad\.left, pad\.right, a, b, start, select/);
+  assert.throws(() => createPage({ ...p.options, keys: { KeyL: "pad.forward" } }), /pad\.forward is not a target of the page's Controls: the targets are pad\.up, pad\.down, pad\.left, pad\.right, fire\.held, jump\.held/);
 });
 
 test("the draw-time profile check runs where the page draws, and a refusal is a page diagnostic, never silent", async () => {
@@ -152,6 +152,7 @@ test("a refusal that changes is reported again", async () => {
   const { composed, runtimes, packages } = await bench({ profile: "gameboy", maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => { const o = { op: "ellipse", at: [c.x, c.y], r: [0.25, 0.25], fill: "coin" }; return o; }; } });
   const f = frames();
   const p = createPage({ composed: { ...composed, show: "level", view: "view" }, runtimes, packages, context: fakeContext(), requestFrame: f.requestFrame });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
   await p.ready;
   p.start();
   f.tick(0);
@@ -171,6 +172,7 @@ test("a refusal whose text carries moving values is still one diagnostic while i
   const { composed, runtimes, packages } = await bench({ profile: "gameboy", maze: bob, still: true });
   const f = frames();
   const p = createPage({ composed: { ...composed, show: "level", view: "view" }, runtimes, packages, context: fakeContext(), requestFrame: f.requestFrame });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
   await p.ready;
   p.start();
   let ms = 0;
@@ -189,6 +191,7 @@ test("a refusal that comes and goes is bounded: the list keeps the last MAX_PAGE
   const { composed, runtimes, packages } = await bench({ profile: "gameboy", maze: flip, still: true });
   const f = frames();
   const p = createPage({ composed: { ...composed, show: "level", view: "view" }, runtimes, packages, context: fakeContext(), requestFrame: f.requestFrame });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
   await p.ready;
   const list = p.diagnostics;
   p.start();
@@ -206,6 +209,7 @@ test("a throw inside a frame is H004, stops the loop, and status says so", async
   const real = fakeContext();
   const ctx = new Proxy({}, { get: (_, k) => (k === "drawImage" ? () => { throw new TypeError("The provided value is not of type CanvasImageSource"); } : real[k]), set: (_, k, v) => { real[k] = v; return true; } });
   const p = createPage({ composed, runtimes, packages, context: /** @type {any} */ (ctx), requestFrame: f.requestFrame, decode: async () => ({ notABitmap: true }) });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
   await p.ready;
   p.start();
   f.tick(0);
@@ -241,13 +245,13 @@ test("a throw in the driver's frame is H004 too, and a stop leaves it unhalted",
 });
 
 test("a key is the page's only when the composition wires that control from the page", async () => {
-  const { page: p, f } = await mount();   // the bench wires pad and a
+  const { page: p, f } = await mount();   // the bench wires pad and fire, not jump
   p.start();
   f.tick(0);
   const n = p.run.log.inputs.length;
-  assert.equal(p.key({ type: "keydown", code: "KeyZ" }), false, "b is not wired");
-  assert.equal(p.key({ type: "keydown", code: "Enter" }), false, "start is not wired");
-  assert.equal(p.key({ type: "keydown", code: "ShiftLeft" }), false, "select is not wired");
+  assert.equal(p.key({ type: "keydown", code: "KeyZ" }), false, "jump is declared, not wired");
+  assert.equal(p.key({ type: "keydown", code: "Enter" }), false, "no Control binds Enter");
+  assert.equal(p.key({ type: "keydown", code: "ShiftLeft" }), false, "nor Shift");
   assert.equal(p.run.log.inputs.length, n, "and sends no input");
   assert.equal(p.key({ type: "keydown", code: "KeyX" }), true);
   assert.equal(p.key({ type: "keydown", code: "ArrowUp" }), true);
@@ -258,6 +262,7 @@ test("a shown part with no Draw output is H002, and the page draws nothing", asy
   const { composed, runtimes, packages } = await bench();
   const ctx = fakeContext(), f = frames();
   const p = createPage({ composed: { ...composed, show: "hero" }, runtimes, packages, context: ctx, requestFrame: f.requestFrame });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
   await p.ready;
   assert.deepEqual(p.diagnostics.map((d) => d.code), ["H002"]);
   assert.match(p.diagnostics[0].message, /the page shows hero, which has no Draw output/);
@@ -278,6 +283,7 @@ test("an image the page cannot decode is H003, and draws as its box", async () =
   // a package that does not carry the file (it was not loaded by kit/package) is H003 too
   const { composed, runtimes } = await bench();
   const p = createPage({ composed, runtimes, packages: [], context: fakeContext(), requestFrame: frames().requestFrame, decode: async () => ({}) });
+  p.unlock(); // the bench's Controls take keys, so the page starts locked (declared Controls): the gesture
   await p.ready;
   assert.deepEqual(p.diagnostics.map((d) => d.code), ["H003"]);
   assert.match(p.diagnostics[0].message, /level\.sheet's file art\/sheet\.png is not in a loaded package/);

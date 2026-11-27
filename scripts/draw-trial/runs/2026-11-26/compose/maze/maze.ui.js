@@ -3,15 +3,11 @@ import { maze } from "./maze.grammar.js";
 
 // The passing fixture for the maze package: inputs onto the Dialect's Pad, a text-view stage, two readouts.
 export const mazeUI = defineUI(maze, {
-  inputs: {
-    object: "Pad",
-    buttons: {
-      up: { role: "dpad.up" },
-      down: { role: "dpad.down" },
-      left: { role: "dpad.left" },
-      right: { role: "dpad.right" },
-      a: { role: "a", label: "Dash" },
-      b: { role: "b", label: "Wait" },
+  controls: {
+    pad: {
+      kind: "buttons", label: "D-pad", buttons: ["up", "down", "left", "right"],
+      grid: [[null, "up", null], ["left", null, "right"], [null, "down", null]],
+      keys: { up: ["ArrowUp", "KeyW"], down: ["ArrowDown", "KeyS"], left: ["ArrowLeft", "KeyA"], right: ["ArrowRight", "KeyD"] },
     },
   },
   tiles: {

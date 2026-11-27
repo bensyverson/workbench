@@ -27,10 +27,10 @@ The manifest (`MANIFEST_PATH = "wb-package.json"`), checked by `checkManifest(te
 |---|---|
 | `name` | required; `^[a-z][a-z0-9]*$`; the Dialect's `name` |
 | `version` | required; semver |
-| `kit` | required; the Definition API version as `"major.minor"` (`KIT_VERSION` from `kit/define`, now `"0.4"`) |
+| `kit` | required; the Definition API version as `"major.minor"` (`KIT_VERSION` from `kit/define`, now `"0.5"`: since declared Controls, 2026-11-27, a UI with `inputs` and a manifest with `elements` no longer load) |
 | `description` | optional string |
 | `entry` | required: `{ dialect, grammar }` and optionally `ui` and `runtime`, each an exact path |
-| `lib`, `elements`, `examples` | optional arrays of exact paths. **No globs in v0** (K002). `elements` must be exactly the modules the UI's custom elements name (K015, K016) |
+| `lib`, `modules`, `examples` | optional arrays of exact paths. **No globs in v0** (K002). `modules` must be exactly the trusted modules the UI names, its custom elements' and its actions' (K015, K016). It was `elements` until KIT_VERSION 0.5; `elements` is now an unknown key (K002) whose fix says it was renamed `modules` |
 | `refusals` | optional array of `{ module, code }`: a module that the kit must refuse, and the diagnostic code (a capital letter and three digits, such as `"L004"`) it must refuse it with. The module is also in `files`, and is not also in `examples` (K002) |
 | `tests` | optional array of `{ name, example, inputs, expect, until?, seed? }`, each a run of one of `examples` alone, with timed records on its named Event inputs and what to expect; it needs `entry.runtime` (K002 otherwise). See [Tests](#tests) |
 | `foreign` | optional array of `{ module, targets, why }`; each is a path in the package |
@@ -38,7 +38,7 @@ The manifest (`MANIFEST_PATH = "wb-package.json"`), checked by `checkManifest(te
 
 Every path is normalized and relative: `/`-separated, no leading `/`, no `.`, `..` or empty part, no backslash, no `:` (so no drive letter), no `?`, `#` or `%` (a URL import reads them as a query, a fragment or an escape: `import "./x.mjs#.js"` once ran an unscanned file), no control character, no space at the start or end of a part. Every path the manifest names must be in `files` (K004). `scripts/pkg/hash.js <dir>` writes `files`.
 
-**A package's modules are exactly its files whose names end in `.js`** (lowercase). `entry`, `lib`, `elements`, `examples`, `refusals` and `foreign.module` must name such files (K002), and a relative import must target one (K007). `files` may also list other files; they are **data**, hashed but never imported. A Dialect names each data file it reads (below).
+**A package's modules are exactly its files whose names end in `.js`** (lowercase). `entry`, `lib`, `modules`, `examples`, `refusals` and `foreign.module` must name such files (K002), and a relative import must target one (K007). `files` may also list other files; they are **data**, hashed but never imported. A Dialect names each data file it reads (below).
 
 **Dotfiles are not part of a package.** A path with any part starting with `.` (`.DS_Store`, `.git/config`) is ignored: `checkPackage` drops such keys from the map (an upload may carry them), `scripts/pkg/dir.js` skips them when it reads a folder, and a manifest that lists one is K002.
 
@@ -186,7 +186,7 @@ Each `expect` entry is one of these, told apart by its key (an entry with none, 
 | H006 | kit/page (`runTests`) | an expectation was not met. The message names the test, the kind, the instant (`at`, or the window), the path or output, and the expected and actual values; for `events`, the first record that differs and both counts; for `diagnostic`, the codes the run did report |
 | H007 | kit/page (`runTests`) | the run reported an error diagnostic the test did not expect (N002, N003, N004, a J code; named with its part, T and message), or its replay diverged (N005: the test's run is replayed from its own record, so a test is deterministic or fails) |
 | H008 | kit/page (`runTests`) | the test could not run: its example does not build alone (its B codes, or H005), `createRun` threw, an `in` input was refused when logged (N011, N012: kit/run's own guard, which `checkTests` should have caught first), or a state path names a Program field that the built Program does not declare |
-| H009 | kit/page (`examplePreset`) | a warning: a part run alone could take a page control in more than one way (two inputs take one control's seam, or one input fits several controls), so none of those is wired; a glue chooses |
+| H009 | kit/page (`examplePreset`) | retired with declared Controls (2026-11-27): a preset wires each declared Control by name, so nothing is ambiguous; the number is not reused |
 | N011 | kit/run | an `in` input addressed to an input the part does not have, to a value or Draw input, or to an Event input a wire feeds: refused when logged (`RunError`, the run unchanged), as N009 is |
 | N012 | kit/run | an `in` input whose `value` does not fit the input's seam: refused when logged (`RunError`) |
 
@@ -238,7 +238,7 @@ The design's two open questions, ruled the day it was written, and what was buil
 
 1. **`in` retires `ctx.controls`.** "A smaller and simpler API surface is always better if possible." A `control` input addressed to a part by name, and the `ctx.controls` it lands in, go wherever `in` covers them. The `control` input addressed to the built-in `page` part stays: it is how the page's controls enter a composition (kit/run, "The page part"). What has to hold for a part run without a glue to get the page's controls through Event inputs instead:
    - **The part takes each control as an Event input with that control's seam** (`Event<{ up: bool, down: bool, left: bool, right: bool }>` for the pad, `Event<{ held: bool }>` for a button), as the M4 game authors already did. A package that reads `ctx.controls` moves to such an input; the readers today are trial fixtures and checkers (`scripts/seams-trial`'s maze fixtures and checker, `scripts/why-trial`'s scenario) and kit/run's own tests.
-   - **On the page, a preset wires the page to it.** (Built: kit/page's `examplePreset`; ambiguity is H009, a warning, and it also covers one input that fits several controls, since the buttons' `{ held: bool }` seam fits `a`, `b`, `start` and `select`, so a part with such an input gets none of them wired.) kit/page's `examplePreset` adds `.wire(page.out.<control>, <part>.in.<input>)` for each control whose seam exactly one of the part's Event inputs takes (kit/seam's `compareSeams`, as `scripts/m4-trial`'s checker already does by hand), so a person's keys arrive as page records, with the page wire's fold (a person is the one sender no party controls), not as `in` records. Two inputs that both take one control's seam are ambiguous: the preset wires neither and says so (H009), and a glue chooses.
+   - **On the page, a preset wires the page to it.** (Built: kit/page's `examplePreset`, given the package's UI, adds `.wire(page.out.<control>, <part>.in.<control>)` for each Control the UI declares on an Event input, by name; declared Controls, 2026-11-27, which retired the seam matching this line described and its H009.)
    - **Headless runs and tests use `in`.** A scripted run or a test sends the control's records to that input as `{ kind: "in", … }`, with the input's own delivery (a reliable input past its max is N002, as on a wire; a test that wants the page's fold expects N002 or declares `{ keepLast: n }`).
    - Nothing the dogfood showed makes this impossible: no leg read `ctx.controls`, and the game leg took the pad as an Event input and tested it through `in`.
 2. **Tests are optional everywhere.** "Tests should always be optional; some authors will not want to produce them." A package with no `tests` is clean in kit/package, on the page and in every checker; nothing counts their absence against it. The dogfood trial's task required tests only because it was testing the tests design.
@@ -270,8 +270,8 @@ Value inputs and param edits in `inputs` (the ruling's "later"; the forms are na
 | K012 | An example refused when built or lowered, or an example or refusal whose default export is not a function that builds a Program |
 | K013 | A refusal that is accepted |
 | K014 | A refusal refused with another code than its `code` |
-| K015 | A module the UI's elements name that `elements` does not list |
-| K016 | A module `elements` lists that no UI element names |
+| K015 | A trusted module the UI names (a custom element's or an action's) that `modules` does not list |
+| K016 | A module `modules` lists that no custom element or action in the UI names |
 | K017 | A data file the Dialect names (in `files`, or an image's `file`) that is not a normalized path to a data file, or that the package does not hold and `files` does not list |
 | K018 | A data file that does not decode as its kind: an image that is not a PNG (or is held as text), a text, csv or json file that is not UTF-8, a json file that does not parse |
 | K019 | A PNG whose width and height are not its image's declared `size` |

@@ -9,7 +9,8 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 | `OPS`, `OP_KINDS`, `FONTS`, `GLYPH` | the op table (each op's fields, `[type, required]`), its six kinds in order, the one font (`"mono"`), a character's size (8 units) |
 | `typeOp(op, paint)` | the problems with one op, each a sentence; `[]` when it fits the table and names only the paint's colors and images |
 | `checkPaint({ colors, images })` | the problems with a Dialect's `colors` and `images` |
-| `resolveColor(c, colors)` | a color name or literal as `"#rrggbbaa"`, or null |
+| `resolveColor(c, colors)` | a color name, a literal, or a vec3 `[r, g, b]` of components from 0 to 1 (ruling 7 of the controls draft: a color Control's value, or a Kernel's) as `"#rrggbbaa"`, or null |
+| `hitTest(list, point, images)`, `hitsAt(list, point, images)`, `covers(op, point, images)` | picking in 2-D ([`hit.js`](hit.js); the controls draft, requirement 6): the topmost op under a point of the list's frame, or null; every op under it, topmost first, with its index; whether one op covers it. Exact per kind: a rect's box (a negative size spans backwards), an ellipse's equation, a line's distance to its segments within `width / 2` (and a closed, filled line's inside), the boxes of image, tiles and text |
 | `convertOp(op, edge, images)` | one op converted across a frame edge (below) |
 | `opBox(op, images)`, `nativeSize(op, images)`, `cellCount(image)`, `gridCells(op)` | the box an op covers; the size an image or tiles cell draws at without `size`; an image's cells; a tiles grid as cell numbers |
 | `declareDraw(port, { listMax, inputsName })` | a Draw output's declaration read into layers, each with its source (`{ decl, problems }`; J001, and the Runtime Subset's own S codes) |
@@ -35,6 +36,8 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 | `image` | `at` (top-left), `image`, `cell?`, `size?`, `flip?: 'x' \| 'y' \| 'xy'` | `at`; `size` by the scale; an unsized image gets its declared size scaled |
 | `tiles` | `at` (top-left), `image`, `grid`, `key?`, `size?` (one cell's), `wrap?: [cols, rows]`, `wrapAt?` (the ring's origin) | `at` and `wrapAt` as points; the cell size by the scale (ruling 3) |
 | `text` | `at` (top-left), `str`, `font`, `fill` | `at` only: a wire that flips an axis moves the string's top-left, not its box, so the text lands one glyph height (8 units, scaled) off where a mirrored box would be; place text after the flip, or in a frame that does not flip |
+
+Every op also takes **`id?: str`**, the builder's name for it (a lens's surface, a glyph), which survives `convertOp`, `carryList`, wires and layers, and which a pointer hit names (kit/page); an `id` that is not a string is J020. A color field (`fill`, `stroke`) takes a vec3 `[r, g, b]` as well as a name or hex text; a builder's list resolves it to hex text, and `drawCanvas` paints one as `#rrggbb`.
 
 - **A tiles `grid`** is a list of rows, each a list of cell numbers (`-1` draws nothing) or a string read through `key`, `{ "<char>": <cell> }` (ruling 5: the grid a maze keeps in its state feeds a tiles op as it is). A character the key does not map is J020. `wrap` makes the grid a ring that repeats from the frame's origin, so a scrolled map is a tiles op whose `at` is minus the scroll. `wrapAt` is the ring's origin when it is not the frame's: a builder leaves it out, and a wire sets it (an op crossing an offset keeps its ring with its frame). A cell that straddles the ring's far edge is drawn at both ends, so a scrolled ring has no gap.
 - **Colors** are `"#rrggbb"` or `"#rrggbbaa"`, or a name the Dialect's `colors` declares; an op leaves its part with every color as `"#rrggbbaa"`, so a stranger's list never needs the names.

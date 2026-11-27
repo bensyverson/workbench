@@ -1,7 +1,7 @@
 {
   "name": "arcade",
   "version": "0.1.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "A page that shows two pictures, one over the other, with a HUD.",
   "entry": {
     "dialect": "arcade.dialect.js",

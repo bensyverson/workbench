@@ -1,7 +1,7 @@
 {
   "name": "particles",
   "version": "0.3.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "Emitters, particles and fields: a particle system written as rules.",
   "entry": {
     "dialect": "particles.dialect.js",
@@ -9,7 +9,7 @@
     "ui": "particles.ui.js",
     "runtime": "particles.runtime.js"
   },
-  "elements": [
+  "modules": [
     "particles-field.js"
   ],
   "examples": [
@@ -59,7 +59,7 @@
     "particles.dialect.js": "sha256-pmL0U0kebvQsaIa3exmhh4Zc18XSPZH6CciLHX9cmLg=",
     "particles.grammar.js": "sha256-y6lmyixYUr30stihBvlVV6ZN/vaLTxUK7yqV8n064AE=",
     "particles.runtime.js": "sha256-j+POBNjkWAULB9Sy306MFLq7pH9/absMzZwcygOUybQ=",
-    "particles.ui.js": "sha256-cgTAcDqn67WVnpJqNekwNBBCkrnwLgNrt/tVQcRP7Pc=",
+    "particles.ui.js": "sha256-Rfh3PXC8/PGuKU2V0sy1aI+yBsTzEa/dK2BpY20/xKQ=",
     "refusals/r01.js": "sha256-lpoISmkPd8VXD7ao+1q6FWgerjJ5cduu34okZJ/OzXY=",
     "refusals/r02.js": "sha256-0EjmQ4hlFuCRaMpWZ5KPhdNNfQIQHp9BQCv0KQOBKY4=",
     "refusals/r03.js": "sha256-7dNV/7s7560DwVQZitX7bJgl6IRJ/3M3nGY9dyIeR7A=",

@@ -4,6 +4,7 @@
 // that Environment, not in the Dialect: an implied pure space (a view's lambda has no effect), `s` the Dialect's
 // state Type, `$` its params object, a column's `row` the item Type of its table's list, and each key's result Type.
 
+import { controlProblems } from "./controls.js";
 import { lowerProgram } from "../../lower/index.js";
 import { resolvePath } from "./shapes.js";
 import { TONES } from "./validate.js";
@@ -16,7 +17,7 @@ import { TONES } from "./validate.js";
 /**
  * What a key's lambda must give: a bool; a number (f32, f64 or a nominal scalar); a number or a string; a string;
  * a string or null; one of the tones or null.
- * @typedef {"bool" | "number" | "numberOrStr" | "str" | "strOrNull" | "toneOrNull"} Gives
+ * @typedef {"bool" | "number" | "numberOrStr" | "str" | "strOrNull" | "toneOrNull" | "point"} Gives
  */
 
 /**
@@ -39,6 +40,9 @@ const SPACE = "view";
  * (defineUI refuses it), so nothing sizes anything by it; `length` and an index are all it is read by.
  */
 export const OPEN_MAX = Number.MAX_SAFE_INTEGER;
+
+/** What a Grip's at, axis and center give: a point, two numbers. */
+const POINT = /** @type {Type} */ ({ list: "f64", max: 2, len: 2 });
 
 /** The object `$` is when the Dialect declares no params: one with no members. */
 const NO_PARAMS = "(no params)";
@@ -87,6 +91,14 @@ export function sitesOf(ui, state, aliases) {
     });
   };
   for (const [id, t] of Object.entries(ui.tiles)) components(/** @type {any} */ (t).body, ["tiles", id, "body"], id);
+  for (const [name, g] of Object.entries(/** @type {Record<string, Record<string, any>>} */ (ui.grips ?? {}))) {
+    const r = typeof g.each === "string" ? resolvePath(state, g.each, aliases) : null;
+    const t = r && "type" in r ? unwrap(r.type) : null;
+    // a Grip with each reads its item first, as a table column reads its row
+    const item = t && typeof t === "object" && "list" in t ? t.list : null;
+    for (const key of ["at", "axis", "center"]) add(["grips", name, key], null, g[key], "point", item);
+    add(["grips", name, "to"], null, g.to, "str", item);
+  }
   for (const [view, marks] of Object.entries(/** @type {Record<string, Record<string, any>>} */ (ui.annotate))) {
     for (const [key, a] of Object.entries(marks)) {
       add(["annotate", view, key, "badge"], null, a.badge, "strOrNull");
@@ -128,6 +140,7 @@ function required(gives, inferred, numberType) {
     case "str": return "str";
     case "strOrNull": return { opt: "str" };
     case "toneOrNull": return { opt: { enum: [...TONES] } };
+    case "point": return typeof inferred === "object" && "list" in inferred && isNumber(inferred.list) && inferred.len === 2 ? inferred : POINT;
   }
 }
 
@@ -143,7 +156,8 @@ function required(gives, inferred, numberType) {
  * @property {Record<string, Kernel>} kernels  each lambda's Kernel by id; a lambda that did not lower has none
  * @property {Array<{ id: string, path: Array<string | number>, tile: string | null, key: string, row: boolean, src: string, result: LowerResult }>} lambdas  in declaration order; `row` when it is a column's (`row, s, $`)
  * @property {HelperResult[]} helpers  the Library units the lambdas use
- * @property {UILowerDiagnostic[]} diagnostics  each lambda's, in declaration order, then the units'
+ * @property {UILowerDiagnostic[]} diagnostics  each lambda's, in declaration order, then the units', then each keyed Control's instances' (U017) and each param component's (U020)
+ * @property {Record<string, Array<Record<string, any>>>} instances  each keyed Control's instances, by Control: what its `each` gave for this record, each entry's keys over the declaration's
  */
 
 /**
@@ -199,11 +213,78 @@ export function lowerUI(ui, record) {
     if (r.kernel) kernels[s.id] = r.kernel;
   });
   for (const h of helperResults) diagnostics.push(...h.result.diagnostics.map((d) => ({ ...d, unit: h.name })));
+  const instances = controlInstances(ui, record, diagnostics);
+  paramComponents(ui, record, diagnostics);
   return {
+    instances,
     environment: env,
     kernels,
     lambdas: sites.map((s, i) => ({ id: s.id, path: s.path, tile: s.tile, key: s.key, row: s.row !== null, src: srcs[i], result: results[i] })),
     helpers: helperResults,
     diagnostics,
   };
+}
+
+/** @param {unknown} e */
+const messageOf = (e) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Each keyed Control's instances for one record: its `each`, plain build-time JavaScript over the record, called, and
+ * each entry's keys merged over the declaration's and checked as the declaration is (U017, at the instance's path).
+ * @param {T.UI} ui @param {Record<string, any>} record @param {UILowerDiagnostic[]} diagnostics
+ * @returns {Record<string, Array<Record<string, any>>>}
+ */
+function controlInstances(ui, record, diagnostics) {
+  /** @type {Record<string, Array<Record<string, any>>>} */
+  const out = {};
+  const files = /** @type {Record<string, any>} */ (ui.dialect.def).files ?? {};
+  const u017 = (/** @type {Array<string | number>} */ path, /** @type {string} */ message, /** @type {string} */ tip) => { diagnostics.push(/** @type {any} */ ({ code: "U017", severity: "error", message, tip, path, id: idOf(path), tile: null, key: String(path.at(-1)) })); };
+  for (const [name, c] of Object.entries(/** @type {Record<string, any>} */ (ui.controls ?? {}))) {
+    const decl = /** @type {Record<string, any>} */ (c.decl);
+    if (typeof decl.each !== "function") continue;
+    const at = ["controls", name, "each"];
+    /** @type {unknown} */
+    let got;
+    try { got = decl.each(record); } catch (e) { u017(at, `the Control '${name}''s each threw: ${messageOf(e)}`, "each is plain JavaScript over the built record; make it total"); continue; }
+    if (!Array.isArray(got)) { u017(at, `the Control '${name}''s each gave ${typeof got}, not a list of instances`, "return a list: (record) => record.<list>.map((<item>) => ({ key: … }))"); continue; }
+    const { each: _, ...base } = decl;
+    const keys = new Set();
+    /** @type {Array<Record<string, any>>} */
+    const list = [];
+    got.forEach((entry, i) => {
+      const path = [...at, i];
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return u017(path, `instance ${i} of '${name}' is not an object`, "give each instance { key, … }");
+      const merged = { ...base, ...entry };
+      const problems = controlProblems(merged, ["controls", name], { files, instance: true });
+      if (keys.has(entry.key)) problems.push({ code: "U017", path, message: `instance ${i} of '${name}' repeats the key '${entry.key}'`, tip: "give each instance its own key" });
+      keys.add(entry.key);
+      for (const p of problems) u017(path, `instance ${i} of '${name}': ${p.message}`, p.tip);
+      if (!problems.length) list.push(Object.freeze(merged));
+    });
+    out[name] = list;
+  }
+  return out;
+}
+
+/**
+ * U020 for a param component naming a param the Program does not declare: params are per Program, so this waits for
+ * the record.
+ * @param {T.UI} ui @param {Record<string, any>} record @param {UILowerDiagnostic[]} diagnostics
+ */
+function paramComponents(ui, record, diagnostics) {
+  // the builder's grammar is the Grammar's declaration
+  const g = /** @type {any} */ (ui.builder).grammar;
+  const slot = g?.params?.slot;
+  const as = slot === undefined ? undefined : g.constructs?.[g.root]?.slots?.[slot]?.as ?? slot;
+  const names = as === undefined ? [] : Object.keys(record[as] ?? {});
+  /** @param {unknown} list @param {Array<string | number>} at @param {string} tile */
+  const walk = (list, at, tile) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((/** @type {any} */ c, i) => {
+      const path = [...at, i];
+      if (c?.kind === "param" && !names.includes(c.param)) diagnostics.push(/** @type {any} */ ({ code: "U020", severity: "error", message: `the param component names '${c.param}', which this Program does not declare${names.length ? ` (its params: ${names.join(", ")})` : ""}`, tip: names.length ? `name one of: ${names.join(", ")}` : "declare the param in the Program", path: [...path, "param"], id: idOf([...path, "param"]), tile, key: "param" }));
+      walk(c?.items, [...path, "items"], tile);
+    });
+  };
+  for (const [id, t] of Object.entries(ui.tiles)) walk(/** @type {any} */ (t).body, ["tiles", id, "body"], id);
 }

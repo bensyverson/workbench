@@ -1,7 +1,7 @@
 {
   "name": "overlay",
   "version": "0.1.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "Two pictures from other parts drawn as one: the second over the first.",
   "entry": {
     "dialect": "overlay.dialect.js",

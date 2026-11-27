@@ -37,8 +37,10 @@ export const fromHost = (d, file) => ({ code: d.code, severity: d.severity === "
 
 /** @param {any} seam */
 const kindOf = (seam) => seam?.kind;
-/** The page pad's seam, as a Dialect's input would hold it. */
-const PAD_SEAM = /** @type {any} */ (parseSeam(/** @type {any} */ (page.out.pad).seam)).type;
+/** The D-pad's seam the trial's game takes, as a Dialect's input would hold it. The kit once offered this pad itself
+ * (PAGE_CONTROLS); since declared Controls (2026-11-27) the game's own UI declares a Control of its input's name. */
+const PAD_TEXT = "Event<{ up: bool, down: bool, left: bool, right: bool }>";
+const PAD_SEAM = /** @type {any} */ (parseSeam(PAD_TEXT)).type;
 /** Whether the page's pad can be wired to an input of this seam, by kit/seam's own comparison (what kit/compose uses). @param {any} seam */
 const takesPad = (seam) => kindOf(seam) === "event" && compareSeams(PAD_SEAM, seam).problems.length === 0;
 
@@ -111,7 +113,7 @@ export async function checkAuthor(dir, role) {
     if (!loaded.ui?.stage?.draw) out.push(t("T004", "the package's UI has no Draw stage", 'give the UI stage: { draw: "<your Draw output>" }', checkedEntry(files, "ui")));
     if (!Object.values(loaded.data ?? {}).some((/** @type {any} */ d) => d.kind === "image")) out.push(t("T005", "the Dialect declares no image with a PNG file", "copy sprites.png into the package, declare it in images with its file, and hash the package", dialectFile));
     padInput = ins.find(([, i]) => takesPad(i.seam))?.[0];
-    if (padInput === undefined) out.push(t("T006", `the Dialect has no Event input with the page pad's seam, ${/** @type {any} */ (page.out.pad).seam ? "Event<{ up: bool, down: bool, left: bool, right: bool }>" : ""}, so the page's D-pad cannot be wired to it`, "add that input to ports.in (docs/kit/compose/README.md, \"The page\")", dialectFile));
+    if (padInput === undefined) out.push(t("T006", `the Dialect has no Event input with the D-pad's seam, ${PAD_TEXT}, so the page's D-pad cannot be wired to it`, "add that input to ports.in (docs/kit/compose/README.md, \"The page\")", dialectFile));
     if (!outs.some((o) => kindOf(o.seam) === "event")) out.push(t("T009", "the Dialect offers no Event output for a pickup", "add an Event output that your runtime pushes a record to on each pickup", dialectFile));
   } else if (!ins.some(([, i]) => kindOf(i.seam) === "event")) out.push(t("T009", "the Dialect has no Event input for a scoring event", "add an Event input to ports.in", dialectFile));
   if (ex.length || !loaded.runtime) return { ...done(out), tests: count, testedInputs: tested, eventInputs: ins.filter(([, i]) => kindOf(i.seam) === "event").map(([k]) => k) };
@@ -136,7 +138,8 @@ async function playExample(pkg, example, role, padInput) {
   const mod = await ENV.importUrl(pkg.urls.get(example));
   const builder = mod.default(Object.freeze({}));
   let composition = compose(loaded.name).part(builder);
-  if (padInput !== undefined) composition = composition.wire(page.out.pad, builder.in[padInput]);
+  // the package's own Control of the pad input's name (declared Controls): page.out.<input>
+  if (padInput !== undefined) composition = composition.wire(/** @type {any} */ (page.out)[padInput], builder.in[padInput]);
   composition = composition.show(builder);
   const options = { packages: [loaded], build: moduleScope(textOf(pkg.files[example]) ?? "", mod), runtimes: [loaded.runtime] };
   const found = composition.check(options).map((/** @type {any} */ d) => fromHost(hostDiagnostic("composition", d), example));
@@ -210,7 +213,7 @@ export async function checkCompose(dir, given) {
   /** @param {string} end */
   const partOf = (end) => end.split(".")[0];
   const wires = c.wires.map((/** @type {any} */ x) => ({ from: x.from, to: x.to, fromPart: partOf(x.from), toPart: partOf(x.to) }));
-  if (!wires.some((/** @type {any} */ x) => x.from === "page.out.pad" && gameParts.includes(x.toPart))) out.push(t("T022", "the page's pad is not wired to the game", `.wire(page.out.pad, <game part>.in.<its pad input>)`, "workbench.js"));
+  if (!wires.some((/** @type {any} */ x) => x.from.startsWith("page.out.") && gameParts.includes(x.toPart))) out.push(t("T022", "the page's pad is not wired to the game", `.wire(page.out.pad, <game part>.in.<its pad input>)`, "workbench.js"));
   if (!wires.some((/** @type {any} */ x) => gameParts.includes(x.fromPart) && scoreParts.includes(x.toPart))) out.push(t("T023", "nothing the game sends is wired to the score-and-timer", ".wire(<game part>.out.<output>, <score part>.in.<input>)", "workbench.js"));
   /** @type {Map<string, any>} */
   const dialects = new Map(w.packages.map((p) => [p.name, p.loaded.dialect]));

@@ -9,13 +9,15 @@
 /** One draw op, as a builder writes it or a wire carries it. @typedef {Record<string, any> & { op: string }} Op */
 
 /** Each op's fields: name → [type, required]. */
+/** Every op may carry an `id`, a builder's name for it, which survives conversion and layers: what a pointer hit names. */
+const ID = /** @type {[string, boolean]} */ (["str", false]);
 export const OPS = Object.freeze({
-  rect: { at: ["point2", true], size: ["vec2", true], fill: ["color", false], stroke: ["color", false] },
-  ellipse: { at: ["point2", true], r: ["vec2", true], fill: ["color", false], stroke: ["color", false] },
-  line: { points: ["points", true], width: ["f64", true], stroke: ["color", true], closed: ["bool", false], fill: ["color", false] },
-  image: { at: ["point2", true], image: ["image", true], cell: ["cell", false], size: ["vec2", false], flip: ["flip", false] },
-  tiles: { at: ["point2", true], image: ["image", true], grid: ["grid", true], key: ["key", false], size: ["vec2", false], wrap: ["vec2", false], wrapAt: ["point2", false] },
-  text: { at: ["point2", true], str: ["str", true], font: ["font", true], fill: ["color", true] },
+  rect: { at: ["point2", true], size: ["vec2", true], fill: ["color", false], stroke: ["color", false], id: ID },
+  ellipse: { at: ["point2", true], r: ["vec2", true], fill: ["color", false], stroke: ["color", false], id: ID },
+  line: { points: ["points", true], width: ["f64", true], stroke: ["color", true], closed: ["bool", false], fill: ["color", false], id: ID },
+  image: { at: ["point2", true], image: ["image", true], cell: ["cell", false], size: ["vec2", false], flip: ["flip", false], id: ID },
+  tiles: { at: ["point2", true], image: ["image", true], grid: ["grid", true], key: ["key", false], size: ["vec2", false], wrap: ["vec2", false], wrapAt: ["point2", false], id: ID },
+  text: { at: ["point2", true], str: ["str", true], font: ["font", true], fill: ["color", true], id: ID },
 });
 /** The op kinds, in the table's order. */
 export const OP_KINDS = Object.freeze(Object.keys(OPS));
@@ -68,7 +70,7 @@ function fieldProblem(k, type, v, o, paint) {
     case "f64": return isNum(v) ? null : `${k} must be a number, got ${short(v)}`;
     case "bool": return typeof v === "boolean" ? null : `${k} must be true or false, got ${short(v)}`;
     case "str": return typeof v === "string" ? null : `${k} must be a string, got ${short(v)} (format a number into one: "SCORE " + <n>)`;
-    case "color": return typeof v === "string" && resolveColor(v, paint.colors) ? null : `${short(v)} is not a color: name one your Dialect's colors declares (${Object.keys(paint.colors).join(", ") || "it declares none"}), or write "#rrggbb" or "#rrggbbaa"`;
+    case "color": return resolveColor(/** @type {any} */ (v), paint.colors) ? null : `${short(v)} is not a color: name one your Dialect's colors declares (${Object.keys(paint.colors).join(", ") || "it declares none"}), or write "#rrggbb" or "#rrggbbaa", or [<r>, <g>, <b>] with each from 0 to 1`;
     case "font": return typeof v === "string" && FONTS.includes(v) ? null : `font ${short(v)}: the only font is ${FONTS.map((f) => `"${f}"`).join(", ")}`;
     case "flip": return typeof v === "string" && FLIPS.includes(v) ? null : `flip must be 'x', 'y' or 'xy', got ${short(v)}`;
     case "points": return Array.isArray(v) && v.length >= 2 && v.every(isVec) ? null : `points must be a list of two or more point2s, got ${short(v)}`;
@@ -133,11 +135,19 @@ export function checkPaint(paint) {
   return out;
 }
 
+/** A component from 0 to 1 as two hex digits. @param {number} x */
+const hex2 = (x) => Math.round(x * 255).toString(16).padStart(2, "0");
+/** Whether a value is a vec3 color: three numbers from 0 to 1 (sRGB, as a Kernel computes one). @param {unknown} v @returns {v is number[]} */
+export const isRGB = (v) => Array.isArray(v) && v.length === 3 && v.every((x) => isNum(x) && x >= 0 && x <= 1);
+
 /**
- * A color as "#rrggbbaa", from a name in `colors` or a literal; null when it is neither.
- * @param {string} c @param {Record<string, string>} colors @returns {string | null}
+ * A color as "#rrggbbaa", from a name in `colors`, a literal, or a vec3 `[r, g, b]` of components from 0 to 1 (ruling
+ * 7: a color Control's value, or a Kernel's); null when it is none of these.
+ * @param {string | number[]} c @param {Record<string, string>} colors @returns {string | null}
  */
 export function resolveColor(c, colors) {
+  if (isRGB(c)) return `#${c.map(hex2).join("")}ff`;
+  if (typeof c !== "string") return null;
   const v = Object.hasOwn(colors, c) ? colors[c] : c;
   if (typeof v !== "string" || !HEX.test(v)) return null;
   const h = v.toLowerCase();

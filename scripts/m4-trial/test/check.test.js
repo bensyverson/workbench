@@ -41,6 +41,9 @@ test("a game with no pad input is T006, and its examples still load; every run i
   // the massaged maze takes the pad (it is the page host's maze): its input is made one that is not the pad's seam
   const dialect = join(game, "maze.dialect.js");
   writeFileSync(dialect, readFileSync(dialect, "utf8").replace("Event<{ up: bool, down: bool, left: bool, right: bool }>", "Event<{ q: bool }>"));
+  // and its UI's declared pad Control goes too (declared Controls, 2026-11-27): it would no longer fit the input (U016)
+  const ui = join(game, "maze.ui.js");
+  writeFileSync(ui, readFileSync(ui, "utf8").replace(/  controls: \{[\s\S]*?\n  \},\n/, ""));
   await hashDir(game);
   const r = check([game, "--role", "game"], { M4_TRIAL_LOG: log });
   assert.equal(r.status, 1, r.stdout + r.stderr);
@@ -64,7 +67,9 @@ test("a composition that does not wire the page's pad is T022, and one that load
   const r = check([DRAW, "--role", "compose", "--given", join(DRAW, "maze"), "--given", join(DRAW, "particles")]);
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /T022 /);
-  assert.doesNotMatch(r.stdout, /(K|S)\d\d\d |LOAD /);
+  // the kit now says it too, as a warning (S120: a declared Control nothing wires; declared Controls, 2026-11-27)
+  assert.match(r.stdout, /S120 \(warning\)/);
+  assert.doesNotMatch(r.stdout, /(K|S)\d\d\d (?!\(warning\))|LOAD /);
 });
 
 test("a given package that changed is T027", () => {

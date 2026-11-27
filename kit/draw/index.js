@@ -8,3 +8,4 @@ export { drawTypes, PEN_OBJECT, PEN_EFFECT, OPEN } from "./types.js";
 export { CANVAS, GAMEBOY, PROFILES, kindProblems, checkDraw, shadeOf } from "./profiles.js";
 export { drawCanvas } from "./canvas.js";
 export { OPS, OP_KINDS, FONTS, GLYPH, typeOp, checkPaint, resolveColor, convertOp, opBox, nativeSize, cellCount, gridCells } from "./ops.js";
+export { hitTest, hitsAt, covers } from "./hit.js";

@@ -1,4 +1,5 @@
-// defineUI: the UI that rides with a package's Dialect and Grammar (stage, inputs, tiles, annotations), checked like a
+// defineUI: the UI that rides with a package's Dialect and Grammar (stage, Controls, Grips, actions, tiles,
+// annotations), checked like a
 // Dialect: one DefinitionError holding every U problem. The checks are in ui/validate.js; this reads the Dialect
 // (its declared run's state, objects, globals) and builds the frozen UI value, whose lower(record) types its lambdas
 // against one Program (ui/lower.js).
@@ -8,6 +9,7 @@ import { validate as validateUI } from "./ui/validate.js";
 import { lowerUI } from "./ui/lower.js";
 import { compileUI } from "./ui/compile.js";
 import { isPlainObject, kindOf as tagKind } from "./tags.js";
+import { controlSeam, recordsOf, perFrameOf } from "./ui/controls.js";
 
 /** @import * as T from "./define.js" */
 
@@ -18,13 +20,6 @@ function freezeDeep(v) {
   return v;
 }
 
-/**
- * The page control a UI's inputs are: the inputs object's name with its first letter lowercased (`Pad` is `pad`).
- * A host sends each button change as the page's input of that name, which the composition wires to the part.
- * @param {string} object
- */
-export const controlName = (object) => object.charAt(0).toLowerCase() + object.slice(1);
-
 /** What defineUI made, so a host can tell a UI from a look-alike. */
 const MADE = new WeakSet();
 
@@ -33,8 +28,8 @@ export const isUI = (v) => typeof v === "object" && v !== null && MADE.has(v);
 
 /**
  * @param {T.GrammarBuilder} builder  what the package's defineGrammar returned
- * @param {T.UIDef} decl  the declaration: { stage?, inputs?, tiles?, annotate? }; the run's state is the Dialect's
- * @param {T.UIOptions} [options]  `moduleText(path)`: the text of a package file, for the custom element module checks (U008)
+ * @param {T.UIDef} decl  the declaration: { stage?, controls?, grips?, actions?, tiles?, annotate? }; the run's state is the Dialect's
+ * @param {T.UIOptions} [options]  `moduleText(path)`: the text of a package file, for the custom element and action module checks (U008, U019)
  * @returns {T.UI}
  */
 export function defineUI(builder, decl, options = {}) {
@@ -58,7 +53,9 @@ export function defineUI(builder, decl, options = {}) {
   const globalObjects = Object.fromEntries(Object.entries(def.globals ?? {}).filter(([, o]) => typeof o === "string" && Object.hasOwn(objects, o)).map(([n, o]) => [n, objects[/** @type {string} */ (o)]]));
   const problems = validateUI(decl, {
     pkg: String(dialect.name), state: dialect.stateType ?? null, objects, aliases, free, globalObjects,
-    outputs: Object.fromEntries(Object.entries(/** @type {Record<string, any>} */ (dialect.seams?.out ?? {})).map(([n, o]) => [n, { seam: String(o.seamText), draw: o.seam?.kind === "draw" }])),
+    outputs: Object.fromEntries(Object.entries(/** @type {Record<string, any>} */ (dialect.seams?.out ?? {})).map(([n, o]) => [n, { seam: String(o.seamText), draw: o.seam?.kind === "draw", frame: o.seam?.kind === "draw" ? String(o.seam.frame) : null }])),
+    inputs: /** @type {Record<string, any>} */ (dialect.seams?.in ?? {}),
+    files: def.files ?? {},
     moduleText: typeof options.moduleText === "function" ? options.moduleText : null,
   });
   if (!dialect.stateType) problems.unshift({ code: "U013", path: [], message: `the ${dialect.name} Dialect declares no state, so a UI has nothing to read.`, tip: "declare the run's state in defineDialect: state: { score: \"f64\", … }" });
@@ -67,9 +64,9 @@ export function defineUI(builder, decl, options = {}) {
   const ui = Object.freeze({
     package: dialect.name, builder, dialect,
     ...(d.stage !== undefined ? { stage: freezeDeep(d.stage) } : {}),
-    ...(d.inputs !== undefined ? { inputs: freezeDeep(d.inputs) } : {}),
+    controls: Object.freeze(Object.fromEntries(Object.entries(/** @type {Record<string, Record<string, any>>} */ (d.controls ?? {})).map(([n, c]) => [n, controlOf(n, c, dialect)]))),
+    grips: freezeDeep(d.grips ?? {}), actions: freezeDeep(d.actions ?? {}),
     tiles: freezeDeep(d.tiles ?? {}), annotate: freezeDeep(d.annotate ?? {}),
-    control: d.inputs !== undefined ? controlName(String(/** @type {any} */ (d.inputs).object)) : null,
     /** Lowers every UI lambda against one Program's record: see ui/lower.js. @param {Record<string, any>} record */
     lower: (record) => lowerUI(/** @type {T.UI} */ (ui), record),
     /** Lowers and compiles every UI lambda against one Program's record, for evaluate: see ui/compile.js. @param {Record<string, any>} record */
@@ -77,4 +74,20 @@ export function defineUI(builder, decl, options = {}) {
   });
   MADE.add(ui);
   return /** @type {T.UI} */ (ui);
+}
+
+/**
+ * One declared Control as the UI holds it: its kind, the record seam it makes, its class, its perFrame, the Event
+ * input it plays (null when it is part-local), and its declaration, frozen.
+ * @param {string} name @param {Record<string, any>} c @param {T.Dialect} dialect
+ */
+function controlOf(name, c, dialect) {
+  const input = /** @type {Record<string, any>} */ (dialect.seams?.in ?? {})[name];
+  const plays = input !== undefined && input.seam?.kind === "event";
+  return Object.freeze({
+    kind: c.kind, seam: controlSeam(c), records: recordsOf(c.kind), perFrame: c.perFrame ?? perFrameOf(c.kind),
+    input: plays ? name : null, local: !plays, keyed: c.each !== undefined,
+    ...(c.label !== undefined ? { label: c.label } : {}), ...(c.latency !== undefined ? { latency: c.latency } : {}),
+    decl: freezeDeep(c),
+  });
 }

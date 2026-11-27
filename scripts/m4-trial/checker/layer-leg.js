@@ -105,7 +105,7 @@ export async function checkLayerCompose(dir, given) {
   /** @param {string} end */
   const partOf = (end) => end.split(".")[0];
   const wires = c.wires.map((/** @type {any} */ x) => ({ from: x.from, to: x.to, fromPart: partOf(x.from), toPart: partOf(x.to) }));
-  if (!wires.some((/** @type {any} */ x) => x.from === "page.out.pad" && gameParts.includes(x.toPart))) out.push(t("T022", "the page's pad is not wired to the game", ".wire(page.out.pad, <game part>.in.<its pad input>)", GLUE));
+  if (!wires.some((/** @type {any} */ x) => x.from.startsWith("page.out.") && gameParts.includes(x.toPart))) out.push(t("T022", "the page's pad is not wired to the game", ".wire(page.out.pad, <game part>.in.<its pad input>)", GLUE));
   if (!wires.some((/** @type {any} */ x) => gameParts.includes(x.fromPart) && scoreParts.includes(x.toPart))) out.push(t("T023", "nothing the game sends is wired to the score-and-timer", ".wire(<game part>.out.<output>, <score part>.in.<input>)", GLUE));
   const shown = c.show ? entry(c.show) : null;
   if (!shown?.layer) out.push(t("T032", "the glue does not show a layer of both pictures", ".show(<game part>.out.<Draw output>, <score part>.out.<Draw output>)", GLUE));

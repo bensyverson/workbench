@@ -1,7 +1,7 @@
 {
   "name": "gemmaze",
   "version": "1.0.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "A grid game: one level of walls and gems, played with the D-pad.",
   "entry": {
     "dialect": "gemmaze.dialect.js",
@@ -225,7 +225,7 @@
     "gemmaze.dialect.js": "sha256-9DDf/aAUYytrqhab5DR9ryWCcUBxiehg1p7AWY597aM=",
     "gemmaze.grammar.js": "sha256-6L8rNdP0CmAF7VBcB/sXjRBMPU4b5iKvt1hSTqfi++k=",
     "gemmaze.runtime.js": "sha256-VcOJrEmgxj3fq+Awj6PHti/3zoayeCSBW+TAC5jGrCk=",
-    "gemmaze.ui.js": "sha256-oWFW6xQL2jLVjOolsUCnlC67h6iA0UVLTW/xl6y9Q5c=",
+    "gemmaze.ui.js": "sha256-+UEYmtSkv7J+7X50C1HFVOLyz/zse40KbMCxiOYxcUM=",
     "refusals/two-starts.js": "sha256-L3ufn64WoxpauFbfeE0V6kKfw3ELoFOt0Qq3P7Oi5rQ=",
     "sprites.png": "sha256-wVOZWeMW9DDm1K4yptwaCrzKZjAKzhtRJgYbJ8X7YiU="
   }

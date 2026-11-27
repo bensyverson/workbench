@@ -2,34 +2,40 @@
 // stamp (Ben, 2026-11-26, reversing ada0afe's latest-value coalescing); kit/compose sizes a page wire for a press and
 // a release per control per frame, and past that the wire's overflow policy trims, or with none the wire folds the
 // excess into the latest held state (Ben, 2026-11-26), counted and noted, never stopping the part; copied and checked
-// when logged; routed only when the composition has the built-in page part.
+// when logged; routed only when the composition has the built-in page part. Massaged for declared Controls
+// (2026-11-27): the walker's UI declares its own `pad` Control, a buttons Control of one button, `right`, where
+// PAGE_CONTROLS once gave the DMG pad; a buttons Control sends two records a frame, as the page's controls did.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRun, replay } from "../index.js";
-import { compose, page, pageRuntime, PAGE_CONTROLS, PAGE_CHANGES_PER_FRAME } from "../../compose/index.js";
-import { list } from "../../define/index.js";
+import { compose, page, pageRuntimeFor } from "../../compose/index.js";
+import { defineUI, list } from "../../define/index.js";
 import { tiny } from "./helpers.js";
 
+/** A buttons Control's records a display frame (a press and a release), as PER_FRAME was. */
+const PER_FRAME = 2;
 /** @param {any} clock @param {number} max */
 function walker(clock, max) {
-  return tiny("walk", { state: { x: "f64", seen: list("f64", 1000), rights: list("f64", 1000) }, inputs: false, ports: { in: { pad: { seam: "Event<{ right: bool }>", note: "the pad" } } } },
+  const t = tiny("walk", { state: { x: "f64", seen: list("f64", 1000), rights: list("f64", 1000) }, inputs: false, ports: { in: { pad: { seam: "Event<{ right: bool }>", note: "the pad" } } } },
     { clock: () => clock, init: () => ({ x: 0, seen: [], rights: [] }), events: { in: { pad: max } },
       step: (/** @type {any} */ s, /** @type {any} */ c) => ({ x: s.x + c.inputs.pad.length, seen: [...s.seen, ...c.inputs.pad.map((/** @type {any} */ r) => r.$T)], rights: [...s.rights, ...c.inputs.pad.map((/** @type {any} */ r) => (r.right ? 1 : 0))] }) });
+  const ui = defineUI(t.grammar, { controls: { pad: { kind: "buttons", buttons: ["right"] } } });
+  return { ...t, packages: [{ name: "walk", ui }] };
 }
-const PAD = (/** @type {boolean} */ right) => ({ up: false, down: false, left: false, right });
+const PAD = (/** @type {boolean} */ right) => ({ right });
 const press = (/** @type {number | string} */ T, right = true) => ({ kind: "control", T, part: "page", name: "pad", value: PAD(right) });
 
 /** @param {any} W @param {Record<string, unknown>} [o]  the wire's options */
 function wired(W, o) {
   const w = /** @type {any} */ (W.grammar("hero"));
-  return compose("walk").part(w).wire(page.out.pad, w.in.pad, o).build({ runtimes: [W.runtime] });
+  return compose("walk").part(w).wire(page.out.pad, w.in.pad, o).build({ runtimes: [W.runtime], packages: W.packages });
 }
 
 /** The smallest max compose accepts on a reliable page wire into a consumer on this clock. @param {any} clock */
 function smallest(clock) {
   for (let m = 1; m < 10000; m++) {
     const W = walker(clock, m), w = /** @type {any} */ (W.grammar("hero"));
-    if (!compose("walk").part(w).wire(page.out.pad, w.in.pad).check({ runtimes: [W.runtime] }).length) return m;
+    if (!compose("walk").part(w).wire(page.out.pad, w.in.pad).check({ runtimes: [W.runtime], packages: W.packages }).length) return m;
   }
   throw new Error("no max fits");
 }
@@ -50,8 +56,10 @@ test("a button tap at one stamp reaches the consumer as both records, in the ord
     { clock: () => ({ tick: 1 / 4 }), init: () => ({ got: [] }), events: { in: { fire: 120 } },
       step: (/** @type {any} */ s, /** @type {any} */ c) => ({ got: [...s.got, ...c.inputs.fire.map((/** @type {any} */ r) => (r.held ? 1 : 0))] }) });
   const b = /** @type {any} */ (W.grammar("hero"));
-  const composed = compose("tap").part(b).wire(page.out.a, b.in.fire).build({ runtimes: [W.runtime] });
-  const tap = (/** @type {boolean} */ held) => ({ kind: "control", T: 0.3, part: "page", name: "a", value: { held } });
+  // the part's own one-button Control, where PAGE_CONTROLS once gave the A button (declared Controls, 2026-11-27)
+  const ui = defineUI(W.grammar, { controls: { fire: { kind: "buttons", buttons: ["held"] } } });
+  const composed = compose("tap").part(b).wire(page.out.fire, b.in.fire).build({ runtimes: [W.runtime], packages: [{ name: "btn", ui }] });
+  const tap = (/** @type {boolean} */ held) => ({ kind: "control", T: 0.3, part: "page", name: "fire", value: { held } });
   const run = createRun(composed, { runtimes: [W.runtime], inputs: [tap(true), tap(false)] });
   run.runUntil(1);
   assert.deepEqual(run.diagnostics, []);
@@ -59,7 +67,7 @@ test("a button tap at one stamp reaches the consumer as both records, in the ord
 });
 
 test("two pad changes inside one display frame both reach a frame consumer that takes the page's bound", () => {
-  const W = walker({ frame: true }, PAGE_CHANGES_PER_FRAME);
+  const W = walker({ frame: true }, PER_FRAME);
   const composed = wired(W);
   const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, { kind: "frame", T: "3/60" }, press("61/3600", true), press("62/3600", false)];
   const run = createRun(composed, { runtimes: [W.runtime], frames: "display", inputs });
@@ -70,12 +78,11 @@ test("two pad changes inside one display frame both reach a frame consumer that 
   assert.equal(replay(composed, { runtimes: [W.runtime] }, JSON.parse(JSON.stringify(run.record()))).ok, true);
 });
 
-test("compose sizes a page wire for a press and a release per control per frame", () => {
-  assert.equal(PAGE_CHANGES_PER_FRAME, 2);
-  for (const c of Object.keys(PAGE_CONTROLS)) assert.equal(pageRuntime.events.out[c], PAGE_CHANGES_PER_FRAME, c);
+test("compose sizes a page wire for a press and a release per Control per frame", () => {
+  assert.equal(pageRuntimeFor({ pad: { perFrame: PER_FRAME } }).events.out.pad, 2);
   const W = walker({ frame: true }, 1), h = /** @type {any} */ (W.grammar("hero"));
   // a warning since Ben's ruling of 2026-11-26 that a page wire past its size folds; until then an error (3bfd8ee)
-  assert.deepEqual(compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime] }).map((d) => [d.code, d.severity]), [["S116", "warning"]], "a frame consumer taking one");
+  assert.deepEqual(compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime], packages: W.packages }).map((d) => [d.code, d.severity]), [["S116", "warning"]], "a frame consumer taking one");
   assert.equal(smallest({ frame: true }), 2);
   assert.equal(smallest({ tick: 1 / 4 }), 120, "60 frames of at most 1/240 s in a quarter second, two changes each");
 });
@@ -93,7 +100,7 @@ test("a burst of page inputs between two steps of the smallest consumer compose 
 });
 
 test("past the bound, a page wire's overflow policy trims what a step takes, counted and noted, never silently", () => {
-  const W = walker({ frame: true }, PAGE_CHANGES_PER_FRAME);
+  const W = walker({ frame: true }, PER_FRAME);
   const composed = wired(W, { overflow: "keepLast" });
   const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, press("61/3600", true), press("62/3600", false), press("63/3600", true)];
   const run = createRun(composed, { runtimes: [W.runtime], frames: "display", inputs });
@@ -106,7 +113,7 @@ test("past the bound, a page wire's overflow policy trims what a step takes, cou
 // Reversed by Ben's ruling of 2026-11-26 (a page wire past its size folds into the latest held state, never stops its
 // part): this test expected N002, the consumer stopped and its three records counted in stats().stopped (3bfd8ee).
 test("past the bound on a page wire with no policy, a step takes the first max-1 in order and the latest, the fold counted and noted (N001), never refused", () => {
-  const W = walker({ frame: true }, PAGE_CHANGES_PER_FRAME);
+  const W = walker({ frame: true }, PER_FRAME);
   const composed = wired(W);
   const ins = ["61/3600", "62/3600", "63/3600", "64/3600", "65/3600"].map((T, i) => press(T, i % 2 === 0));
   const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, { kind: "frame", T: "3/60" }, ...ins, press("121/3600", false)];
@@ -124,7 +131,7 @@ test("past the bound on a page wire with no policy, a step takes the first max-1
 
 test("a page consumer that takes one per step gets only the latest held state, so a tap inside one frame leaves the button up", () => {
   const W = walker({ frame: true }, 1), h = /** @type {any} */ (W.grammar("hero"));
-  const ds = compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime] });
+  const ds = compose("walk").part(h).wire(page.out.pad, h.in.pad).check({ runtimes: [W.runtime], packages: W.packages });
   assert.deepEqual(ds.map((d) => [d.code, d.severity]), [["S116", "warning"]], "a warning naming the fold, not a refusal");
   assert.match(ds[0].message, /fold/);
   const composed = wired(W);
@@ -137,7 +144,7 @@ test("a page consumer that takes one per step gets only the latest held state, s
 });
 
 test("a glue's own overflow policy on a page wire still wins over the fold", () => {
-  const W = walker({ frame: true }, PAGE_CHANGES_PER_FRAME);
+  const W = walker({ frame: true }, PER_FRAME);
   const inputs = [{ kind: "frame", T: "1/60" }, { kind: "frame", T: "2/60" }, ...["61/3600", "62/3600", "63/3600", "64/3600", "65/3600"].map((T, i) => press(T, i % 2 === 0))];
   for (const [overflow, rights] of /** @type {const} */ ([["keepLast", [0, 1]], ["keepFirst", [1, 0]]])) {
     const run = createRun(wired(W, { overflow }), { runtimes: [W.runtime], frames: "display", inputs });
@@ -229,13 +236,14 @@ test("a page input is copied when logged: a later host mutation changes nothing,
 test("a page input is checked when it is logged, by run.input too", () => {
   const W = walker({ tick: 1 / 4 }, smallest({ tick: 1 / 4 }));
   const run = createRun(wired(W), { runtimes: [W.runtime] });
-  assert.throws(() => run.input({ kind: "control", T: 0.3, part: "page", name: "pad", value: { right: true } }), /pad/);
-  assert.throws(() => run.input({ kind: "control", T: 0.3, part: "page", name: "knob", value: {} }), /no control 'knob'/);
+  // the value is held to the declared Control's seam (N012), and a name the page lacks is N013 (declared Controls)
+  assert.throws(() => run.input({ kind: "control", T: 0.3, part: "page", name: "pad", value: { right: 1 } }), /N012.*pad/);
+  assert.throws(() => run.input({ kind: "control", T: 0.3, part: "page", name: "knob", value: {} }), /N013.*'knob'/);
 });
 
 /** A part named "page" (when so named) with a pad Event input of its own. */
 function named() {
-  return tiny("pg", { state: { right: "f64" }, inputs: false, ports: { out: {}, in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "pad" } } } },
+  return tiny("pg", { state: { right: "f64" }, inputs: false, ports: { out: {}, in: { pad: { seam: "Event<{ right: bool }>", note: "pad" } } } },
     { clock: () => ({ tick: 1 / 4 }), init: () => ({ right: 0 }), events: { in: { pad: 8 } }, step: (/** @type {any} */ s, /** @type {any} */ c) => ({ right: c.inputs.pad.at(-1)?.right ? 1 : s.right }) });
 }
 

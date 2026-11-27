@@ -162,12 +162,6 @@ test("annotations evaluate, and a param's takes '*''s fields under its own", () 
   assert.deepEqual(c.annotation("traces", "nothing", STATE, {}), {});
 });
 
-test("a UI's control is the run control its inputs reach the runtime as: the object's name, first letter lowercased", () => {
-  const ui = defineUI(orbits, { inputs: { object: "Pad", buttons: { up: { role: "dpad.up" }, fire: { role: "a" } } } });
-  assert.equal(ui.control, "pad");
-  assert.equal(tile({ kind: "text", value: "label" }).control, null, "a UI with no inputs has none");
-});
-
 /** The orbits Dialect and Grammar again, with the params read by the name `p` (review of d0b876c, finding 3). */
 const pDialect = defineDialect(/** @type {any} */ ({ ...dialect.def, name: "porbits", globals: { p: "Params", world: "World", Math: "Math" }, params: { object: "Params", name: "p" } }));
 const porbits = defineGrammar(pDialect, { root: "orbits", params: { slot: "param" }, constructs: orbits.grammar.constructs });

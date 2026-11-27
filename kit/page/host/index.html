@@ -19,7 +19,8 @@
   <main>
     <section class="pane stagecol">
       <div class="bezel">
-        <canvas id="stage" width="160" height="144" aria-label="stage" hidden></canvas>
+        <canvas id="stage" width="160" height="144" aria-label="stage" tabindex="0" hidden></canvas>
+        <button id="lock" class="lock" hidden>Click to start</button>
         <div id="textstage" class="textstage" hidden></div>
       </div>
       <div class="transport">
@@ -27,21 +28,8 @@
         <button id="step" class="btn sm">Step</button>
         <input id="scrub" type="range" min="0" max="0" step="any" value="0" aria-label="time">
       </div>
-      <div class="padrow" aria-label="on-screen controls">
-        <div class="dpad">
-          <button id="pad-up" class="btn">&#9650;</button>
-          <button id="pad-left" class="btn">&#9664;</button>
-          <button id="pad-right" class="btn">&#9654;</button>
-          <button id="pad-down" class="btn">&#9660;</button>
-        </div>
-        <div class="abtns">
-          <button id="pad-select" class="btn sm">select</button>
-          <button id="pad-start" class="btn sm">start</button>
-          <button id="pad-b" class="btn">B</button>
-          <button id="pad-a" class="btn">A</button>
-        </div>
-      </div>
-      <p class="dim hint">Keys: arrows or WASD, A: <span id="keys"></span>, Start: Enter, Select: Shift.</p>
+      <div id="controls" class="controls" aria-label="on-screen controls"></div>
+      <p class="dim hint" id="keys"></p>
       <h4>Presets <span class="dim">(each package's examples, run alone)</span></h4>
       <div id="presets" class="presets"></div>
       <div id="tests" class="presets" hidden></div>

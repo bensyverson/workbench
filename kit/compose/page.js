@@ -1,41 +1,20 @@
-// The page: a built-in part whose Event outputs are the controls (Ben's ruling 5, 2026-11-26). A glue wires one like
-// any port, `.wire(page.out.<control>, <part>.in.<input>)`, with the usual seam, rename and S checks; it needs no
-// `.part(page)`, since a wire from it adds it. The page has no step: kit/run delivers a page input in the log (a
-// `control` input addressed to the part "page") to every wire from that control at the input's own stamp, every press
-// and release in order. For queue sizing (S116) it counts as a frame part that sends at most PAGE_CHANGES_PER_FRAME
-// records per control per frame.
+// The page: a built-in part whose Event outputs are the declared Controls of the composed parts' UIs (Ben's ruling 5,
+// 2026-11-26; declared Controls, 2026-11-27). The kit knows no Control of its own: `page.out.<control>` is an open
+// handle at glue time, judged when the composition is checked against the UIs of the packages it is given (S111), and
+// a wire from it is checked as any wire. It needs no `.part(page)`, since a wire from it adds it. The page has no
+// step: kit/run delivers a page input in the log (a `control` input addressed to the part "page") to every wire from
+// that Control at the input's own stamp. For queue sizing (S116) it counts as a frame part that sends each Control's
+// `perFrame` records a display frame (`pageRuntimeFor`).
 
-import { defineDialect, defineGrammar, defineRuntime, exact, name } from "../define/index.js";
+import { defineDialect, defineGrammar, exact, name } from "../define/index.js";
 import { programOf } from "../define/grammar.js";
 import { isHandle } from "../define/handles.js";
+import { isUI } from "../define/ui.js";
+import { parseSeam } from "../seam/index.js";
+import { keyCodesOf } from "../define/ui/controls.js";
 
 /** The page part's name and its Dialect's. */
 export const PAGE = "page";
-
-/** Each control the page offers, with its record: the DMG host's D-pad and buttons, each true while held. */
-export const PAGE_CONTROLS = Object.freeze({
-  pad: "Event<{ up: bool, down: bool, left: bool, right: bool }>",
-  a: "Event<{ held: bool }>",
-  b: "Event<{ held: bool }>",
-  start: "Event<{ held: bool }>",
-  select: "Event<{ held: bool }>",
-});
-
-/**
- * The most records the page is sized to send on one control in one display frame: a press and a release (Ben,
- * 2026-11-26: "we need tap and release"). For the pad, any two changes of the held directions. The host does not
- * enforce it; past it, the wire's overflow policy trims what a step takes, or with none kit/run folds the excess into
- * the latest record, the control's held state (Ben, 2026-11-26), both reported; the consumer is never stopped for it.
- */
-export const PAGE_CHANGES_PER_FRAME = 2;
-
-const NOTES = /** @type {Record<string, string>} */ ({
-  pad: "the D-pad: one record each time the person's held directions change, each field true while that direction is held",
-  a: "the A button: one record when it is pressed (held: true) and one when it is released (held: false)",
-  b: "the B button: one record when it is pressed (held: true) and one when it is released (held: false)",
-  start: "the Start button: one record when it is pressed (held: true) and one when it is released (held: false)",
-  select: "the Select button: one record when it is pressed (held: true) and one when it is released (held: false)",
-});
 
 const pageDialect = defineDialect(/** @type {any} */ ({
   name: PAGE, numberType: "f64", text: () => "",
@@ -47,7 +26,7 @@ const pageDialect = defineDialect(/** @type {any} */ ({
   params: { object: "Params", name: "$" },
   state: { none: "f64" },
   frames: {},
-  ports: { out: Object.fromEntries(Object.entries(PAGE_CONTROLS).map(([n, seam]) => [n, { seam, note: NOTES[n] }])), in: {} },
+  ports: { out: {}, in: {} },
 }));
 const pageGrammar = defineGrammar(pageDialect, { root: PAGE, constructs: { [PAGE]: { opens: [name()], slots: {} } } });
 
@@ -55,16 +34,104 @@ const pageGrammar = defineGrammar(pageDialect, { root: PAGE, constructs: { [PAGE
 export const page = /** @type {any} */ (pageGrammar(PAGE));
 const pageProgram = programOf(page);
 
-/** The page's runtime, for queue sizing only: kit/run never steps it. */
-export const pageRuntime = defineRuntime(/** @type {any} */ (pageGrammar), {
-  clock: () => ({ frame: true }),
-  init: () => ({ none: 0 }),
-  step: (/** @type {any} */ s) => s,
-  events: { out: Object.fromEntries(Object.keys(PAGE_CONTROLS).map((n) => [n, PAGE_CHANGES_PER_FRAME])) },
-});
-
 /** Whether a handle is one of the page's. @param {unknown} h */
 export const isPageHandle = (h) => isHandle(h) && h.program === pageProgram;
+
+/**
+ * One Control as the composed page records it: what kit/run checks a page input against (its seam), how its records
+ * fold (state) or carry over (delta), and what a host builds its forms and key maps from (its declaration, with no
+ * functions, so the record stays data).
+ * @typedef {{ kind: string, seam: string, records: "state" | "delta", perFrame: number, latency?: string, keyed?: true, decl: Record<string, any> }} PageControl
+ */
+
+/** A declaration as plain data: its functions (an `each`) left out. @param {unknown} decl */
+const dataOf = (decl) => JSON.parse(JSON.stringify(decl, (_k, v) => (typeof v === "function" ? undefined : v)));
+
+/**
+ * The page's runtime, for queue sizing only (kit/run never steps the page): a frame part that sends each Control's
+ * perFrame records a display frame.
+ * @param {Record<string, { perFrame: number }>} controls
+ */
+export const pageRuntimeFor = (controls) => /** @type {any} */ ({
+  dialect: { name: PAGE },
+  clock: () => ({ frame: true }),
+  events: { out: Object.fromEntries(Object.entries(controls).map(([n, c]) => [n, c.perFrame])), in: {} },
+});
+
+/**
+ * A part's UI among the packages a composition was given: one whose UI is of the part's Dialect (by value, else by
+ * name). A package entry is kit/package's loadPackage result, or anything with a `ui` (a test's `{ name, ui }`).
+ * @param {any[] | undefined} packages @param {any} dialect
+ */
+export function uiFor(packages, dialect) {
+  for (const p of packages ?? []) {
+    const ui = isUI(p) ? p : p?.ui;
+    if (!isUI(ui)) continue;
+    if (ui.dialect === dialect || p.dialect === dialect || ui.package === dialect.name) return ui;
+  }
+  return null;
+}
+
+/**
+ * The page's Controls from the composed parts' UIs: each Control with an Event input, by name, with the parts that
+ * declare it. Two parts' Controls of one name are one Control only when both declarations are equal data with no
+ * `each` and no `to`; any other pair is a clash (S119). Keys two different Controls bind are S121's.
+ * @param {Array<{ name: string, dialectName: string, ui: any }>} parts  the parts with a UI, in composition order
+ */
+export function pageControls(parts) {
+  /** @type {Record<string, PageControl & { parts: Array<{ part: string, input: string }> }>} */
+  const controls = {};
+  /** The Controls a second part may share: declared with no each and no to. */
+  const shareable = new Set();
+  /** @type {Array<{ name: string, first: { part: string, dialect: string, decl: unknown }, second: { part: string, dialect: string, decl: unknown } }>} */
+  const clashes = [];
+  /** @type {Map<string, { part: string, dialect: string, decl: unknown }>} */
+  const firstBy = new Map();
+  for (const p of parts) {
+    for (const [n, c] of Object.entries(/** @type {Record<string, any>} */ (p.ui.controls ?? {}))) {
+      if (c.local) continue;
+      const decl = dataOf(c.decl);
+      const shared = c.decl.each === undefined && c.decl.to === undefined;
+      const had = controls[n];
+      if (had) {
+        const first = /** @type {{ part: string, dialect: string, decl: unknown }} */ (firstBy.get(n));
+        if (!shared || !shareable.has(n) || JSON.stringify(canonical(decl)) !== JSON.stringify(canonical(had.decl))) { clashes.push({ name: n, first, second: { part: p.name, dialect: p.dialectName, decl } }); continue; }
+        had.parts.push({ part: p.name, input: n });
+        continue;
+      }
+      firstBy.set(n, { part: p.name, dialect: p.dialectName, decl });
+      controls[n] = /** @type {any} */ ({ kind: c.kind, seam: c.seam, records: c.records, perFrame: c.perFrame, ...(c.latency ? { latency: c.latency } : {}), ...(c.keyed ? { keyed: true } : {}), decl, parts: [{ part: p.name, input: n }] });
+      if (shared) shareable.add(n);
+    }
+  }
+  /** @type {Array<{ code: string, controls: string[] }>} */
+  const sharedKeys = [];
+  /** @type {Map<string, string>} */
+  const byCode = new Map();
+  for (const [n, c] of Object.entries(controls)) {
+    for (const { code } of keyCodesOf(c.decl)) {
+      const owner = byCode.get(code);
+      if (owner === undefined) byCode.set(code, n);
+      else if (owner !== n && !sharedKeys.some((s) => s.code === code && s.controls.includes(n))) sharedKeys.push({ code, controls: [owner, n] });
+    }
+  }
+  return { controls, clashes, sharedKeys };
+}
+
+/** A value with its object keys sorted, for a canonical comparison. @param {unknown} v @returns {unknown} */
+function canonical(v) {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v !== null && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(/** @type {any} */ (v)[k])]));
+  return v;
+}
+
+/**
+ * The page's output seams, as a Dialect's are held: one Event output per Control.
+ * @param {Record<string, PageControl>} controls
+ */
+export function pageSeams(controls) {
+  return Object.fromEntries(Object.entries(controls).map(([n, c]) => [n, { name: n, seam: /** @type {any} */ (parseSeam(c.seam)).type, seamText: c.seam, note: `the Control '${n}' (${c.kind})` }]));
+}
 
 /**
  * The glue's calls with the page added as a part first when a wire names it and no `.part` call does.
@@ -76,21 +143,4 @@ export function withPage(calls, at) {
   const added = calls.some((c) => c.kind === "part" && programOf(/** @type {any} */ (c).value) === pageProgram);
   const wired = calls.some((c) => c.kind === "wire" && (isPageHandle(/** @type {any} */ (c).from) || isPageHandle(/** @type {any} */ (c).to)));
   return wired && !added ? [/** @type {C} */ (/** @type {unknown} */ ({ kind: "part", value: page, at })), ...calls] : calls;
-}
-
-/**
- * Why a page input's control or value does not fit, or null. A value is the control's record: every field, each a bool.
- * @param {string} control @param {unknown} value @returns {string | null}
- */
-export function pageInputProblem(control, value) {
-  const names = Object.keys(PAGE_CONTROLS);
-  if (!Object.hasOwn(PAGE_CONTROLS, control)) return `the page has no control '${control}': its controls are ${names.join(", ")}`;
-  const fields = control === "pad" ? ["up", "down", "left", "right"] : ["held"];
-  const shape = `{ ${fields.map((f) => `${f}: bool`).join(", ")} }`;
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return `a page.${control} input's value is ${shape}, not ${JSON.stringify(value)}`;
-  const v = /** @type {Record<string, unknown>} */ (value);
-  for (const f of fields) if (typeof v[f] !== "boolean") return `a page.${control} input's value is ${shape}: ${f} is ${JSON.stringify(v[f])}, not a bool`;
-  const extra = Object.keys(v).filter((k) => !fields.includes(k));
-  if (extra.length) return `a page.${control} input's value is ${shape}, with no ${extra.map((k) => `'${k}'`).join(", ")}`;
-  return null;
 }

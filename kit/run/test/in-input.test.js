@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { createRun, replay, INPUT_KINDS } from "../index.js";
 import { compose, page } from "../../compose/index.js";
 import { list } from "../../define/index.js";
-import { tiny } from "./helpers.js";
+import { tiny, controlsOf, FOUR } from "./helpers.js";
 
 /** A part that counts its `hit` records, sums their `points` (default 1), keeps each `$T`, and pushes `seen`. @param {{ max?: number, delivery?: any }} [o] */
 function counter(o = {}) {
@@ -98,7 +98,8 @@ test("an Event input a wire feeds takes no `in` (N011), and one a page wire feed
   const W = tiny("pg", { state: { n: "f64" }, inputs: false, ports: { in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "pad" } } } },
     { clock: () => ({ tick: 1 / 4 }), init: () => ({ n: 0 }), events: { in: { pad: 120 } }, step: (/** @type {any} */ s) => s });
   const h = /** @type {any} */ (W.grammar("h"));
-  const composed = compose("w").part(h).wire(page.out.pad, h.in.pad).build({ runtimes: [W.runtime] });
+  // the part's own declared pad (declared Controls, 2026-11-27), where PAGE_CONTROLS once gave one
+  const composed = compose("w").part(h).wire(page.out.pad, h.in.pad).build({ runtimes: [W.runtime], packages: controlsOf(W, { pad: FOUR }) });
   const run = createRun(composed, { runtimes: [W.runtime] });
   assert.throws(() => run.input({ kind: "in", T: 1, part: "h", name: "pad", value: { up: false, down: false, left: false, right: true } }), (/** @type {any} */ e) => e.diagnostics[0].code === "N011" && /wire feeds/.test(e.message));
 });

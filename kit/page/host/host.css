@@ -39,13 +39,7 @@ main { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(260px, 1f
 .textview { color: var(--ink); }
 .transport { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .transport input { flex: 1; }
-.padrow { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; }
-.dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-areas: ". up ." "left . right" ". down ."; gap: 2px; }
-.dpad button { height: 44px; justify-content: center; }
 #pad-up { grid-area: up; } #pad-left { grid-area: left; } #pad-right { grid-area: right; } #pad-down { grid-area: down; }
-.abtns { display: grid; grid-template-columns: repeat(2, 56px); gap: 6px; }
-.abtns .btn { height: 44px; justify-content: center; }
-.abtns .sm { height: 28px; }
 .hint { margin: 4px 0; }
 .presets { display: flex; flex-wrap: wrap; gap: 4px; }
 .testresult { display: inline-flex; align-items: center; gap: 4px; }
@@ -72,3 +66,11 @@ th, td { text-align: left; border-bottom: 1px solid var(--hair); padding: 1px 6p
 .ln { display: flex; }
 .ln .no { width: 3.5em; text-align: right; padding-right: 8px; color: var(--ink-2); user-select: none; flex: none; }
 .ln code { white-space: pre; }
+
+/* the generated controls view: one group per declared Control, in a row that wraps */
+.controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.control { display: flex; flex-direction: column; gap: 4px; }
+.control .grid { display: grid; gap: 2px; }
+.control .grid button { height: 44px; justify-content: center; }
+.bezel { position: relative; }
+.lock { position: absolute; inset: 0; margin: auto; width: max-content; height: max-content; }

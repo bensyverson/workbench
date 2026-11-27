@@ -1,9 +1,10 @@
 // Test fixtures for kit/page: a composed workbench whose shown part (`scr`, kit/draw's screen fixture) layers the
-// maze's picture under a HUD, a walker (`hero`) that takes the page's D-pad and A button as Events, the maze
+// maze's picture under a HUD, a walker (`hero`) whose UI declares its own D-pad and fire button (declared Controls,
+// 2026-11-27: the kit has no pad of its own) and a jump button no wire takes, the maze
 // package loaded by kit/package with a PNG header for its sheet, and a fake Canvas 2D context that records every
 // call. They live beside test/, not in it, since every file under a test/ folder runs as a test.
 
-import { defineRuntime, list } from "../../define/index.js";
+import { defineRuntime, defineUI, list, KIT_VERSION } from "../../define/index.js";
 import { compose, page } from "../../compose/index.js";
 import { loadPackage, hashText } from "../../package/index.js";
 import { pngHeader } from "../../package/fixtures/png.js";
@@ -12,11 +13,18 @@ import { tiny, mazeStep } from "../../run/test/helpers.js";
 
 const right = "(pl, pad) => { pl.dx = 1; }";
 
-/** A walker that counts the D-pad's right presses and the A button's presses, by their $T. */
+/** The walker's declared Controls: a D-pad on arrows and WASD, a fire button on X and K, and a jump on Z. */
+export const WALKER_CONTROLS = Object.freeze({
+  pad: { kind: "buttons", buttons: ["up", "down", "left", "right"], keys: { up: ["ArrowUp", "KeyW"], down: ["ArrowDown", "KeyS"], left: ["ArrowLeft", "KeyA"], right: ["ArrowRight", "KeyD"] } },
+  fire: { kind: "buttons", buttons: ["held"], keys: { held: ["KeyX", "KeyK"] } },
+  jump: { kind: "buttons", buttons: ["held"], keys: { held: ["KeyZ"] } },
+});
+
+/** A walker that counts the D-pad's right presses and the fire button's presses, by their $T. */
 function walker() {
   return tiny("walk", {
     state: { x: "f64", a: "f64", seen: list("f64", 1000) }, inputs: false,
-    ports: { in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>" }, fire: { seam: "Event<{ held: bool }>" } } },
+    ports: { in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>" }, fire: { seam: "Event<{ held: bool }>" }, jump: { seam: "Event<{ held: bool }>" } } },
   }, {
     clock: () => ({ tick: 1 / 8 }), init: () => ({ x: 0, a: 0, seen: [] }),
     step: (/** @type {any} */ s, /** @type {any} */ c) => {
@@ -26,7 +34,7 @@ function walker() {
       for (const r of c.inputs.fire) a += r.held ? 1 : 0;
       return { x, a, seen };
     },
-    events: { in: { pad: 60, fire: 60 } },
+    events: { in: { pad: 60, fire: 60, jump: 60 } },
   });
 }
 
@@ -57,10 +65,11 @@ export async function bench(o = {}) {
   const c = compose("page-bench").part(level).part(scr).part(hero)
     .frame(level.frame.cell, scr.frame.px, { scale: 8, offset: 4 })
     .wire(level.out.score, scr.in.score)
-    .wire(page.out.pad, hero.in.pad).wire(page.out.a, hero.in.fire);
+    .wire(page.out.pad, hero.in.pad).wire(page.out.fire, hero.in.fire);
   if (o.layered) c.show(scr.out.view, level.out.view); else c.wire(level.out.view, scr.in.board).show(scr);
-  const composed = c.build({ runtimes, ...(o.profile ? { profile: o.profile } : {}) });
-  return { composed, runtimes, packages: [await mazePackage(mg, o.png ?? pngHeader(16, 8))] };
+  const walkerUI = { name: "walk", ui: defineUI(W.grammar, { controls: WALKER_CONTROLS }) };
+  const composed = c.build({ runtimes, packages: [walkerUI], ...(o.profile ? { profile: o.profile } : {}) });
+  return { composed, runtimes, packages: [await mazePackage(mg, o.png ?? pngHeader(16, 8)), walkerUI] };
 }
 
 /** The maze as a loaded package holding its sheet's bytes. @param {any} grammar @param {Uint8Array} png */
@@ -70,8 +79,8 @@ async function mazePackage(grammar, png) {
   /** @type {Record<string, string>} */
   const hashes = {};
   for (const [p, t] of Object.entries(all)) hashes[p] = await hashText(t);
-  const manifest = { name: "maze", version: "0.1.0", kit: "0.4", entry: { dialect: "maze.dialect.js", grammar: "maze.grammar.js" }, files: hashes };
-  const loaded = await loadPackage({ ...all, "wb-package.json": JSON.stringify(manifest) }, { kitVersion: "0.4", importModule: async (p) => (p === "maze.dialect.js" ? { d: grammar.dialect } : { g: grammar }) });
+  const manifest = { name: "maze", version: "0.1.0", kit: KIT_VERSION, entry: { dialect: "maze.dialect.js", grammar: "maze.grammar.js" }, files: hashes };
+  const loaded = await loadPackage({ ...all, "wb-package.json": JSON.stringify(manifest) }, { kitVersion: KIT_VERSION, importModule: async (p) => (p === "maze.dialect.js" ? { d: grammar.dialect } : { g: grammar }) });
   if (loaded.diagnostics.length) throw new Error(loaded.diagnostics.map((d) => d.message).join("\n"));
   return loaded;
 }

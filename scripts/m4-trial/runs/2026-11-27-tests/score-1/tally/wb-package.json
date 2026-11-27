@@ -1,7 +1,7 @@
 {
   "name": "tally",
   "version": "1.0.0",
-  "kit": "0.4",
+  "kit": "0.5",
   "description": "one timed round and its score",
   "entry": {
     "dialect": "tally.dialect.js",

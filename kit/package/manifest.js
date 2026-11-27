@@ -9,7 +9,7 @@ export const MANIFEST_PATH = "wb-package.json";
 
 /** The entry modules: dialect and grammar required, ui and runtime optional. */
 const ENTRIES = ["dialect", "grammar", "ui", "runtime"];
-const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "elements", "examples", "refusals", "tests", "files"];
+const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "modules", "examples", "refusals", "tests", "files"];
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
 const DIAGNOSTIC_CODE = /^[A-Z][0-9]{3}$/;
 const HASH = /^sha256-[A-Za-z0-9+/]{43}=$/;
@@ -33,6 +33,7 @@ export function checkManifest(text) {
   const ds = [];
   const bad = (/** @type {string} */ message, /** @type {string} */ fix, code = /** @type {"K002" | "K004"} */ ("K002")) => ds.push(diag(code, message, fix, MANIFEST_PATH));
   for (const k of Object.keys(m)) {
+    if (k === "elements") { bad(`${MANIFEST_PATH} has an unknown key "elements": it was renamed modules (KIT_VERSION 0.5), which lists every trusted module the UI names, its custom elements' and its actions'`, `renamed modules: write "modules": [...] instead of "elements"`); continue; }
     if (!KEYS.includes(k)) bad(`${MANIFEST_PATH} has an unknown key "${k}"${k === "dependencies" ? "; a package depends on nothing but the kit and its own files" : ""}`, `remove "${k}"; the keys are ${KEYS.join(", ")}`);
   }
   /** A path field: a normalized relative path to a module (`.js`), no glob. */
@@ -57,7 +58,7 @@ export function checkManifest(text) {
       if (v === undefined) { if (k === "dialect" || k === "grammar") bad(`"entry.${k}" is missing`, `name the file that exports the package's ${k}`); } else if (path(v, `"entry.${k}"`)) named.push(/** @type {string} */ (v));
     }
   }
-  for (const k of ["lib", "elements", "examples"]) {
+  for (const k of ["lib", "modules", "examples"]) {
     const v = m[k];
     if (v === undefined) continue;
     if (!Array.isArray(v)) { bad(`"${k}" must be an array of file paths`, `write "${k}": ["${k}/a.js"]`); continue; }

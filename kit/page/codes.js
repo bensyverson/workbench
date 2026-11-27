@@ -1,4 +1,5 @@
-// kit/page's codes: H… is a page diagnostic, something the page cannot show as the composition asks, reported for
+// kit/page's codes (H009 retired with declared Controls, 2026-11-27: names bind, so no Control is ambiguous; the
+// number is not reused): H… is a page diagnostic, something the page cannot show as the composition asks, reported for
 // the host to show and never dropped silently. H is reserved for the kit (kit/define's RESERVED_LETTERS).
 
 /** Each code and what it means. */
@@ -11,8 +12,11 @@ export const PAGE_CODES = Object.freeze({
   H006: "A package test's expectation was not met (runTests): the message names the test, the kind of expectation, the instant, the path or output, and the expected and actual values",
   H007: "A package test's run reported an error diagnostic the test did not expect (N002, N003, N004, a J code), or its replay from its own record diverged (N005)",
   H008: "A package test could not run: its example does not build alone, createRun refused it, an in input was refused when logged (N011, N012), or a state path names a Program field the built Program does not declare",
-  H009: "A part run alone could take a page control in more than one way, so none of those is wired: two of its Event inputs take one control's seam, or one input fits several controls (the buttons' { held: bool }); a warning, and a glue chooses",
   H010: "The shown layer's bottom frame has no extent, so the page has no size and the canvas stays hidden: a layer has no text stage to fall back on, as a shown part with no extent does",
+  H011: "A warning: a Grip, or a Control with to, whose target cannot be written: an address no call reaches, a param the Program lacks, a computed argument (a name, a const, arithmetic, a call, a template), or one call reached several times (a loop, a helper called twice); it is drawn disabled, and the message names the expression",
+  H012: "A write-back that cannot apply: the span no longer holds the text the record was built from, or the edited text does not build; nothing is kept and the text is unchanged",
+  H013: "An action threw, or gave the wrong shape: a file action { name, type, bytes } with bytes a Uint8Array, an edits action [{ to, value }]",
+  H014: "A warning: a device adapter is absent or refused (MIDI, a gamepad); the other adapters still play",
 });
 
 /** How many page diagnostics the list keeps: past it, the oldest go (a refusal that comes and goes must not grow it without bound). */
