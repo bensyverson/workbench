@@ -100,8 +100,8 @@ export const rightAt = (T) => ({ kind: "in", T, part: "level", name: "pad", valu
 /**
  * A tiny Dialect and Grammar with the ports, state and frames given, and a runtime from `rt`.
  * `slots` adds construct slots beside param, k and size.
- * `edges` is the Dialect's edges(record).
- * @param {string} n @param {{ ports: any, state: any, frames?: any, edges?: (record: any) => unknown, inputs?: boolean, slots?: Record<string, any> }} d @param {any} rt
+ * `edges` is the Dialect's edges(record). `paramsName` is the name lambdas read the params by (`$` by default).
+ * @param {string} n @param {{ ports: any, state: any, frames?: any, edges?: (record: any) => unknown, inputs?: boolean, slots?: Record<string, any>, paramsName?: string }} d @param {any} rt
  */
 export function tiny(n, d, rt) {
   for (const side of ["out", "in"]) for (const p of Object.values(d.ports[side] ?? {})) p.note ??= "n";
@@ -109,11 +109,11 @@ export function tiny(n, d, rt) {
     name: n, numberType: "f64", text: () => "",
     types: { v2: vector(2, "f64") },
     spaces: { s: { pure: true } },
-    objects: { In: { label: "the inputs (inp)", members: {} }, Params: { label: "the params ($)", members: {} } },
-    globals: { inp: "In", $: "Params" },
+    objects: { In: { label: "the inputs (inp)", members: {} }, Params: { label: `the params (${d.paramsName ?? "$"})`, members: {} } },
+    globals: { inp: "In", [d.paramsName ?? "$"]: "Params" },
     targets: { js: { accepts: "*", compare: exact() } },
     slots: { k: { params: [], returns: "f64", space: "s" } },
-    params: { object: "Params", name: "$" },
+    params: { object: "Params", name: d.paramsName ?? "$" },
     environment(/** @type {any} */ program) {
       /** @type {Record<string, string>} */
       const params = {};

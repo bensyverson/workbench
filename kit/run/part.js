@@ -49,13 +49,17 @@ export function paramsOf(record, given = {}) {
   return { ...out, ...given };
 }
 
+/** The name a part's Dialect reads its params by (`params.name`, `$` by default). @param {Part} p */
+const paramsName = (p) => /** @type {string} */ (p.runtime.dialect.def?.params?.name ?? "$");
+
 /**
- * The globals a part's Kernels read in one init or step: `$`, and the inputs object (the value inputs).
+ * The globals a part's Kernels read in one init or step: the params, by the Dialect's params name (fields names
+ * them u), and the inputs object (the value inputs).
  * @param {Part} p @param {Record<string, unknown>} values @param {Record<string, unknown>} [params]  the params, if not the part's own
  */
 function globalsFor(p, values, params = p.params) {
   /** @type {Record<string, unknown>} */
-  const g = { $: Object.freeze({ ...params }) };
+  const g = { [paramsName(p)]: Object.freeze({ ...params }) };
   const inputs = p.runtime.dialect.seams.inputs;
   if (inputs) g[inputs.name] = Object.freeze({ ...values });
   p.compiled.globals.current = g;
@@ -125,7 +129,7 @@ function stateProblem(p, s, what) {
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
-  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals.$, globals, files: p.files };
+  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals[paramsName(p)], globals, files: p.files };
   /** @type {any} */
   let s;
   try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "N004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
@@ -150,7 +154,7 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     const globals = globalsFor(p, values);
     /** @type {Record<string, unknown[]>} */
     const events = Object.fromEntries(outs.map((n) => [n, []]));
-    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, params: globals.$, kernels: kernelsFor(p), rng: () => next(rng), events, globals, files: p.files };
+    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, params: globals[paramsName(p)], kernels: kernelsFor(p), rng: () => next(rng), events, globals, files: p.files };
     const state = p.runtime.step(p.state, ctx);
     return { state, events, rng };
   };
