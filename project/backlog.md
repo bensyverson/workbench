@@ -197,3 +197,14 @@ For the language playground: a parser generated from a Grammar's data (a packrat
 ## 2026-11-27: live arguments through a rebuild
 
 A write-back's release changes a Program's literal, so the rebuild that follows changes the record's content key and restarts the part once (Ben's ruling 12 on the controls draft): a synth's held notes cut when a knob with `to` is released. Live arguments would keep a part running through such a rebuild, carrying its state across when only an argument the runtime reads live changed. It is a kit/run change the declared Controls stage did not make. **Un-park when** a workbench whose part must not restart on a commit (an audio-rate synth, a long simulation) is built, or a dogfood leg names the restart as a blocker.
+
+## 2026-11-27: outside inputs making instants beside a running clocked part
+
+Since `916b2fd` (issue `qsEYlW`), an outside input (in, pointer, page control, param, rebuild) makes an instant for the demand parts it reaches, but only while no tick or frame part is running (kit/run/scheduler.js, `nextInstant` and `reachesDemand`). Beside a clocked part, demand parts step at that part's instants. That holds S116: it sizes a reliable wire from a demand producer into a clocked consumer by counting the clocked instants, and one instant per input could push past the consumer's max (N002). Parked by Ben, 2026-11-27 (issue `1qtKOe`): keep it as is until a workbench needs it, and be ready to add it. **Un-park when** a workbench needs a demand part to answer an input faster than its clocked neighbor's rate: a synth voice beside a 60 Hz visualizer that must take MIDI at its device stamps, say, or a demand render whose latency the clocked tick bounds badly.
+
+How to add it, cheapest first:
+1. **Per part, not per run.** Let an input make an instant for a demand part whose outputs reach no clocked part over a reliable wire. S116 is untouched, because such a part feeds nothing it sizes. The scheduler change is local: replace `nextInstant`'s "no clocked part running" guard with a per-part reachability check computed once from the wires. This likely covers the first real need.
+2. **Declared input rates.** A Control or device declares a max rate (a MIDI port, a gamepad's poll), and S116 counts the input instants a clocked consumer's period can hold, from that rate and the producer's per-step max. It needs a rate field in the UI declaration and a kit/compose change.
+3. **A policy instead of a bound.** A demand producer that inputs can wake counts as unbounded in S116, so its wires into a clocked consumer need `{ overflow }` or `keepLast`, as page wires already do. It is the simplest rule, but it makes every such author choose a policy.
+
+Instants for delta records past a step's max, and for records on a delayed wire in a demand-only run, are the same family; kit/run's README ("Not built") lists both.
