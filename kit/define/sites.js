@@ -16,7 +16,8 @@ import { instanceName, matchArgs } from "./record.js";
 export const GRAMMARS = new WeakMap();
 /**
  * What an override replaced: by Program (applyArgs), then by the record it builds (grammar.js), each overridden
- * argument's value before the override, keyed `<tag>.<slot>[#<n>]:<i>`. So a preview's record still says what its
+ * argument's value before the override, keyed `<tag>.<slot>[#<n>]:<i>`, and each param's declared value that
+ * `run(fn, { values })` replaced, keyed `param.<name>`. So a preview's record still says what its
  * text holds at the call, and write-back can tell a stale text (H012) from a preview. @type {WeakMap<object, Map<string, unknown>>}
  */
 export const REPLACED = new WeakMap();
@@ -51,8 +52,10 @@ export function parseAddress(address) {
  * two parts, whose argument is not one value). A param's site is its declaration's
  * call, with the param's own bounds, its `value` the path. `slot` is the call's slot (the method the text calls), and
  * `source` the value the text held there when the record was built: `value`, unless the record is a preview built
- * with that argument overridden (`run(fn, { args })`), whose text still holds the value before the override.
- * @typedef {{ file: string, loc: Loc, slot: string, arg: number, path: Array<string | number>, value: unknown, source: unknown, calls: number, min?: number, max?: number, whole?: boolean, param?: string }} Site
+ * with that argument overridden (`run(fn, { args })`) or a param's value (`run(fn, { values })`), whose text still holds the
+ * value before the override. `callArgs` is the call's arguments as the text holds them, each override undone: what write-back
+ * compares the call's other literals with, so a call that moved onto a neighbor is found.
+ * @typedef {{ file: string, loc: Loc, slot: string, arg: number, path: Array<string | number>, value: unknown, source: unknown, callArgs: unknown[], calls: number, min?: number, max?: number, whole?: boolean, param?: string }} Site
  */
 
 /**
@@ -132,7 +135,7 @@ export function siteOf(record, target) {
     const call = instances[0]?.calls.find((c) => c.slot === slot && c.args[0] === name);
     if (!call) return null;
     const decl = /** @type {Record<string, any>} */ (call.args[1] ?? {});
-    return { file: call.at.file, loc: call.at.loc, slot: call.slot, arg: 1, path: ["value"], value: decl.value, source: decl.value, calls: count(call.at), param: name, ...(typeof decl.min === "number" ? { min: decl.min } : {}), ...(typeof decl.max === "number" ? { max: decl.max } : {}) };
+    return { file: call.at.file, loc: call.at.loc, slot: call.slot, arg: 1, path: ["value"], value: decl.value, source: REPLACED.get(record)?.get(target) ?? decl.value, callArgs: [name, REPLACED.get(record)?.has(target) ? { ...decl, value: REPLACED.get(record)?.get(target) } : decl, ...call.args.slice(2)], calls: count(call.at), param: name, ...(typeof decl.min === "number" ? { min: decl.min } : {}), ...(typeof decl.max === "number" ? { max: decl.max } : {}) };
   }
   if (!target.startsWith("arg.")) return null;
   const a = parseAddress(target.slice(4));
@@ -148,7 +151,7 @@ export function siteOf(record, target) {
   if (value === undefined && a.path.length) return null;
   const replaced = REPLACED.get(record);
   const source = replaced?.has(argKey(a)) ? at(replaced.get(argKey(a)), a.path) : value;
-  return { file: call.at.file, loc: call.at.loc, slot: call.slot, arg: a.arg, path: a.path, value, source, calls: count(call.at), ...boundsAt(specAt(s.args, a.arg), a.path) };
+  return { file: call.at.file, loc: call.at.loc, slot: call.slot, arg: a.arg, path: a.path, value, source, callArgs: call.args.map((/** @type {unknown} */ v, /** @type {number} */ i) => (replaced?.has(argKey({ ...a, arg: i })) ? replaced.get(argKey({ ...a, arg: i })) : v)), calls: count(call.at), ...boundsAt(specAt(s.args, a.arg), a.path) };
 }
 
 /**

@@ -76,3 +76,22 @@ test("38. after a rewind, a page input is stamped from where the run now is, not
   const T = pg.stampOf(2000);
   assert.ok(T <= 0.02 + 0.001 + 1e-9, `the next instant after the rewound T, not after the undone press: ${T}`);
 });
+
+test("Fws2zJ. a rewind to exactly the T the page last looked at drops a stamp set ahead of it, so the next input is stamped from T", () => {
+  const { page: pg, f } = synthPage();
+  pg.unlock();
+  pg.start();
+  for (let ms = 1000; ms <= 1200; ms += 16) f.tick(ms);
+  pg.key({ type: "keydown", code: "KeyH", timeStamp: 1260 }); // stamped ahead of T
+  const T0 = pg.run.seconds;
+  pg.run.rewind(T0);
+  pg.key({ type: "keyup", code: "KeyH" });
+  const stamps = pg.run.log.inputs.filter((e) => e.kind === "control").map((e) => seconds(e.T));
+  assert.equal(stamps.length, 1, "the press stamped ahead was dropped by the rewind");
+  assert.ok(stamps[0] <= T0 + 0.002, `the release is stamped right after T, not after the dropped press: ${stamps[0]} for ${T0}`);
+  // what must still hold: a stamp that survives keeps its order
+  pg.key({ type: "keydown", code: "KeyH", timeStamp: 1260 });
+  pg.key({ type: "keyup", code: "KeyH" });
+  const after = pg.run.log.inputs.filter((e) => e.kind === "control").map((e) => seconds(e.T));
+  assert.deepEqual(after, [...after].sort((a, b) => a - b), "inputs stay in order");
+});

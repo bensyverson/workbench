@@ -206,20 +206,24 @@ export function createPage(options) {
    * Previews a target's value through the log: a `param` input, or a `rebuild` built with the argument overridden
    * (createPage's `run.build`). A preview whose build fails (no record, or a throw: the Grammar or the Dialect refused
    * the value) is skipped and reported once as H012, so the drag goes on and its release gives the last value that
-   * built. True when it was logged.
-   * @param {string} part @param {string} to @param {unknown} value @param {string} what
+   * built. True when it was logged, or, with `log` false (a wired Control's commit, which has no preview to show),
+   * when the value builds.
+   * @param {string} part @param {string} to @param {unknown} value @param {string} what @param {boolean} [log]
    */
-  function preview(part, to, value, what) {
+  function preview(part, to, value, what, log = true) {
     const param = to.startsWith("param.") ? to.slice(6) : null;
     const build = options.run?.build;
     if (param === null && typeof build !== "function") throw new Error("a Grip or a Control on an argument previews by building the part with the argument overridden: pass run: { build(part, params, { args }) }");
     const key = `${part} ${to}`;
     try {
-      if (param !== null) logInput({ kind: "param", part, name: param, value });
-      else {
+      if (param !== null) {
+        // a commit with no preview to log is checked by building the part with the value
+        if (log) logInput({ kind: "param", part, name: param, value });
+        else if (typeof build === "function") build(part, { ...run.params(part), [param]: value }, {});
+      } else {
         const record = /** @type {Function} */ (build)(part, { ...run.params(part) }, { args: { [to.slice(4)]: value } });
         if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
-        logInput({ kind: "rebuild", part, record });
+        if (log) logInput({ kind: "rebuild", part, record });
       }
       failing.delete(key);
       return true;
@@ -333,7 +337,8 @@ export function createPage(options) {
    * input carries the live value. With `to`, a `phase: "preview"` (a drag in flight) commits nothing, and a part-local
    * Control previews its target through the log, at most once a frame, as a Grip does; the release (`phase` "commit",
    * the default) gives the commit `{ part, to, value }` for the host to write back, a part-local one's preview logged
-   * at once. A target that cannot be written is H011: a part-local Control's change then throws, and one with an
+   * at once and a wired one's value checked by a build, so a commit is only ever a value some build accepted (a value
+   * that does not build gives null and the page diagnostic H012). A target that cannot be written is H011: a part-local Control's change then throws, and one with an
    * input still plays and commits nothing. Throws for a Control the page lacks or an instance a keyed one lacks.
    * @param {string} name @param {Record<string, any>} record @param {{ phase?: "preview" | "commit", timeStamp?: number }} [o]
    * @returns {{ part: string, to: string, value: unknown } | null}
@@ -362,6 +367,7 @@ export function createPage(options) {
       waiting.delete(key);
       if (!preview(part, to, value, `the Control ${what}`)) return null;
     } else if (phase === "preview") return null;
+    else if (!preview(part, to, value, `the Control ${what}`, false)) return null;
     return { part, to, value };
   }
 
@@ -417,7 +423,9 @@ export function createPage(options) {
   let latest = 0;
   /** The run's T when the page last looked (each frame, each input). */
   let latestAt = 0;
-  const latestNow = () => { const t = toNumber(run.T); if (t < latestAt) latest = 0; latestAt = t; return latest; };
+  /** Whether the log still holds an input stamped at `t` seconds: a rewind to exactly the page's last T drops one stamped ahead without T going back. @param {number} t */
+  const logged = (t) => run.log.inputs.some((/** @type {{ kind: string, T: unknown }} */ e) => { const [n, d = "1"] = String(e.T).split("/"); return e.kind !== "frame" && Number(n) / Number(d) === t; });
+  const latestNow = () => { const t = toNumber(run.T); if (t < latestAt || (latest > t && !logged(latest))) latest = 0; latestAt = t; return latest; };
   /** The first millisecond after the run's T, in seconds. */
   const afterNow = () => (Math.floor(toNumber(run.T) * 1000) + 1) / 1000;
   /**

@@ -96,6 +96,14 @@ function locate(text, record, target, value) {
   if (!call) return stale(`no call is at ${where} of the text, where the record's ${target} was made`);
   const method = call.callee.property?.type === "Identifier" ? call.callee.property.name : call.callee.property?.value;
   if (method !== site.slot) return stale(`the call at ${where} is .${method}, not the .${site.slot} the record made there`);
+  // a call that moved onto a neighbor with the same slot and target literal is another call: its other literals tell
+  const spread = call.arguments.some((/** @type {any} */ a) => a.type === "SpreadElement");
+  if (!spread && call.arguments.length !== site.callArgs.length) return stale(`the call at ${where} takes ${call.arguments.length} arguments in the text, and the record's made it with ${site.callArgs.length}`);
+  for (let i = 0; i < call.arguments.length && !spread; i++) {
+    if (i === site.arg) continue;
+    const held = literalValue(call.arguments[i]);
+    if (held !== undefined && !same(held, site.callArgs[i])) return stale(`argument ${i} of the call at ${where} is \`${text.slice(call.arguments[i].start, call.arguments[i].end)}\` in the text, and the record's call had ${JSON.stringify(site.callArgs[i])}`);
+  }
   const arg = call.arguments[site.arg];
   if (!arg) return no(`the call at line ${site.loc.start.line} has no argument ${site.arg}`);
   const walked = walkPath(arg, site.path);

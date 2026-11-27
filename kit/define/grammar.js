@@ -271,7 +271,13 @@ class Program {
     const slot = this.paramSlot();
     for (const c of this.root?.calls ?? []) {
       const [n, decl] = c.args;
-      if (slot !== undefined && c.slot === slot && typeof n === "string" && Object.hasOwn(values, n) && decl !== null && typeof decl === "object") c.args = [n, { ...decl, value: values[n] }, ...c.args.slice(2)];
+      if (slot !== undefined && c.slot === slot && typeof n === "string" && Object.hasOwn(values, n) && decl !== null && typeof decl === "object") {
+        // the text still holds the declared value: sites.js's siteOf reports it as the param's `source`
+        const replaced = REPLACED.get(this) ?? new Map();
+        replaced.set(`param.${n}`, /** @type {{ value?: unknown }} */ (decl).value);
+        REPLACED.set(this, replaced);
+        c.args = [n, { ...decl, value: values[n] }, ...c.args.slice(2)];
+      }
     }
   }
 

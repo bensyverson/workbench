@@ -165,3 +165,16 @@ test("FtbfNP. a wired keyed Control's form says it is keyed, though its composed
   assert.deepEqual([ratio.keyed, ratio.instances.map((i) => i.key)], [true, ["a", "b"]]);
   assert.equal(s.forms().find((x) => x.name === "detune").keyed, false);
 });
+
+test("x3LcAJ. a wired Control's commit is checked by a build: a value the Grammar refuses gives null and H012, a value that builds still commits", async () => {
+  const { pg } = await synth();
+  const refused = pg.control("ratio", { key: "b", value: 1000 });
+  assert.equal(refused, null, "ratio is bounded to 16 by the Grammar: no build accepts 1000");
+  assert.deepEqual(pg.diagnostics.map((d) => d.code), ["H012"]);
+  const ok = pg.control("ratio", { key: "b", value: 5 });
+  assert.deepEqual(ok, { part: "s", to: "arg.s.op#2:1.ratio", value: 5 });
+  const w = writeBack(SYNTH_TEXT, pg.run.composed.parts.find((p) => p.name === "s").record, ok.to, ok.value);
+  assert.equal(w.ok, true, "and the commit writes");
+  assert.ok(run(await fromText(w.text)).record, "into a text that builds");
+  assert.equal(pg.control("ratio", { key: "b", value: 1000 }, { phase: "preview" }), null, "a preview of a wired Control builds nothing and reports nothing new");
+});

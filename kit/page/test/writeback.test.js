@@ -196,3 +196,32 @@ test("46. a string with a carriage return is written escaped, so the text reads 
   assert.equal(printNumber(12.5, 5), "15", "a half rounds up, as a Grip's step does");
   assert.equal(printNumber(0.1 + 0.2), "0.30000000000000004", "no step: shortest round-trip");
 });
+
+test("8XU2O2. a call that moved onto an identical neighbor, or whose name literal changed, is H012; the unedited text and a line moved intact still write", async () => {
+  const TWINS = `export default ($) => g("s")
+  .op("a", { ratio: 2, level: 0.5 })
+  .op("b", { ratio: 2, level: 0.5 });
+`;
+  const b = await built(TWINS);
+  assert.equal(b.back("arg.s.op#0:1.ratio", 4).ok, true, "the text the record was built from");
+  const gone = HEAD + TWINS.replace(`  .op("a", { ratio: 2, level: 0.5 })\n`, "");
+  const w = writeBack(gone, b.record, "arg.s.op#0:1.ratio", 4);
+  assert.equal(w.ok, false);
+  assert.equal(w.ok === false && w.code, "H012", "op b now stands where op a was, with the same slot and the same ratio");
+  const renamed = writeBack(HEAD + TWINS.replace(`.op("a"`, `.op("z"`), b.record, "arg.s.op#0:1.ratio", 4);
+  assert.equal(renamed.ok === false && renamed.code, "H012", "the name literal changed");
+  const below = HEAD + TWINS.replace(`level: 0.5 })\n  .op("b"`, `level: 0.5 })\n  // c\n  .op("b"`);
+  assert.equal(writeBack(below, b.record, "arg.s.op#0:1.ratio", 4).ok, true, "a comment below changes nothing the call holds");
+  const other = HEAD + TWINS.replace(`ratio: 2, level: 0.5 })\n  .op("b"`, `ratio: 2, level: 0.9 })\n  .op("b"`);
+  assert.equal(writeBack(other, b.record, "arg.s.op#0:1.ratio", 4).ok, true, "an object argument is not compared, only its target literal");
+});
+
+test("0sZBNV. a param write against a record built with values is not stale: the text still holds the declared value", async () => {
+  const b = await built(BODY);
+  const withValues = run(b.fn, { values: { gain: 1.7 } }).record;
+  const w = writeBack(b.text, withValues, "param.gain", 1.5);
+  assert.equal(w.ok, true, w.ok ? "" : w.message);
+  assert.match(w.ok ? w.text : "", /\.param\("gain", \{ value: 1\.5,/);
+  const stale = writeBack(b.text.replace("value: 1,", "value: 1.2,"), withValues, "param.gain", 1.5);
+  assert.equal(stale.ok === false && stale.code, "H012", "an edited declaration is still stale");
+});
