@@ -21,6 +21,8 @@ Review baseline: 2026-11-23T15:00:00-06:00
 
 **Dogfood our own designs before locking them in.** Whenever we ask an agent to use something we made (a DSL, an API, a tool, a document set), have a few fresh agents use it and report on the experience before the design is frozen and fully implemented: how hard the task was, where the rules or documents misled them, what they had to guess. Give them a strict rule set (checkable by a program where possible) and the draft API, then review their output by hand. Their difficulty is feedback on the design, not on the agent: change the design, then rerun. Massaging their output to make it compliant is fine, and the size of the massage is itself a finding. This adds to the shared rules and overrides none; why: [the M3 plan](project/2026-11-24-m3-kit-v0-plan.md) (Ben, 2026-11-24).
 
+**Serve more than the founding examples.** The kit hardcodes no workbench's vocabulary (a control set, a frame size, a HUD): a workbench declares it. Every kit contract names a workbench it must serve other than the founding ones (DMG, fields, data), and each brief says which; a review checks the change against it, not only against the brief; each design stage's dogfood includes a non-game leg. Never write a founding example's set into a brief as a floor ("at least DMG's …"): an agent builds the floor as the whole. This adds to the shared rules and overrides none; why: [the overfit finding](project/2026-11-27-founding-example-overfit.md) (Ben, 2026-11-27).
+
 <!-- agents:begin core@c84939 -->
 ## Working rules
 
