@@ -190,7 +190,7 @@ export function createPage(options) {
   };
   /**
    * Previews a target's value through the log: a `param` input, or a `rebuild` built with the argument overridden
-   * (createPage's `run.build`), logged as `how` says (preview.js's PREVIEW: for the next frame, at once, or not at all).
+   * (createPage's `run.build`), logged at once (logNow), or, with `PREVIEW.CHECK`, only judged (preview.js's PREVIEW).
    * A preview whose build fails (no record, or a throw: the Grammar or the Dialect refused the value) is skipped and
    * reported once as H012, so the drag goes on and its release gives the last value that built. True when it was
    * logged, or, with `PREVIEW.CHECK` (a wired Control's commit, which has no preview to show), when the value is
@@ -198,10 +198,8 @@ export function createPage(options) {
    * page must have one (a host mistake, thrown).
    * @param {string} part @param {string} to @param {unknown} value @param {string} what @param {import("./preview.js").PreviewMode} [how]
    */
-  function preview(part, to, value, what, how = PREVIEW.FRAME) {
+  function preview(part, to, value, what, how = PREVIEW.LOG) {
     const log = how !== PREVIEW.CHECK;
-    /** @param {Record<string, any>} e */
-    const logged = (e) => (how === PREVIEW.NOW ? logNow(e) : logPreview(e));
     const param = to.startsWith("param.") ? to.slice(6) : null;
     const build = options.run?.build;
     const missing = buildProblem(to);
@@ -210,7 +208,7 @@ export function createPage(options) {
     try {
       if (param !== null) {
         // a commit with no preview to log is checked against the declaration, then by building the part with the value
-        if (log) logged({ kind: "param", part, name: param, value });
+        if (log) logNow({ kind: "param", part, name: param, value });
         else {
           const why = declaredProblem(part, to, value);
           if (why) throw new Error(why);
@@ -222,7 +220,7 @@ export function createPage(options) {
       } else {
         const record = /** @type {Function} */ (build)(part, { ...run.params(part) }, { args: { [to.slice(4)]: value } });
         if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
-        if (log) logged({ kind: "rebuild", part, record });
+        if (log) logNow({ kind: "rebuild", part, record });
       }
       failing.delete(key);
       return true;
@@ -299,7 +297,7 @@ export function createPage(options) {
   /** The first millisecond after the run's T, in seconds. */
   const afterNow = () => (Math.floor(toNumber(run.T) * 1000) + 1) / 1000;
   /**
-   * Logs a page input (a Control's record, a pointer event, a Grip's preview) at the event's device time when it has
+   * Logs a page input (a Control's record, a pointer event) at the event's device time when it has
    * one, else the first millisecond after T, and never before the latest stamp the page logged: inputs reach the
    * log in the order the page made them, so a blur's release cannot precede the press it releases.
    * @param {Record<string, any>} e @param {{ timeStamp?: number }} [event]
@@ -310,13 +308,12 @@ export function createPage(options) {
     return run.input({ ...e, T });
   };
   /**
-   * Logs a preview (a Grip's, a part-local Control's). While the run goes, as a page input: the frame that flushes it
-   * applies it before it draws. While paused there is no next frame to apply it at, so it takes effect at once
-   * (kit/run's inputNow, at T or the first millisecond after it), and the drag shows on a paused stage.
-   * @param {Record<string, any>} e
+   * Logs a preview or a release (a Grip's, a part-local Control's) to take effect at once (kit/run's inputNow, at T or
+   * the first millisecond after it), running or paused: a drag shows on a paused stage, and each of a target's previews
+   * and its release takes effect in the order the page logged them, so a release is the last word on its target
+   * (one stamped as a page input, at a device time that can stand ahead of T, would land after it). No later page
+   * input is stamped before it. @param {Record<string, any>} e
    */
-  const logPreview = (e) => (driver.paused ? logNow(e) : logInput(e));
-  /** Logs an input that takes effect at once (kit/run's inputNow); no later page input is stamped before it. @param {Record<string, any>} e */
   const logNow = (e) => {
     const entry = run.inputNow(e);
     latest = Math.max(latest, toNumber(entry.T));

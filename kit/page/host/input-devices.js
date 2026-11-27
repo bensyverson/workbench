@@ -69,20 +69,24 @@ export function createInputDevices(o) {
   /** One frame: the pad polled (when one is), the idle gestures committed; frames go on while either needs them. @param {number} ms */
   const tick = (ms) => {
     if (stopped) { ticking = false; return; }
-    if (running) poll();
+    if (running) poll(ms);
     settle(ms);
     if (running || gestures.size) o.requestFrame(tick); else ticking = false;
   };
   const tickOn = () => { if (!ticking && !stopped) { ticking = true; o.requestFrame(tick); } };
 
-  /** One gamepad poll: each Control that declares a gamepad gets the records the first connected pad makes against its last state. */
-  function poll() {
+  /**
+   * One gamepad poll: each Control that declares a gamepad gets the records the first connected pad makes against its
+   * last state, stamped with the pad's timestamp, or the frame's device time `ms` for a pad that gives none.
+   * @param {number} ms
+   */
+  function poll(ms) {
     if (o.locked?.()) return;
     const pads = typeof o.navigator?.getGamepads === "function" ? Array.from(o.navigator.getGamepads() ?? []).filter((/** @type {any} */ p) => p?.connected !== false && p) : [];
     const pad = /** @type {any} */ (pads[0]);
     if (!pad) return;
     const prev = previous.get(pad.index) ?? null;
-    const stamp = typeof pad.timestamp === "number" ? pad.timestamp : 0;
+    const stamp = typeof pad.timestamp === "number" ? pad.timestamp : ms;
     for (const f of o.forms()) if (plays(f, "gamepad")) for (const r of gamepadRecords(f, pad, prev)) send(f, r, stamp);
     previous.set(pad.index, snapshot(pad));
   }

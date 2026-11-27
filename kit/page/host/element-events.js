@@ -20,7 +20,7 @@ export const ELEMENT_EVENTS = Object.freeze(["wb-control", "wb-param", "wb-edit"
  *   writeProblem: (part: string, to: string) => { code: string, message: string, fix?: string } | null,
  *   declares: (part: string, name: string) => boolean,
  *   build: (part: string, to: string, value: unknown) => Record<string, any>,
- *   logRebuild: (part: string, record: Record<string, any>, phase: "preview" | "commit") => void,
+ *   logRebuild: (part: string, record: Record<string, any>) => void,
  *   commit: (c: { part: string, to: string, value: unknown }) => void,
  *   refused: (r: Refusal) => void,
  * }} ElementSeams
@@ -40,12 +40,12 @@ export function createElementEvents(s) {
   /** The previews that failed, said once until one builds again. */
   const failing = new Set();
 
-  /** Builds and logs a part with an argument overridden; the refusal, or null. @param {string} part @param {string} to @param {unknown} value @param {"preview" | "commit"} phase */
-  const rebuild = (part, to, value, phase) => {
+  /** Builds and logs a part with an argument overridden; the refusal, or null. @param {string} part @param {string} to @param {unknown} value */
+  const rebuild = (part, to, value) => {
     try {
       const record = s.build(part, to, value);
       if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
-      s.logRebuild(part, record, phase);
+      s.logRebuild(part, record);
       failing.delete(`${part} ${to}`);
       return null;
     } catch (e) {
@@ -94,7 +94,7 @@ export function createElementEvents(s) {
         if (problem) return [no("H011", `a custom element's wb-edit of part ${part}: ${problem.message}`, problem.fix)];
         if (phase === "preview") { waiting.set(`${part} ${to}`, { part, to, value: d.value }); return []; }
         waiting.delete(`${part} ${to}`);
-        const refused = rebuild(part, to, d.value, "commit");
+        const refused = rebuild(part, to, d.value);
         if (refused) return [refused];
         s.commit({ part, to, value: d.value });
         return [];
@@ -106,7 +106,7 @@ export function createElementEvents(s) {
       const all = [...waiting.values()];
       waiting.clear();
       for (const w of all) {
-        const r = rebuild(w.part, w.to, w.value, "preview");
+        const r = rebuild(w.part, w.to, w.value);
         const key = `${w.part} ${w.to}`;
         if (r && !failing.has(key)) { failing.add(key); s.refused(r); }
       }

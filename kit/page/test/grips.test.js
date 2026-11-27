@@ -143,3 +143,28 @@ test("40c. a preview whose build fails is skipped with a page diagnostic: the fr
 test("a stepped Grip at its max stays at the max when the max is no multiple of the step (reviewer-80)", () => {
   assert.equal(gripValue({ kind: "length", v0: 1.9, p0: [0, 0], p: [10, 0], axis: [1, 0], step: 0.7, min: 0, max: 2 }), 2);
 });
+
+// issue 7HuCx4 N2 (reviewer-82): a page input stamped at its device time can stand ahead of the run's T, and a drag's
+// preview logged after it must not then sort after the release, which is in force at once
+test("7HuCx4. a release is the last word on its target: no preview of the drag sorts after it, though a device time stands ahead", () => {
+  const { page: pg, f } = lensPage();
+  pg.unlock();
+  pg.start();
+  f.tick(0); f.tick(16);
+  const at = pg.run.seconds;
+  pg.pointer({ type: "pointerdown", x: 90, y: 90, pointerId: 2, buttons: 1, detail: 1, shiftKey: false, altKey: false, metaKey: false, ctrlKey: false, deltaX: 0, deltaY: 0, timeStamp: 30 });
+  const [down] = pg.run.log.inputs.filter((e) => e.kind === "pointer");
+  const sec = (t) => { const [n, d = "1"] = String(t).split("/"); return Number(n) / Number(d); };
+  assert.ok(sec(down.T) > at + 0.005, `the pointer's device time stands ahead of T: ${down.T} for ${at}`);
+  const drag = pg.grab({ part: "b", grip: "radius", index: 0 }, [50, 50]);
+  drag.move([55, 50]);
+  f.tick(18); // the frame flushes the preview (15)
+  drag.move([58, 50]);
+  assert.deepEqual(drag.release(), { to: "arg.b.surface#0:0.radius", value: 18 });
+  const radius = () => pg.run.composed.parts.find((p) => p.name === "b").record.surface[0].radius;
+  assert.equal(radius(), 18, "the release is in force at once");
+  for (const ms of [32, 48, 64, 80]) f.tick(ms);
+  assert.equal(radius(), 18, "and stays the last word: the preview logged before it does not land after it");
+  const rebuilds = pg.run.log.inputs.filter((e) => e.kind === "rebuild");
+  assert.deepEqual(rebuilds.map((e) => e.record.surface[0].radius), [15, 18], "the preview, then the release, in log order");
+});

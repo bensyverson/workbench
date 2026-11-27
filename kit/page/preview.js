@@ -2,11 +2,11 @@
 // page.js's `preview` takes and grip-desk.js and controls.js pass.
 
 /**
- * `FRAME`: for the frame that flushes it, which applies it before it draws, or at once while paused (a paused run has
- * no next frame); `NOW`: at once (kit/run's inputNow), as a release's last value is, so the write-back's rebuild that
- * follows it at once is never overtaken by it; `CHECK`: judged and not logged (a wired Control's commit, which has no
- * preview to show).
+ * `LOG`: logged to take effect at once (kit/run's inputNow), running or paused, a drag's preview as its release's last
+ * value: so a target's previews and its release take effect in the order they were logged, and the write-back's
+ * rebuild that follows the release at once is never overtaken by any of them; `CHECK`: judged and not logged (a wired
+ * Control's commit, which has no preview to show).
  */
-export const PREVIEW = Object.freeze({ FRAME: "frame", NOW: "now", CHECK: "check" });
+export const PREVIEW = Object.freeze({ LOG: "log", CHECK: "check" });
 
 /** @typedef {typeof PREVIEW[keyof typeof PREVIEW]} PreviewMode */

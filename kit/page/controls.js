@@ -149,7 +149,7 @@ export function createControls(seams) {
       const key = `${part} ${to}`;
       if (phase === "preview") { waiting.set(key, { part, to, value, what: `the Control ${what}` }); return null; }
       waiting.delete(key);
-      if (!preview(part, to, value, `the Control ${what}`, PREVIEW.NOW)) return null;
+      if (!preview(part, to, value, `the Control ${what}`, PREVIEW.LOG)) return null;
     } else if (phase === "preview") return null;
     else if (!preview(part, to, value, `the Control ${what}`, PREVIEW.CHECK)) return null;
     return { part, to, value };

@@ -261,11 +261,12 @@ test("two releases on one call in one frame each write back (a lens's rim, then 
   assert.equal(allEnabled(s), true);
 });
 
-test("paused, a param edit (the params panel, a custom element's wb-param preview) is in force at once; running, at the run's next instant", async () => {
+// issue 7HuCx4: running too, so a commit logged after it (in force at once) is never overtaken by it at the next instant
+test("a param edit (the params panel, a custom element's wb-param preview) is in force at once, running or paused", async () => {
   const b = await lensBench();
   const s = b.session;
   assert.deepEqual(s.setParam("bench", "focus", 6), []);
-  assert.equal(s.page.run.params("bench").focus, 5, "running: logged for the run's next instant");
+  assert.equal(s.page.run.params("bench").focus, 6, "running: at once");
   b.f.tick(32); b.f.tick(48);
   assert.equal(s.page.run.params("bench").focus, 6);
   s.pause();
@@ -275,4 +276,56 @@ test("paused, a param edit (the params panel, a custom element's wb-param previe
   assert.equal(s.page.run.params("bench").focus, 8);
   assert.deepEqual(s.setParam("bench", "focus", 99).map((d) => d.code), ["N008"], "a refusal is still the run's");
   assert.equal(s.page.run.params("bench").focus, 8);
+});
+
+// issue 7HuCx4 (reviewer-82): the host's previews and commits of a target take effect in the order it logged them, so
+// a preview logged before a commit never lands after it and overrides it
+test("7HuCx4. a custom element's preview logged before its commit never lands after it: the commit is the last word", async () => {
+  const b = await lensBench();
+  const s = b.session;
+  assert.deepEqual(s.element("wb-edit", { to: "arg.bench.lens#0:0.radius", value: 18, phase: "preview" }), []);
+  b.f.tick(32); // the frame builds and logs the preview
+  assert.deepEqual(s.element("wb-edit", { to: "arg.bench.lens#0:0.radius", value: 19 }), []);
+  await settle();
+  assert.equal(radiusInForce(s), 19, "the commit is in force at once");
+  for (const t of [48, 64, 80, 96]) b.f.tick(t);
+  assert.equal(radiusIn(b.editor.text), 19);
+  assert.equal(radiusInForce(s), 19, "no preview logged before the commit lands after it");
+  assert.equal(s.textInForce(), true);
+  const stamps = b.rebuilds().map((e) => e.T);
+  assert.deepEqual(stamps, [...stamps].sort((x, y) => { const v = (t) => { const [n, d = "1"] = String(t).split("/"); return Number(n) / Number(d); }; return v(x) - v(y); }), "and the log keeps them in the order they were logged");
+});
+
+// issue svaHXA N3 (reviewer-82): the text put in force again after a scrub can fail to rebuild there (its init throws),
+// which leaves the record in force not the text's; each later scrub frame must not log the same failed rebuild again
+test("svaHXA. a text whose rebuild fails after a scrub is tried once and said once, not on every scrub frame", async () => {
+  const loaded = await loadPreset({ packages: { lens: LENS }, package: "lens", example: "examples/bench.js" }, env);
+  const f = frames();
+  const staged = [], problems = [];
+  let broken = false, tries = 0;
+  const own = loaded.rebuild;
+  // the text's own build (no argument overridden) gives a lens with no center, whose init throws
+  loaded.rebuild = (part, params, more) => { const r = own(part, params, more); if (!broken || Object.keys(more?.args ?? {}).length) return r; tries++; return { ...r, lens: [{ radius: 3 }] }; };
+  const s = createSession(loaded, { context: fakeContext(), requestFrame: f.requestFrame, onStage: (ds) => staged.push(...ds), onProblem: (m) => problems.push(m) });
+  s.start(); f.tick(0); f.tick(16);
+  assert.deepEqual(s.element("wb-edit", { to: "arg.bench.lens#0:0.radius", value: 18, phase: "preview" }), []);
+  f.tick(32); f.tick(48);
+  assert.equal(radiusInForce(s), 18, "the preview is in force, a record the text did not build");
+  broken = true;
+  const at = s.page.run.seconds;
+  for (let i = 0; i < 6; i++) s.scrub(at - 0.001 * (i % 2)); // a scrub held near one place, frame after frame
+  assert.equal(s.textInForce(), false, "the text's record failed to rebuild");
+  assert.equal(tries, 1, "tried once, not on every scrub frame");
+  assert.ok(s.page.run.builds.filter((b) => b.diagnostics?.length).length <= 1, "one failed rebuild at most in the log");
+  const said = [...staged.map((d) => `${d.code} ${d.message}`), ...problems];
+  assert.equal(said.length, 1, `said once: ${JSON.stringify(said)}`);
+  assert.match(said[0], /bench/);
+  // what must still work: another record in force (a new preview) is tried again, and puts the text in force when it builds
+  broken = false;
+  assert.deepEqual(s.element("wb-edit", { to: "arg.bench.lens#0:0.radius", value: 19, phase: "preview" }), []);
+  f.tick(64);
+  assert.equal(radiusInForce(s), 19);
+  s.scrub(s.page.run.seconds);
+  assert.equal(s.textInForce(), true, "a different record in force is tried again");
+  assert.equal(radiusInForce(s), 12);
 });

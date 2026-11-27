@@ -147,9 +147,9 @@ export function createSession(loaded, options) {
 
   /** @param {string} part @param {string} name @param {number | string | boolean} value @returns {Array<{ code: string, message: string, part?: string }>} */
   const setParam = (part, name, value) => {
-    // while paused there is no next frame to apply it at, so it is in force at once
-    const e = { kind: "param", part, name, value };
-    try { if (page.driver.paused) page.run.inputNow(e); else page.run.input(e); } catch (e) {
+    // in force at once, running or paused, as every preview and commit the host logs is: so they take effect in the
+    // order they were logged, and a commit is the last word on its target (issue 7HuCx4)
+    try { page.run.inputNow({ kind: "param", part, name, value }); } catch (e) {
       if (e instanceof RunError) { notify(); return /** @type {any[]} */ (e.diagnostics); }
       throw e;
     }
@@ -168,6 +168,8 @@ export function createSession(loaded, options) {
     notify();
     return [];
   };
+  /** @param {{ code: string, severity: "error" | "warning", message: string, fix?: string }} r */
+  const refuse = (r) => { if (options.onStage) options.onStage([r]); else options.onProblem?.(`${r.code} ${r.message}`); };
   const elements = createElementEvents({
     shown: () => String(composed.show ?? ""),
     controls: () => /** @type {Array<{ name: string }>} */ (page.controls()),
@@ -178,13 +180,17 @@ export function createSession(loaded, options) {
       if (!rebuild) throw new Error("this workbench has no build to preview an argument with");
       return rebuild(part, { ...page.run.params(part) }, { args: { [to.slice(4)]: value } });
     },
-    // a commit's at once (the write-back's rebuild follows it at once), and a preview at once while paused
-    logRebuild: (part, record, phase) => { const e = { kind: "rebuild", part, record }; if (phase === "commit" || page.driver.paused) page.run.inputNow(e); else page.run.input(e); },
+    // a preview as a commit, at once: the commit (and the write-back's rebuild after it) is never overtaken by a preview
+    logRebuild: (part, record) => { page.run.inputNow({ kind: "rebuild", part, record }); },
     commit: (c) => options.onCommit?.(c),
-    refused: (r) => { if (options.onStage) options.onStage([r]); else options.onProblem?.(`${r.code} ${r.message}`); },
+    refused: (r) => refuse(r),
   });
   flushEdits = () => elements.flush();
 
+  /** Each part whose text failed to rebuild after a scrub: the record in force it left and the params it was built with. @type {Map<string, { was: object, params: string }>} */
+  const unrestored = new Map();
+  /** The parts whose failed restore was said, once per text. */
+  const unrestoredSaid = new Set();
   /**
    * Puts a record of the text in force at once (kit/run's inputNow: no frame shows the text new and the record old),
    * and, for each param whose declared value it changes from `was`'s, that value, unless the run already has it.
@@ -209,8 +215,19 @@ export function createSession(loaded, options) {
     for (const part of userParts) {
       const was = recordOf(part);
       if (ofText.has(was)) continue;
+      // the same record in force and params rebuild the same way: a scrub held there does not log the failure again
+      const params = JSON.stringify(page.run.params(part));
+      const last = unrestored.get(part);
+      if (last && last.was === was && last.params === params) continue;
       const record = rebuild ? built(part, { ...page.run.params(part) }) : textComposed.parts.find((/** @type {any} */ p) => p.name === part)?.record;
-      if (record) putInForce(part, record, was);
+      if (!record) continue;
+      putInForce(part, record, was);
+      if (ofText.has(recordOf(part))) { unrestored.delete(part); continue; }
+      unrestored.set(part, { was, params });
+      if (unrestoredSaid.has(part)) continue;
+      unrestoredSaid.add(part);
+      const why = (/** @type {Array<{ code: string, message: string }>} */ (page.run.builds.at(-1)?.diagnostics ?? [])).map((d) => `${d.code} ${d.message}`).join("; ");
+      refuse({ code: "H012", severity: "error", message: `the text's record of part ${part} does not rebuild at T = ${page.run.seconds}, so the record in force is not the text's: ${why}`, fix: "edit the text and Apply it" });
     }
   }
 
@@ -243,7 +260,7 @@ export function createSession(loaded, options) {
     /** Whether every part's record in force was built from the text in force (a rewind past the session can leave one that was not). */
     textInForce: () => userParts.every((/** @type {string} */ part) => ofText.has(recordOf(part))),
     /**
-     * A param edit, as a logged input the run applies at its next instant, or at once while paused: the diagnostics
+     * A param edit, as a logged input in force at once, running or paused: the diagnostics
      * the run refused it with (N008: a value that does not fit the param's declaration), empty when it was logged.
      */
     setParam,
@@ -354,6 +371,8 @@ export function createSession(loaded, options) {
       rebuild = next.rebuild;
       textComposed = next.composed;
       ofText = new WeakSet();
+      unrestored.clear();
+      unrestoredSaid.clear();
       for (const part of userParts) {
         const was = recordOf(part);
         const record = next.rebuild ? built(part, { ...page.run.params(part) }) : next.composed.parts.find((/** @type {any} */ p) => p.name === part).record;

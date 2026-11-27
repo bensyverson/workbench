@@ -114,12 +114,11 @@ export function createGripDesk(seams) {
     /** @type {unknown} */
     let last = v0;
     const drag = {
-      /** @param {import("./preview.js").PreviewMode} [how] */
-      flush(how = PREVIEW.FRAME) {
+      flush() {
         if (pending === undefined) return;
         const value = pending;
         pending = undefined;
-        if (preview(g.part, g.to, value, `the Grip ${g.grip} [${g.index}]`, how)) last = value;
+        if (preview(g.part, g.to, value, `the Grip ${g.grip} [${g.index}]`, PREVIEW.LOG)) last = value;
       },
     };
     drags.add(drag);
@@ -128,8 +127,8 @@ export function createGripDesk(seams) {
       move(p, o = {}) {
         pending = gripValue({ kind: /** @type {any} */ (g.kind), v0: /** @type {any} */ (v0), p0, p: intoPart(p, edge), axis: g.axis, center: g.center, unit: g.decl.unit, step: g.decl.step, min: site?.min, max: site?.max, whole: site?.whole, alt: o.alt });
       },
-      // the last move is in force at once, so the write-back's rebuild, also at once, comes after it
-      release() { drag.flush(PREVIEW.NOW); drags.delete(drag); return { to: g.to, value: last }; },
+      // the last move is in force at once, as every preview is, so the write-back's rebuild, also at once, comes after it
+      release() { drag.flush(); drags.delete(drag); return { to: g.to, value: last }; },
     };
   }
   return { list, grab, flush };

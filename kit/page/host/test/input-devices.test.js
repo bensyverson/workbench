@@ -223,3 +223,21 @@ test("devices.stop() unbinds MIDI: a message after a reload reaches nothing, and
   await p;
   assert.equal(late.input.onmidimessage, undefined, "nothing was bound after stop");
 });
+
+// issue svaHXA (reviewer-82): a pad with no timestamp is stamped with the frame's time, not 0, so its gesture ends
+// GESTURE_IDLE_MS after its last change, not on the next frame
+test("svaHXA. a pad with no timestamp takes the frame's time: its gesture commits once it rests, not on the next frame", () => {
+  let now = { ...pad([], [0], undefined) };
+  delete now.timestamp;
+  const tempo = { name: "s.tempo", kind: "number", min: 40, max: 240, value: 120, to: "param.tempo", part: "s", local: true, gamepad: { axis: 0 }, keyed: false, disabled: null };
+  const { d, calls, poll } = stubbed([tempo], { getGamepads: () => [now] });
+  d.start();
+  poll.tick(1000);
+  assert.deepEqual(calls.map((c) => [c.e.phase, c.e.timeStamp]), [["preview", 1000]], "stamped with the frame's time");
+  poll.tick(1016);
+  poll.tick(1032);
+  assert.deepEqual(calls.map((c) => c.e.phase), ["preview"], "still moving by device time: no commit on the next frame");
+  poll.tick(1000 + GESTURE_IDLE_MS);
+  assert.deepEqual(calls.map((c) => c.e.phase), ["preview", "commit"]);
+  d.stop();
+});
