@@ -2,7 +2,7 @@
 
 A toolkit for building small, focused programming tools that run in a single web page.
 
-A workbench pairs a small language for one kind of problem with an editor, an AI helper and a built-in book, all in one page. This kit is written once: it reads a subset of JavaScript, turns it into a typed intermediate form (IR), and emits JavaScript or GPU shader code from it, with checks that the outputs agree. Each workbench is then a few small generated files. This is a prototype: milestone M3 (a minimal Definition API) is in progress, and the API will change.
+A workbench pairs a small language for one kind of problem with an editor, an AI helper and a built-in book, all in one page. This kit is written once: it reads a subset of JavaScript, turns it into a typed intermediate form (IR), and emits JavaScript or GPU shader code from it, with checks that the outputs agree. Each workbench is then a few small generated files. This is a prototype: milestones M1 to M4 are done (through composing packages on one page), and the API will change.
 
 ## Install
 
