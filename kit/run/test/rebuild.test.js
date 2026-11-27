@@ -57,6 +57,28 @@ test("a rebuild whose content key is unchanged keeps the revision and says so", 
   assert.ok(run.state("level").t > 0.4, "init did not run again");
 });
 
+test("a rebuild whose content key is unchanged still puts its record in force: run.composed reads it, and a rewind before it restores the old", () => {
+  // what the key leaves out differs: the reads (where build-time code read a param, which move with the glue's
+  // text), as a Grip's write-back release logs (its record is the last preview's, the same key); issue from host-73
+  const { composed, runtimes } = bursts();
+  const old = composed.parts[0].record;
+  const moved = { ...structuredClone(old), reads: [{ param: "speed", by: null, file: "glue.js", loc: { line: 12, column: 3 } }] };
+  const run = createRun(composed, { runtimes, checkpointEvery: 1 / 20, inputs: [{ kind: "rebuild", T: 0.1, part: "level", record: moved }] });
+  run.runUntil(0.5);
+  assert.equal(run.builds[0].changed, false);
+  assert.deepEqual(run.builds[0].revision, { before: 1, after: 1 });
+  assert.equal(run.snapshot("level").revision, 1);
+  assert.equal(run.revision, 1, "the composition's revision is kept");
+  assert.ok(run.state("level").t > 0.4, "init did not run again");
+  assert.deepEqual(run.composed.parts[0].record, moved);
+  assert.match(run.why("level"), /level/);
+  const rp = replay(composed, { runtimes }, JSON.parse(JSON.stringify(run.record())));
+  assert.deepEqual(rp.diagnostics, []);
+  assert.deepEqual(rp.run.composed.parts[0].record, moved);
+  run.rewind(0.05);
+  assert.deepEqual(run.composed.parts[0].record, old);
+});
+
 test("a rebuild with a new package key and the same record: the key changes, so the revision bumps; the trigger names the package", () => {
   const { composed, runtimes } = bursts();
   const run = createRun(composed, { runtimes, packages: [{ name: "maze", content: "sha256-A" }], inputs: [{ kind: "rebuild", T: 0.1, part: "level", record: composed.parts[0].record, package: { content: "sha256-B" } }] });

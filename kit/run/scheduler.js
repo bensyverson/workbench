@@ -159,13 +159,26 @@ export function createRun(composed, options) {
   const nextInstant = () => {
     const T = instantAfter(parts, at);
     if (T || awaitingFrame()) return T;
-    for (let k = cursor; k < inputs.length; k++) {
+    const mark = demandMark();
+    // what an earlier look passed over it passes over again while the parts and the log before it stand, so a run
+    // replaying a long log looks at each input about once (issue AxQH2A: from the cursor every time, it was quadratic)
+    let k = scan.mark === mark ? Math.max(scan.pos, cursor) : cursor;
+    for (; k < inputs.length; k++) {
       // one stamped at the last instant (logged behind a param wire's input) is applied ahead of the next
       if (at.lastT && cmp(inputs[k].T, at.lastT) <= 0) continue;
-      if (reachesDemand(inputs[k])) return inputs[k].T;
+      if (reachesDemand(inputs[k])) break;
     }
-    return null;
+    scan = { pos: k, mark };
+    return k < inputs.length ? inputs[k].T : null;
   };
+  /**
+   * Where nextInstant's last look stopped: each input from the cursor to `pos` reaches no demand part while the parts
+   * stand as `mark` (demandMark) says, or is stamped at or before the last instant, which only moves on. An input
+   * logged before `pos` moves it back (insert); a rewind, which moves the last instant back, clears it.
+   */
+  let scan = { pos: 0, mark: "" };
+  /** What reachesDemand reads of the parts: each one's clock kind and whether it runs. */
+  const demandMark = () => parts.map((p) => `${p.clock.kind}${running(p) ? 1 : 0}`).join();
   /** @param {Part | undefined} p */
   const onDemand = (p) => !!p && running(p) && p.clock.kind === "demand";
   /**
@@ -263,6 +276,7 @@ export function createRun(composed, options) {
     }
     if (e.kind === "param") paramProblem(e, i);
     inputs.splice(i, 0, e);
+    if (i < scan.pos) scan.pos = i;
     if (e.kind === "frame") frameLog.add(e.T);
   }
 
@@ -390,7 +404,9 @@ export function createRun(composed, options) {
     const key = partKey({ package: content, record });
     const after = { key, record, kernels: compiled.sources };
     // the record's declared values reach $ for the params nothing has set (a new default, a new param)
-    if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input })); p.params = params.after(p, record); return; }
+    // the same key is the same build, but the record is still the one in force: what the key leaves out (its reads,
+    // a param's value) is what run.composed and the next param input read
+    if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input })); p.params = params.after(p, record); p.record = record; return; }
     // every wire's conversions planned again for the new record's frames: a plan that fails fails the rebuild
     const planned = planner.trial(p.name, compiled);
     if (!planned.ok) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: planned.diagnostics, input })); return; }
@@ -500,9 +516,14 @@ export function createRun(composed, options) {
     for (const T of framesTo(frameLog, now, target, catchUp)) insert({ kind: "frame", T });
   }
 
+  /**
+   * The run's place just after the instant `at.lastT` (the start when null). It holds no `now`: an input stamped behind
+   * run.T can make an instant while run.T stands later (a demand part's, or a restarted part's), and a run of the same
+   * log in one go stands at that instant there, so a rewind restores run.T to it (issue P3fj7k).
+   */
   function checkpoint() {
     checkpoints.push({
-      T: at.lastT, now, cursor, revision,
+      T: at.lastT, cursor, revision,
       parts: parts.map((p) => Object.fromEntries(PART_FIELDS.map((f) => [f, f === "rng" ? [...p.rng] : p[f]]))),
       wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops, stopDrops: w.stopDrops, overflowDrops: w.overflowDrops, carried: w.carried })),
       lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length }, taps: taps.save(),
@@ -644,8 +665,10 @@ export function createRun(composed, options) {
       planner.restore(cp.plan);
       slowdown.restore(cp);
       at.floor = cp.floor; at.lastT = cp.T;
-      ({ now, cursor, revision } = cp);
+      ({ cursor, revision } = cp);
+      now = cp.T ?? q(0);
       for (let k = inputs.length - 1; k >= cursor; k--) if (cmp(inputs[k].T, target) > 0) inputs.splice(k, 1);
+      scan = { pos: 0, mark: "" };
       frameLog.dropAfter(target);
       advance(target);
       return run;

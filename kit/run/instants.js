@@ -40,7 +40,7 @@ export const nextFrame = ({ lastT, floor, log }) => {
 };
 
 /** Whether the next instant waits on a display frame not yet logged (a running part steps on frames). @param {Part[]} parts @param {Place} at */
-export const awaitingFrame = (parts, at) => at.frames === "display" && nextFrame(at) === null && parts.some((p) => p.clock.kind === "frame" && running(p));
+export const awaitingFrame = (parts, at) => at.frames === "display" && parts.some((p) => p.clock.kind === "frame" && running(p)) && nextFrame(at) === null;
 
 /** The next instant at which a tick or frame part is due, or null. @param {Part[]} parts @param {Place} at @returns {Q | null} */
 export function nextInstant(parts, at) {
