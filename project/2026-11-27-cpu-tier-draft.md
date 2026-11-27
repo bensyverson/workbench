@@ -519,3 +519,7 @@ Stages 0–3 are about one agent each and reuse the existing lowering, interpret
 - **"`xs.length` is L002 … unconfirmed"** (the findings' doc errors): confirmed. Only the DMG environment declares a list's `length` (`kit/dialects/dmg/index.js:233`), so in every Definition API Dialect `xs.length` is L002 and a loop to it is L007, though kit/lower's README lists a list's length as a loop bound. Stage 0 fixes it.
 - **"A later wasm backend takes the same LIR"** (kit/lir's README): that LIR has no f64, lists or strings, so wasm needs its own lower stage.
 - **Bench has no heap** (the leaf's framing): true of lists, not of strings, which Bench already concatenates as opaque host values.
+
+## Rulings (Ben, 2026-11-27)
+
+Ben accepted the integrator's recommendation on each open question: (1) the language stays Bench, with tiers `bench` and `cpu`; (2) a read that traps is decided after the tier's dogfood; (3) retiring trusted runtime JS is decided at stage 5, on evidence; (4) closures that capture stay out; (5) `map` and `filter` stay out, loops cover them; (6) mutable structs or writable instances are decided at stage 5; (7) a `bytes` type comes when Grotesk is scheduled; (8) wasm comes after stage 4. **Stage 0 is scheduled now** (leaf filed 2026-11-27).

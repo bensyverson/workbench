@@ -211,6 +211,8 @@ No overlay package, no `.size`, no copied ceiling: the layer `layers` is `Draw<7
 
 **Draft, not built** (leaf `JBkhsf`, 2026-11-27; nothing below is in the code yet). Why: every blind composer who placed the M4 score panel on the level (three dogfood legs and two rerun legs, [the layer dogfood findings](../../project/2026-11-27-layer-dogfood-findings.md), [the rerun findings](../../project/2026-11-27-layer-rerun-findings.md)) computed the offset by hand from the two extents, and asked for an anchored edge. A hand offset goes stale when a picture's size changes, and `"fit"` cannot help a picture of text, since a conversion never scales a `text` op's glyphs. Ben un-parked it on 2026-11-27 ("I guess we should design the anchor API"). Each decision gives its reason; the ones a dogfood should test are listed at the end.
 
+**Ruled (Ben, 2026-11-27):** the re-plan on rebuild is adopted (kit/run recomputes every wire's conversions after a rebuild; a failing re-plan fails the rebuild); and **a layer's page box grows** to the union of its inputs' placed boxes, so a picture anchored outside the bottom one (a label under it) still shows, and the box may not start at the origin.
+
 An anchored edge is an ordinary `.frame` edge whose offset the kit computes from the two frames' extents. It adds one key, `anchor`, to the edge the glue already writes:
 
 ```js
