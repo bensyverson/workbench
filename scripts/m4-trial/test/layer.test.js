@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -125,5 +125,41 @@ test("the three recorded layer legs (2026-11-27) build and play on the real kit:
     const r = await checkLayerCompose(here(`../runs/2026-11-27-layer/leg${n}`), GIVEN);
     assert.deepEqual(codes(r), [], `leg ${n}: ${JSON.stringify(r.diagnostics)}`);
     assert.ok(r.notes.some((x) => x.startsWith(`layer layers: Draw<${max}>@`) && x.endsWith(`page box ${box}`)), `leg ${n}: ${r.notes.join("\n")}`);
+  }
+});
+
+const KIT = here("../../../kit");
+/** A leg's doc copy of the kit (the three files layer-docs.js reads), edited by layer-docs.js. @param {(compose: string) => string} [edit] */
+function docCopy(edit = (t) => t) {
+  const d = mkdtempSync(join(tmpdir(), "KYpY7Q-docs-"));
+  mkdirSync(join(d, "compose"));
+  for (const f of ["START.md", "API.md"]) cpSync(join(KIT, f), join(d, f));
+  writeFileSync(join(d, "compose/README.md"), edit(readFileSync(join(KIT, "compose/README.md"), "utf8")));
+  return d;
+}
+
+test("layer-docs.js gives a leg the kit's docs as they are, minus the compose README's rewrite of this task's glue", () => {
+  const d = docCopy();
+  const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const compose = readFileSync(join(d, "compose/README.md"), "utf8");
+  assert.ok(!compose.includes("The M4 trial's glue"), "the subsection is gone");
+  assert.ok(!compose.includes("level.out.picked, round.in.scored"), "none of its code is left");
+  assert.ok(compose.includes("## Layers") && compose.includes("### Codes"), "the rest of the section stays");
+  for (const f of ["START.md", "API.md"]) assert.equal(readFileSync(join(d, f), "utf8"), readFileSync(join(KIT, f), "utf8"), `${f} is the kit's own`);
+});
+
+test("layer-docs.js exits 1 when the subsection to strip is not there, so a changed doc stops the leg", () => {
+  const d = docCopy((t) => t.replace("### The M4 trial's glue, with a layer", "### Something else"));
+  const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /M4 trial's glue, with a layer/);
+});
+
+test("the two recorded rerun legs (2026-11-27, leaf KYpY7Q: Sonnet, Haiku) build and play on the real kit: Draw<72> and Draw<74>, page box 192 by 128", async () => {
+  for (const [leg, max] of [["sonnet", 72], ["haiku", 74]]) {
+    const r = await checkLayerCompose(here(`../runs/2026-11-27-layer-rerun/${leg}`), GIVEN);
+    assert.deepEqual(codes(r), [], `${leg}: ${JSON.stringify(r.diagnostics)}`);
+    assert.ok(r.notes.some((x) => x.startsWith(`layer layers: Draw<${max}>@`) && x.endsWith("page box 192 by 128")), `${leg}: ${r.notes.join("\n")}`);
   }
 });

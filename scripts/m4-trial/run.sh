@@ -2,13 +2,13 @@
 # Sets up one leg of the M4 trial in a fresh directory and runs a fresh `claude -p` there, blind to the repository.
 # Usage: scripts/m4-trial/run.sh game|score <dir> <model>
 #        scripts/m4-trial/run.sh compose <dir> <model> <game-leg-dir> <score-leg-dir>
-#        scripts/m4-trial/run.sh layer <dir> <model> <game-leg-dir> <score-leg-dir>   (the layer dogfood, leaf teBNYM)
+#        scripts/m4-trial/run.sh layer <dir> <model> <game-leg-dir> <score-leg-dir>   (the layer dogfood, leaf teBNYM; the rerun, KYpY7Q)
 #   <dir>    a fresh directory outside the repository and outside ~/.claude (e.g. /private/tmp/IhJ35P-game)
 #   <model>  a model id or alias, e.g. sonnet
 #   every leg gets task.md, rules.md and the kit's author documentation under docs/ (kit/START.md, kit/API.md and the
 #   pages they point an author to, and the package format draft), laid out as in the repository so relative links hold;
 #   the game leg also gets sprites.png (make-png.js); a compose leg copies the one package folder of each author leg,
-#   as that leg left it; a layer leg is a compose leg on the layer draft: task-layer.md, its docs edited by layer-docs.js,
+#   as that leg left it; a layer leg is a compose leg on the built-in layer: task-layer.md, its compose README stripped of the answer by layer-docs.js,
 #   and check.sh running the layer leg's checker (--role layer, on the real kit since layer-build, leaf pQKgWN)
 # Writes <dir>/transcript.jsonl (the stream-json transcript), <dir>/stderr.txt and <dir>/log.jsonl (one line per
 # checker run). The brief is brief.md's text after its "---" line. Adapted from scripts/draw-trial/run.sh (same guards).
@@ -23,7 +23,7 @@ onepkg() { # the one package folder of a leg directory
   n=0; found=
   for m in "$1"/*/wb-package.json; do [ -f "$m" ] || continue; n=$((n + 1)); found=$(dirname "$m"); done
   [ "$n" -eq 1 ] || { echo "run.sh: $1 holds $n package folders, not one" >&2; exit 2; }
-  echo "$found"
+  (cd "$found" && pwd -P)
 }
 case "$ROLE" in
   game|score) [ $# -eq 3 ] || usage ;;

@@ -101,3 +101,15 @@ test("the recorded score hand-in checks clean", () => {
   const r = check([join(RUNS, "score/scoretimer"), "--role", "score"], { M4_TRIAL_SCORE_SECONDS: "4" });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
+
+test("run.sh layer takes relative leg folders and writes a check.sh with absolute --given paths (the legs cd into their own folder, so a relative path reached no package: exit 4)", () => {
+  const bin = mkdtempSync(join(tmpdir(), "KYpY7Q-bin-"));
+  writeFileSync(join(bin, "claude"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const dir = join(mkdtempSync(join(tmpdir(), "KYpY7Q-leg-")), "leg");
+  const repo = here("../../..").replace(/\/$/, "");
+  const r = spawnSync("sh", [RUN, "layer", dir, "sonnet", "scripts/m4-trial/runs/2026-11-26/game-run1", "scripts/m4-trial/runs/2026-11-26/score"], { encoding: "utf8", cwd: repo, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  assert.equal(r.status, 0, r.stderr);
+  const sh = readFileSync(join(dir, "check.sh"), "utf8");
+  assert.match(sh, new RegExp(`--given ${repo}/scripts/m4-trial/runs/2026-11-26/game-run1/gemgrid --given ${repo}/scripts/m4-trial/runs/2026-11-26/score/scoretimer`));
+  assert.ok(!readFileSync(join(dir, "docs/kit/compose/README.md"), "utf8").includes("The M4 trial's glue"));
+});
