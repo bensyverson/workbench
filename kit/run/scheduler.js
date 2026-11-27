@@ -49,9 +49,12 @@ const PAGE_VIEW = Object.freeze({ state: null, revision: 1, part: null });
 
 /** A number, a rational or rational text, as a rational. @param {number | Q | string} t */
 const toQ = (t) => {
-  if (typeof t === "string") return parseQ(t);
-  if (typeof t === "number") { const r = fromNumber(t); if (!r) throw new Error(`${t} is not a time a run can stamp: a fraction of a second with a denominator up to a million`); return r; }
-  return t;
+  const r = typeof t === "number" ? fromNumber(t)
+    : typeof t === "string" ? (/^-?\d+(\/[1-9]\d*)?$/.test(t) ? parseQ(t) : null)
+    : t !== null && typeof t === "object" && Number.isInteger(/** @type {any} */ (t).n) && Number.isInteger(/** @type {any} */ (t).d) && /** @type {any} */ (t).d > 0 ? t : null;
+  // anything else would never compare past an instant, and the run would step forever
+  if (!r) throw new Error(`${typeof t === "string" ? JSON.stringify(t) : String(t)} is not a time a run can stamp: seconds as a number with a denominator up to a million, a rational, or "<n>/<d>"`);
+  return r;
 };
 
 /**

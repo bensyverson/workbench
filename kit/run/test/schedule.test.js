@@ -141,3 +141,12 @@ test("a nested field the consumer does not take never reaches it (kit/seam lists
   run.step();
   assert.equal(run.state("b").got, '{"inner":{"a":1}}');
 });
+
+test("runUntil and advance refuse a time that is not a number, a rational or rational text, rather than run forever", () => {
+  const { composed, runtimes } = bursts();
+  const run = createRun(composed, { runtimes });
+  for (const bad of [null, undefined, NaN, {}, "soon"]) {
+    assert.throws(() => run.runUntil(/** @type {any} */ (bad)), /not a time a run can stamp/, `runUntil(${String(bad)})`);
+    assert.throws(() => run.advance(/** @type {any} */ (bad)), /not a time a run can stamp/, `advance(${String(bad)})`);
+  }
+});
