@@ -88,15 +88,17 @@ function declaration(L, node) {
       for (const n of patternNames(d.id)) L.declare(n, "unknown", "let");
       continue;
     }
-    const v = settle(L, exprMaybeEmpty(L, d.init));
     const kind = node.kind === "const" ? "const" : "let";
+    const v = settle(L, exprMaybeEmpty(L, d.init, kind === "const"));
+    const copies = d.init.type === "Identifier" && L.presumed.has(L.lookup(d.init.name)?.name ?? "");
     if (d.id.type === "Identifier") {
       // A let may later hold any string, so its type is not the literal it starts with.
       const t = kind === "let" && typeof v.t === "object" && "enum" in v.t ? "str" : v.t;
       const name = L.declare(d.id.name, t, kind);
       L.emit({ k: "let", name, t, value: v, span: spanOf(d) });
-      // A const bound to a loop-index read is possibly empty by type, as before, but is known present.
-      if (kind === "const" && keptEmpty.has(d.init) && typeof t === "object" && "opt" in t) { L.narrowed.add(name); L.presumed.add(name); }
+      // A const bound to a loop-index read, or to a const so bound, is possibly empty by type, as before, but is known
+      // present (by the loop, or by a check of the one it copies).
+      if (kind === "const" && (keptEmpty.has(d.init) || copies) && typeof t === "object" && "opt" in t) { L.narrowed.add(name); L.presumed.add(name); }
     } else bindPattern(L, d.id, v, kind);
   }
 }
@@ -252,7 +254,8 @@ function boundOf(cond) {
   // Past the counter type's exact range, i++ stops changing i, so a larger bound is never reached.
   if (b.k === "num") return Math.abs(b.v) <= exactLimit(b.t) ? `const ${b.v}` : null;
   if (b.k === "call" && b.args[0]?.k === "str" && b.fn.endsWith(".param")) return `param ${b.args[0].v}`;
-  if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return `size ≤ ${b.of.t.max}`;
+  // the same holds for a length: the counter must reach the list's max
+  if (b.k === "field" && b.name === "length" && typeof b.of.t === "object" && "list" in b.of.t) return b.of.t.max <= exactLimit(cond.args[0].t) ? `size ≤ ${b.of.t.max}` : null;
   if (b.k === "load" && b.place.size) return `size ${b.place.name}`;
   return null;
 }

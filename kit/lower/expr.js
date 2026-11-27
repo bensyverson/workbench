@@ -2,7 +2,7 @@
 // cannot stay inside one (a store, a query's loop, a lazy branch holding either)
 // spills into statements ahead of it, in evaluation order.
 
-import { assignable, itemAt, join, namedScalar, showType, strictJoin, vectorOf } from "../ir/types.js";
+import { assignable, holdsLength, itemAt, join, namedScalar, showType, strictJoin, vectorOf } from "../ir/types.js";
 import { didYouMean, HELPER_OWNER } from "./codes.js";
 import { call, reachable } from "./call.js";
 import { assign, update } from "./assign.js";
@@ -39,18 +39,40 @@ export function describe(t) {
  * @param {Type} before  the join of the items before it
  */
 function itemsDoNotJoin(L, at, t, before) {
-  if (describe(t) === describe(before)) {
-    const kind = (/** @type {{ max: number, len?: number }} */ x) => (x.len === undefined ? `a list of at most ${x.max}` : `a list of exactly ${x.len}`);
-    // the difference may be inside the items: step down while the two lists are alike at this level
-    let [a, b, depth] = [/** @type {any} */ (t), /** @type {any} */ (before), 0];
-    while (a && b && typeof a === "object" && typeof b === "object" && "list" in a && "list" in b && kind(a) === kind(b)) { [a, b] = [a.list, b.list]; depth++; }
-    if (a && b && typeof a === "object" && typeof b === "object" && "list" in a && "list" in b) {
-      const where = depth ? `, inside ${depth === 1 ? "the items of each list" : `each list's items, ${depth} levels down`}` : "";
-      L.error("L003", at, `An array's items share one type, but this is ${kind(a)} and the items before it are ${kind(b)}${where} (both ${describe(a)}): a list literal's known length does not join a list with only a max.`, "Write every item the same way: each as a literal of its items, [<a>, <b>], reading a list's item into a const and checking it for null first; or each as a list you were given.");
-      return;
-    }
+  const found = describe(t) === describe(before) ? lengthDiffers(t, before, []) : null;
+  if (found) {
+    const { a, b, path } = found;
+    const lists = path.every((p) => p === null);
+    const where = path.length === 0 ? ""
+      : lists ? `, inside ${path.length === 1 ? "the items of each list" : `each list's items, ${path.length} levels down`}`
+      : `, at ${path.map((p) => (p === null ? "[i]" : `.${p}`)).join("")} in each`;
+    L.error("L003", at, `An array's items share one type, but this is ${lengthKind(a)} and the items before it are ${lengthKind(b)}${where} (both ${describe(a)}): a list literal's known length does not join a list with only a max.`, "Write every item the same way: each as a literal of its items, [<a>, <b>], reading a list's item into a const and checking it for null first; or each as a list you were given.");
+    return;
   }
   L.error("L003", at, `An array's items share one type, but this is ${describe(t)} and the items before it are ${describe(before)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
+}
+
+/** How a list's length reads in L003: a known one or only a max. @param {{ max: number, len?: number }} x */
+const lengthKind = (x) => (x.len === undefined ? `a list of at most ${x.max}` : `a list of exactly ${x.len}`);
+
+/**
+ * The first place, stepping into list items, struct fields and possibly-empty values, where two types that print the
+ * same hold lists that differ in a known length against a max; null when there is none. `path` holds null for a
+ * list's items and a field's name for a struct field.
+ * @param {any} a @param {any} b @param {Array<string | null>} path
+ * @returns {{ a: Extract<Type, { list: unknown }>, b: Extract<Type, { list: unknown }>, path: Array<string | null> } | null}
+ */
+function lengthDiffers(a, b, path) {
+  if (!(a && b && typeof a === "object" && typeof b === "object")) return null;
+  if ("list" in a && "list" in b) return lengthKind(a) === lengthKind(b) ? lengthDiffers(a.list, b.list, [...path, null]) : { a, b, path };
+  if ("opt" in a && "opt" in b) return lengthDiffers(a.opt, b.opt, path);
+  if ("struct" in a && "struct" in b) {
+    for (const k of Object.keys(a.struct)) {
+      const found = Object.hasOwn(b.struct, k) ? lengthDiffers(a.struct[k], b.struct[k], [...path, k]) : null;
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 /** @param {AST.Node} n @returns {Span} */
@@ -295,11 +317,17 @@ export function resolveMember(L, node) {
 
 /**
  * Every list's one built-in member, whatever the Dialect: its length, a whole number never above the list's max, typed
- * as the Dialect's numbers are (its `numberType`), so `i < xs.length` does not mix f32 and f64 in an f32 Dialect.
+ * as the Dialect's numbers are (its `numberType`) when that type holds the max exactly, so `i < xs.length` does not
+ * mix f32 and f64 in an f32 Dialect; else an f64 (an f32 Dialect's list longer than 2^24, or an open state list,
+ * whose max is OPEN_MAX), as the verifier requires (`holdsLength`).
  * @param {Lowerer} L
+ * @param {number} max  the list's max
  * @returns {Member}
  */
-const listLength = (L) => ({ kind: "value", t: L.environment.numberType ?? "f64" });
+const listLength = (L, max) => {
+  const n = L.environment.numberType ?? "f64";
+  return { kind: "value", t: holdsLength(n, max) ? n : "f64" };
+};
 
 /**
  * `list[i]`: the item, or nothing when `i` is out of range, so it is typed possibly empty and
@@ -321,7 +349,7 @@ function index(L, node) {
     if (!assignable(at.t, "f64") && at.t !== "f32") mismatch(L, node.property, at.t, "f64", "a list index");
     // Inside `for (let i = 0; i < xs.length; i++)` the list is not rewritten, so `xs[i]` is there.
     // A read that is checked (`xs[i] != null`, `xs[i] ?? b`) or bound to a name keeps the type it had before the
-    // narrowing, so no program that lowered before stops lowering; `keptEmpty` lets a binding narrow it again.
+    // narrowing, so the pre-narrowing ways of writing the loop still lower; `keptEmpty` lets a binding narrow it again.
     const inRange = recv.k === "local" && at.k === "local" && L.countsTo.get(at.name) === recv.name;
     if (inRange && keep) keptEmpty.add(node);
     return L.ex({ k: "index", of: recv, index: at, t: inRange && !keep ? t.list : itemAt(t, at.k === "num" ? at.v : null), span: spanOf(node) });
@@ -373,7 +401,7 @@ export function resolveOn(L, recv, name, node) {
   } else if (typeof t === "object" && "list" in t) {
     const own = t.with ? L.environment.objects[t.with]?.members ?? {} : {};
     owner = t.with ?? "list";
-    members = { length: listLength(L), ...L.environment.list, ...own };
+    members = { length: listLength(L, t.max),...L.environment.list, ...own };
     label = t.with ? L.environment.objects[t.with]?.label ?? t.with : "a list";
   } else if (typeof t === "object" && "struct" in t) {
     owner = "struct";
@@ -638,13 +666,16 @@ export const keptEmpty = new WeakSet();
  * Lowers `node` as a read that may be empty, whatever a loop's narrowing proved of it.
  * @param {Lowerer} L
  * @param {AST.Expression} node
+ * @param {boolean} [presumed]  Whether a name bound to such a read is read as the optional it was too: true for the
+ *   subject of a check (a null check, `??`) and a `const` that copies it, which is presumed in turn; a `let` copy
+ *   takes the present type.
  * @returns {Expr}
  */
-export function exprMaybeEmpty(L, node) {
+export function exprMaybeEmpty(L, node, presumed = true) {
   const saved = L.keepEmpty;
   L.keepEmpty = node;
   // A name bound to such a read is present only by that proof; as the subject of a check it is the optional it was.
-  const bound = node.type === "Identifier" ? L.lookup(node.name)?.name : undefined;
+  const bound = presumed && node.type === "Identifier" ? L.lookup(node.name)?.name : undefined;
   const lift = bound !== undefined && L.presumed.has(bound) && L.narrowed.delete(bound);
   try { return expr(L, node); } finally { L.keepEmpty = saved; if (lift) L.narrowed.add(/** @type {string} */ (bound)); }
 }

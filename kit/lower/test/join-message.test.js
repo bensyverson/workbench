@@ -31,6 +31,24 @@ for (const [name, src] of [
   });
 }
 
+// leaf sD9Cfn: inside a record field the two printed the same and the message said so, contradicting itself
+for (const [src, at] of [["(p, n, b) => [{ a: p }, { a: [n, 1] }]", "at .a in each"], ["(p, n, b) => [[{ a: p }], [{ a: [n, 1] }]]", "at [i].a in each"]]) {
+  test(`a known length against a max inside a record field says which and where: ${src}`, () => {
+    const found = l003(src);
+    assert.equal(found.length, 1);
+    const { message } = found[0];
+    assert.match(message, /this is a list of exactly 2 and the items before it are a list of at most 2/);
+    assert.ok(message.includes(at), message);
+    assert.match(message, /known length/);
+  });
+}
+
+test("items that differ in a record field's type, not a length, keep the plain message", () => {
+  const found = l003("(p, n, b) => [{ a: p }, { a: b }]");
+  assert.equal(found.length, 1);
+  assert.doesNotMatch(found[0].message, /exactly|known length/);
+});
+
 test("a known length against a max one list level down names the inner lists, not the outer ones that are alike", () => {
   const found = l003("(p, n, b) => [[p], [[n, 1]]]");
   assert.equal(found.length, 1);

@@ -270,6 +270,16 @@ export function exactLimit(t) {
 }
 
 /**
+ * Whether `t` can type the length of a list of at most `max` items: an f64 always, an f32 while every whole number to
+ * `max` is exact in it (to 2^24). Lowering types a length as the Dialect's number type when this holds, else f64.
+ * @param {Type} t
+ * @param {number} max
+ */
+export function holdsLength(t, max) {
+  return t === "f64" || (t === "f32" && max <= 2 ** 24);
+}
+
+/**
  * The number types `t` holds at any depth (an item of a list, a field of a struct, a member of a
  * union or of a possibly-empty value), as sorted names: "f32", "f64", and each vector or nominal
  * scalar type's structural key. Reads a malformed type as holding none, for the verifier.

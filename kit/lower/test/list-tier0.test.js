@@ -10,6 +10,7 @@ import { printKernel } from "../../ir/print.js";
 import { verify } from "../../ir/verify.js";
 import { dmgEnvironment } from "../../dialects/dmg/index.js";
 import { DECLS } from "./fixture.js";
+import { lowerLambda } from "../index.js";
 
 /** @import { Kernel } from "../../ir/ir.js" */
 
@@ -201,7 +202,7 @@ test("a shadowing name inside the loop does not inherit the narrowing", () => {
   assert.match(errors.join("|"), /L003/);
 });
 
-// A refinement never breaks a program that lowered before: the pre-narrowing way to write a counted loop still lowers.
+// The refinement keeps the pre-narrowing ways of writing a counted loop: each still lowers.
 test("a null check of a loop-index read still lowers, and runs the same on both targets", () => {
   const loop = (/** @type {string} */ body) => `(xs) => { let s = 0; for (let i = 0; i < xs.length; i++) { ${body} } return s; }`;
   for (const body of [
@@ -218,6 +219,37 @@ test("a null check of a loop-index read still lowers, and runs the same on both 
     const k = lowerIn("codes", loop(body));
     assert.deepEqual(k.errors, [], body);
     assert.equal(both(/** @type {Kernel} */ (k.kernel), [[1, 2, 3]]), 6, body);
+  }
+});
+
+// leaf nQY0cL: a copy of a checked loop-index read was L008, since binding it lifted the narrowing the check earned
+test("a copy of a checked or unchecked loop-index read lowers, as a const or a let, and runs the same", () => {
+  const loop = (/** @type {string} */ body) => `(xs) => { let s = 0; for (let i = 0; i < xs.length; i++) { ${body} } return s; }`;
+  for (const body of [
+    "const x = xs[i]; if (x != null) { const k = x; s += k; }",
+    "const x = xs[i]; if (x == null) continue; const k = x; s += k;",
+    "const x = xs[i]; if (x != null) { let k = x; s += k; }",
+    "const x = xs[i]; const k = x; if (k != null) s += k;",
+    "const x = xs[i]; const k = x; s += k ?? 0;",
+    "const x = xs[i]; if (x != null) { const k = x; const j = k; s += j; }",
+  ]) {
+    const k = lowerIn("codes", loop(body));
+    assert.deepEqual(k.errors, [], body);
+    assert.equal(both(/** @type {Kernel} */ (k.kernel), [[1, 2, 3]]), 6, body);
+  }
+});
+
+test("in the DMG Dialect, a copy of a checked board read reads its fields", () => {
+  const env = dmgEnvironment(DECLS);
+  const B = (/** @type {string} */ body) => `(self, w) => { const ms = w.board; for (let i = 0; i < ms.length; i++) { ${body} } }`;
+  for (const body of [
+    "const m = ms[i]; if (m != null) { const k = m; w.score += k.ttl; }",
+    "const m = ms[i]; if (m == null) continue; const k = m; w.score += k.ttl;",
+    "const m = ms[i]; const n = m; if (n != null) w.score += n.ttl;",
+  ]) {
+    const r = lowerLambda(env, B(body), { id: "Hammer.onFrame", kind: "onFrame", on: "Hammer" });
+    assert.deepEqual(r.diagnostics.filter((x) => x.severity === "error").map((x) => `${x.code} ${x.message}`), [], body);
+    assert.ok(r.kernel, body);
   }
 });
 

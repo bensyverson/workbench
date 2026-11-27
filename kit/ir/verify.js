@@ -4,7 +4,7 @@
 // It reads the Kernel alone: no environment, no dialect. Rules are tables keyed by
 // node kind (`EXPR`, `STMT`) and operator (`OPS`), so new kinds add entries.
 
-import { assignable, join, sameType, strictJoin, itemAt, optional, showType } from "./types.js";
+import { assignable, join, sameType, strictJoin, itemAt, optional, showType, holdsLength } from "./types.js";
 import { formatJSON, jsonDifference } from "./json.js";
 import { shapeProblems } from "./verify-shape.js";
 import { typeProblem, OPS, EFFECT_VERBS, ownerOf, storeFits, unbounded, countsTo, isSampler } from "./verify-rules.js";
@@ -376,7 +376,7 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
       const want = (of.optional ?? []).includes(e.name) ? optional(ft) : ft;
       if (!sameType(e.t, want)) bad(`Field '${e.name}' is ${showSafe(want)}, not ${showSafe(e.t)}.`);
     } else if (typeof of === "object" && "list" in of) {
-      if (e.name !== "length" || (e.t !== "f64" && e.t !== "f32") || (e.t === "f32" && of.max > 2 ** 24)) bad(`A list's only field is length, an f64 (an f32 where the list's max is at most 2^24); not '${e.name}': ${showSafe(e.t)}.`);
+      if (e.name !== "length" || !holdsLength(e.t, of.max)) bad(`A list's only field is length, an f64 (an f32 where the list's max is at most 2^24); not '${e.name}': ${showSafe(e.t)}.`);
     } else if (typeof of === "object" && "vec" in of) {
       const names = COMPONENTS.slice(0, of.vec);
       if (!names.includes(e.name)) bad(`A ${showSafe(of)} has components ${names.join(", ")}, not '${e.name}'.`);
