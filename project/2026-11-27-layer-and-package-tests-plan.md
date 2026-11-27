@@ -127,3 +127,7 @@ tasks:
         criteria:
           - The hand-in's tests run in the checker and pass, the author wrote no test harness outside the kit, and the run is recorded in scripts/m4-trial/runs/ with a dated findings doc.
 ```
+
+## Later rulings
+
+- **2026-11-27, Ben, on the tests draft's two questions.** (1) "A smaller and simpler API surface is always better if possible": the `in` input kind retires `ctx.controls`, the `control` input addressed to a part by name, wherever `in` can cover it. (2) "Tests should always be optional; some authors will not want to produce them": no page, checker or kit/package path requires them. Recorded on leaf `ceE4ib` and in the draft (kit/package/README.md, "Tests (draft)").
