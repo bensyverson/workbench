@@ -15,8 +15,8 @@ import { uiFor } from "../compose/page.js";
 import { MAX_PAGE_DIAGNOSTICS } from "./codes.js";
 import { keyMap, keyState } from "./keys.js";
 import { decodeSources } from "./sources.js";
-import { toStage, hitsOf, edgeInto, intoPart, fromPart, pointerRecord, PHASES } from "./pointer.js";
-import { gripValue } from "./grips.js";
+import { toStage, hitsOf, edgeInto, intoPart, pointerRecord, PHASES } from "./pointer.js";
+import { createGripDesk } from "./grip-desk.js";
 import { targetProblem } from "./writeback.js";
 import { createControls } from "./controls.js";
 
@@ -156,8 +156,6 @@ export function createPage(options) {
     compiled.set(part, { record, compiled: c });
     return c;
   };
-  /** The H011s already listed, so one is one diagnostic. */
-  const said = new Set();
   /** Why a target cannot be written, or null. @param {string} part @param {string} to */
   const writeProblem = (part, to) => {
     const record = recordOf(part);
@@ -168,59 +166,52 @@ export function createPage(options) {
     const text = options.texts?.[part];
     return text ? targetProblem(text, record, to) : null;
   };
-  /** Every Grip on the stage now, in the shown frame. */
-  function grips() {
-    /** @type {Array<{ part: string, grip: string, index: number, kind: string, label?: string, at: number[], to: string, disabled: { code: string, message: string } | null, item: unknown, axis?: number[], center?: number[], decl: any }>} */
-    const out = [];
-    const v = view();
-    for (const cp of composed.parts) {
-      if (cp.name === PAGE || cp.layer !== undefined) continue;
-      const ui = uiOfPart(cp.name);
-      if (!ui || !Object.keys(ui.grips ?? {}).length) continue;
-      const c = compiledOf(cp.name);
-      const state = run.state(cp.name);
-      if (!c || state === null || state === undefined) continue;
-      const params = run.params(cp.name);
-      const edge = v ? edgeInto(run.composed ?? composed, v.part, cp.name, String(ui.stage?.draw ?? "view")) : null;
-      for (const [name, g] of Object.entries(/** @type {Record<string, any>} */ (ui.grips))) {
-        const items = typeof g.each === "string" ? /** @type {unknown[]} */ (g.each.split(".").reduce((/** @type {any} */ o, /** @type {string} */ k) => o?.[k], state) ?? []) : [null];
-        items.forEach((item, index) => {
-          const args = typeof g.each === "string" ? [item, state, params] : [state, params];
-          /** @param {string} key */
-          const at = (key) => (g[key] === undefined ? undefined : /** @type {number[]} */ (c.value(`grips.${name}.${key}`, ...args)));
-          let to, where, disabled = null;
-          try { to = /** @type {string} */ (c.value(`grips.${name}.to`, ...args)); where = /** @type {number[]} */ (at("at")); } catch (e) { disabled = { code: "H011", message: messageOf(e) }; }
-          if (!disabled) disabled = writeProblem(cp.name, /** @type {string} */ (to));
-          if (disabled) {
-            const key = `${cp.name}.${name}[${index}] ${to}`;
-            if (!said.has(key)) { said.add(key); report({ code: "H011", severity: "warning", message: `the Grip ${name} [${index}] of part ${cp.name} is drawn disabled: ${disabled.message}`, T: now(), part: cp.name }); }
-          }
-          out.push({ part: cp.name, grip: name, index, kind: g.kind, ...(g.label ? { label: g.label } : {}), at: where ? fromPart(where, edge) : [NaN, NaN], to: /** @type {string} */ (to), disabled, item, axis: at("axis"), center: at("center"), decl: g });
-        });
-      }
-    }
-    return out;
-  }
   /** The previews that failed and were reported, by part and target, until one builds again. */
   const failing = new Set();
+  /** Why a target cannot be checked or previewed here, or null: an argument is built, so the host must pass `run.build`. @param {string} to */
+  const buildProblem = (to) => (to.startsWith("param.") || typeof options.run?.build === "function" ? null : `a Grip or a Control on an argument is checked by building the part with the argument overridden, and this page has no build: pass run: { build(part, params, { args }) }`);
+  /**
+   * Why a value is not one the param declares, or null: a number inside its min and max (whole when it says so), which
+   * a build would also refuse (H012). A page with no build, or a glue's rebuild that ignores params, has nothing else
+   * to check a param commit against, and a refusal reported here is not a throw.
+   * @param {string} part @param {string} to @param {unknown} value
+   */
+  const declaredProblem = (part, to, value) => {
+    if (typeof value !== "number") return null;
+    const site = siteOf(recordOf(part), to);
+    if (!Number.isFinite(value)) return `${value} is not a finite number`;
+    if (typeof site?.min === "number" && value < site.min) return `${value} is below the minimum ${site.min}`;
+    if (typeof site?.max === "number" && value > site.max) return `${value} is above the maximum ${site.max}`;
+    if (site?.whole && !Number.isInteger(value)) return `${value} is not a whole number`;
+    return null;
+  };
   /**
    * Previews a target's value through the log: a `param` input, or a `rebuild` built with the argument overridden
    * (createPage's `run.build`). A preview whose build fails (no record, or a throw: the Grammar or the Dialect refused
    * the value) is skipped and reported once as H012, so the drag goes on and its release gives the last value that
    * built. True when it was logged, or, with `log` false (a wired Control's commit, which has no preview to show),
-   * when the value builds.
+   * when the value is accepted: a param's value inside its declared bounds, built when the page has a build; an
+   * argument's built, so the page must have one (a host mistake, thrown).
    * @param {string} part @param {string} to @param {unknown} value @param {string} what @param {boolean} [log]
    */
   function preview(part, to, value, what, log = true) {
     const param = to.startsWith("param.") ? to.slice(6) : null;
     const build = options.run?.build;
-    if (param === null && typeof build !== "function") throw new Error("a Grip or a Control on an argument previews by building the part with the argument overridden: pass run: { build(part, params, { args }) }");
+    const missing = buildProblem(to);
+    if (missing) throw new Error(missing);
     const key = `${part} ${to}`;
     try {
       if (param !== null) {
-        // a commit with no preview to log is checked by building the part with the value
+        // a commit with no preview to log is checked against the declaration, then by building the part with the value
         if (log) logInput({ kind: "param", part, name: param, value });
-        else if (typeof build === "function") build(part, { ...run.params(part), [param]: value }, {});
+        else {
+          const why = declaredProblem(part, to, value);
+          if (why) throw new Error(why);
+          if (typeof build === "function") {
+            const record = build(part, { ...run.params(part), [param]: value }, {});
+            if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
+          }
+        }
       } else {
         const record = /** @type {Function} */ (build)(part, { ...run.params(part) }, { args: { [to.slice(4)]: value } });
         if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
@@ -236,47 +227,12 @@ export function createPage(options) {
       return false;
     }
   }
-  /** The drags in flight, each with its latest unflushed value. @type {Set<{ flush: () => void }>} */
-  const drags = new Set();
-  /**
-   * Takes hold of a Grip at a point of the shown frame. Its moves preview through the log, at most one input a frame
-   * (a param input, or a rebuild built with the argument overridden), and its release gives the commit, `{ to, value }`,
-   * for the host to write back. A disabled Grip cannot be taken (its H011).
-   * @param {{ part: string, grip: string, index: number }} ref @param {number[]} point
-   */
-  function grab(ref, point) {
-    const g = grips().find((x) => x.part === ref.part && x.grip === ref.grip && x.index === ref.index);
-    if (!g) throw new Error(`no Grip ${ref.grip} [${ref.index}] on part ${ref.part}`);
-    if (g.disabled) throw new Error(`${g.disabled.code} ${g.disabled.message}`);
-    const record = recordOf(g.part);
-    const site = siteOf(record, g.to);
-    const param = g.to.startsWith("param.") ? g.to.slice(6) : null;
-    const v0 = param !== null ? run.params(g.part)[param] ?? site?.value : site?.value;
-    const edge = (() => { const v = view(); return v ? edgeInto(run.composed ?? composed, v.part, g.part, String(uiOfPart(g.part)?.stage?.draw ?? "view")) : null; })();
-    const p0 = intoPart(point, edge);
-    /** @type {unknown} */
-    let pending;
-    /** @type {unknown} */
-    let last = v0;
-    const flush = () => {
-      if (pending === undefined) return;
-      const value = pending;
-      pending = undefined;
-      if (preview(g.part, g.to, value, `the Grip ${g.grip} [${g.index}]`)) last = value;
-    };
-    const drag = { flush };
-    drags.add(drag);
-    return {
-      /** @param {number[]} p @param {{ alt?: boolean }} [o] */
-      move(p, o = {}) {
-        pending = gripValue({ kind: /** @type {any} */ (g.kind), v0: /** @type {any} */ (v0), p0, p: intoPart(p, edge), axis: g.axis, center: g.center, unit: g.decl.unit, step: g.decl.step, min: site?.min, max: site?.max, whole: site?.whole, alt: o.alt });
-      },
-      release() { flush(); drags.delete(drag); return { to: g.to, value: last }; },
-    };
-  }
+
+  // ---- Grips (requirements 7 and 8): grip-desk.js ----
+  const gripDesk = createGripDesk({ composed, uiOfPart, compiledOf, state: (part) => run.state(part), params: (part) => run.params(part), view, composedNow: () => run.composed ?? composed, siteOf: (part, to) => siteOf(recordOf(part), to), writeProblem, preview, report, now });
 
   // ---- Controls with `to` (requirements 1, 2 and 8): controls.js ----
-  const desk = createControls({ composed, controls, uiOfPart, compiledOf, writeProblem, preview, logInput: (e, event) => logInput(e, event), report, now });
+  const desk = createControls({ composed, controls, uiOfPart, compiledOf, writeProblem, preview, buildProblem, logInput: (e, event) => logInput(e, event), report, now });
 
   // ---- the pointer (requirements 5 and 10) ----
   /** The part a pointer is captured by, from its down to its up or cancel, and where it last was. @type {Map<number, { part: string, output: string, at?: number[] }>} */
@@ -387,7 +343,7 @@ export function createPage(options) {
     const wall = last === null ? 0 : (ms - last) / 1000;
     last = ms;
     try {
-      for (const d of drags) d.flush();
+      gripDesk.flush();
       desk.flush();
       if (wall > 0) driver.frame(wall);
       lastFrame = { ms, T: toNumber(run.T) };
@@ -418,7 +374,8 @@ export function createPage(options) {
     start() { generation += 1; halted = null; last = null; requestFrame(tick(generation)); },
     /** Asks for no more frames; the run stays where it is. */
     stop() { generation += 1; },
-    draw, stampOf, unlock, grips, grab,
+    draw, stampOf, unlock,
+    grips: gripDesk.list, grab: gripDesk.grab,
     /** Registers a hook the gesture calls (MIDI access, an AudioContext's resume). @param {() => unknown} hook */
     onUnlock(hook) { unlockHooks.push(hook); },
     /**

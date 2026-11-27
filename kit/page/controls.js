@@ -10,7 +10,8 @@ import { PAGE } from "../compose/page.js";
 /**
  * What the Controls block takes from the page: the composed record; the wired page Controls (the composed page's
  * `controls` that some wire takes); a part's UI and its compiled UI for the record in force; why a target cannot be
- * written; a preview of a target (`log` false: a commit checked by a build, logging nothing); the page's input log;
+ * written; a preview of a target (`log` false: a commit checked, logging nothing); why a target cannot be checked for lack of
+ * a build (optional); the page's input log;
  * its diagnostics; and the run's T as text.
  * @typedef {{
  *   composed: any,
@@ -19,6 +20,7 @@ import { PAGE } from "../compose/page.js";
  *   compiledOf: (part: string) => any,
  *   writeProblem: (part: string, to: string) => { code: string, message: string } | null,
  *   preview: (part: string, to: string, value: unknown, what: string, log?: boolean) => boolean,
+ *   buildProblem?: (to: string) => string | null,
  *   logInput: (e: Record<string, any>, event?: { timeStamp?: number }) => unknown,
  *   report: (d: PageDiagnostic) => void,
  *   now: () => string,
@@ -27,7 +29,7 @@ import { PAGE } from "../compose/page.js";
 
 /** @param {ControlSeams} seams */
 export function createControls(seams) {
-  const { composed, controls, uiOfPart, compiledOf, writeProblem, preview, logInput, report, now } = seams;
+  const { composed, controls, uiOfPart, compiledOf, writeProblem, preview, buildProblem, logInput, report, now } = seams;
   /** The H011s already listed, so one is one diagnostic. */
   const said = new Set();
   /**
@@ -100,8 +102,9 @@ export function createControls(seams) {
    * input carries the live value. With `to`, a `phase: "preview"` (a drag in flight) commits nothing, and a part-local
    * Control previews its target through the log, at most once a frame, as a Grip does; the release (`phase` "commit",
    * the default) gives the commit `{ part, to, value }` for the host to write back, a part-local one's preview logged
-   * at once and a wired one's value checked by a build, so a commit is only ever a value some build accepted (a value
-   * that does not build gives null and the page diagnostic H012). A target that cannot be written is H011: a part-local Control's change then throws, and one with an
+   * at once and a wired one's value checked before it is returned: a param's against its declared bounds (and by the
+   * page's build, when it has one), an argument's by a build (a page with none throws, before the input is logged); a value
+   * refused gives null and the page diagnostic H012. A target that cannot be written is H011: a part-local Control's change then throws, and one with an
    * input still plays and commits nothing. Throws for a Control the page lacks or an instance a keyed one lacks.
    * @param {string} name @param {Record<string, any>} record @param {{ phase?: "preview" | "commit", timeStamp?: number }} [o]
    * @returns {{ part: string, to: string, value: unknown } | null}
@@ -119,6 +122,9 @@ export function createControls(seams) {
       if (!inst) throw new Error(`the Control '${name}' has no instance '${record?.key}': its keys are ${(c.instances ?? []).map((/** @type {any} */ i) => i.key).join(", ") || "none"}`);
       to = inst.to; disabled = inst.disabled ?? null; what = `${name} [${inst.key}]`;
     }
+    // a commit (or a part-local change) that no build can check is a host mistake: refused before it is logged
+    const missing = typeof to === "string" && !disabled && (c.local || phase === "commit") ? buildProblem?.(to) : null;
+    if (missing) throw new Error(missing);
     if (!c.local) logInput({ kind: "control", part: PAGE, name, value: { ...record } }, o);
     if (typeof to !== "string") return null;
     if (disabled) { if (c.local) throw new Error(`${disabled.code} ${disabled.message}`); return null; }

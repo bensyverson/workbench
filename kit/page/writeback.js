@@ -42,6 +42,40 @@ function literalValue(n) {
   const items = /** @type {unknown[]} */ (n.elements.map(literalValue));
   return items.some((x) => x === undefined) ? undefined : items;
 }
+/**
+ * Where a call's argument holds a literal that is not the one the record's call had, or null: a literal leaf compared
+ * with its value, an object or array literal walked key by key and element by element, anything that is not a literal
+ * (a name, arithmetic) skipped, since only a literal can be told apart. `path` is the target inside this argument,
+ * whose subtree is skipped (the write replaces it, and the text there is checked as the site's `source`); null for an
+ * argument with no target in it.
+ * @param {any} node @param {unknown} expected @param {Array<string | number> | null} path @returns {any}
+ */
+function changedLiteral(node, expected, path) {
+  if (path && path.length === 0) return null;
+  if (!path) {
+    const held = literalValue(node);
+    if (held !== undefined) return same(held, expected) ? null : node;
+  }
+  if (node?.type === "ObjectExpression" && expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
+    const record = /** @type {Record<string, unknown>} */ (expected);
+    for (const p of node.properties) {
+      if (p.type !== "Property" || p.computed || p.shorthand) continue;
+      const key = p.key.type === "Identifier" ? p.key.name : p.key.value;
+      const hit = changedLiteral(p.value, record[key], path && path[0] === key ? path.slice(1) : null);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (node?.type === "ArrayExpression" && Array.isArray(expected)) {
+    if (!node.elements.some((/** @type {any} */ e) => e?.type === "SpreadElement") && node.elements.length !== expected.length) return node;
+    for (let i = 0; i < node.elements.length && node.elements[i]?.type !== "SpreadElement"; i++) {
+      const hit = changedLiteral(node.elements[i], expected[i], path && path[0] === i ? path.slice(1) : null);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 /** Whether two literal values are one value. @param {unknown} a @param {unknown} b @returns {boolean} */
 const same = (a, b) => (Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => same(x, b[i])) : Object.is(a, b) || (a === 0 && b === 0));
 
@@ -99,11 +133,13 @@ function locate(text, record, target, value) {
   if (method !== site.slot) return stale(`the call at ${where} is .${method}, not the .${site.slot} the record made there`);
   // a call that moved onto a neighbor with the same slot and target literal is another call: its other literals tell
   const spread = call.arguments.some((/** @type {any} */ a) => a.type === "SpreadElement");
-  if (!spread && call.arguments.length !== site.callArgs.length) return stale(`the call at ${where} takes ${call.arguments.length} arguments in the text, and the record's made it with ${site.callArgs.length}`);
-  for (let i = 0; i < call.arguments.length && !spread; i++) {
-    if (i === site.arg) continue;
-    const held = literalValue(call.arguments[i]);
-    if (held !== undefined && !same(held, site.callArgs[i])) return stale(`argument ${i} of the call at ${where} is \`${text.slice(call.arguments[i].start, call.arguments[i].end)}\` in the text, and the record's call had ${JSON.stringify(site.callArgs[i])}`);
+  // the builder drops a trailing `undefined` (an omitted optional argument), so the text may still write it
+  const written = [...call.arguments];
+  while (written.length > site.callArgs.length && written.at(-1)?.type === "Identifier" && written.at(-1).name === "undefined") written.pop();
+  if (!spread && written.length !== site.callArgs.length) return stale(`the call at ${where} takes ${call.arguments.length} arguments in the text, and the record's made it with ${site.callArgs.length}`);
+  for (let i = 0; i < written.length && !spread; i++) {
+    const changed = changedLiteral(written[i], site.callArgs[i], i === site.arg ? site.path : null);
+    if (changed) return stale(`argument ${i} of the call at ${where} holds \`${text.slice(changed.start, changed.end)}\` in the text, which the record's call (${JSON.stringify(site.callArgs[i])}) did not`);
   }
   const arg = call.arguments[site.arg];
   if (!arg) return no(`the call at line ${site.loc.start.line} has no argument ${site.arg}`);

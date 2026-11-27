@@ -11,6 +11,7 @@ import { run, withScope, defineRuntime } from "../../define/index.js";
 import { createRun } from "../../run/index.js";
 import { HERE, g } from "../fixtures/synth-program.js";
 import { lens, HERE as LENS } from "../fixtures/lens-program.js";
+import { HERE as OPTIONAL } from "../fixtures/optional-arg-program.js";
 import { callGlue } from "../../compose/index.js";
 import { SYNTH_INPUTS } from "../../define/fixtures/controls-dialects.js";
 
@@ -201,7 +202,7 @@ test("46. a string with a carriage return is written escaped, so the text reads 
   assert.equal(printNumber(-0), "0");
 });
 
-test("8XU2O2. a call that moved onto an identical neighbor, or whose name literal changed, is H012; the unedited text and a line moved intact still write", async () => {
+test("8XU2O2. a call that moved onto a neighbor with the same slot and target literal is H012 when anything else it holds differs: its name literal, or another literal; the unedited text and a line moved intact still write", async () => {
   const TWINS = `export default ($) => g("s")
   .op("a", { ratio: 2, level: 0.5 })
   .op("b", { ratio: 2, level: 0.5 });
@@ -210,14 +211,44 @@ test("8XU2O2. a call that moved onto an identical neighbor, or whose name litera
   assert.equal(b.back("arg.s.op#0:1.ratio", 4).ok, true, "the text the record was built from");
   const gone = HEAD + TWINS.replace(`  .op("a", { ratio: 2, level: 0.5 })\n`, "");
   const w = writeBack(gone, b.record, "arg.s.op#0:1.ratio", 4);
-  assert.equal(w.ok, false);
-  assert.equal(w.ok === false && w.code, "H012", "op b now stands where op a was, with the same slot and the same ratio");
+  assert.equal(w.ok === false && w.code, "H012", "op b now stands where op a was: same slot, same ratio, but its name literal differs (8XU2O2b: the lens, told apart by no name at all)");
   const renamed = writeBack(HEAD + TWINS.replace(`.op("a"`, `.op("z"`), b.record, "arg.s.op#0:1.ratio", 4);
   assert.equal(renamed.ok === false && renamed.code, "H012", "the name literal changed");
   const below = HEAD + TWINS.replace(`level: 0.5 })\n  .op("b"`, `level: 0.5 })\n  // c\n  .op("b"`);
   assert.equal(writeBack(below, b.record, "arg.s.op#0:1.ratio", 4).ok, true, "a comment below changes nothing the call holds");
-  const other = HEAD + TWINS.replace(`ratio: 2, level: 0.5 })\n  .op("b"`, `ratio: 2, level: 0.9 })\n  .op("b"`);
-  assert.equal(writeBack(other, b.record, "arg.s.op#0:1.ratio", 4).ok, true, "an object argument is not compared, only its target literal");
+  const other = writeBack(HEAD + TWINS.replace(`ratio: 2, level: 0.5 })\n  .op("b"`, `ratio: 2, level: 0.7 })\n  .op("b"`), b.record, "arg.s.op#0:1.ratio", 4);
+  assert.equal(other.ok === false && other.code, "H012", "a literal beside the target changed (an object argument's other keys are compared)");
+  const twins = await built(`export default ($) => g("s")\n  .k(3).k(3);\n`);
+  assert.equal(writeBack(HEAD + `export default ($) => g("s")\n  .k(3);\n`, twins.record, "arg.s.k#0:0", 9).ok, true, "calls identical in every literal cannot be told apart: the survivor is written");
+});
+
+test("8XU2O2b. the same-slot, same-target, same-name neighbor is told apart by its other keys: delete the first of two calls and the survivor is stale, not written", async () => {
+  const text = (body) => `import { g } from "${LENS}";\nexport default ($) => g("b")\n${body};\n`;
+  const BOTH = `  .lens({ radius: 10, at: [20, 30] })\n  .lens({ radius: 10, at: [60, 70] })`;
+  const SECOND = `  .lens({ radius: 10, at: [60, 70] })`;
+  const r = run(await programFrom(text(BOTH)));
+  assert.ok(r.record, "the bench builds");
+  assert.equal(writeBack(text(BOTH), r.record, "arg.b.lens#0:0.radius", 33).ok, true, "the text the record was built from");
+  const gone = writeBack(text(SECOND), r.record, "arg.b.lens#0:0.radius", 33);
+  assert.equal(gone.ok === false && gone.code, "H012", "the survivor's `at` is not the first call's");
+  assert.match(gone.ok ? "" : gone.message, /\[60, 70\]/);
+  const moved = text(`  .lens({ at: [20, 30], radius: 10 })\n  .lens({ radius: 10, at: [60, 70] })`);
+  assert.equal(writeBack(moved, r.record, "arg.b.lens#0:0.radius", 33).ok, true, "the same keys in another order are the same call");
+  const nested = writeBack(text(`  .lens({ radius: 10, at: [20, 31] })\n  .lens({ radius: 10, at: [60, 70] })`), r.record, "arg.b.lens#0:0.radius", 33);
+  assert.equal(nested.ok === false && nested.code, "H012", "a changed list element is a changed call");
+  const own = writeBack(text(BOTH), r.record, "arg.b.lens#0:0.at[1]", 31);
+  assert.equal(own.ok, true, "a target inside the list is skipped, its siblings compared");
+  assert.equal(writeBack(text(`  .lens({ radius: 10, at: [20, 99] })\n  .lens({ radius: 10, at: [60, 70] })`), r.record, "arg.b.lens#0:0.at[1]", 31).ok, false, "the target's own literal is stale as ever");
+  assert.equal(writeBack(text(`  .lens({ radius: 10, at: [21, 30] })\n  .lens({ radius: 10, at: [60, 70] })`), r.record, "arg.b.lens#0:0.at[1]", 31).ok === false, true, "a sibling element of the target changed");
+});
+
+test("8XU2O2c. a call written with an explicit trailing undefined is the call the record made", async () => {
+  const text = (call) => `import { g } from "${OPTIONAL}";\nexport default ($) => g("o")\n  ${call};\n`;
+  const r = run(await programFrom(text(".mark({ size: 10 }, undefined)")));
+  assert.ok(r.record, r.diagnostics.map((d) => d.message).join(" "));
+  const w = writeBack(text(".mark({ size: 10 }, undefined)"), r.record, "arg.o.mark#0:0.size", 33);
+  assert.equal(w.ok, true, w.ok ? "" : w.message);
+  assert.equal(writeBack(text(".mark({ size: 10 }, 7)"), r.record, "arg.o.mark#0:0.size", 33).ok, false, "a real extra argument is still a changed call");
 });
 
 test("0sZBNV. a param write against a record built with values is not stale: the text still holds the declared value", async () => {
