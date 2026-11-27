@@ -8,6 +8,7 @@
 
 import { emitKernel, instantiate } from "../emit/js/index.js";
 import { drawReader } from "./draw.js";
+import { PAGE_GLOBALS } from "../define/page-globals.js";
 
 /** @import { Runtime } from "../define/runtime.js" */
 /** @import { Emitted } from "../emit/js/emit.js" */
@@ -112,8 +113,8 @@ function withRecords(e, scope, records, globals, helpersSync) {
 
 /**
  * The Dialect's globals as names a Kernel can read: each a forwarding object over `globals.current[name]`, but for
- * the record names, which each closure holds itself. A name the page already has (Math) is left to it unless the
- * Dialect's runtime sets it.
+ * the record names, which each closure holds itself, and the page globals (kit/define's PAGE_GLOBALS: Math), which
+ * are left to the page. Any other name is the run's, even one the host has too (a browser's `status`).
  * @param {any} dialect @param {{ current: Record<string, unknown> }} globals @param {string[]} records
  * @returns {Record<string, unknown>}
  */
@@ -124,7 +125,7 @@ function globalScope(dialect, globals, records) {
   /** @type {Record<string, unknown>} */
   const scope = {};
   for (const n of names) {
-    if (n in globalThis) continue;
+    if (PAGE_GLOBALS.includes(n)) continue;
     const target = () => {
       const v = globals.current[n];
       if (v === null || typeof v !== "object") throw new TypeError(`the global '${n}' has no value in this step: the runtime sets ctx.globals.${n} before calling a Kernel that reads it`);

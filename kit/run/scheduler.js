@@ -150,12 +150,16 @@ export function createRun(composed, options) {
     report({ code: r.code, message: r.message, part: p.name, T: T ? qText(T) : null, revision: p.revision });
     for (const w of wires) if (w.to.part === p.name && w.queue.length) dropStopped(w, w.queue.splice(0).length, T);
   };
-  /** @param {Part} p */
-  const commitState = (p, /** @type {any} */ s, /** @type {import("./draw.js").Draws} */ draws) => { p.state = s; p.hash = stateHash(s); p.draws = draws; };
+  /**
+   * Commits a state with its lists and what they were built with: the value inputs, and the params as they stand
+   * (a param input or a same-key rebuild changes `$` without building them again, so a rewind reads these).
+   * @param {Part} p @param {any} s @param {import("./draw.js").Draws} draws @param {Record<string, unknown>} values
+   */
+  const commitState = (p, s, draws, values) => { p.state = s; p.hash = stateHash(s); p.draws = draws; p.drawValues = values; p.drawParams = p.params; };
 
   for (const p of parts) {
     const r = runInit(p, dev);
-    if ("state" in r) { commitState(p, r.state, r.draws); p.drawValues = defaults(p.runtime); } else stop(p, r, null);
+    if ("state" in r) commitState(p, r.state, r.draws, defaults(p.runtime)); else stop(p, r, null);
   }
 
   for (const e of options.inputs ?? []) insert(inputEntry(e, toQ));
@@ -240,11 +244,11 @@ export function createRun(composed, options) {
     const r = runInit({ ...p, ...next }, dev);
     if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }], input })); return; }
     builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input }));
-    Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false, drawValues: defaults(p.runtime) });
+    Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false });
     // a drop after a later stop is noted again: once per wire per stop (ruling R3)
     delivery.restarted(p.name);
     revision++;
-    commitState(p, r.state, r.draws);
+    commitState(p, r.state, r.draws, defaults(p.runtime));
   }
 
   /** What a wire's consumer reads of its producer: now, or as the instant began. @param {Wire} w @returns {View} */
@@ -277,8 +281,8 @@ export function createRun(composed, options) {
       const dt = p.clock.kind === "tick" ? toNumber(p.clock.period) : p.clock.kind === "frame" && p.lastFrameT ? toNumber(sub(T, p.lastFrameT)) : 0;
       const r = runStep(p, { T: toNumber(T), dt, inputs: Object.freeze(inputs), values, dev });
       if ("code" in r) { stop(p, r, T); continue; }
-      commitState(p, r.state, r.draws);
-      Object.assign(p, { rng: r.rng, snapT: T, stepped: true, rebuilt: false, lastValues: shown, drawValues: values, ...(p.clock.kind === "frame" ? { lastFrameT: T } : {}) });
+      commitState(p, r.state, r.draws, values);
+      Object.assign(p, { rng: r.rng, snapT: T, stepped: true, rebuilt: false, lastValues: shown, ...(p.clock.kind === "frame" ? { lastFrameT: T } : {}) });
       stepped.push(p.name);
       for (const [port, records] of Object.entries(r.events)) for (const w of wires) if (w.from.part === p.name && w.from.port === port) delivery.deliver(w, records, T);
     }

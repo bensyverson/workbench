@@ -783,13 +783,14 @@ function wantedItem(expected) {
 }
 
 /**
- * The item type of a list literal lowered where a list of `want` is expected: `want` itself when the items do not
- * share one type by the strict join but each fits it (a draw list's ops of several kinds), else null, and the
- * strict join decides as it does everywhere.
+ * The item type of a list literal lowered where a list of `want` is expected: `want` itself when it is a union and
+ * the items do not share one type by the strict join but each fits it (a draw list's ops of several kinds), else
+ * null, and the strict join decides as it does everywhere. Only a union: kit/ir/verify's declaredItem accepts a
+ * list's declared item type only then, so a wider hint here would lower to IR the verifier refuses (V002).
  * @param {Type | undefined} want @param {Type[]} items @returns {Type | null}
  */
 function fitsWanted(want, items) {
-  if (!want || items.length === 0 || items.some((t) => t === "unknown")) return null;
+  if (!(typeof want === "object" && "union" in want) || items.length === 0 || items.some((t) => t === "unknown")) return null;
   /** @type {Type | null} */
   let joined = items[0];
   for (const t of items.slice(1)) joined = joined === null ? null : strictJoin(joined, t);

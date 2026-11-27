@@ -54,6 +54,53 @@ test("a builder reads only what the kit can see: a closed-over name is L001", ()
   assert.ok(codes.length >= 1 && codes.every((/** @type {string} */ c) => c === "L001"), codes.join());
 });
 
+test("a builder sees only the globals a run gives it, `$` and the inputs (with the intrinsics and the page's own globals): any other Dialect global is L001 (review F5, leaf 9t99go)", () => {
+  /** @param {any} d */
+  const withWorld = (d) => {
+    d.objects.World = { label: "the world (w)", members: { now: "f64" } };
+    d.globals.w = "World";
+    // a global named like one the page has is the page's at run time (kit/run's compile.js), so a builder keeps it
+    d.objects.Math = { label: "Math", members: { floor: { fn: { params: ["f64"], returns: "f64" } } } };
+    d.globals.Math = "Math";
+    d.intrinsics = { half: { params: ["f64"], returns: "f64", ref: (/** @type {number} */ x) => x / 2, spell: { js: "(($0) / 2)" } } };
+  };
+  const low = lowerScreen((d) => {
+    withWorld(d);
+    // @ts-ignore: w is a Dialect global no run sets for a builder
+    d.ports.out.view.from = () => ({ op: "text", at: [0, 8], str: "T " + w.now, font: "mono", fill: "ink" });
+  });
+  const errs = errors(low);
+  assert.deepEqual(errs.map((/** @type {any} */ d) => d.code), ["L001"]);
+  assert.match(errs[0].message, /out|view/);
+  // the screen declares no `$` global, so its builders read only the inputs
+  assert.match(errs[0].message, /'w' is a global of the screen Dialect, but a builder gets only inp when it runs/);
+  assert.match(errs[0].tip, /the state, the record, a param or an input/);
+  // the inputs global, an intrinsic and the page's Math still lower
+  const ok = lowerScreen((d) => {
+    withWorld(d);
+    // @ts-ignore: inp and half are what a builder may read
+    d.ports.out.view.from = () => ({ op: "text", at: [Math.floor(0.5), half(16)], str: "S " + inp.score, font: "mono", fill: "ink" });
+  });
+  assert.deepEqual(errors(ok), []);
+});
+
+test("a Dialect global named like a host global is still withheld from a builder: L001 in every host (leaf 9t99go)", () => {
+  assert.equal("status" in globalThis, false, "the test host already has 'status'");
+  // a browser has window.status; stub one so this host looks like that
+  /** @type {any} */ (globalThis).status = { n: 99 };
+  try {
+    const low = lowerScreen((d) => {
+      d.objects.Status = { label: "the status (status)", members: { n: "f64" } };
+      d.globals.status = "Status";
+      // @ts-ignore: status is a Dialect global no run sets for a builder
+      d.ports.out.view.from = () => ({ op: "text", at: [0, 8], str: "N " + status.n, font: "mono", fill: "ink" });
+    });
+    const errs = errors(low);
+    assert.deepEqual(errs.map((/** @type {any} */ d) => d.code), ["L001"]);
+    assert.match(errs[0].message, /'status' is a global of the screen Dialect, but a builder gets only inp/);
+  } finally { delete (/** @type {any} */ (globalThis)).status; }
+});
+
 test("a whole builder's concatenation has its static max: the parts' maxes summed", () => {
   const low = lowerScreen();
   assert.deepEqual(errors(low), []);

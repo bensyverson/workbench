@@ -57,3 +57,7 @@ The kit's browser-safety test scans kit/ sources for dynamic imports with a rege
 ## 2026-11-26: parallel branches that are each green can break each other when one tightens a contract
 
 Twice this day a squash of a parallel agent's branch broke tests that had been green on both branches: the draw trial's fixtures had unguarded `ev` reads after L008 landed, and the Draw renderer fixes wrote builders as plain JS (an object spread, an over-ceiling concat) after the other branch made builders Bench code. Before you squash a branch that refuses something new, grep the other branches' new tests and fixtures for the pattern it now refuses, and run the suite on the combined tree before committing.
+
+## 2026-11-26: `git reset --hard` on main discards job's uncommitted events
+
+`.jobs/log/*.jsonl` is job's source of truth and is tracked, and every `job` write appends to it uncommitted; `.jobs.db` is only a cache that the next write rebuilds from the log. The integrator dropped a staged squash with `git reset --hard HEAD` and lost the session's claims, notes and a `done`, which then had to be redone. To drop a staged squash, run `git restore --staged --worktree -- <its paths>` (or `git reset --hard` only after committing the log), never a bare hard reset.

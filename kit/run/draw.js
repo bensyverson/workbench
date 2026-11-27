@@ -5,9 +5,8 @@
 // `draws`, and a View (what a wire reads) holds the snapshot's lists beside its state, so a delayed wire reads the
 // lists as its instant began even when a step returned the very state object it was handed, and two parts that
 // commit one object keep their own. A rewound part's lists are built again from its restored state and the inputs
-// they were last built with (`redraw`, part.js): a list is a pure function of the state, the record, the params and
-// the inputs. A Draw
-// wire converts its list op by op into the consumer's frame, and the page reads the shown part's list.
+// and params they were last built with (`redraw`, part.js): a list is a pure function of the state, the record, the
+// params and the inputs. A Draw wire converts its list op by op into the consumer's frame, and the page reads the shown part's list.
 
 import { runDraw, convertOp, carryList, checkDraw, PROFILES } from "../draw/index.js";
 

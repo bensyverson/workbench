@@ -10,6 +10,7 @@ import { lowerProgram } from "../lower/index.js";
 import { showType } from "../ir/types.js";
 import { closeLists } from "./ui/lower.js";
 import { drawMax, drawTypes, PEN_OBJECT, PEN_EFFECT } from "../draw/index.js";
+import { PAGE_GLOBALS } from "./page-globals.js";
 
 /** @import { Type } from "../ir/ir.js" */
 /** @import { Environment, SlotDecl, SlotRef, Member } from "../lower/environment.js" */
@@ -21,8 +22,6 @@ import { drawMax, drawTypes, PEN_OBJECT, PEN_EFFECT } from "../draw/index.js";
  * @typedef {{ max: number, layers: Array<{ id: string, result: LowerResult, max: number | null }> }} LoweredDraw
  */
 /** @typedef {(d: { code: string, severity: "error", message: string, tip: string, port: string, lambdaLoc?: unknown }) => void} Push */
-
-const NO_PARAMS = "(no params)";
 
 /**
  * Lowers every Draw builder of a Dialect for one record, and gives each Draw output's max (J010) and the Library
@@ -41,10 +40,8 @@ export function lowerDraws(dialect, record, push) {
   const t = drawTypes(num);
   const state = closeLists(/** @type {Type} */ (dialect.stateTypeFor?.(record) ?? dialect.stateType ?? { struct: {} }));
   const recordT = valueType(record, num) ?? { struct: {} };
-  const paramsObject = typeof def.params?.object === "string" && Object.hasOwn(base.objects, def.params.object) ? def.params.object : NO_PARAMS;
   /** @type {Record<string, any>} */
   const objects = { ...base.objects, [PEN_OBJECT]: t.pen };
-  if (paramsObject === NO_PARAMS) objects[NO_PARAMS] = { label: "the params ($)", members: {} };
   const inputs = dialect.seams.inputs;
   if (inputs && objects[inputs.object]) {
     /** @type {Record<string, Member>} */
@@ -57,8 +54,24 @@ export function lowerDraws(dialect, record, push) {
   if (!Object.hasOwn(list, "length")) list.length = { kind: "value", t: "f64" };
   /** @type {Map<string, SlotDecl>} */
   const decls = new Map();
+  // a run gives a builder `$` and the inputs global (kit/run's part.js), so those are the globals it may read, with
+  // the intrinsics, which are emitted inline, and the page globals (PAGE_GLOBALS: Math), which kit/run's compile.js
+  // leaves to the page; any other Dialect global would lower and then fail as J022 (ruling 4)
+  const given = new Set(["$", ...(inputs ? [inputs.name] : []), ...Object.keys(def.intrinsics ?? {})]);
+  /** @type {Record<string, Type>} */
+  const globals = {};
+  /** @type {Set<string>} */
+  const withheld = new Set();
+  for (const [n, g] of Object.entries(base.globals)) if (given.has(n) || PAGE_GLOBALS.includes(n)) globals[n] = g; else withheld.add(n);
+  const seen = ["$", ...(inputs ? [inputs.name] : [])].filter((n) => Object.hasOwn(globals, n)).join(" and ") || "no global";
+  /** A lowering message about a withheld global says why it is not in scope. @param {{ code: string, message: string, tip?: string }} d */
+  const explain = (d) => {
+    const m = d.code === "L001" ? /^'([^']+)' is not declared here\.$/.exec(d.message) : null;
+    if (!m || !withheld.has(m[1])) return { message: d.message, tip: d.tip ?? "" };
+    return { message: `'${m[1]}' is a global of the ${dialect.name} Dialect, but a builder gets only ${seen} when it runs.`, tip: `A builder reads its parameters, ${seen}, the Dialect's intrinsics and Library, and the page's own globals (Math); pass what it needs through the state, the record, a param or an input.` };
+  };
   /** @type {Environment} */
-  const env = { ...base, objects, list, slot: (ref) => decls.get(ref.id) ?? base.slot(ref) };
+  const env = { ...base, objects, list, globals, slot: (ref) => decls.get(ref.id) ?? base.slot(ref) };
   /** @type {Array<{ port: any, i: number, layer: any, ref: SlotRef }>} */
   const units = [];
   for (const p of ports) {
@@ -81,7 +94,10 @@ export function lowerDraws(dialect, record, push) {
   results.forEach((r, k) => {
     const { port, layer, ref } = units[k];
     const errors = r.diagnostics.filter((d) => d.severity === "error");
-    for (const d of errors) push({ code: d.code, severity: "error", message: `the ${dialect.name} Dialect's output '${port.name}', ${layer.label}, line ${d.loc.start.line}: ${short(d.message)}`, tip: short(d.tip ?? ""), port: port.name, lambdaLoc: d.loc });
+    for (const d of errors) {
+      const { message, tip } = explain(d);
+      push({ code: d.code, severity: "error", message: `the ${dialect.name} Dialect's output '${port.name}', ${layer.label}, line ${d.loc.start.line}: ${short(message)}`, tip: short(tip), port: port.name, lambdaLoc: d.loc });
+    }
     if (errors.length || !r.kernel) failed.add(port.name);
     (byPort[port.name] ??= []).push({ id: ref.id, result: r, max: layer.kind === "pen" || !r.kernel ? null : returnsMax(r.kernel.body) });
   });

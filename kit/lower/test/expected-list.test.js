@@ -57,6 +57,28 @@ test("an object literal against a union is checked against the member its tag na
   assert.deepEqual(errors('(xs, k) => (k > 0 ? { op: "a", at: [0, 0], n: k } : { op: "b", at: [k, 0] })', want), []);
 });
 
+test("an expected item type that is not a union is no hint: the strict join decides, as kit/ir/verify does (review F3, leaf 9t99go)", () => {
+  /** @param {Type[]} params @param {Type} returns @param {string} src */
+  const errs = (params, returns, src) => {
+    const r = lowerLambda({ ...env(returns), slot: () => ({ params, returns, space: "row", forbid: [] }) }, src, { id: "t.keep", kind: "keep", on: "t" });
+    return r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join() || (r.kernel ? "ok" : "no kernel");
+  };
+  const DIR = /** @type {Type} */ ({ enum: ["down", "up"], declared: true });
+  const F = /** @type {Type} */ ("f64");
+  // an enum and a string literal against list<str>; ragged rows against list<list<f64>>; structs with and
+  // without an optional field; enum literals inside structs; a concatenation with a ragged part
+  assert.equal(errs([DIR], { list: "str", max: 4 }, '(d) => [d, "x"]'), "L003");
+  assert.equal(errs([F], { list: { list: F, max: 4 }, max: 4 }, "(k) => [[k, 1], [k]]"), "L003");
+  assert.equal(errs([F], { list: { struct: { a: F, b: F }, optional: ["b"] }, max: 4 }, "(k) => [{ a: k }, { a: k, b: 2 }]"), "L003");
+  assert.equal(errs([F], { list: { struct: { d: DIR } }, max: 4 }, '(k) => [{ d: "up" }, { d: "down" }]'), "L003");
+  assert.equal(errs([{ list: { list: F, max: 2, len: 2 }, max: 3 }], { list: { list: F, max: 4 }, max: 8 }, "(xs) => [...xs, [1]]"), "L003");
+  // a draw line through a point parameter and a literal point: list<f64, 2> and list<f64, len 2> do not join
+  assert.equal(errs([pt, F], { list: pt, max: 4 }, "(p, k) => [p, [k, 1]]"), "L003");
+  // what still lowers: items that strictly join, and items of a union
+  assert.equal(errs([pt, F], { list: pt, max: 4 }, "(p, k) => [[0, 0], [k, 1]]"), "ok");
+  assert.equal(errs([F], { list: { union: [F, "str", "bool"] }, max: 4 }, '(k) => [k, "a", true]'), "ok");
+});
+
 test("an item that fits no member is still refused, and so is a list past the expected max", () => {
   const want = /** @type {Type} */ ({ list: SHAPE, max: 4 });
   assert.match(errors('(xs, k) => [{ op: "a", at: [0, 0], n: 1 }, { op: "c", at: [0, 0] }]', want).join("\n"), /L003/);
