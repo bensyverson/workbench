@@ -5,11 +5,8 @@
 import { registerHooks } from "node:module";
 import { session } from "./session.js";
 import { lineAt } from "./locate.js";
-import { topLevelNames, topLevelFunctions, ScanError } from "../../../kit/parse/toplevel.js";
 import { EXAMPLES_DIR } from "./examples.js";
-
-/** A whole string that is one name. */
-const IDENT = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u;
+import { withScope } from "../../../kit/define/module-scope.js";
 
 export const DEFINE_SPECIFIER = "kit/define";
 const DEFINE_URL = new URL("./define.js", import.meta.url).href;
@@ -56,38 +53,5 @@ export function installHooks() {
   });
 }
 
-/** Words that cannot be read as a name. */
-const RESERVED = new Set(["default", "enum", "await", "yield", "let", "static", "implements", "interface", "package", "private", "protected", "public", "arguments", "eval"]);
-
-/** The export the checker appends to each example: a function returning the file's top-level bindings. */
-export const SCOPE_EXPORT = "__defineTrialScope";
-
-/** The export that returns each top-level function declaration's value as it was before any module code ran. */
-export const FUNCTIONS_EXPORT = "__defineTrialFunctions";
-
-/**
- * An example's text with an epilogue that hands its top-level bindings to the checker (the module scope a
- * Program's lambdas resolve their free names against). The epilogue comes last, so every line keeps its number.
- * @param {string} text
- */
-export function withScope(text) {
-  // A name the module has not bound when the epilogue runs (a `let` still in its TDZ) is left out, not thrown.
-  /** @type {string[]} */
-  let all;
-  try { all = topLevelNames(text); } catch (e) { if (e instanceof ScanError) return text; throw e; } // Node then reports the file's own syntax error
-  const names = all.filter((n) => IDENT.test(n) && !RESERVED.has(n));
-  // The epilogue's own local must not shadow a binding it reads.
-  let out = "__scope";
-  while (names.includes(out)) out += "_";
-  const reads = names.map((n) => `try { ${out}.${n} = ${n}; } catch {}`).join(" ");
-  // A function declaration is initialized before any module code runs and is reassignable, so its text vouches for
-  // nothing; its value captured on line 1 (no newline, so every line keeps its number) is what the scope is held to.
-  /** @type {string[]} */
-  let fns = [];
-  try { fns = topLevelFunctions(text).map((f) => f.name).filter((n) => IDENT.test(n) && !RESERVED.has(n)); } catch (e) { if (!(e instanceof ScanError)) throw e; }
-  let cap = "__fns";
-  while (names.includes(cap)) cap += "_";
-  const head = fns.length ? `const ${cap} = { ${[...new Set(fns)].map((n) => `${n}: ${n}`).join(", ")} };` : "";
-  const tail = `export function ${FUNCTIONS_EXPORT}() { return ${fns.length ? cap : "{}"}; }`;
-  return `${head}${text}\n;export function ${SCOPE_EXPORT}() { const ${out} = {}; ${reads} return ${out}; }\n${tail}\n`;
-}
+/** The epilogue and its exports are kit/define's (module-scope.js): the page host uses the same. */
+export { withScope, SCOPE_EXPORT, FUNCTIONS_EXPORT } from "../../../kit/define/module-scope.js";

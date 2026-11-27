@@ -1,9 +1,10 @@
 // A loaded workbench, running: kit/page's page, plus what the host adds on top of it: the scrubber (a rewind through
 // the run, a step while paused), a param edit and a UI button as run inputs, and a snapshot for the panels each frame.
-// It takes the canvas context and the frame source from the host, so Node tests drive it by hand.
+// It takes the canvas context and the frame source from the host, so Node tests drive it by hand. The UI's values,
+// its control name, its annotations and its sweeps are the kit's (kit/define's ui.compile, kit/page's sweepRuns).
 
-import { createPage } from "../index.js";
-import { paramValues, evalTiles, SeriesStore, numberPaths } from "./ui-eval.js";
+import { createPage, sweepRuns } from "../index.js";
+import { paramValues, shownTiles, SeriesStore, numberPaths } from "./ui-eval.js";
 
 /**
  * @typedef {object} SessionOptions
@@ -18,7 +19,7 @@ import { paramValues, evalTiles, SeriesStore, numberPaths } from "./ui-eval.js";
  * @typedef {object} Snapshot
  * @property {any} status  `page.status()`
  * @property {number} head  the furthest time the run has reached, which the scrubber's top is
- * @property {{ part: string, tiles: ReturnType<typeof evalTiles>, state: any, params: Record<string, any>, traces: { path: string, value: number }[] }[]} parts
+ * @property {{ part: string, tiles: ReturnType<typeof shownTiles>, state: any, params: Record<string, any>, traces: { path: string, value: number }[] }[]} parts
  */
 
 /**
@@ -35,6 +36,7 @@ export function createSession(loaded, options) {
     composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), context: options.context,
     requestFrame: (cb) => frame((ms) => { cb(ms); notify(); }),
     ...(options.decode ? { decode: options.decode } : {}),
+    ...(loaded.rebuild ? { run: { build: loaded.rebuild } } : {}),
   });
   /** @type {Map<string, Record<string, any>>} the params as the person set them, by part */
   const edits = new Map();
@@ -44,6 +46,13 @@ export function createSession(loaded, options) {
     const dialect = composed.parts.find((/** @type {any} */ p) => p.name === part)?.dialect;
     return loaded.packages.find((p) => p.name === dialect)?.loaded.ui ?? null;
   };
+  /** Each part's UI compiled against its record (kit/define's `ui.compile`), made once. @type {Map<string, import("../../define/ui/compile.js").UICompiled | null>} */
+  const compiled = new Map();
+  /** @param {string} part */
+  const compiledOf = (part) => {
+    if (!compiled.has(part)) compiled.set(part, uiOf(part)?.compile(composed.parts.find((/** @type {any} */ p) => p.name === part).record) ?? null);
+    return compiled.get(part) ?? null;
+  };
 
   /** @returns {Snapshot} */
   function snapshot() {
@@ -52,7 +61,8 @@ export function createSession(loaded, options) {
     const parts = composed.parts.filter((/** @type {any} */ p) => p.name !== "page").map((/** @type {any} */ p) => {
       const state = page.run.state(p.name);
       const params = paramValues(p.record, edits.get(p.name));
-      const tiles = state ? evalTiles(uiOf(p.name), state, params) : [];
+      const ui = compiledOf(p.name);
+      const tiles = state && ui ? shownTiles(ui.evaluate(state, params).tiles) : [];
       for (const t of tiles) t.body.forEach((c, i) => plots(`${p.name}.${t.id}.${i}`, c, status.seconds));
       const traces = state ? numberPaths(state).map((path) => {
         const value = path.split(".").reduce((v, k) => v?.[k], state);
@@ -72,7 +82,7 @@ export function createSession(loaded, options) {
   const changed = () => { page.draw(); notify(); };
 
   return {
-    page, series, snapshot,
+    page, series, snapshot, compiledOf,
     start() { page.start(); },
     stop() { page.stop(); },
     pause() { page.driver.pause(); notify(); },
@@ -92,10 +102,20 @@ export function createSession(loaded, options) {
       edits.set(part, { ...edits.get(part), [name]: value });
       notify();
     },
-    /** A UI button: the Dialect object (`Pad`) is the control named by it in lower case, its members the buttons held. @param {string} part @param {string} object @param {Record<string, boolean>} held */
-    control(part, object, held) {
-      page.run.input({ kind: "control", part, name: object.charAt(0).toLowerCase() + object.slice(1), value: { ...held } });
+    /** A UI button change: the buttons held, sent as the run control the part's UI names (kit/define's `ui.control`). @param {string} part @param {Record<string, boolean>} held */
+    control(part, held) {
+      const name = uiOf(part)?.control;
+      if (!name) throw new Error(`part ${part}'s UI has no inputs, so it takes no button`);
+      page.run.input({ kind: "control", part, name, value: { ...held } });
       notify();
+    },
+    /** A param's annotation in the params view (the compiled UI's `annotation`). @param {string} part @param {string} name @param {any} state @param {Record<string, any>} params */
+    paramAnnotation: (part, name, state, params) => compiledOf(part)?.annotation("params", name, state, params) ?? {},
+    /** A runs tile's sweep (kit/page's sweepRuns). @param {string} part @param {any} spec */
+    sweep(part, spec) {
+      const ui = compiledOf(part);
+      if (!ui) return { points: [], error: `part ${part} has no UI` };
+      return sweepRuns({ composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), part, spec, compiled: ui, ...(loaded.rebuild ? { build: loaded.rebuild } : {}) });
     },
     /** A key as the page's control: true when it was one (the host prevents its default). @param {{ type: string, code: string }} event */
     key: (event) => page.key(event),

@@ -26,6 +26,8 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 | Export | Does |
 |---|---|
 | `createPage(options)` | the page (below); throws when `requestFrame` is not a function, when `keys` maps a key to something that is not a control, and whatever `createRun` throws (kit/run: N006, N007, S116, a part with no runtime) |
+| `examplePreset(name, programFn, build?)` | one package example run alone (below): `{ composition, build, diagnostics }` |
+| `sweepRuns(options)` | a `runs` tile's fresh runs (below): `{ points, error? }` |
 | `DEFAULT_KEYS` | the DMG host's key map, by `KeyboardEvent.code`: arrows and `KeyW` `KeyA` `KeyS` `KeyD` → the pad; `KeyX`, `KeyK` → `a`; `KeyZ`, `KeyJ` → `b`; `Enter` → `start`; `ShiftLeft`, `ShiftRight` → `select` |
 | `KEY_TARGETS` | what a key may map to: `"pad.up"`, `"pad.down"`, `"pad.left"`, `"pad.right"`, `"a"`, `"b"`, `"start"`, `"select"` |
 | `PAGE_CODES` | the H codes (below) |
@@ -60,6 +62,14 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 | `page.run`, `page.driver` | the kit/run run and its driver, for run control: `driver.pause()`, `driver.resume()`, `driver.step()`, `driver.paused`; `run.rewind(t)`, `run.state(part)`, `run.log`, `run.record()` |
 | `page.options` | the options it was given |
 
+## Presets and sweeps
+
+**`examplePreset(name, programFn, build?)`** ([`preset.js`](preset.js), leaf `dXp5WO`) composes one example alone as `compose(name).part(<it>).show(<it>)`. `programFn` is the example's default export, `($) => <builder chain>`, and `build` its module scope (kit/define's `moduleScope`). The example is built through kit/define's `run`, so build-time code that reads `$` gets each param's declared value and the read is recorded in the record's `reads` (calling the export with `{}`, as the page host did, gave such code `undefined`). `composition` has `check`, `plan` and `build` as kit/compose's, each with the preset's own build options, and its built record's one part carries `run`'s record, reads included, so kit/run knows which param edits rebuild the part; `build(part, params)` is the rebuild `createRun` takes as its `build` option (pass it in createPage's `run`): it runs the example again with those values and throws, naming the B codes, if that Program does not build. An example whose Program does not build gives its B diagnostics; one whose export is not a function, throws, or returns no builder chain is H005; neither has a composition. Importing the example (and giving it its module scope's epilogue, kit/define's `withScope`) is the host's.
+
+**`sweepRuns({ composed, runtimes, packages?, part, spec, compiled, build? })`** ([`sweep.js`](sweep.js)) is a `runs` tile's chart ([kit/define](../define/README.md#defineui)): `spec` is the tile as kit/define's compiled UI evaluates it, `compiled` that compiled UI (`ui.compile(record)`). It makes `steps` fresh runs (createRun, not the page's) with the param spread evenly from `from` to `to`, both ends included, each value clamped to the param's `min..max`, runs each `seconds`, and reads `y` from the part's last state through `compiled.value`, with `$` that run's params. A param build-time code reads is swept by building the part again for each value with `build` (without one the sweep says so). It never throws: `{ points: [{ x, y }] }`, or `error` naming the part without that param, the missing `build`, or the run that failed (with the points before it).
+
+**Not built.** Rebuilding a part from edited text: the page has no editor, and a rebuild here runs the example's imported function again. A glue's parts get no rebuild: kit/compose builds them with `program.build`, so their records have no `reads` and a param edit that build-time glue code reads would not rebuild; a glue part built through `run` would need kit/compose to keep the run's record (the preset does this outside compose, as kit/run's own param-wire tests do). A UI compiled against a record a rebuild replaced is not compiled again by the host.
+
 ## Invariants
 
 - **The list is drawn as it stands.** A profile's refusal never trims it: the page draws every op on Canvas and reports the refusal (H001), naming the profile, the part, the output, the instant its list was committed at and each of `checkDraw`'s J diagnostics (`check`). One refusal is one diagnostic while it lasts. A refusal is identified by the shown output and the set of J codes the check found, not by the message text: the messages carry live values (a sprite's x, counts, rows, op indices), and the earlier text-keyed dedupe, which this replaces, added a diagnostic for every change of a moving picture and grew without bound. A different set of codes, or the same one after the list was drawn clean, is a new diagnostic; the message kept is the first instant's.
@@ -76,6 +86,7 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 | H002 | the composition shows no part, or the shown part has no Draw output (a custom element stage or the text view); a warning |
 | H003 | an image names a file that no loaded package holds, or the host's decoder threw or rejected on it; a warning, and the image draws as its box |
 | H004 | a frame threw (`driver.frame` or the draw); an error: the frame loop stopped, `status().halted` is this diagnostic, `page.start()` runs again |
+| H005 | an example cannot run alone as a preset (`examplePreset`): its default export is not a function `($) => <builder chain>`, or calling it threw or returned no Program; an error, and there is no composition |
 
 H is reserved for the kit (kit/define's `RESERVED_LETTERS`).
 

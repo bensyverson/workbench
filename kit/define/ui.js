@@ -6,6 +6,7 @@
 import { refuse, isDialect } from "./dialect.js";
 import { validate as validateUI } from "./ui/validate.js";
 import { lowerUI } from "./ui/lower.js";
+import { compileUI } from "./ui/compile.js";
 import { isPlainObject, kindOf as tagKind } from "./tags.js";
 
 /** @import * as T from "./define.js" */
@@ -16,6 +17,13 @@ function freezeDeep(v) {
   if (isPlainObject(v)) return Object.freeze(Object.fromEntries(Object.entries(v).map(([k, x]) => [k, freezeDeep(x)])));
   return v;
 }
+
+/**
+ * The run control a UI's inputs reach the runtime as, `ctx.controls.<name>`: the inputs object's name with its first
+ * letter lowercased (`Pad` is `pad`). A host sends each button change as a `control` input of that name.
+ * @param {string} object
+ */
+export const controlName = (object) => object.charAt(0).toLowerCase() + object.slice(1);
 
 /** What defineUI made, so a host can tell a UI from a look-alike. */
 const MADE = new WeakSet();
@@ -61,8 +69,11 @@ export function defineUI(builder, decl, options = {}) {
     ...(d.stage !== undefined ? { stage: freezeDeep(d.stage) } : {}),
     ...(d.inputs !== undefined ? { inputs: freezeDeep(d.inputs) } : {}),
     tiles: freezeDeep(d.tiles ?? {}), annotate: freezeDeep(d.annotate ?? {}),
+    control: d.inputs !== undefined ? controlName(String(/** @type {any} */ (d.inputs).object)) : null,
     /** Lowers every UI lambda against one Program's record: see ui/lower.js. @param {Record<string, any>} record */
     lower: (record) => lowerUI(/** @type {T.UI} */ (ui), record),
+    /** Lowers and compiles every UI lambda against one Program's record, for evaluate: see ui/compile.js. @param {Record<string, any>} record */
+    compile: (record) => compileUI(/** @type {T.UI} */ (ui), record),
   });
   MADE.add(ui);
   return /** @type {T.UI} */ (ui);

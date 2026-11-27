@@ -36,7 +36,7 @@ export function chart(pts, { w = 220, h: ht = 44, bars = false } = {}) {
 /**
  * One evaluated component.
  * @param {Record<string, any>} c
- * @param {{ series: (key: string) => { T: number, y: number }[], sweep: (c: any) => { x: number, y: number }[] | null, runSweep: (c: any) => void, element: (c: any) => any }} io
+ * @param {{ series: (key: string) => { T: number, y: number }[], sweep: (c: any) => { points: { x: number, y: number }[], error?: string } | null, runSweep: (c: any) => void, element: (c: any) => any }} io
  * @returns {any}
  */
 export function componentView(c, io) {
@@ -48,8 +48,9 @@ export function componentView(c, io) {
       h("table", null, h("thead", null, h("tr", null, c.columns.map((/** @type {string} */ x) => h("th", null, x)))), h("tbody", null, c.rows.map((/** @type {string[]} */ r) => h("tr", null, r.map((x) => h("td", null, x)))))));
     case "plot": return h("div", { class: "comp" }, h("div", { class: "k" }, c.label, " ", h("b", null, String(Math.round(c.y * 1000) / 1000))), chart(io.series(c.key).map((p) => ({ x: p.T, y: p.y }))));
     case "runs": {
-      const pts = io.sweep(c);
-      return h("div", { class: "comp" }, h("div", { class: "k" }, c.label, " ", h("button", { class: "btn sm", onclick: () => io.runSweep(c) }, pts ? "Rerun" : "Run sweep")), pts && chart(pts, { bars: true }), pts && h("div", { class: "dim" }, `${c.spec.param}: ${pts.map((p) => `${p.x}→${Math.round(p.y * 100) / 100}`).join("  ")}`));
+      const swept = io.sweep(c);
+      const pts = swept?.points ?? null;
+      return h("div", { class: "comp" }, h("div", { class: "k" }, c.label, " ", h("button", { class: "btn sm", onclick: () => io.runSweep(c) }, swept ? "Rerun" : "Run sweep")), pts && chart(pts, { bars: true }), pts && h("div", { class: "dim" }, `${c.spec.param}: ${pts.map((p) => `${p.x}→${Math.round(p.y * 100) / 100}`).join("  ")}`), swept?.error && h("div", { class: "comp bad" }, swept.error));
     }
     case "text": return h("p", { class: "comp text" }, c.text);
     case "row": case "col": return h("div", { class: `comp ${c.kind}` }, c.items.map((/** @type {any} */ i) => componentView(i, io)));

@@ -51,7 +51,7 @@ test("a name the scan finds twice at a file's top level is LOAD at its second li
   assert.deepEqual(session.diagnostics.map((d) => [d.file, d.line, d.code]), [["examples/09.js", 3, "LOAD"]]);
   assert.match(session.diagnostics[0].message, /'a'/);
   session.reset("file:///tmp/x/", { "examples/09.js": "const a = 1;\nexport default ($) => a;\n" });
-  assert.deepEqual(moduleScope("examples/09.js", { __defineTrialScope: () => ({ a: 1 }) })?.sources, { a: "1" });
+  assert.deepEqual(moduleScope("examples/09.js", { [SCOPE_EXPORT]: () => ({ a: 1 }) })?.sources, { a: "1" });
   assert.deepEqual(session.diagnostics, []);
 });
 

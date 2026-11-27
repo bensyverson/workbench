@@ -356,4 +356,12 @@ export interface UI {
    * `annotate.params.rate.badge`); each diagnostic carries the `id`, `path`, `tile` (null in annotate) and `key` it came from.
    */
   lower(record: Record<string, any>): import("./ui/lower.js").UILowered;
+  /**
+   * Lowers every UI lambda against one Program's record (as `lower`), then emits and instantiates each Kernel as
+   * kit/run does a Program's: `evaluate(state, $)` gives every tile's components and every annotation as data,
+   * `value(id, ...args)` one value by its id, `annotation(view, key, state, $)` one key's marks.
+   */
+  compile(record: Record<string, any>): import("./ui/compile.js").UICompiled;
+  /** The run control the inputs reach the runtime as (`ctx.controls.<control>`): `inputs.object` with its first letter lowercased; null with no inputs. */
+  readonly control: string | null;
 }

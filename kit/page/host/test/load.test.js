@@ -97,6 +97,7 @@ test("a package's example loads as a one-part preset", async () => {
   const run = createRun(w.composed, { runtimes: w.runtimes });
   run.runUntil(1);
   assert.ok(run.state("fountain"));
+  assert.equal(typeof w.rebuild, "function", "kit/page's examplePreset gives the rebuild a build-time param edit needs");
   const missing = await loadPreset({ packages, package: "particles", example: "examples/99.js" }, env);
   assert.equal(missing.diagnostics[0]?.code, "LOAD");
 });

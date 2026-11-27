@@ -7,6 +7,7 @@ export const PAGE_CODES = Object.freeze({
   H002: "Nothing to draw: the composition shows no part, or the shown part has no Draw output (a custom element stage, or the text view)",
   H003: "An image's pixels are not available: its file is not in a loaded package, or the host's decoder failed on it; it draws as its box",
   H004: "A frame threw (the run's driver, or a draw: a host's decode result drawImage rejects, say); the page stopped its frame loop, and page.start() runs it again",
+  H005: "A package example cannot run alone as a preset: its default export is not a function ($) => <builder chain>, or calling it threw or returned no Program (examplePreset)",
 });
 
 /** How many page diagnostics the list keeps: past it, the oldest go (a refusal that comes and goes must not grow it without bound). */

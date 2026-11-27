@@ -1,12 +1,14 @@
-// The UI of the draw trial's particles and maze packages, read against their runs' states.
+// The UI of the draw trial's particles and maze packages, read against their runs' states: the values are kit/define's
+// compiled UI's (ui.compile), the sweep kit/page's; the host shows them as text and keeps the plot histories.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { readPackageDir } from "../../../../scripts/pkg/dir.js";
 import { createRun } from "../../../run/index.js";
+import { sweepRuns } from "../../index.js";
 import { loadPreset } from "../load.js";
-import { evalTiles, evalComponent, paramValues, sweepRuns, SeriesStore, numberPaths, paramAnnotation, readPath } from "../ui-eval.js";
+import { shownTiles, shown, paramValues, SeriesStore, numberPaths, readPath } from "../ui-eval.js";
 
 const kit = (/** @type {string} */ p) => new URL(`../../../${p}`, import.meta.url).href;
 /** @type {import("../load.js").LoadEnv} */
@@ -24,12 +26,14 @@ async function fountain() {
   run.runUntil(1);
   const ui = w.packages[0].loaded.ui;
   const record = w.composed.parts[0].record;
-  return { w, run, ui, record, state: run.state("fountain"), $: paramValues(record) };
+  const compiled = ui.compile(record);
+  assert.deepEqual(compiled.diagnostics, [], "the particles UI lowers against the example");
+  return { w, run, ui, record, compiled, state: run.state("fountain"), $: paramValues(record) };
 }
 
-test("tiles evaluate: stat, row, check, table, plot, runs and text", async () => {
-  const { ui, state, $ } = await fountain();
-  const tiles = evalTiles(ui, state, $);
+test("tiles evaluate through the kit and show as text: stat, row, check, table, plot, runs and text", async () => {
+  const { compiled, state, $ } = await fountain();
+  const tiles = shownTiles(compiled.evaluate(state, $).tiles);
   assert.deepEqual(tiles.map((t) => t.id), ["health", "sweep"]);
   const [row, check, table, plot] = tiles[0].body;
   assert.equal(row.kind, "row");
@@ -38,33 +42,31 @@ test("tiles evaluate: stat, row, check, table, plot, runs and text", async () =>
   assert.equal(check.ok, state.particles.length < state.maxParticles);
   assert.deepEqual(table.columns, ["name", "live", "share"]);
   assert.equal(table.rows.length, state.emitters.length);
+  assert.ok(table.rows.every((/** @type {unknown[]} */ r) => r.every((x) => typeof x === "string")), "cells are text");
   assert.equal(plot.y, state.particles.length);
   assert.equal(tiles[1].body[0].kind, "text");
   assert.equal(tiles[1].body[1].kind, "runs");
 });
 
-test("a stat is bad at its max or while badIf holds, and a lambda that throws is an error value", () => {
-  const $ = {};
-  assert.equal(evalComponent({ kind: "stat", label: "n", value: "n", max: () => 3 }, { n: 3 }, $).bad, true);
-  assert.equal(evalComponent({ kind: "stat", label: "n", value: "n", max: () => 3 }, { n: 2 }, $).bad, false);
-  assert.equal(evalComponent({ kind: "stat", label: "n", value: "n", badIf: () => true }, { n: 0 }, $).bad, true);
-  const e = evalComponent({ kind: "stat", label: "n", value: () => { throw new Error("boom"); } }, {}, $);
-  assert.equal(e.error, "boom");
+test("a shown component keeps the kit's error, and a number shows to three places", () => {
+  assert.deepEqual(shown({ kind: "stat", label: "n", error: "L002 boom", code: "L002" }), { kind: "stat", label: "n", error: "L002 boom" });
+  assert.deepEqual(shown({ kind: "stat", label: "n", value: 1 / 3, max: 2, bad: false }), { kind: "stat", label: "n", text: "0.333", unit: "", max: "2", bad: false });
 });
 
-test("a runs tile sweeps the param, clamped, from fresh runs", async () => {
-  const { w, ui } = await fountain();
-  const spec = ui.tiles.sweep.body[1];
-  const pts = sweepRuns({ composed: w.composed, runtimes: w.runtimes, part: "fountain", spec: { ...spec, steps: 3, seconds: 1, to: 1000 } });
-  assert.deepEqual(pts.map((p) => p.x), [0, 400, 400]);
-  assert.ok(pts[2].y > pts[0].y);
+test("a runs tile sweeps the param, clamped, from fresh runs (kit/page's sweepRuns)", async () => {
+  const { w, compiled, state, $ } = await fountain();
+  const spec = /** @type {any} */ (compiled.evaluate(state, $).tiles[1].body[1]);
+  const r = sweepRuns({ composed: w.composed, runtimes: w.runtimes, part: "fountain", spec: { ...spec, steps: 3, seconds: 1, to: 1000 }, compiled });
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.points.map((p) => p.x), [0, 400, 400]);
+  assert.ok(r.points[2].y > r.points[0].y);
 });
 
 test("params and annotations resolve", async () => {
-  const { ui, state, record } = await fountain();
+  const { compiled, state, record } = await fountain();
   assert.deepEqual(paramValues(record, { rate: 350 }), { rate: 350, wind: 0 });
-  assert.deepEqual(paramAnnotation(ui, "rate", state, { rate: 350 }), { tone: "dim", badge: "hot" });
-  assert.deepEqual(paramAnnotation(ui, "wind", state, { wind: 0 }), { tone: "dim" });
+  assert.deepEqual(compiled.annotation("params", "rate", state, { rate: 350, wind: 0 }), { tone: "dim", badge: "hot" });
+  assert.deepEqual(compiled.annotation("params", "wind", state, { rate: 1, wind: 0 }), { tone: "dim" });
 });
 
 test("traces: the numbers outside lists, and a series store that follows a rewind", () => {
@@ -82,7 +84,8 @@ test("the maze's stats read its run", async () => {
   assert.deepEqual(w.diagnostics, []);
   const run = createRun(w.composed, { runtimes: w.runtimes });
   run.runUntil(1);
-  const tiles = evalTiles(w.packages[0].loaded.ui, run.state(w.composed.parts[0].name), {});
+  const part = w.composed.parts[0];
+  const tiles = shownTiles(w.packages[0].loaded.ui.compile(part.record).evaluate(run.state(part.name), paramValues(part.record)).tiles);
   assert.equal(tiles[0].body[0].label, "score");
   assert.equal(typeof tiles[0].body[2].ok, "boolean");
 });

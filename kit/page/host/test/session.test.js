@@ -77,7 +77,8 @@ test("a param edit and a UI button are logged inputs; a key is a page control", 
   assert.ok(a.s.page.run.log.inputs.some((/** @type {any} */ i) => i.kind === "param" && i.name === "rate" && i.value === 10));
   assert.equal(a.s.snapshot().parts[0].params.rate, 10);
   const m = mount(await loadPreset({ packages: pkgs(["maze"]), package: "maze", example: "examples/01.js" }, env));
-  m.s.control(m.s.snapshot().parts[0].part, "Pad", { right: true });
+  // the control's name is the UI's (kit/define's ui.control), not the host's to make from the object's
+  m.s.control(m.s.snapshot().parts[0].part, { right: true });
   assert.ok(m.s.page.run.log.inputs.some((/** @type {any} */ i) => i.kind === "control" && i.name === "pad" && i.value.right === true));
   assert.equal(m.s.key({ type: "keydown", code: "KeyP" }), false);
 });

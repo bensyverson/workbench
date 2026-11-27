@@ -4,11 +4,11 @@
 // resolve), the module scope of a Program file, and turning every diagnostic of the kit's into one shape the page
 // lists. No decision is made here that the kit makes: each check, each build and each refusal is the kit's.
 
-import { KIT_VERSION } from "../../define/index.js";
-import { compose, scanGlue, isComposition, formatDiagnostic } from "../../compose/index.js";
+import { KIT_VERSION, withScope, moduleScope } from "../../define/index.js";
+import { scanGlue, isComposition, formatDiagnostic } from "../../compose/index.js";
+import { examplePreset } from "../index.js";
 import { loadPackage, rewriteSpecifiers, checkManifest, textOf, MANIFEST_PATH } from "../../package/index.js";
 import { isDotPath } from "../../package/paths.js";
-import { withScope, moduleScope } from "./scope.js";
 
 /**
  * One diagnostic of any source, as the page lists it. `text` is the kit's printed form where it has one.
@@ -85,10 +85,11 @@ export async function loadOnePackage(label, given, env) {
  * @property {string} source  the glue's text, or the preset's example's
  * @property {string} sourceName
  * @property {Record<string, any>} options  compose's options (packages, build scope, runtimes, profile)
+ * @property {((part: string, params: Record<string, unknown>) => Record<string, any>) | null} rebuild  a preset's rebuild for a build-time param edit (kit/page's examplePreset), which createRun takes as `build`; null for a glue
  */
 
 /** @returns {Loaded} */
-const nothing = () => ({ packages: [], diagnostics: [], plan: [], composition: null, composed: null, runtimes: [], source: "", sourceName: "", options: {} });
+const nothing = () => ({ packages: [], diagnostics: [], plan: [], composition: null, composed: null, runtimes: [], source: "", sourceName: "", options: {}, rebuild: null });
 
 /**
  * The packages of a workbench, loaded; `all` is false when one did not load.
@@ -163,7 +164,8 @@ export async function loadWorkbench(input, env) {
     return out;
   }
   if (!isComposition(composition)) { out.diagnostics.push(loadError("glue", `${path}'s default export is not a function ($) => composition`, 'export default ($) => compose("name").part(…)…')); return out; }
-  finish(out, composition, text, mod, path, input.profile);
+  const build = scopeOf(out, "glue", text, mod, path);
+  if (build) finish(out, composition, build, path, input.profile);
   return out;
 }
 
@@ -174,13 +176,18 @@ function entryGrammar(p) {
 }
 
 /**
- * Options for compose from the loaded packages and the Program file's scope, then check and build.
- * @param {Loaded} out @param {any} composition @param {string} text @param {any} mod @param {string} path @param {string | undefined} profile
+ * A Program file's module scope (kit/define's moduleScope), or null with its diagnostic in `out`.
+ * @param {Loaded} out @param {string} source @param {string} text @param {any} mod @param {string} path
  */
-function finish(out, composition, text, mod, path, profile) {
-  /** @type {any} */
-  let build;
-  try { build = moduleScope(text, mod); } catch (e) { out.diagnostics.push(loadError("glue", `${path}'s top level could not be read: ${message(e)}`)); return; }
+function scopeOf(out, source, text, mod, path) {
+  try { return moduleScope(text, mod); } catch (e) { out.diagnostics.push(loadError(source, `${path}'s top level could not be read: ${message(e)}`)); return null; }
+}
+
+/**
+ * Options for compose from the loaded packages and the Program file's scope, then check and build.
+ * @param {Loaded} out @param {any} composition @param {import("../../define/define.js").BuildOptions} build @param {string} path @param {string | undefined} profile
+ */
+function finish(out, composition, build, path, profile) {
   const missing = out.packages.filter((p) => !p.loaded.runtime).map((p) => p.name);
   if (missing.length) out.diagnostics.push(loadError("glue", `package ${missing.join(", ")} has no runtime, so the workbench cannot run`, "name a runtime module in the manifest's entry.runtime"));
   out.runtimes = out.packages.map((p) => p.loaded.runtime).filter(Boolean);
@@ -202,12 +209,16 @@ export async function loadPreset(input, env) {
   const url = pkg?.urls.get(input.example);
   if (!pkg || url === undefined) { out.diagnostics.push(loadError("preset", `package ${input.package} has no example ${input.example}`)); return out; }
   out.source = textOf(pkg.files[input.example]) ?? "";
-  try {
-    const mod = await env.importUrl(url);
-    const builder = typeof mod.default === "function" ? mod.default(Object.freeze({})) : undefined;
-    const composition = compose(pkg.name).part(builder).show(builder);
-    finish(out, composition, out.source, mod, input.example, input.profile);
-  } catch (e) { out.diagnostics.push(loadError("preset", `${input.example} did not make a composition: ${message(e)}`)); }
+  /** @type {any} */
+  let mod;
+  try { mod = await env.importUrl(url); } catch (e) { out.diagnostics.push(loadError("preset", `${input.example} did not load: ${message(e)}`)); return out; }
+  const build = scopeOf(out, "preset", out.source, mod, input.example);
+  if (!build) return out;
+  // kit/page composes it alone: built through kit/define's run, so a build-time read of $ is answered and recorded
+  const preset = examplePreset(pkg.name, mod.default, build);
+  if (!preset.composition) { out.diagnostics.push(...preset.diagnostics.map((d) => hostDiagnostic("preset", { ...d, file: input.example }))); return out; }
+  out.rebuild = preset.build;
+  finish(out, preset.composition, build, input.example, input.profile);
   return out;
 }
 

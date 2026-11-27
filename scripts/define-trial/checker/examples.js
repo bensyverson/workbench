@@ -6,7 +6,7 @@
 import * as kit from "../../../kit/define/index.js";
 import { session, candidateFrame } from "./session.js";
 import { lineAt, locate } from "./locate.js";
-import { buildTimeNames, buildTimeBindings, buildTimeShadows, topLevelBindings, topLevelFunctions, ScanError } from "../../../kit/parse/toplevel.js";
+import { ScanError } from "../../../kit/parse/toplevel.js";
 import { blank } from "../../../kit/parse/module.js";
 import { LOAD } from "./codes.js";
 
@@ -125,44 +125,25 @@ function describeParams(fn) {
 }
 
 /**
- * An example's module scope, as the builder takes it: its top-level bindings (from the export the load hook
- * appends), each top-level `const` declaration's initializer text (a helper's must be its own) and the names its
- * text declares only inside build-time code. When the scan of its text finds a name declared twice at the top
- * level, which a module cannot do, the scan misread the file: that is LOAD at the second declaration, and null,
- * since no declaration can then vouch for a helper (fail closed, rather than keep either).
+ * An example's module scope, as the builder takes it: kit/define's `moduleScope` of its text and the module the load
+ * hook gave its epilogue. When the scan of its text finds a name declared twice at the top level, which a module
+ * cannot do, the scan misread the file: that is LOAD at the second declaration, and null, since no declaration can
+ * then vouch for a helper (fail closed, rather than keep either).
  * @param {string} file @param {Record<string, unknown>} mod
  * @returns {import("../../../kit/define/define.js").BuildOptions | null}
  */
 export function moduleScope(file, mod) {
-  const get = mod.__defineTrialScope;
-  const text = session.sources[file] ?? "";
-  /** @type {Record<string, string>} */
-  let sources;
   try {
-    sources = helperSources(text);
+    return kit.moduleScope(session.sources[file] ?? "", mod);
   } catch (e) {
     if (!(e instanceof ScanError)) throw e;
     session.add({ file, line: e.line, code: LOAD, severity: "error", message: `${file} could not be read: ${e.message}. This is the checker's misreading, not a rule the file broke.`, fix: "report it with the file; meanwhile, move the code the scan misread (a regex literal is the usual cause) into a function of its own, or rename one of the two" });
     return null;
   }
-  const scope = typeof get === "function" ? get() : {};
-  // A function declaration's text vouches only while the binding still holds the function the declaration made.
-  const captured = /** @type {Record<string, unknown>} */ (typeof mod.__defineTrialFunctions === "function" ? mod.__defineTrialFunctions() : {});
-  for (const f of topLevelFunctions(text)) if (!Object.hasOwn(captured, f.name) || /** @type {Record<string, unknown>} */ (scope)[f.name] !== captured[f.name]) delete sources[f.name];
-  const keywords = Object.fromEntries([...topLevelBindings(text).map((b) => [b.name, b.keyword]), ...topLevelFunctions(text).map((f) => [f.name, "function"])]);
-  return { scope, sources, buildTime: buildTimeNames(text), buildTimeBindings: buildTimeBindings(text), keywords, shadowed: buildTimeShadows(text) };
 }
 
-/**
- * Each top-level `const` declaration's initializer text and each function declaration's text, by name: what
- * vouches for a helper. A `let`'s does not,
- * since the binding may be reassigned to an arrow made by other code with the same text.
- * @param {string} text
- * @returns {Record<string, string>}
- */
-export function helperSources(text) {
-  return Object.fromEntries([...topLevelBindings(text).filter((b) => b.keyword === "const"), ...topLevelFunctions(text)].map((b) => [b.name, b.init]));
-}
+/** Each helper's source text by name: kit/define's `helperSources`. */
+export const helperSources = kit.helperSources;
 
 /**
  * The example's Program built by run() (its params at their declared values), then, if it has no error, through

@@ -1,11 +1,9 @@
-// A package's UI (kit/define's defineUI value) read against a part's state: each tile component becomes plain data
-// the page draws. A UI value is a path into the state (`"score"`, `"bounds.width"`) or a lambda `(state, $) => …`
-// (a table column's `(row, state, $)`); the kit checked and lowered them, and the host calls the function it was
-// given. No DOM here.
+// The page's side of a package's UI: kit/define's `ui.compile(record).evaluate(state, $)` gives every component's
+// values; here they become the text the panels show (a number to three places), and the plot histories and the
+// generated traces are kept. Every value is the kit's; the host only formats and remembers. No DOM here.
 
-import { createRun } from "../../run/index.js";
-
-/** @typedef {{ kind: string, [key: string]: any }} Component */
+/** @typedef {import("../../define/ui/compile.js").Evaluated} Evaluated */
+/** @typedef {import("../../define/ui/compile.js").EvaluatedTile} EvaluatedTile */
 
 /** @param {unknown} obj @param {string} path */
 export function readPath(obj, path) {
@@ -13,16 +11,6 @@ export function readPath(obj, path) {
   let v = obj;
   for (const k of path.split(".")) { if (v === null || v === undefined) return undefined; v = v[k]; }
   return v;
-}
-
-/**
- * A UI value against the state.
- * @param {unknown} expr  a path or a lambda @param {any} state @param {Record<string, any>} $
- */
-export function resolve(expr, state, $) {
-  if (typeof expr === "function") return expr(state, $);
-  if (typeof expr === "string") return readPath(state, expr);
-  return expr;
 }
 
 /**
@@ -37,70 +25,33 @@ export function paramValues(record, values = {}) {
   return $;
 }
 
-/** @param {unknown} v */
-const cell = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000)) : v === null || v === undefined ? "" : String(v));
+/** A value as a panel shows it. @param {unknown} v */
+export const cell = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000)) : v === null || v === undefined ? "" : String(v));
 
 /**
- * One component as data. A lambda that throws is `{ kind, label, error }`, never a thrown error.
- * `plot` and `runs` carry the lambda's value or the call to make, since their history and sweeps are the page's.
- * @param {Component} c @param {any} state @param {Record<string, any>} $
+ * One evaluated component as the panels draw it: its values as text. A `runs` keeps its spec for the sweep.
+ * @param {Evaluated} c
  * @returns {Record<string, any>}
  */
-export function evalComponent(c, state, $) {
-  try {
-    switch (c.kind) {
-      case "stat": {
-        const value = resolve(c.value, state, $);
-        const max = c.max === undefined ? undefined : resolve(c.max, state, $);
-        const bad = (c.badIf ? Boolean(resolve(c.badIf, state, $)) : false) || (typeof max === "number" && typeof value === "number" && value >= max);
-        return { kind: "stat", label: c.label, text: cell(value), unit: c.unit ?? "", ...(max !== undefined ? { max: cell(max) } : {}), bad };
-      }
-      case "check": return { kind: "check", label: c.label, ok: Boolean(resolve(c.expect, state, $)) };
-      case "table": {
-        const rows = /** @type {any[]} */ (resolve(c.rows, state, $) ?? []).slice(0, c.limit ?? 1000);
-        const cols = /** @type {any[]} */ (c.columns).map((col) => (typeof col === "string" ? { label: col, value: col } : col));
-        return { kind: "table", label: c.label, columns: cols.map((x) => x.label), rows: rows.map((row) => cols.map((x) => cell(typeof x.value === "function" ? x.value(row, state, $) : readPath(row, x.value)))) };
-      }
-      case "plot": return { kind: "plot", label: c.label, window: c.window, y: Number(resolve(c.y, state, $)) };
-      case "text": return { kind: "text", text: String(resolve(c.value, state, $) ?? "") };
-      case "runs": return { kind: "runs", label: c.label, spec: c };
-      case "row": case "col": return { kind: c.kind, items: c.items.map((/** @type {Component} */ i) => evalComponent(i, state, $)) };
-      default: return { kind: c.kind, label: c.label, error: `unknown component kind '${c.kind}'` };
-    }
-  } catch (e) {
-    return { kind: c.kind, label: c.label, error: e instanceof Error ? e.message : String(e) };
+export function shown(c) {
+  if (c.error !== undefined) return { kind: c.kind, label: c.label, error: c.error };
+  switch (c.kind) {
+    case "stat": return { kind: "stat", label: c.label, text: cell(c.value), unit: c.unit ?? "", ...(c.max !== undefined ? { max: cell(c.max) } : {}), bad: c.bad };
+    case "table": return { kind: "table", label: c.label, columns: c.columns, rows: /** @type {unknown[][]} */ (c.rows).map((r) => r.map(cell)) };
+    case "plot": return { kind: "plot", label: c.label, window: c.window, y: Number(c.y) };
+    case "text": return { kind: "text", text: cell(c.value) };
+    case "runs": return { kind: "runs", label: c.label, spec: c };
+    case "row": case "col": return { kind: c.kind, items: /** @type {Evaluated[]} */ (c.items).map(shown) };
+    default: return { ...c };
   }
 }
 
 /**
- * Every tile of a UI, in its declared order, with its components evaluated.
- * @param {any} ui @param {any} state @param {Record<string, any>} $
+ * Every tile, its components shown.
+ * @param {EvaluatedTile[]} tiles
  * @returns {{ id: string, title: string, place: any, body: Record<string, any>[] }[]}
  */
-export function evalTiles(ui, state, $) {
-  return Object.entries(ui?.tiles ?? {}).map(([id, t]) => ({ id, title: /** @type {any} */ (t).title, place: /** @type {any} */ (t).place, body: /** @type {any} */ (t).body.map((/** @type {Component} */ c) => evalComponent(c, state, $)) }));
-}
-
-/**
- * A `runs` tile: `steps` fresh runs of the composition with `param` spread from `from` to `to` (each value clamped to
- * the param's range), each `seconds` long, `y` read from the part's last state with `$` at that run's value.
- * @param {{ composed: any, runtimes: any[], part: string, spec: Component }} o
- * @returns {{ x: number, y: number }[]}
- */
-export function sweepRuns({ composed, runtimes, part, spec }) {
-  const decl = composed.parts.find((/** @type {any} */ p) => p.name === part)?.record.params?.[spec.param];
-  if (!decl) return [];
-  const out = [];
-  for (let i = 0; i < spec.steps; i++) {
-    const raw = spec.from + ((spec.to - spec.from) * i) / (spec.steps - 1);
-    const x = Math.min(decl.max ?? raw, Math.max(decl.min ?? raw, raw));
-    const run = createRun(composed, { runtimes, params: { [part]: { [spec.param]: x } } });
-    run.runUntil(spec.seconds);
-    const record = composed.parts.find((/** @type {any} */ p) => p.name === part).record;
-    out.push({ x, y: Number(resolve(spec.y, run.state(part), paramValues(record, { [spec.param]: x }))) });
-  }
-  return out;
-}
+export const shownTiles = (tiles) => tiles.map((t) => ({ id: t.id, title: t.title, place: t.place, body: t.body.map(shown) }));
 
 /** A plot's history: points by key, trimmed to the window, and dropped past a rewind. */
 export class SeriesStore {
@@ -127,28 +78,4 @@ export function numberPaths(state, prefix = "") {
   if (typeof state === "number") return Number.isFinite(state) && prefix ? [prefix] : [];
   if (state === null || typeof state !== "object" || Array.isArray(state)) return [];
   return Object.entries(state).flatMap(([k, v]) => numberPaths(v, prefix ? `${prefix}.${k}` : k));
-}
-
-/**
- * An annotation (`note`, `badge`, `tone`: each a value or a lambda) resolved against the state.
- * @param {any} a @param {any} state @param {Record<string, any>} $
- * @returns {{ note?: string, badge?: string, tone?: string }}
- */
-export function resolveAnnotation(a, state, $) {
-  /** @type {Record<string, string>} */
-  const out = {};
-  for (const k of ["note", "badge", "tone"]) {
-    if (!a || a[k] === undefined) continue;
-    try { const v = typeof a[k] === "function" ? a[k](state, $) : a[k]; if (v !== null && v !== undefined) out[k] = String(v); } catch (e) { out[k] = `(${e instanceof Error ? e.message : e})`; }
-  }
-  return out;
-}
-
-/**
- * The annotation for a param: its own key, else `"*"`'s, the own keys winning field by field.
- * @param {any} ui @param {string} name @param {any} state @param {Record<string, any>} $
- */
-export function paramAnnotation(ui, name, state, $) {
-  const p = ui?.annotate?.params ?? {};
-  return { ...resolveAnnotation(p["*"], state, $), ...resolveAnnotation(p[name], state, $) };
 }

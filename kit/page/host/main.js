@@ -6,7 +6,6 @@ import { h, fill } from "./dom.js";
 import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic } from "./load.js";
 import { createSession } from "./session.js";
 import { parseQuery, importedPackages, fetchPackage, fetchGlue, groupUpload, packageFromBundle, contentOf } from "./sources.js";
-import { sweepRuns, paramAnnotation } from "./ui-eval.js";
 import { diagnosticsView, componentView, paramEditor, codeView, chart } from "./views.js";
 
 const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
@@ -99,7 +98,7 @@ export function start({ importModule }) {
         h("h3", null, p.part, h("span", { class: "tag" }, dialect)),
         buttons,
         h("div", { class: "tiles", "data-tiles": p.part }),
-        params.length ? h("details", { open: true }, h("summary", null, "Params"), params.map(([name, decl]) => paramEditor(name, /** @type {any} */ (decl), paramAnnotation(ui, name, p.state, p.params), (v) => session.setParam(p.part, name, v)))) : null,
+        params.length ? h("details", { open: true }, h("summary", null, "Params"), params.map(([name, decl]) => paramEditor(name, /** @type {any} */ (decl), session.paramAnnotation(p.part, name, p.state, p.params), (v) => session.setParam(p.part, name, v)))) : null,
         h("details", null, h("summary", null, "Traces"), h("div", { "data-traces": p.part })),
         h("details", null, h("summary", null, "State"), h("pre", { class: "state", "data-state": p.part })));
     }));
@@ -110,7 +109,7 @@ export function start({ importModule }) {
     /** @type {Record<string, boolean>} */
     const held = Object.fromEntries(Object.keys(inputs.buttons).map((k) => [k, false]));
     /** @param {string} k @param {boolean} down */
-    const set = (k, down) => { if (held[k] === down) return; held[k] = down; session.control(part, inputs.object, held); };
+    const set = (k, down) => { if (held[k] === down) return; held[k] = down; session.control(part, held); };
     return h("div", { class: "inputs" }, Object.entries(inputs.buttons).map(([k, b]) => h("button", {
       class: "btn", onpointerdown: (/** @type {any} */ e) => { e.target.setPointerCapture?.(e.pointerId); set(k, true); },
       onpointerup: () => set(k, false), onpointercancel: () => set(k, false), onlostpointercapture: () => set(k, false),
@@ -130,7 +129,7 @@ export function start({ importModule }) {
     const io = {
       series: (/** @type {string} */ k) => c.session?.series.get(k).map((p) => p) ?? [],
       sweep: (/** @type {any} */ x) => c.sweeps.get(x.label) ?? null,
-      runSweep: (/** @type {any} */ x) => { c.sweeps.set(x.label, sweepRuns({ composed: c.loaded.composed, runtimes: c.loaded.runtimes, part: x.part, spec: x.spec })); panels(c.session?.snapshot() ?? snap); },
+      runSweep: (/** @type {any} */ x) => { c.sweeps.set(x.label, c.session?.sweep(x.part, x.spec) ?? null); panels(c.session?.snapshot() ?? snap); },
       element: () => null,
     };
     for (const p of snap.parts) {
