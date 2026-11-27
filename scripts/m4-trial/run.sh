@@ -2,16 +2,18 @@
 # Sets up one leg of the M4 trial in a fresh directory and runs a fresh `claude -p` there, blind to the repository.
 # Usage: scripts/m4-trial/run.sh game|score <dir> <model>
 #        scripts/m4-trial/run.sh compose <dir> <model> <game-leg-dir> <score-leg-dir>
+#        scripts/m4-trial/run.sh layer <dir> <model> <game-leg-dir> <score-leg-dir>   (the layer dogfood, leaf teBNYM)
 #   <dir>    a fresh directory outside the repository and outside ~/.claude (e.g. /private/tmp/IhJ35P-game)
 #   <model>  a model id or alias, e.g. sonnet
 #   every leg gets task.md, rules.md and the kit's author documentation under docs/ (kit/START.md, kit/API.md and the
 #   pages they point an author to, and the package format draft), laid out as in the repository so relative links hold;
 #   the game leg also gets sprites.png (make-png.js); a compose leg copies the one package folder of each author leg,
-#   as that leg left it
+#   as that leg left it; a layer leg is a compose leg on the layer draft: task-layer.md, its docs edited by layer-docs.js,
+#   and check.sh running the draft's stand-in checker (--role layer)
 # Writes <dir>/transcript.jsonl (the stream-json transcript), <dir>/stderr.txt and <dir>/log.jsonl (one line per
 # checker run). The brief is brief.md's text after its "---" line. Adapted from scripts/draw-trial/run.sh (same guards).
 set -eu
-usage() { echo "usage: run.sh game|score <dir> <model> | run.sh compose <dir> <model> <game-leg-dir> <score-leg-dir>" >&2; exit 2; }
+usage() { echo "usage: run.sh game|score <dir> <model> | run.sh compose|layer <dir> <model> <game-leg-dir> <score-leg-dir>" >&2; exit 2; }
 [ $# -ge 3 ] || usage
 ROLE=$1
 DIR=$2
@@ -25,7 +27,7 @@ onepkg() { # the one package folder of a leg directory
 }
 case "$ROLE" in
   game|score) [ $# -eq 3 ] || usage ;;
-  compose) [ $# -eq 5 ] || usage; GAME_PKG=$(onepkg "$4"); SCORE_PKG=$(onepkg "$5") ;;
+  compose|layer) [ $# -eq 5 ] || usage; GAME_PKG=$(onepkg "$4"); SCORE_PKG=$(onepkg "$5") ;;
   *) usage ;;
 esac
 case "$DIR" in
@@ -52,13 +54,14 @@ for f in START.md API.md define/README.md define/codes.js seam/README.md draw/RE
 done
 cp "$REPO"/kit/docs/*.md "$DIR/docs/kit/docs/"
 cp "$REPO/project/2026-11-25-package-format-draft.md" "$DIR/docs/project/"
+[ "$ROLE" = layer ] && node "$REPO/scripts/m4-trial/layer-docs.js" "$DIR/docs/kit"
 M4="$REPO/scripts/m4-trial"
 cp "$M4/docs/rules.md" "$DIR/rules.md"
 cp "$M4/docs/task-$ROLE.md" "$DIR/task.md"
-if [ "$ROLE" = compose ]; then
+if [ "$ROLE" = compose ] || [ "$ROLE" = layer ]; then
   cp -R "$GAME_PKG" "$SCORE_PKG" "$DIR/"
   EXTRA=", and two package folders, \`$(basename "$GAME_PKG")/\` (the grid game) and \`$(basename "$SCORE_PKG")/\` (the score and timer)"
-  CHECK="$DIR --role compose --given $GAME_PKG --given $SCORE_PKG"
+  CHECK="$DIR --role $ROLE --given $GAME_PKG --given $SCORE_PKG"
 else
   EXTRA=
   [ "$ROLE" = game ] && { node "$M4/make-png.js" "$DIR/sprites.png" > /dev/null; EXTRA=", and \`sprites.png\`"; }
@@ -66,7 +69,7 @@ else
 fi
 cat > "$DIR/check.sh" <<EOF
 #!/bin/sh
-# Checks your hand-in; exits 1 on a violation.$( [ "$ROLE" = compose ] || printf '\n# Usage: ./check.sh <package folder>' )
+# Checks your hand-in; exits 1 on a violation.$( [ "$ROLE" = compose ] || [ "$ROLE" = layer ] || printf '\n# Usage: ./check.sh <package folder>' )
 M4_TRIAL_LOG=$DIR/log.jsonl exec node $M4/check.js $CHECK "\$@"
 EOF
 cat > "$DIR/hash.sh" <<EOF

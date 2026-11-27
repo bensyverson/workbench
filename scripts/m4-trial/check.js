@@ -1,6 +1,7 @@
 // The M4 trial's checker, as a command:
 //   node scripts/m4-trial/check.js --role game|score <package dir>
 //   node scripts/m4-trial/check.js <leg dir> --role compose --given <game package> --given <score package>
+//   node scripts/m4-trial/check.js <leg dir> --role layer --given <game package> --given <score package>  (the layer dogfood)
 // The logic is in checker/; this file parses the arguments, prints, logs and sets the exit code. Every invocation is
 // appended as one JSON line to the file named by M4_TRIAL_LOG, if set. The stack of a checker failure goes only to the
 // log, so a blind leg sees no repository paths.
@@ -9,16 +10,21 @@ import { appendFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { checkAuthor, checkCompose, CheckTargetError, ROLES } from "./checker/legs.js";
+import { checkLayerCompose } from "./checker/layer-leg.js";
+
+const ALL_ROLES = [...ROLES, "layer"];
 
 export const EXIT = Object.freeze({ ok: 0, violations: 1, usage: 2, crash: 3, target: 4 });
 
 const PRIMER = `usage: check.sh <package folder>            (an author leg)
-       check.sh                             (the compose leg)
+       check.sh                             (the compose leg, and the layer dogfood's)
 
 Loads the hand-in as the workbench page does, builds it and plays it on the page with a stub canvas. Prints every
 problem as
   <file>:<line>: <code> <message>
     fix: <what to do>
+The layer dogfood's S codes marked (draft) are the layer draft's (docs/kit/compose/README.md, Layers); its notes
+show each layer as the draft would make it.
 K… are kit/package's, S… kit/compose's, H… kit/page's, N… kit/run's, LOAD the page host's, T… this trial's.
 Exit 0: no violations. 1: violations. 2: bad invocation. 3: the checker itself failed. 4: the folder is missing.`;
 
@@ -34,8 +40,8 @@ function parse(argv) {
     else if (argv[i] === "--given") given.push(argv[++i]);
     else rest.push(argv[i]);
   }
-  if (!role || !ROLES.includes(role) || rest.length !== 1 || rest[0].startsWith("-")) return null;
-  if (role === "compose" ? given.length !== 2 || given.some((g) => !g) : given.length) return null;
+  if (!role || !ALL_ROLES.includes(role) || rest.length !== 1 || rest[0].startsWith("-")) return null;
+  if (role === "compose" || role === "layer" ? given.length !== 2 || given.some((g) => !g) : given.length) return null;
   return { role, dir: rest[0], given };
 }
 
@@ -56,8 +62,9 @@ async function main(argv) {
   entry.role = args.role;
   entry.dir = resolve(args.dir);
   try {
-    const r = args.role === "compose" ? await checkCompose(args.dir, args.given) : await checkAuthor(args.dir, /** @type {"game" | "score"} */ (args.role));
+    const r = args.role === "layer" ? await checkLayerCompose(args.dir, args.given) : args.role === "compose" ? await checkCompose(args.dir, args.given) : await checkAuthor(args.dir, /** @type {"game" | "score"} */ (args.role));
     for (const d of r.diagnostics) console.log(`${join(args.dir, d.file)}:${d.line}: ${d.code}${d.severity === "warning" ? " (warning)" : ""} ${d.message}\n  fix: ${d.fix}`);
+    for (const n of /** @type {any} */ (r).notes ?? []) console.log(`note: ${n}`);
     const errors = r.diagnostics.filter((d) => d.severity === "error").length;
     console.log(r.ok ? `${args.dir}: no violations` : `${args.dir}: ${errors} violation${errors === 1 ? "" : "s"}`);
     // `codes` (the errors' codes) is the field scripts/seams-trial/summary.js counts

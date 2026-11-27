@@ -29,10 +29,10 @@ export const PAD_SCRIPT = Object.freeze({ hold: 3, order: ["ArrowRight", "ArrowD
 const SCORE_SECONDS = Number(process.env.M4_TRIAL_SCORE_SECONDS) || 65;
 
 /** @param {string} code @param {string} message @param {string} fix @param {string} [file] @param {number} [line] @returns {Diagnostic} */
-const t = (code, message, fix, file = "wb-package.json", line = 1) => ({ code, severity: "error", message, fix, file, line });
+export const t = (code, message, fix, file = "wb-package.json", line = 1) => ({ code, severity: "error", message, fix, file, line });
 
 /** A host diagnostic as the checker prints it. @param {any} d @param {string} file @returns {Diagnostic} */
-const fromHost = (d, file) => ({ code: d.code, severity: d.severity === "warning" ? "warning" : "error", message: d.message, fix: d.fix ?? "see the code's documentation", file: typeof d.file === "string" && !d.file.startsWith("data:") ? d.file : file, line: d.line ?? 1 });
+export const fromHost = (d, file) => ({ code: d.code, severity: d.severity === "warning" ? "warning" : "error", message: d.message, fix: d.fix ?? "see the code's documentation", file: typeof d.file === "string" && !d.file.startsWith("data:") ? d.file : file, line: d.line ?? 1 });
 
 /** @param {any} seam */
 const kindOf = (seam) => seam?.kind;
@@ -42,7 +42,7 @@ const PAD_SEAM = /** @type {any} */ (parseSeam(/** @type {any} */ (page.out.pad)
 const takesPad = (seam) => kindOf(seam) === "event" && compareSeams(PAD_SEAM, seam).problems.length === 0;
 
 /** @param {string} dir @returns {Record<string, string | Uint8Array>} */
-function readPackage(dir) {
+export function readPackage(dir) {
   let files;
   try { files = readPackageDir(dir); } catch (e) { if (e instanceof PackageDirError) throw new CheckTargetError(e.message); throw e; }
   if (!("wb-package.json" in files)) throw new CheckTargetError(`${dir} has no wb-package.json; pass the package folder`);
@@ -156,10 +156,10 @@ async function playExample(pkg, example, role, padInput) {
 }
 
 /** @param {Diagnostic[]} out @returns {CheckResult} */
-const done = (out) => ({ ok: !out.some((d) => d.severity === "error"), diagnostics: out });
+export const done = (out) => ({ ok: !out.some((d) => d.severity === "error"), diagnostics: out });
 
 /** @param {Record<string, string | Uint8Array>} a @param {Record<string, string | Uint8Array>} b */
-function sameFiles(a, b) {
+export function sameFiles(a, b) {
   const ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
   if (ka.join("\n") !== kb.join("\n")) return false;
   return ka.every((k) => Buffer.from(/** @type {any} */ (a[k])).equals(Buffer.from(/** @type {any} */ (b[k]))));
@@ -211,7 +211,19 @@ export async function checkCompose(dir, given) {
   const pictured = (/** @type {string[]} */ ps) => ps.includes(c.show) || intoShown.some((/** @type {any} */ x) => ps.includes(x.fromPart));
   if (!pictured(gameParts) || !pictured(scoreParts)) out.push(t("T024", `the shown part, ${c.show}, does not take both pictures`, "show a part whose Draw inputs are wired from the game's and the score-and-timer's Draw outputs", "workbench.js"));
   if (out.some((d) => d.severity === "error")) return done(out);
-  const built = { composed: c, runtimes: w.runtimes, packages: w.packages.map((p) => p.loaded) };
+  out.push(...(await playPadScript({ composed: c, runtimes: w.runtimes, packages: w.packages.map((p) => p.loaded) }, scoreParts)));
+  return done(out);
+}
+
+/**
+ * The compose leg's play: the pad script on one page, nothing on another, then T025, T011, T026 and the run's own
+ * diagnostics. Shared with the layer dogfood's checker (layer-leg.js).
+ * @param {{ composed: any, runtimes: any[], packages: any[] }} built @param {string[]} scoreParts
+ * @returns {Promise<Diagnostic[]>}
+ */
+export async function playPadScript(built, scoreParts) {
+  /** @type {Diagnostic[]} */
+  const out = [];
   const played = await drivenPage(built);
   const still = await drivenPage(built);
   const segment = PAD_SCRIPT.hold * FPS;
@@ -227,5 +239,5 @@ export async function checkCompose(dir, given) {
   const scoreState = (/** @type {any} */ pg) => JSON.stringify(scoreParts.map((/** @type {string} */ p) => pg.run.state(p)));
   if (scoreState(played.page) === scoreState(still.page)) out.push(t("T026", `after ${PAD_SCRIPT.seconds} s of the pad script, the score-and-timer's state is the same as with no input: the play never scored`, "lay the level out so the pad script picks up a gem, and wire the pickups to the score", "workbench.js"));
   out.push(...runDiagnostics(played.page, "workbench.js"));
-  return done(out);
+  return out;
 }
