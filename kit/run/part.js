@@ -18,11 +18,11 @@ import { drawAfter, NONE } from "./draw.js";
  * (null for init's state); `lastValues` the canonical value inputs it last read (a demand part's wake test);
  * `draws` its committed state's Draw lists, by port; `drawValues` and `drawParams` the value and Draw inputs and the
  * params they were built with, which a checkpoint copies so a rewind can build them again (`redraw`).
- * @typedef {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, clock: Clock, key: string, revision: number, content: string | null, state: any, hash: string, snapT: Q | null, stopped: boolean, rng: RngState, lastFrameT: Q | null, stepped: boolean, rebuilt: boolean, lastValues: string | null, drawValues: Record<string, unknown> | null, drawParams: Record<string, unknown> | null, params: Record<string, unknown>, controls: Record<string, unknown>, draws: import("./draw.js").Draws }} Part
+ * @typedef {{ name: string, index: number, dialect: string, runtime: Runtime, record: Record<string, any>, compiled: Compiled, clock: Clock, key: string, revision: number, content: string | null, state: any, hash: string, snapT: Q | null, stopped: boolean, rng: RngState, lastFrameT: Q | null, stepped: boolean, rebuilt: boolean, lastValues: string | null, drawValues: Record<string, unknown> | null, drawParams: Record<string, unknown> | null, params: Record<string, unknown>, draws: import("./draw.js").Draws }} Part
  */
 
 /** A part's own fields a checkpoint copies (everything that changes while it runs). */
-export const PART_FIELDS = /** @type {const} */ (["record", "compiled", "clock", "key", "revision", "content", "state", "hash", "snapT", "stopped", "rng", "lastFrameT", "stepped", "rebuilt", "lastValues", "drawValues", "drawParams", "params", "controls"]);
+export const PART_FIELDS = /** @type {const} */ (["record", "compiled", "clock", "key", "revision", "content", "state", "hash", "snapT", "stopped", "rng", "lastFrameT", "stepped", "rebuilt", "lastValues", "drawValues", "drawParams", "params"]);
 
 /** Freezes plain data all the way down, so a step that changes what it was handed throws (N003). @param {any} v */
 export function deepFreeze(v) {
@@ -125,7 +125,7 @@ function stateProblem(p, s, what) {
  */
 export function runInit(p, dev) {
   const globals = globalsFor(p, defaults(p.runtime));
-  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals.$, controls: Object.freeze({ ...p.controls }), globals };
+  const ctx = { part: p.name, revision: p.revision, record: p.record, kernels: kernelsFor(p), rng: () => next(p.rng), params: globals.$, globals };
   /** @type {any} */
   let s;
   try { s = p.runtime.init(p.record, ctx); } catch (e) { return { code: "N004", message: `part '${p.name}' (${p.dialect}): init threw: ${why(e)}` }; }
@@ -150,7 +150,7 @@ export function runStep(p, { T, dt, inputs, values, dev }) {
     const globals = globalsFor(p, values);
     /** @type {Record<string, unknown[]>} */
     const events = Object.fromEntries(outs.map((n) => [n, []]));
-    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, controls: Object.freeze({ ...p.controls }), params: globals.$, kernels: kernelsFor(p), rng: () => next(rng), events, globals };
+    const ctx = { part: p.name, revision: p.revision, record: p.record, T, dt, inputs, params: globals.$, kernels: kernelsFor(p), rng: () => next(rng), events, globals };
     const state = p.runtime.step(p.state, ctx);
     return { state, events, rng };
   };
@@ -192,7 +192,7 @@ export function makePart(o) {
   return {
     name: o.name, index: o.index, dialect: o.dialect, runtime: o.runtime, record: o.record, compiled: o.compiled, clock: c.clock,
     key: o.key, revision: 1, content: o.content, state: null, hash: stateHash(null), snapT: null, stopped: false, rng: seedRng(o.seed, o.name),
-    lastFrameT: null, stepped: false, rebuilt: false, lastValues: null, drawValues: null, drawParams: null, params: paramsOf(o.record, o.params), controls: {}, draws: NONE,
+    lastFrameT: null, stepped: false, rebuilt: false, lastValues: null, drawValues: null, drawParams: null, params: paramsOf(o.record, o.params), draws: NONE,
   };
 }
 

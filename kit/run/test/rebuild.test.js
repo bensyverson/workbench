@@ -24,7 +24,7 @@ test("each part starts at revision 1 with its content key; the composition at re
 test("a rebuild with a new record lands between instants, bumps the revision, reruns init, and keeps the queues", () => {
   const { composed, runtimes, M } = bursts({ fx: fxKit({ clock: { tick: 1 / 4 }, max: 16 }) });
   const next = /** @type {any} */ (M.grammar("level").grid(LONG).control(STEER)).build();
-  const run = createRun(composed, { runtimes, inputs: [rightAt(0), { kind: "rebuild", T: 0.2, part: "level", record: next, trigger: { kind: "glue", call: "level.grid" } }] });
+  const run = createRun(composed, { runtimes, inputs: [rightAt(0), { kind: "rebuild", T: 0.2, part: "level", record: next, trigger: { kind: "glue", call: "level.grid" } }, rightAt(0.2)] });
   run.runUntil(1);
   const [e] = run.builds;
   assert.equal(e.part, "level");
@@ -113,7 +113,7 @@ test("a live param (read only by Kernels) changes no key and rebuilds nothing; t
 test("replay reproduces rebuilds, and so revisions and build events, exactly", () => {
   const { composed, runtimes, M } = bursts();
   const next = /** @type {any} */ (M.grammar("level").grid(LONG).control(STEER)).build();
-  const run = createRun(composed, { runtimes, inputs: [rightAt(0), { kind: "rebuild", T: 0.6, part: "level", record: next }] });
+  const run = createRun(composed, { runtimes, inputs: [rightAt(0), { kind: "rebuild", T: 0.6, part: "level", record: next }, rightAt(0.6)] });
   run.runUntil(1.5);
   const r = replay(composed, { runtimes }, run.record());
   assert.equal(r.ok, true);

@@ -6,7 +6,7 @@
 
 import { KIT_VERSION, withScope, moduleScope } from "../../define/index.js";
 import { rewriteGlue, callGlue, formatDiagnostic } from "../../compose/index.js";
-import { examplePreset } from "../index.js";
+import { examplePreset, runTests } from "../index.js";
 import { loadPackage, rewriteSpecifiers, checkManifest, textOf, elementModulePath, MANIFEST_PATH } from "../../package/index.js";
 import { isDotPath } from "../../package/paths.js";
 
@@ -199,7 +199,7 @@ function finish(out, composition, build, path, profile) {
 
 /**
  * Loads packages and one package's example as a one-part composition shown on the page: a preset.
- * @param {{ packages: Record<string, Record<string, string | Uint8Array>>, package: string, example: string, profile?: string }} input  `package` is the package's name
+ * @param {{ packages: Record<string, Record<string, string | Uint8Array>>, package: string, example: string, profile?: string, wirePage?: boolean }} input  `package` is the package's name; `wirePage: false` leaves the page's controls unwired, as a test's run needs (Open on a failed test)
  * @param {LoadEnv} env
  * @returns {Promise<Loaded>}
  */
@@ -217,7 +217,7 @@ export async function loadPreset(input, env) {
   const build = scopeOf(out, "preset", out.source, mod, input.example);
   if (!build) return out;
   // kit/page composes it alone: built through kit/define's run, so a build-time read of $ is answered and recorded
-  const preset = examplePreset(pkg.name, mod.default, build);
+  const preset = examplePreset(pkg.name, mod.default, build, { wirePage: input.wirePage ?? true });
   if (!preset.composition) { out.diagnostics.push(...preset.diagnostics.map((d) => hostDiagnostic("preset", { ...d, file: input.example }))); return out; }
   out.rebuild = preset.build;
   finish(out, preset.composition, build, input.example, input.profile);
@@ -232,4 +232,33 @@ export async function loadPreset(input, env) {
  */
 export async function loadPackagesOnly(packages, env) {
   return (await loadPackages(packages, env)).out;
+}
+
+/** The loaded packages that have manifest tests, with them: the packages a Tests row is for. Tests are optional, so a package with none has no row. @param {Loaded} loaded */
+export function packagesWithTests(loaded) {
+  return loaded.packages.filter((p) => (p.loaded.tests ?? []).length).map((p) => ({ name: p.name, tests: /** @type {any[]} */ (p.loaded.tests) }));
+}
+
+/**
+ * Runs every loaded package's manifest tests (kit/page's runTests), one package at a time, each example imported from
+ * the package's own module URLs with its module scope. `options` are runTests': signal, onProgress, yieldFn, budgetMs.
+ * @param {Loaded} loaded @param {LoadEnv} env @param {{ signal?: AbortSignal, onProgress?: (fraction: number) => void, budgetMs?: number, yieldFn?: () => Promise<void> }} [options]
+ * @returns {Promise<Array<{ package: string, results: any[], diagnostics: any[], cancelled?: true }>>}
+ */
+export async function runLoadedTests(loaded, env, options = {}) {
+  /** @type {Array<{ package: string, results: any[], diagnostics: any[], cancelled?: true }>} */
+  const out = [];
+  const withTests = packagesWithTests(loaded);
+  for (const [i, { name }] of withTests.entries()) {
+    const pkg = /** @type {HostPackage} */ (loaded.packages.find((p) => p.name === name));
+    const r = await runTests(pkg.loaded, {
+      importModule: (path) => env.importUrl(/** @type {string} */ (pkg.urls.get(path))),
+      buildOptions: (path, mod) => moduleScope(textOf(pkg.files[path]) ?? "", mod),
+      ...options,
+      ...(options.onProgress ? { onProgress: (/** @type {number} */ f) => options.onProgress?.((i + f) / withTests.length) } : {}),
+    });
+    out.push({ package: name, ...r });
+    if (r.cancelled) break;
+  }
+  return out;
 }

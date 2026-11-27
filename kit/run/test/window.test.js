@@ -242,13 +242,14 @@ test("runUntil on a display run logs frames on the nominal grid only, none at a 
 });
 
 test("a display run of frame parts only takes an input with the default stamp, after the run's T", () => {
-  const { composed, runtimes } = pair({ prodClock: { frame: true }, consClock: { frame: true }, per: 1, max: 1 });
+  const sink = tiny("sink", { state: { k: "f64" }, inputs: false, ports: { out: {}, in: { x: { seam: "Event<{ v: f64 = 0 }>", note: "n" } } } }, { clock: () => ({ frame: true }), events: { in: { x: 8 } }, init: () => ({ k: 0 }), step: (/** @type {any} */ s) => s });
+  const { composed, runtimes } = pair({ prodClock: { frame: true }, consClock: { frame: true }, per: 1, max: 1, extra: [{ part: /** @type {any} */ (sink.grammar("sink")), runtime: sink.runtime }] });
   const run = createRun(composed, { runtimes, frames: "display", dev: false });
   const driver = createDriver(run);
   driver.frame(1 / 60);
   driver.frame(1 / 60);
   assert.equal(run.nextInstant(), null);
-  const e = run.input({ kind: "control", part: "a", name: "pad", value: 1 });
+  const e = run.input({ kind: "in", part: "sink", name: "x", value: {} });
   assert.equal(`${e.T.n}/${e.T.d}`, "17/500"); // the first millisecond after T = 33/1000
   driver.frame(1 / 60);
   assert.deepEqual(run.diagnostics, []);

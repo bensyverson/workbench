@@ -11,6 +11,7 @@ The vocabulary every package's ports are written in, and the math a composition 
 | `framesOf(seam)`, `leavesOf(seam)`, `frameOf(leaf)` | the frames a seam names (in order, once each); each leaf with its field path; one leaf's frame or null |
 | `pairLocal(seam, type)` | null when a Dialect's local (IR) type has the seam's structure, else what does not fit |
 | `compareSeams(from, to)` | `{ problems, tagged, dropped, filled }`: each mismatch with its S code and field, each tagged leaf both sides have (`{ field, kind, dims, from, to, rate? }`), the producer's record fields the consumer does not take, and each field the producer lacks that the consumer gives a default for, with that default (`{ <field>: <value> }`) |
+| `valueProblem(seam, value)`, `fillDefaults(seam, value)` | whether a value given by hand fits a parsed seam, as text or null (a record's fields, defaults left out, nested records, lists, enums, points and vectors; frames are not read), and a record with each missing defaulted field filled, in a copy. kit/run's `in` input (N012) and kit/package's `checkTests` (K021) share them |
 | `printValue(value)` | a record field's default as a seam type writes it (`40`, `true`, `'pop'`, `[0, 1]`) |
 | `printType(type)` | an IR type as a message writes it |
 | `SECONDS` | `"s"`, the kit's one shared unit |

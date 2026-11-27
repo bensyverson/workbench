@@ -228,8 +228,8 @@ test("the UI check follows the manifest's entry names, not a naming convention",
   assert.ok(r.diagnostics.some((x) => x.file === "view.js"));
 });
 
-test("every K code a folder can show is exercised above (K010 is the bundle's, in kit/package's tests)", () => {
-  for (const c of Object.keys(PACKAGE_CODES)) if (c !== "K010") assert.ok(seen.has(c), `${c} not seen`);
+test("every K code a folder can show is exercised above (K010 is the bundle's, K020 and K021 the manifest tests', in kit/package's tests)", () => {
+  for (const c of Object.keys(PACKAGE_CODES)) if (!["K010", "K020", "K021"].includes(c)) assert.ok(seen.has(c), `${c} not seen`);
   assert.ok(Object.keys(UI_CODES).length > 0);
 });
 

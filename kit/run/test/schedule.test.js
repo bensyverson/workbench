@@ -91,10 +91,10 @@ test("a rename crosses before the conversions: with a swap, the field that is a 
   assert.deepEqual(run.state("b"), { got: [15, 15], g2: [20, 30] });
 });
 
-test("a step gets the Program's Kernels, its own seeded rng, dt, T, and its controls; init gets the record", () => {
+test("a step gets the Program's Kernels, its own seeded rng, dt, T, and its Event input records; init gets the record", () => {
   /** @type {any[]} */
   const calls = [];
-  const M = mazeKit({ step: (/** @type {any} */ s, /** @type {any} */ c) => { calls.push({ T: c.T, dt: c.dt, r: c.rng(), kernels: Object.keys(c.kernels), pad: c.controls.pad ?? null }); return s; } });
+  const M = mazeKit({ step: (/** @type {any} */ s, /** @type {any} */ c) => { calls.push({ T: c.T, dt: c.dt, r: c.rng(), kernels: Object.keys(c.kernels), pad: c.inputs.pad.at(-1) ?? null }); return s; } });
   const { composed, runtimes } = bursts({ maze: M });
   const run = createRun(composed, { runtimes, seed: 7, inputs: [rightAt(1 / 8)], dev: false });
   run.runUntil(1 / 8);

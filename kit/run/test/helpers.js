@@ -5,35 +5,45 @@ import { defineDialect, defineGrammar, defineRuntime, exact, list, struct, vecto
 import { compose } from "../../compose/index.js";
 import { mazeDecl, particlesDecl, mazeGrammar, particlesGrammar } from "../../define/fixtures/seams-dialects.js";
 
+/** The D-pad with nothing held. */
+export const RELEASED = Object.freeze({ up: false, down: false, left: false, right: false });
+
 /** A corridor: the player starts at (1, 1); coins at x = 3 and 4. */
 export const CORRIDOR = ["#######", "#..cc.#", "#######"];
 
 /** The maze Dialect, Grammar and a runtime: walk one cell per step the pad says, pick a coin, push `picked`. */
 export function mazeKit(/** @type {{ step?: Function, max?: number, clock?: (r: any) => unknown }} */ o = {}) {
   const decl = mazeDecl();
+  // the pad is an Event input with the page's seam, held in the state: the part takes a control as a wire or an in input gives it
+  decl.state.pad = struct({ up: "bool", down: "bool", left: "bool", right: "bool" });
+  decl.ports.in = { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "the D-pad: one record each time the held directions change" } };
   const grammar = mazeGrammar(defineDialect(/** @type {any} */ (decl)));
   const runtime = defineRuntime(grammar, {
     clock: o.clock ?? ((/** @type {any} */ r) => ({ tick: r.tick ?? 1 / 8 })),
-    init: (/** @type {any} */ r) => ({ t: 0, score: 0, player: { x: 1, y: 1 }, home: [1, 1], grid: r.grid }),
+    init: (/** @type {any} */ r) => ({ t: 0, score: 0, player: { x: 1, y: 1 }, home: [1, 1], grid: r.grid, pad: RELEASED }),
     step: /** @type {any} */ (o.step ?? mazeStep),
-    events: { out: { picked: o.max ?? 8 } },
+    events: { in: { pad: 120 }, out: { picked: o.max ?? 8 } },
   });
   return { grammar, runtime };
 }
 
 /** @param {any} s @param {any} ctx */
 export function mazeStep(s, ctx) {
+  // a Dialect with no pad input (the Draw fixtures') holds nothing down
+  const taken = ctx.inputs.pad;
+  const pad = !taken ? RELEASED : taken.length ? { ...RELEASED, ...taken.at(-1) } : s.pad;
   const pl = { x: s.player.x, y: s.player.y, dx: 0, dy: 0 };
-  ctx.kernels.control(pl, ctx.controls.pad ?? { up: false, down: false, left: false, right: false });
+  ctx.kernels.control(pl, pad);
   const x = s.player.x + pl.dx, y = s.player.y + pl.dy;
-  if (s.grid[y][x] === "#") return { ...s, t: s.t + ctx.dt };
+  const held = taken ? { pad } : {};
+  if (s.grid[y][x] === "#") return { ...s, ...held, t: s.t + ctx.dt };
   let { grid, score } = s;
   if (grid[y][x] === "c") {
     ctx.events.picked.push({ at: [x, y] });
     grid = grid.map((/** @type {string} */ row, /** @type {number} */ j) => (j === y ? row.slice(0, x) + "." + row.slice(x + 1) : row));
     score += 1;
   }
-  return { ...s, t: s.t + ctx.dt, score, grid, player: { x, y } };
+  return { ...s, ...held, t: s.t + ctx.dt, score, grid, player: { x, y } };
 }
 
 export const STEER = "(pl, pad) => { pl.dx = pad.right ? 1 : pad.left ? -1 : 0; pl.dy = 0; }";
@@ -85,7 +95,7 @@ export function bursts(/** @type {{ maze?: any, fx?: any, wire?: any, tick?: num
 }
 
 /** A scripted D-pad: hold right from T on. @param {number} T */
-export const rightAt = (T) => ({ kind: "control", T, part: "level", name: "pad", value: { up: false, down: false, left: false, right: true } });
+export const rightAt = (T) => ({ kind: "in", T, part: "level", name: "pad", value: { up: false, down: false, left: false, right: true } });
 
 /**
  * A tiny Dialect and Grammar with the ports, state and frames given, and a runtime from `rt`.

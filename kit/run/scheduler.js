@@ -21,6 +21,7 @@ import { running, nextInstant as instantAfter, awaitingFrame as waitsOnFrame, du
 import { ends, makeWires, wireOrder, readInputs, intake } from "./wires.js";
 import { createDelivery } from "./delivery.js";
 import { createParamFeed, intoParam } from "./param-wires.js";
+import { outsideWires, checkedIn, delivered, createTaps } from "./outside.js";
 import { isLayerEntry, makeLayers, layerList, producersUnder } from "./layers.js";
 
 /** @import { Q } from "../define/rational.js" */
@@ -39,7 +40,7 @@ import { isLayerEntry, makeLayers, layerList, producersUnder } from "./layers.js
  * (a replay, or a scripted run); `frames` is "nominal" (frame parts every 1/60 s: headless) or "display" (at the
  * log's frame entries: the real-time driver writes them); `build(part, params)` rebuilds a part whose build-time
  * param changed (the host runs its Program again); `dev` (default true) freezes state and checks each step twice.
- * @typedef {{ runtimes: Runtime[], packages?: Array<{ name: string, content?: string | null }>, params?: Record<string, Record<string, unknown>>, inputs?: Array<Record<string, any>>, seed?: number, dev?: boolean, frames?: "nominal" | "display", catchUp?: number, checkpointEvery?: number, build?: (part: string, params: Record<string, unknown>) => Record<string, any> }} RunOptions
+ * @typedef {{ runtimes: Runtime[], packages?: Array<{ name: string, content?: string | null }>, params?: Record<string, Record<string, unknown>>, inputs?: Array<Record<string, any>>, seed?: number, dev?: boolean, frames?: "nominal" | "display", catchUp?: number, checkpointEvery?: number, taps?: string[], build?: (part: string, params: Record<string, unknown>) => Record<string, any> }} RunOptions
  */
 /** @typedef {{ T: string, hash: string, parts: Record<string, string> }} InstantHash */
 
@@ -116,6 +117,9 @@ export function createRun(composed, options) {
   if (refused.length) throw new RunError(refused);
 
   const wires = makeWires(composed, byName, hasPage ? PAGE : null, new Set(layers.keys()));
+  const fed = new Set(wires.map((w) => `${w.to.part}.${w.to.port}`));
+  wires.push(...outsideWires(parts, wires));
+  const taps = createTaps(options.taps ?? [], parts);
   /** @type {Map<string, Wire>} */
   const wireTo = new Map(wires.map((w) => [`${w.to.part}.${w.to.port}`, w]));
   const order = wireOrder(parts, wires, (name) => producersUnder(name, layers));
@@ -179,11 +183,16 @@ export function createRun(composed, options) {
       if (lastT && cmp(e.T, lastT) <= 0) throw new Error(`an input stamped ${qText(e.T)} would change instants already run (the last ran at ${qText(lastT)})`);
       throw new Error(`an input stamped ${qText(e.T)} comes before one already applied, at ${qText(inputs[cursor - 1].T)} (the run is at ${qText(now)})`);
     }
-    if (e.kind === "control" && e.part === PAGE && hasPage) {
+    if (e.kind === "in" && byName.has(e.part ?? "")) {
+      // the log holds its own copy; what does not fit, or has no queue to go to, is refused before it is logged
+      e = checkedIn(e, /** @type {Part} */ (byName.get(/** @type {string} */ (e.part))), fed, qText);
+    } else if (e.kind === "control" && e.part === PAGE && hasPage) {
       // the log holds its own copy, checked as it is copied: a host that reuses or changes its object changes nothing
       e = { ...e, value: structuredClone(e.value) };
       const bad = pageInputProblem(/** @type {string} */ (e.name), e.value);
       if (bad) throw new Error(bad);
+    } else if (e.kind === "control" && byName.has(e.part ?? "")) {
+      throw new RunError([{ code: "N011", part: e.part, message: `a control input at ${qText(e.T)} names the part '${e.part}': only the built-in page takes control inputs, and a part takes a control as an Event input with that control's seam (an in input, or a wire from page.out.${e.name}), so it is not logged and the run is unchanged` }]);
     } else if (e.kind !== "frame" && !byName.has(e.part ?? "")) {
       throw new RunError([{ code: "N009", message: `an input names no part '${e.part}': the parts are ${parts.map((x) => x.name).join(", ")}; a ${e.kind} input at ${qText(e.T)}, so it is not logged and the run is unchanged` }]);
     }
@@ -258,7 +267,7 @@ export function createRun(composed, options) {
       if (e.kind === "control" && e.part === PAGE && hasPage) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T); continue; }
       // insert refused an input naming no part (N009)
       const p = /** @type {Part} */ (byName.get(e.part ?? ""));
-      if (e.kind === "control") p.controls = { ...p.controls, [/** @type {string} */ (e.name)]: deepFreeze(structuredClone(e.value)) };
+      if (e.kind === "in") delivery.deliver(/** @type {Wire} */ (wireTo.get(`${p.name}.${e.name}`)), [delivered(p, /** @type {string} */ (e.name), e.value)], e.T);
       else if (e.kind === "param") {
         // judged against the record in force now: one logged behind a rebuild or a build-time edit was not knowable
         const no = paramMisfit(p, e, p.record);
@@ -351,7 +360,10 @@ export function createRun(composed, options) {
       commitState(p, r.state, r.draws, values);
       Object.assign(p, { rng: r.rng, snapT: T, stepped: true, rebuilt: false, lastValues: shown, ...(p.clock.kind === "frame" ? { lastFrameT: T } : {}) });
       stepped.push(p.name);
-      for (const [port, records] of Object.entries(r.events)) for (const w of wires) if (w.from.part === p.name && w.from.port === port) delivery.deliver(w, records, T);
+      for (const [port, records] of Object.entries(r.events)) {
+        taps.push(p.name, port, toNumber(T), records, deepFreeze);
+        for (const w of wires) if (w.from.part === p.name && w.from.port === port) delivery.deliver(w, records, T);
+      }
     }
     at.lastT = T;
     if (cmp(now, T) < 0) now = T;
@@ -405,7 +417,7 @@ export function createRun(composed, options) {
       T: at.lastT, now, cursor, revision,
       parts: parts.map((p) => Object.fromEntries(PART_FIELDS.map((f) => [f, f === "rng" ? [...p.rng] : p[f]]))),
       wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops, stopDrops: w.stopDrops, overflowDrops: w.overflowDrops })),
-      lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length },
+      lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length }, taps: taps.save(),
       ...delivery.save(), ...params.save(),
       floor: at.floor, ...slowdown.save(),
     });
@@ -477,6 +489,20 @@ export function createRun(composed, options) {
       if (cmp(entry.T, now) <= 0) advance(now);
       return entry;
     },
+    /** The records a tapped Event output (`<part>.out.<output>`, named in createRun's `taps`) pushed, in order, each with its instant in seconds. @param {string} handle */
+    tapped(handle) { return taps.read(handle); },
+    /**
+     * A value output as a wire from it would read it, before any conversion: the part's compiled output on its committed
+     * state and params; null when its init failed. A Draw or Event output, or a name the part lacks, throws.
+     * @param {string} part @param {string} port
+     */
+    output(part, port) {
+      const p = mustPart(part);
+      const values = Object.values(/** @type {Record<string, any>} */ (p.runtime.dialect.seams.out)).filter((o) => o.seam.kind !== "event" && o.seam.kind !== "draw").map((o) => o.name);
+      if (!values.includes(port)) throw new Error(`run.output: ${part} has no value output '${port}': its value outputs are ${values.join(", ") || "none"}`);
+      if (p.state === null) return null;
+      return p.compiled.outputs[port]?.(p.state, p.params, { state: p.state, revision: p.revision, part: p, draws: p.draws }) ?? null;
+    },
     /** A part's state now; null when its init failed, and for a layer, which has none. @param {string} part */
     state(part) { return layers.has(part) ? null : mustPart(part).state; },
     /**
@@ -520,6 +546,7 @@ export function createRun(composed, options) {
       wires.forEach((w, j) => Object.assign(w, cp.wires[j], { queue: [...cp.wires[j].queue] }));
       hashes.length = cp.lens.hashes; builds.length = cp.lens.builds; diagnostics.length = cp.lens.diagnostics;
       delivery.restore(cp);
+      taps.restore(cp.taps);
       params.restore(cp);
       slowdown.restore(cp);
       at.floor = cp.floor; at.lastT = cp.T;

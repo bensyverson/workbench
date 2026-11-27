@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { readPackageDir, PackageDirError } from "../../pkg/dir.js";
 import { checkExamples, textOf } from "../../../kit/package/index.js";
+import { runTests } from "../../../kit/page/index.js";
 import { compose, page } from "../../../kit/compose/index.js";
 import { loadOnePackage, loadWorkbench, hostDiagnostic } from "../../../kit/page/host/load.js";
 import { moduleScope } from "../../../kit/define/index.js";
@@ -14,7 +15,7 @@ import { parseSeam, compareSeams } from "../../../kit/seam/index.js";
 import { ENV, drivenPage } from "./env.js";
 
 /** @typedef {{ code: string, severity: "error" | "warning", message: string, fix: string, file: string, line: number }} Diagnostic */
-/** @typedef {{ ok: boolean, diagnostics: Diagnostic[] }} CheckResult */
+/** `tests`: manifest tests run and passed, for an author leg (tests are optional: a package with none has 0 and 0). @typedef {{ ok: boolean, diagnostics: Diagnostic[], tests?: { run: number, passed: number }, testedInputs?: string[], eventInputs?: string[] }} CheckResult */
 
 /** The folder to check is missing or is not what the role takes. */
 export class CheckTargetError extends Error {}
@@ -87,6 +88,15 @@ export async function checkAuthor(dir, role) {
   const importModule = (p) => ENV.importUrl(/** @type {string} */ (pkg.urls.get(p)));
   const ex = await checkExamples(loaded, { importModule, buildOptions: (p, mod) => moduleScope(textOf(files[p]) ?? "", mod) });
   out.push(...ex.map((d) => fromHost(d, "wb-package.json")));
+  // the package's tests, if it has any (optional): after its examples, which a test builds
+  const count = { run: 0, passed: 0 };
+  const tested = [...new Set((loaded.tests ?? []).flatMap((/** @type {any} */ x) => x.inputs.map((/** @type {any} */ i) => i.in)))];
+  if (!ex.length) {
+    const tr = await runTests(loaded, { importModule, buildOptions: (p, mod) => moduleScope(textOf(files[p]) ?? "", mod) });
+    out.push(...tr.diagnostics.map((d) => fromHost(d, "wb-package.json")));
+    count.run = tr.results.length;
+    count.passed = tr.results.filter((r) => r.ok).length;
+  }
   const seams = loaded.dialect.seams ?? { in: {}, out: {} };
   const outs = Object.values(seams.out ?? {});
   const ins = Object.entries(seams.in ?? {});
@@ -104,9 +114,9 @@ export async function checkAuthor(dir, role) {
     if (padInput === undefined) out.push(t("T006", `the Dialect has no Event input with the page pad's seam, ${/** @type {any} */ (page.out.pad).seam ? "Event<{ up: bool, down: bool, left: bool, right: bool }>" : ""}, so the page's D-pad cannot be wired to it`, "add that input to ports.in (docs/kit/compose/README.md, \"The page\")", dialectFile));
     if (!outs.some((o) => kindOf(o.seam) === "event")) out.push(t("T009", "the Dialect offers no Event output for a pickup", "add an Event output that your runtime pushes a record to on each pickup", dialectFile));
   } else if (!ins.some(([, i]) => kindOf(i.seam) === "event")) out.push(t("T009", "the Dialect has no Event input for a scoring event", "add an Event input to ports.in", dialectFile));
-  if (ex.length || !loaded.runtime) return done(out);
+  if (ex.length || !loaded.runtime) return { ...done(out), tests: count, testedInputs: tested, eventInputs: ins.filter(([, i]) => kindOf(i.seam) === "event").map(([k]) => k) };
   for (const example of loaded.examples) out.push(...(await playExample(pkg, example, role, padInput)));
-  return done(out);
+  return { ...done(out), tests: count, testedInputs: tested, eventInputs: ins.filter(([, i]) => kindOf(i.seam) === "event").map(([k]) => k) };
 }
 
 /** @param {Record<string, string | Uint8Array>} files @param {string} which */

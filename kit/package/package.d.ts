@@ -9,12 +9,32 @@ export interface PackageDiagnostic {
   file?: string;
   /** 1-based, for a problem in a .js file. */
   line?: number;
+  /** The manifest test a K020 or K021 is about. */
+  test?: string;
 }
 
 export interface ForeignModule { module: string; targets: string[]; why: string }
 
 /** A module that must be refused, and the diagnostic code it must be refused with. */
 export interface Refusal { module: string; code: string }
+
+/** One expectation of a test: exactly one of the kinds `state`, `output`, `events` or `diagnostic` (README.md, "Tests"). */
+export type TestExpect =
+  | { at: number | string; state: Record<string, unknown>; within?: number }
+  | { at: number | string; output: string; value: unknown; within?: number }
+  | { events: string; from?: number | string; to?: number | string; records: Record<string, unknown>[]; within?: number }
+  | { events: string; from?: number | string; to?: number | string; count: number }
+  | { diagnostic: string; at?: number | string };
+
+/** A manifest `tests` entry: one example alone, timed records on its Event inputs, and what to expect. */
+export interface ManifestTest {
+  name: string;
+  example: string;
+  inputs: Array<{ T: number | string; in: string; value: Record<string, unknown> }>;
+  expect: TestExpect[];
+  until?: number | string;
+  seed?: number;
+}
 
 export interface Manifest {
   name: string;
@@ -27,6 +47,7 @@ export interface Manifest {
   elements?: string[];
   examples?: string[];
   refusals?: Refusal[];
+  tests?: ManifestTest[];
   /** Every file but the manifest: path to `sha256-<base64>`. */
   files: Record<string, string>;
 }
@@ -55,6 +76,8 @@ export interface LoadedPackage {
   examples: string[];
   /** The manifest's refusals, for checkExamples. */
   refusals: Refusal[];
+  /** The manifest's tests, for checkTests and kit/page's runTests; empty when it has none. */
+  tests: ManifestTest[];
   foreign: ForeignModule[];
   /** Every data file the Dialect reads (kit/define's dataFiles), by path; empty when the package did not load. */
   data: Record<string, DataFile>;

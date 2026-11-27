@@ -27,6 +27,7 @@ Import only from `"kit/define"` and your own files. If other packages will be wi
 3. **Run the check** your task names (for example `./check.sh`). It builds every example with the real kit and type-checks every lambda. Each problem prints as `<file>:<line>: <code> <message>`, then a `fix:` line.
 4. **Fix the first error, then rerun.** Definition errors (`D…`) come first, then builder errors (`B…`, including your own checks), then lambda errors (`L…`). **Lambda errors appear only once a Program builds clean.**
 5. **Prove the refusals.** For each mistake your spec says the language must refuse, write a Program with that one mistake, check that it fails with a clear message, then delete it (or keep it where your task says). Most lambda strictness is off by default: see API.md's pitfalls under `defineDialect`. Conditions are the exception: a Program's tests must be bools in every Dialect (an optional is `m == null` / `m != null`, a number `n !== 0`, a string `s !== ""`), or L003.
+6. **Test your runtime with the kit, not a harness.** If you want to test your runtime, list tests in your manifest's `tests` (optional): each names an example, gives timed records on your named Event inputs (`{ "T": <seconds>, "in": "<input>", "value": { <field>: <value> } }`) and says what to expect (state at an instant, a value output, the records your Event output pushed, a run diagnostic). The check runs them and reports H006–H008. Don't stub `defineRuntime` or call `step` yourself. API.md ▸ A runtime, "Testing it".
 
 ## When the API can't express something
 

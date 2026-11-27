@@ -7,6 +7,7 @@ The dogfood trial of the Dialect package format (M4; the format is [the package 
 | Path | What |
 |---|---|
 | `check.js` | the checker as a command: `node scripts/pkg-trial/check.js <dir>`, a thin CLI over `checker/` |
+| (tests) | after the examples the checker runs the package's manifest `tests` if it has any (kit/page's `runTests`: K020, K021, H006–H008; none is clean, since tests are optional) and the result gains `tests: { run, passed }` |
 | `checker/index.js` | `checkPackageDir(dir)`: reads the folder into a `{ path: text }` map, runs `loadPackage` with a Node importer, builds every example and refusal (`checkExamples`; `checker/scope.js` gives each its module scope), runs the defineUI checks of the UI trial's checker (`scripts/ui-trial/checker`, called with the UI and Grammar paths the manifest names) and the upload check (an import cycle, K009) |
 | `run.sh` | sets up one agent's directory and runs `claude -p` there, blind to the repository (the same directory guards as the [UI trial's](../ui-trial/README.md)) |
 | `docs/packaging.md`, `rules.md`, `task.md`, `brief.md` | the agent-facing documents: the draft packaging reference, the rules R1–R7, the task and its three questions, and the brief |

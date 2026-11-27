@@ -3,7 +3,7 @@
 
 import { DEFAULT_KEYS } from "../index.js";
 import { h, fill } from "./dom.js";
-import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic, elementModuleUrl } from "./load.js";
+import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic, elementModuleUrl, runLoadedTests, packagesWithTests } from "./load.js";
 import { createSession } from "./session.js";
 import { parseQuery, importedPackages, fetchPackage, fetchGlue, groupUpload, packageFromBundle, contentOf, glueOf } from "./sources.js";
 import { diagnosticsView, componentView, paramEditor, codeView, chart } from "./views.js";
@@ -31,6 +31,10 @@ export function start({ importModule }) {
   /** @type {import("./load.js").HostDiagnostic[]} */
   let hostProblems = [];
   let lastPanels = 0, lastDiag = "";
+  /** The package tests' last run: shown as the Tests row under Presets, and as the "tests" diagnostics group. @type {{ running: boolean, progress: number, abort: AbortController | null, packages: Array<{ package: string, results: any[], diagnostics: any[] }> }} */
+  let tests = { running: false, progress: 0, abort: null, packages: [] };
+  /** The run a failed test opens: its log and seed, and the instant to pause at. @type {{ inputs: any[], seed: number, at: number } | null} */
+  let opening = null;
 
   /** @param {string} message */
   const problem = (message) => { hostProblems.push(hostDiagnostic("host", { code: "LOAD", severity: "error", message })); showDiagnostics(); };
@@ -51,6 +55,8 @@ export function start({ importModule }) {
     $("code-name").textContent = loaded.sourceName || "no glue";
     fill($("code"), codeView(loaded.source, loaded.sourceName));
     fillPresets(loaded);
+    if (!opening) tests = { running: false, progress: 0, abort: null, packages: [] };
+    fillTests(loaded);
     if (loaded.composed) await mount(loaded);
     else { fill($("parts")); $("status").textContent = "did not build: see the diagnostics"; }
     showDiagnostics();
@@ -66,6 +72,42 @@ export function start({ importModule }) {
     fill(box, items.length ? items.map(({ pkg, ex }) => h("button", { class: "btn sm", title: `load ${pkg}/${ex} alone`, onclick: () => run(() => loadPreset({ packages: input.packages, package: pkg, example: ex, ...(input.profile ? { profile: input.profile } : {}) }, env)) }, `${pkg}/${ex.replace(/^examples\//, "")}`)) : h("span", { class: "dim" }, "none: load a package"));
   }
 
+  /** The Tests row under Presets: a Run button (in slices, with progress and Cancel), then each test, pass or fail, with Open on a failed one. A package with no tests has no row (tests are optional). @param {import("./load.js").Loaded} loaded */
+  function fillTests(loaded) {
+    const box = $("tests");
+    const withTests = packagesWithTests(loaded);
+    box.hidden = withTests.length === 0;
+    if (!withTests.length) return;
+    const draw = () => fill(box,
+      h("button", { class: "btn sm", onclick: tests.running ? () => tests.abort?.abort() : () => runTestsRow(loaded) }, tests.running ? `Cancel (${Math.round(tests.progress * 100)}%)` : "Run tests"),
+      ...tests.packages.flatMap((p) => p.results.map((/** @type {any} */ r) => {
+        const failed = r.diagnostics.find((/** @type {any} */ d) => d.at !== undefined) ?? r.diagnostics[0];
+        return h("span", { class: "testresult" },
+          h("span", { class: r.ok ? "tag" : "tag bad" }, r.ok ? "pass" : "fail"), ` ${p.package}/${r.name} `,
+          r.ok || !r.log ? null : h("button", { class: "btn sm", title: "load the test's example with its inputs, paused where it failed", onclick: () => openTest(loaded, p.package, r, failed?.at ?? r.T) }, "Open"));
+      })));
+    draw();
+    /** @param {import("./load.js").Loaded} l */
+    async function runTestsRow(l) {
+      const abort = new AbortController();
+      tests = { running: true, progress: 0, abort, packages: [] };
+      draw();
+      const r = await runLoadedTests(l, env, { signal: abort.signal, onProgress: (f) => { tests.progress = f; draw(); } });
+      tests = { running: false, progress: 1, abort: null, packages: r };
+      draw();
+      showDiagnostics();
+    }
+  }
+  /** Loads a failed test's example as a preset with the test's log as the run's inputs, paused at the failing instant. @param {import("./load.js").Loaded} _loaded @param {string} pkg @param {any} result @param {number} at */
+  function openTest(_loaded, pkg, result, at) {
+    const example = exampleOf(pkg, result.name);
+    if (!example) return problem(`test ${result.name}: its example is not known`);
+    opening = { inputs: result.log.inputs, seed: result.log.header.seed, at };
+    run(() => loadPreset({ packages: input.packages, package: pkg, example, wirePage: false, ...(input.profile ? { profile: input.profile } : {}) }, env));
+  }
+  /** @param {string} pkg @param {string} name */
+  const exampleOf = (pkg, name) => (current?.loaded.packages.find((p) => p.name === pkg)?.loaded.tests ?? []).find((/** @type {any} */ t) => t.name === name)?.example ?? null;
+
   // ---- the running page ----
   /** @param {import("./load.js").Loaded} loaded */
   async function mount(loaded) {
@@ -77,6 +119,7 @@ export function start({ importModule }) {
       decode: (bytes) => createImageBitmap(new Blob([/** @type {BlobPart} */ (bytes)], { type: "image/png" })),
       onFrame: (snap) => { const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
       onProblem: problem,
+      ...(opening ? { run: { inputs: opening.inputs, seed: opening.seed } } : {}),
     });
     c.session = session;
     const size = session.page.size;
@@ -84,7 +127,8 @@ export function start({ importModule }) {
     if (size) { canvas.width = size.width; canvas.height = size.height; canvas.style.aspectRatio = `${size.width} / ${size.height}`; }
     buildParts(loaded, session);
     await session.page.ready;
-    session.start();
+    // Open on a failed test: paused at the instant the expectation read, not running on
+    if (opening) { session.seek(opening.at); opening = null; } else session.start();
     panels(session.snapshot());
   }
 
@@ -212,7 +256,8 @@ export function start({ importModule }) {
     const run = (status?.diagnostics ?? []).map((/** @type {any} */ d) => hostDiagnostic("run", { ...d, text: `${d.code} ${d.part ? `${d.part} ` : ""}at T=${d.T}: ${d.message}` }));
     const page = (status?.page ?? []).map((/** @type {any} */ d) => hostDiagnostic("page", { ...d, text: `${d.code} ${d.message}` }));
     const halted = status?.halted ? [hostDiagnostic("page", { ...status.halted, text: `${status.halted.code} ${status.halted.message} (the frame loop stopped: press Resume)` })] : [];
-    const all = [...hostProblems, ...(c?.loaded.diagnostics ?? []), ...halted, ...page, ...run];
+    const testDiagnostics = tests.packages.flatMap((p) => p.diagnostics).map((/** @type {any} */ d) => hostDiagnostic("tests", d));
+    const all = [...hostProblems, ...testDiagnostics, ...(c?.loaded.diagnostics ?? []), ...halted, ...page, ...run];
     const key = JSON.stringify(all.map((d) => d.text));
     if (key === lastDiag) return;
     lastDiag = key;

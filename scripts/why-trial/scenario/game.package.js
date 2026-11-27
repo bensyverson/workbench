@@ -20,10 +20,11 @@ export const gameDialect = defineDialect(/** @type {any} */ ({
   // sets the miner's move this tick (dx, dy: -1, 0 or 1) from the pad
   slots: { control: { params: ["Miner", "Pad"], returns: "void", space: "miner", body: "block", may: ["write Miner"] } },
   params: { object: "Params", name: "$" },
-  state: { t: "f64", depth: "f64", miner: struct({ x: "f64", y: "f64" }), start: "cell2" },
+  state: { t: "f64", depth: "f64", miner: struct({ x: "f64", y: "f64" }), start: "cell2", pad: struct({ up: "bool", down: "bool", left: "bool", right: "bool" }) },
   frames: { cell: { dims: 2, note: "grid cells; x right, y down; (0, 0) is the center of the top-left cell" } },
   ports: {
     in: {
+      pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "the D-pad: one record each time the held directions change; held until the next" },
       start: { seam: "point2@cell", default: [-1, -1], note: "the level's start cell; when it moves, a new level has arrived" },
       exit: { seam: "point2@cell", default: [-1, -1], note: "the level's exit cell" },
     },
@@ -59,15 +60,17 @@ export function gameStep(/** @type {any} */ s, /** @type {any} */ ctx) {
   const arrived = sx !== s.start[0] || sy !== s.start[1];
   const at = arrived ? { x: sx, y: sy } : s.miner;
   const m = { x: at.x, y: at.y, dx: 0, dy: 0 };
-  ctx.kernels.control(m, ctx.controls.pad ?? IDLE);
+  const pad = ctx.inputs.pad.length ? ctx.inputs.pad.at(-1) : s.pad;
+  ctx.kernels.control(m, pad);
   const miner = { x: at.x + m.dx, y: at.y + m.dy };
   const [ex, ey] = ctx.inputs.exit;
   const onExit = miner.x === ex && miner.y === ey;
-  return { t: s.t + ctx.dt, depth: onExit ? s.depth + 1 : s.depth, miner, start: [sx, sy] };
+  return { t: s.t + ctx.dt, depth: onExit ? s.depth + 1 : s.depth, miner, start: [sx, sy], pad: { up: pad.up, down: pad.down, left: pad.left, right: pad.right } };
 }
 
 export const gameRuntime = defineRuntime(game, {
   clock: (/** @type {any} */ r) => ({ tick: r.tick ?? 1 / 30 }),
-  init: () => ({ t: 0, depth: 0, miner: { x: -1, y: -1 }, start: [-1, -1] }),
+  init: () => ({ t: 0, depth: 0, miner: { x: -1, y: -1 }, start: [-1, -1], pad: IDLE }),
   step: gameStep,
+  events: { in: { pad: 128 } },
 });

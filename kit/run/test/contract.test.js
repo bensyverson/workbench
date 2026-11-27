@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createRun, replay } from "../index.js";
 import { compose } from "../../compose/index.js";
 import { name, lambda } from "../../define/index.js";
-import { tiny, pair, fxKit, bursts } from "./helpers.js";
+import { tiny, pair, fxKit, bursts, rightAt } from "./helpers.js";
 
 /** A part with a repeated named slot (`force`) and an unnamed one (`k`); init hands its kernels to `seen`. */
 function named(/** @type {(kernels: any) => void} */ seen, /** @type {(g: any) => any} */ program) {
@@ -105,7 +105,7 @@ test("a listed record slot called without a record reads its record global as nu
 
 test("a record global set by the runtime reads as the record: the guarded lambda takes its fields", () => {
   const { composed, runtimes } = bursts({ fx: fxKit() });
-  const run = createRun(composed, { runtimes, inputs: [{ kind: "control", T: 0, part: "level", name: "pad", value: { up: false, down: false, left: false, right: true } }] });
+  const run = createRun(composed, { runtimes, inputs: [rightAt(0)] });
   run.runUntil(1);
   assert.deepEqual(run.diagnostics, []);
   assert.ok(run.state("fx").seen.length >= 1, "the burst spawned through the guarded lambda");

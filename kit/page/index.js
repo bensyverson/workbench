@@ -4,5 +4,6 @@
 export { createPage } from "./page.js";
 export { examplePreset } from "./preset.js";
 export { sweepRuns } from "./sweep.js";
+export { runTests } from "./tests.js";
 export { DEFAULT_KEYS, KEY_TARGETS } from "./keys.js";
 export { PAGE_CODES, MAX_PAGE_DIAGNOSTICS } from "./codes.js";

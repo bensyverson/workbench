@@ -12,7 +12,7 @@ import { hashDir } from "../../pkg/dir.js";
 import { createRun, replay } from "../../../kit/run/index.js";
 
 /** The D-pad held right from T on (nothing else pressed). @param {number} T */
-const right = (T) => ({ kind: "control", T, part: "level", name: "pad", value: { up: false, down: false, left: false, right: true, a: false, b: false } });
+const right = (T) => ({ kind: "in", T, part: "level", name: "pad", value: { up: false, down: false, left: false, right: true } });
 
 /** The trial's composition, its Event from removed, loaded with its packages' runtimes. */
 async function workbench() {
@@ -65,7 +65,7 @@ test("the burst's particles start at the coin's pixel, (112, 80)", async () => {
 
 test("replaying the run's log gives identical state hashes at every instant", async () => {
   const { composed, runtimes, packages } = await workbench();
-  const run = createRun(composed, { runtimes, packages, seed: 11, inputs: [right(18 / 8), { ...right(2.9), value: { up: false, down: true, left: false, right: false, a: false, b: false } }] });
+  const run = createRun(composed, { runtimes, packages, seed: 11, inputs: [right(18 / 8), { ...right(2.9), value: { up: false, down: true, left: false, right: false } }] });
   run.runUntil(3.5);
   const record = run.record();
   assert.ok(record.hashes.length > 100);

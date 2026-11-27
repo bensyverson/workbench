@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { KIT_VERSION } from "../../../kit/define/index.js";
 import { checkExamples, checkManifest, loadPackage, rewriteSpecifiers, textOf, MANIFEST_PATH } from "../../../kit/package/index.js";
+import { runTests } from "../../../kit/page/index.js";
 import { installHooks } from "../../ui-trial/checker/hooks.js";
 import { session, begin } from "../../ui-trial/checker/session.js";
 import { checkDir } from "../../ui-trial/checker/index.js";
@@ -15,10 +16,10 @@ import { readPackageDir, PackageDirError } from "../../pkg/dir.js";
 import { scopeModules, buildOptions } from "./scope.js";
 
 /** @typedef {{ file: string, line: number, code: string, severity: "error", message: string, fix: string }} Violation */
-/** @typedef {{ ok: boolean, diagnostics: Violation[], files: string[] }} CheckResult */
+/** `tests`: how many manifest tests ran and passed (a package with none has 0 and 0: tests are optional). @typedef {{ ok: boolean, diagnostics: Violation[], files: string[], tests: { run: number, passed: number } }} CheckResult */
 
 /** The codes after which the entries are still worth checking further. */
-const SOUND = new Set(["K008", "K012", "K013", "K014", "K015", "K016"]);
+const SOUND = new Set(["K008", "K012", "K013", "K014", "K015", "K016", "K020", "K021", "H006", "H007", "H008"]);
 
 /** A package folder that cannot be checked at all: it does not exist or is not a directory. */
 export class CheckTargetError extends Error {}
@@ -66,9 +67,17 @@ export async function checkPackageDir(dir) {
   };
   const loaded = await loadPackage(files, { kitVersion: KIT_VERSION, importModule });
   const found = [...loaded.diagnostics];
+  const count = { run: 0, passed: 0 };
   if (!found.length) {
     scopeModules(dirUrl, [...loaded.examples, ...loaded.refusals.map((r) => r.module)], files);
     found.push(...(await checkExamples(loaded, { importModule, buildOptions })));
+    // the package's tests, if it has any (optional): its examples first, since a test builds one
+    if (!found.length) {
+      const t = await runTests(loaded, { importModule, buildOptions });
+      found.push(...t.diagnostics);
+      count.run = t.results.length;
+      count.passed = t.results.filter((r) => r.ok).length;
+    }
   }
   /** @type {Violation[]} */
   const diagnostics = found.map((d) => {
@@ -91,5 +100,5 @@ export async function checkPackageDir(dir) {
     if (!diagnostics.length) for (const d of rewriteSpecifiers(files, () => "", "").diagnostics) diagnostics.push({ file: d.file ?? MANIFEST_PATH, line: d.line ?? 1, code: d.code, severity: "error", message: d.message, fix: d.fix });
   }
   diagnostics.sort((x, y) => (x.file === y.file ? x.line - y.line : x.file < y.file ? -1 : 1));
-  return { ok: diagnostics.length === 0, diagnostics, files: Object.keys(files) };
+  return { ok: diagnostics.length === 0, diagnostics, files: Object.keys(files), tests: count };
 }

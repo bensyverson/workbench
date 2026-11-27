@@ -16,7 +16,7 @@ const paramBuild = (o = {}) => ({
 });
 
 const LOG = { header: { name: "glowworm-deep" }, inputs: [
-  { kind: "control", T: "1/30", part: "game", name: "pad", value: { right: true } },
+  { kind: "in", T: "1/30", part: "game", name: "pad", value: { right: true } },
   { kind: "param", T: "1/3", part: "cave", name: "depth", value: 3 },
 ] };
 
@@ -51,7 +51,7 @@ test("a changed params field is a changed declaration, said as any other field (
 });
 
 test("why() lists the log's inputs since the part's previous build, through this one", () => {
-  const log = { inputs: [LOG.inputs[0], { kind: "control", T: "1/4", part: "game", name: "pad", value: { up: false, right: false } }, LOG.inputs[1],
+  const log = { inputs: [LOG.inputs[0], { kind: "in", T: "1/4", part: "game", name: "pad", value: { up: false, right: false } }, LOG.inputs[1],
     { kind: "param", T: "1", part: "cave", name: "roughness", value: 46 }, { kind: "rebuild", T: "6/5", part: "cave", record: {} }] };
   const second = paramBuild({ boundary: { after: "29/30", before: "1" }, revision: { before: 2, after: 3 }, trigger: { kind: "param", param: "roughness", from: 45, to: 46, reads: [] } });
   const text = why([paramBuild(), second], log, { part: "cave" });

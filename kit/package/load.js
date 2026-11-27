@@ -37,7 +37,7 @@ const KINDS = {
 export async function loadPackage(files, { importModule, kitVersion = KIT_VERSION }) {
   const { manifest, diagnostics } = await checkPackage(files, { kitVersion });
   /** @type {import("./package.js").LoadedPackage} */
-  const out = { name: manifest?.name ?? null, version: manifest?.version ?? null, content: null, dialect: null, grammar: null, ui: null, runtime: null, examples: [], refusals: [], foreign: [], data: {}, diagnostics };
+  const out = { name: manifest?.name ?? null, version: manifest?.version ?? null, content: null, dialect: null, grammar: null, ui: null, runtime: null, examples: [], refusals: [], tests: [], foreign: [], data: {}, diagnostics };
   if (!manifest || diagnostics.length) return out;
   /** @type {Record<string, unknown>} */
   const found = {};
@@ -67,7 +67,7 @@ export async function loadPackage(files, { importModule, kitVersion = KIT_VERSIO
   const read = !diagnostics.length && dialect ? checkData(dialect, manifest, files) : { data: {}, diagnostics: [] };
   diagnostics.push(...read.diagnostics);
   if (diagnostics.length) return out;
-  return { ...out, content: await contentKey(manifest.files, /** @type {string} */ (textOf(files[MANIFEST_PATH]))), dialect, grammar, ui: ui ?? null, runtime: runtime ?? null, examples: manifest.examples ?? [], refusals: manifest.refusals ?? [], foreign: manifest.foreign ?? [], data: read.data };
+  return { ...out, content: await contentKey(manifest.files, /** @type {string} */ (textOf(files[MANIFEST_PATH]))), dialect, grammar, ui: ui ?? null, runtime: runtime ?? null, examples: manifest.examples ?? [], refusals: manifest.refusals ?? [], tests: manifest.tests ?? [], foreign: manifest.foreign ?? [], data: read.data };
 }
 
 export { MANIFEST_PATH };

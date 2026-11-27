@@ -19,8 +19,8 @@ function freezeDeep(v) {
 }
 
 /**
- * The run control a UI's inputs reach the runtime as, `ctx.controls.<name>`: the inputs object's name with its first
- * letter lowercased (`Pad` is `pad`). A host sends each button change as a `control` input of that name.
+ * The page control a UI's inputs are: the inputs object's name with its first letter lowercased (`Pad` is `pad`).
+ * A host sends each button change as the page's input of that name, which the composition wires to the part.
  * @param {string} object
  */
 export const controlName = (object) => object.charAt(0).toLowerCase() + object.slice(1);

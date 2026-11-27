@@ -84,7 +84,7 @@ test("the maze's stats read its run", async () => {
   assert.deepEqual(w.diagnostics, []);
   const run = createRun(w.composed, { runtimes: w.runtimes });
   run.runUntil(1);
-  const part = w.composed.parts[0];
+  const part = w.composed.parts.find((/** @type {any} */ p) => p.dialect !== "page");
   const tiles = shownTiles(w.packages[0].loaded.ui.compile(part.record).evaluate(run.state(part.name), paramValues(part.record)).tiles);
   assert.equal(tiles[0].body[0].label, "score");
   assert.equal(typeof tiles[0].body[2].ok, "boolean");

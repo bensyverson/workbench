@@ -49,6 +49,8 @@ export const mazeDialect = defineDialect({
   // grid is one string per row: "#" a wall, "c" a coin, "." floor.
   state: {
     t: "f64",
+    // the D-pad as the last record the pad input gave: held until the next one
+    pad: struct({ up: "bool", down: "bool", left: "bool", right: "bool" }),
     score: "f64",
     coinsLeft: "f64",
     player: struct({ x: "f64", y: "f64" }),
@@ -75,6 +77,9 @@ export const mazeDialect = defineDialect({
   // A cell's center is half a cell in from its top-left corner.
   edges: () => [{ from: "cell", to: "pixel", scale: CELL, offset: CELL / 2 }],
   ports: {
+    in: {
+      pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "the D-pad: one record each time the held directions change, each field true while that direction is held" },
+    },
     out: {
       coin: { seam: "Event<{ cell: point2@cell }>", note: "a coin the player picked up during this step, at the cell it lay in; one record per coin, none on most steps" },
       player: { seam: "point2@cell", from: (s) => [s.player.x, s.player.y], note: "the cell the player stands in after this step" },

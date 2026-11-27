@@ -48,6 +48,7 @@ main { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(260px, 1f
 .abtns .sm { height: 28px; }
 .hint { margin: 4px 0; }
 .presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.testresult { display: inline-flex; align-items: center; gap: 4px; }
 .why { color: var(--ink-2); }
 .part { border-bottom: 1px solid var(--hair); padding-bottom: 8px; }
 .part summary { cursor: pointer; color: var(--ink-2); margin: 6px 0; }

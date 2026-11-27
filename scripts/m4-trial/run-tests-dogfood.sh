@@ -1,12 +1,11 @@
 #!/bin/sh
 # Sets up one author leg of the tests dogfood (leaf mxxKTa) in a fresh directory and runs a fresh `claude -p` there,
-# blind to the repository. The M4 trial's author leg (run.sh), with the draft package tests:
-#   - the docs get the draft tests lines in START.md and API.md (tests-dogfood/patch-docs.js); package/README.md
-#     already holds the draft;
+# blind to the repository. The M4 trial's author leg (run.sh), with package tests required by the task:
+#   - the docs are the kit's own, which hold the tests (package/README.md, START.md's step 6, API.md's "Testing it");
 #   - task.md is the M4 task followed by tests-dogfood/task-tests-<role>.md (tests required, no harness outside the
 #     manifest, a Tests section in REPORT.md);
-#   - check.sh runs tests-dogfood/check.js: the M4 check with the tests key stripped, then the draft's static checks and
-#     the simulated runner;
+#   - check.sh runs tests-dogfood/check.js: the M4 author check, which runs the manifest's tests on the real kit, plus
+#     the trial's own T030 (no tests) and T031 (an Event input no test sends to), which are this trial's rules, not the kit's;
 #   - the brief is brief.md's, plus a line on reading long documents by offset.
 # Usage: scripts/m4-trial/run-tests-dogfood.sh game|score <dir> <model>
 #   <dir>  a fresh directory outside the repository and outside ~/.claude (e.g. /private/tmp/mxxKTa-1)
@@ -45,7 +44,6 @@ for f in START.md API.md define/README.md define/codes.js seam/README.md draw/RE
 done
 cp "$REPO"/kit/docs/*.md "$DIR/docs/kit/docs/"
 cp "$REPO/project/2026-11-25-package-format-draft.md" "$DIR/docs/project/"
-node "$TD/patch-docs.js" "$DIR/docs/kit"
 cp "$M4/docs/rules.md" "$DIR/rules.md"
 cat "$M4/docs/task-$ROLE.md" "$TD/task-tests-$ROLE.md" > "$DIR/task.md"
 EXTRA=

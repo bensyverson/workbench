@@ -10,6 +10,7 @@ export { loadPackage } from "./load.js";
 export { rewriteSpecifiers } from "./rewrite.js";
 export { readBundle, writeBundle, BUNDLE_FORMAT } from "./bundle.js";
 export { checkExamples } from "./examples.js";
+export { checkTests, readStatePath, sameData, recordFor, stampOf } from "./tests.js";
 export { uiModules, uiModulePath, elementModulePath } from "./elements.js";
 export { packageReference } from "./reference.js";
 export { readPngSize } from "./png.js";

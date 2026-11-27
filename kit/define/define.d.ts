@@ -364,6 +364,6 @@ export interface UI {
    * `value(id, ...args)` one value by its id, `annotation(view, key, state, $)` one key's marks.
    */
   compile(record: Record<string, any>): import("./ui/compile.js").UICompiled;
-  /** The run control the inputs reach the runtime as (`ctx.controls.<control>`): `inputs.object` with its first letter lowercased; null with no inputs. */
+  /** The page control the inputs are: `inputs.object` with its first letter lowercased; null with no inputs. */
   readonly control: string | null;
 }

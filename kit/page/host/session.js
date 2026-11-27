@@ -13,6 +13,7 @@ import { shownTiles, SeriesStore, numberPaths } from "./ui-eval.js";
  * @property {(callback: (ms: number) => void) => unknown} requestFrame
  * @property {(bytes: Uint8Array, info: any) => any} [decode]
  * @property {(snapshot: Snapshot) => void} [onFrame]  called after each display frame and each step, rewind or input made through the session
+ * @property {{ inputs?: Array<Record<string, any>>, seed?: number }} [run]  a run to start from (Open on a failed test: its input log and seed)
  * @property {(message: string) => void} [onProblem]  a snapshot or an `onFrame` that throws, said once while it keeps throwing the same (the frames go on)
  */
 
@@ -40,7 +41,7 @@ export function createSession(loaded, options) {
     composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), context: options.context,
     requestFrame: (cb) => frame((ms) => { cb(ms); notify(); }),
     ...(options.decode ? { decode: options.decode } : {}),
-    ...(loaded.rebuild ? { run: { build: loaded.rebuild } } : {}),
+    ...(loaded.rebuild || options.run ? { run: { ...(loaded.rebuild ? { build: loaded.rebuild } : {}), ...(options.run ?? {}) } } : {}),
   });
   const series = new SeriesStore();
   let head = 0;
@@ -112,6 +113,12 @@ export function createSession(loaded, options) {
     resume() { page.driver.resume(); notify(); },
     /** One instant forward (paused or not). */
     step() { page.driver.step(); changed(); },
+    /** Runs to `seconds` and stops there, paused: where Open puts a failed test, at the instant its expectation read (the scrubber's top is then that instant). @param {number} seconds */
+    seek(seconds) {
+      page.driver.pause();
+      page.run.runUntil(seconds);
+      changed();
+    },
     /** Moves to `seconds`: a rewind below where the run is, a run forward up to the furthest point it reached. Pauses. @param {number} seconds */
     scrub(seconds) {
       page.driver.pause();
@@ -133,11 +140,11 @@ export function createSession(loaded, options) {
       notify();
       return [];
     },
-    /** A UI button change: the buttons held, sent as the run control the part's UI names (kit/define's `ui.control`). @param {string} part @param {Record<string, boolean>} held */
+    /** A UI button change: the buttons held, sent as the page control the part's UI names (kit/define's `ui.control`), which the composition wires to the part. @param {string} part @param {Record<string, boolean>} held */
     control(part, held) {
       const name = uiOf(part)?.control;
       if (!name) throw new Error(`part ${part}'s UI has no inputs, so it takes no button`);
-      page.run.input({ kind: "control", part, name, value: { ...held } });
+      page.run.input({ kind: "control", part: "page", name, value: { ...held } });
       notify();
     },
     /** A param's annotation in the params view (the compiled UI's `annotation`). @param {string} part @param {string} name @param {any} state @param {Record<string, any>} params */

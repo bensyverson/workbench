@@ -5,7 +5,7 @@
 import { play } from "./host.js";
 
 /** @param {number} T @param {boolean} right */
-const pad = (T, right) => ({ kind: "control", T, part: "game", name: "pad", value: { up: false, down: false, left: false, right } });
+const pad = (T, right) => ({ kind: "in", T, part: "game", name: "pad", value: { up: false, down: false, left: false, right } });
 
 /** The scripted pad, in log order. */
 export const inputs = () => [pad(1 / 30, true), pad(1 / 4, false)];

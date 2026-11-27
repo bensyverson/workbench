@@ -22,6 +22,8 @@ export const PACKAGE_CODES = Object.freeze({
   K017: "A data file the Dialect names (in files, or an image's file) that is not a normalized path to a data file, or that the package does not hold and the manifest's files does not list",
   K018: "A data file that does not decode as its kind: an image that is not a PNG (no signature and IHDR, or held as text), a text, csv or json file that is not UTF-8, a json file that does not parse",
   K019: "A PNG whose width and height are not its image's declared size",
+  K020: "A manifest test (checkTests) that names what the Dialect lacks or has of another kind: an in that is not an Event input, an events that is not an Event output, an output that is not a value output, a state path whose fields the state lacks",
+  K021: "A manifest test's input record that does not fit its input's seam: a field missing that has no default, an unknown field, a value of the wrong type, a point not of its frame's dimensions",
 });
 
 /**

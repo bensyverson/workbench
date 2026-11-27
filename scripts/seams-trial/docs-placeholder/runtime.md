@@ -71,7 +71,6 @@ A declaration that is wrong (a missing max, a max on a value port or on a port t
 | `events` | an empty list per Event output: push records into `ctx.events.<port>` (step only) |
 | `kernels` | the Program's compiled lambdas (below) |
 | `globals` | what your lambdas' global names read in this step (below) |
-| `controls` | the outside inputs addressed to this part (below) |
 | `rng` | the part's seeded random stream: `rng()` gives a number in [0, 1). The kit seeds it from the **run's seed** (the host's `seed` option, 0 when it gives none) and the part's name, so two parts never share a stream and a replay is exact. A `.seed(n)` your language lets a Program write seeds nothing: the kit doesn't read it, so if your language has one, your runtime has to apply it itself (mix it into what you draw from `rng()`, or into your own state) |
 | `params` | the Program's params, as lambdas read `$` |
 
@@ -155,7 +154,7 @@ In a development run (the default, and the checker's) every state is frozen and 
 
 **In a composition, controls are Events.** The page is a built-in part whose Event outputs are the D-pad and the buttons (`seams.md`, "The page's controls are a part"). To be driven by one, give your Dialect an Event input for it (`Event<{ up: bool, down: bool, left: bool, right: bool }>` for the D-pad, or the fields you need), and read its records in `ctx.inputs.<input>` like any Event: each is the control's whole new state, at the instant the person changed it (`r.$T`). Keep the latest one in your state if a step needs the held state between changes. A headless run feeds the page only the inputs in its log (a checker's scripted presses); a page in the browser logs each change as the person makes it, so a replay presses the same.
 
-`ctx.controls` stays for a part that runs on its own without a glue: an outside input addressed to the part by name reaches it as `ctx.controls.<name>`, the latest value at or before the instant, a whole new value each time (not merged). **`ctx.controls` is always an object** (frozen, and `{}` before anything arrives, in `init` too), so `ctx.controls.<name>` is safe to read; it is `undefined` until that name's first value arrives, so read it with a fallback. Nothing in the kit links that name to your UI's `inputs`, and the glue does not say which part it goes to, which is why a composed part takes the page's Events instead.
+There is no `ctx.controls`: a part takes every control as an Event input like this one, played alone as well (the page wires its controls to the input whose seam is exactly the control's), and a checker's or a test's scripted press is a record sent to that input. Name the pad input `pad` so the checker finds it.
 
 ## Run codes
 

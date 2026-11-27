@@ -1,7 +1,7 @@
 
 ## Tests (required in this test of the kit)
 
-Your package must test its runtime with a `tests` entry in its manifest. It is a **draft**: read docs/kit/package/README.md, "Tests (draft, …)", and docs/kit/API.md, "A runtime: defineRuntime", "Testing it". The kit does not run tests yet; `./check.sh` runs yours with a stand-in that follows the draft.
+Your package must test its runtime with a `tests` entry in its manifest. Tests are optional in the kit; this trial requires them, because it tests the tests design. Read docs/kit/package/README.md, "Tests", and docs/kit/API.md, "A runtime: defineRuntime", "Testing it". `./check.sh` runs yours on the kit.
 
 Your tests must cover:
 

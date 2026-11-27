@@ -233,19 +233,26 @@ test("a page input is checked when it is logged, by run.input too", () => {
   assert.throws(() => run.input({ kind: "control", T: 0.3, part: "page", name: "knob", value: {} }), /no control 'knob'/);
 });
 
-/** A part named "page" that reads ctx.controls. */
+/** A part named "page" (when so named) with a pad Event input of its own. */
 function named() {
-  return tiny("pg", { state: { right: "f64", lights: "f64" }, inputs: false, ports: { out: {}, in: {} } },
-    { clock: () => ({ tick: 1 / 4 }), init: () => ({ right: 0, lights: 0 }), step: (/** @type {any} */ s, /** @type {any} */ c) => ({ right: c.controls.pad?.right ? 1 : s.right, lights: c.controls.lights ?? s.lights }) });
+  return tiny("pg", { state: { right: "f64" }, inputs: false, ports: { out: {}, in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "pad" } } } },
+    { clock: () => ({ tick: 1 / 4 }), init: () => ({ right: 0 }), events: { in: { pad: 8 } }, step: (/** @type {any} */ s, /** @type {any} */ c) => ({ right: c.inputs.pad.at(-1)?.right ? 1 : s.right }) });
 }
 
-test("a user part named page, in a composition with no built-in page, keeps its own controls", () => {
+test("a user part named page, in a composition with no built-in page, takes `in` inputs like any part; a control input to it is refused (N011)", () => {
   const P = named();
   const composed = compose("alone").part(P.grammar("page")).build({ runtimes: [P.runtime] });
-  const run = createRun(composed, { runtimes: [P.runtime], inputs: [{ kind: "control", T: 0.1, part: "page", name: "pad", value: PAD(true) }, { kind: "control", T: 0.1, part: "page", name: "lights", value: 3 }] });
+  const run = createRun(composed, { runtimes: [P.runtime], inputs: [{ kind: "in", T: 0.1, part: "page", name: "pad", value: PAD(true) }] });
   run.runUntil(1);
   assert.equal(run.state("page").right, 1);
-  assert.equal(run.state("page").lights, 3);
+  assert.throws(() => run.input({ kind: "control", T: 2, part: "page", name: "pad", value: PAD(true) }), (/** @type {any} */ e) => e.diagnostics[0].code === "N011" && /only the built-in page takes control inputs/.test(e.message));
+  assert.equal(run.log.inputs.length, 1, "refused before it is logged");
+});
+
+test("a control input to any part but the built-in page is refused when logged (N011): ctx.controls is retired", () => {
+  const P = named();
+  const composed = compose("alone").part(P.grammar("solo")).build({ runtimes: [P.runtime] });
+  assert.throws(() => createRun(composed, { runtimes: [P.runtime], inputs: [{ kind: "control", T: 0.1, part: "solo", name: "pad", value: PAD(true) }] }), /N011.*only the built-in page takes control inputs.*in input/);
 });
 
 test("a page input to a composition with no page part throws, as an input naming an unknown part does", () => {

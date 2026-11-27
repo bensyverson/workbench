@@ -231,13 +231,13 @@ test("R2 on a display run whose frame part waits on a frame not yet logged: an i
 });
 
 test("step() with no part due and none restarted applies the whole log and returns null; a later input before it says so plainly", () => {
-  const t = tiny("tk", { state: { k: "f64" }, inputs: false, ports: { out: {}, in: {} } },
-    { clock: () => ({ tick: 1 / 4 }), init: () => { throw new Error("bad init"); }, step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
+  const t = tiny("tk", { state: { k: "f64" }, inputs: false, ports: { out: {}, in: { x: { seam: "Event<{ v: f64 = 0 }>", note: "n" } } } },
+    { clock: () => ({ tick: 1 / 4 }), events: { in: { x: 8 } }, init: () => { throw new Error("bad init"); }, step: (/** @type {any} */ s) => ({ k: s.k + 1 }) });
   const runtimes = [t.runtime];
   const composed = compose("c").part(/** @type {any} */ (t.grammar("tk"))).build({ runtimes });
-  const run = createRun(composed, { runtimes, dev: false, inputs: [{ kind: "control", T: 50, part: "tk", name: "x", value: 1 }] });
+  const run = createRun(composed, { runtimes, dev: false, inputs: [{ kind: "in", T: 50, part: "tk", name: "x", value: {} }] });
   assert.equal(run.step(), null);
   assert.equal(run.seconds, 50);
-  assert.throws(() => run.input({ kind: "control", T: 10, part: "tk", name: "x", value: 2 }), /an input stamped 10 comes before one already applied, at 50 \(the run is at 50\)/);
-  assert.equal(run.input({ kind: "control", T: 60, part: "tk", name: "x", value: 3 }).T.n, 60);
+  assert.throws(() => run.input({ kind: "in", T: 10, part: "tk", name: "x", value: {} }), /an input stamped 10 comes before one already applied, at 50 \(the run is at 50\)/);
+  assert.equal(run.input({ kind: "in", T: 60, part: "tk", name: "x", value: {} }).T.n, 60);
 });

@@ -16,9 +16,9 @@
   "files": {
     "examples/01.js": "sha256-9xenykiutKY501OosTA5hFl0AFvw4L2f57e0KmEma9I=",
     "examples/02.js": "sha256-qimlv3TYO3N72goVfcW5UYh8r9PwQp+QN9O1gA5gz1A=",
-    "maze.dialect.js": "sha256-v3XhERD6iRNcZ0OA2u2BBdOnIhsaN52kLY2Cov/eeJw=",
+    "maze.dialect.js": "sha256-qU3xZic/KJVjFHLuUhvE1qZ5Hc//+kswVx6ADfmaMqo=",
     "maze.grammar.js": "sha256-gqqT02cbfpveiC+JuFyleapy1GTZvdn85WuGwuOqZ4U=",
-    "maze.runtime.js": "sha256-DbZvU6fbZI00JBVb7K1Ys276srEJ524Efg9y40pHEHE=",
+    "maze.runtime.js": "sha256-yvAs8thnZayST6QU6XwgHIKulfkG5HXx3Z0HQT6YVyc=",
     "maze.ui.js": "sha256-FPb793yDKIvTFwO8ThxfpBYyYkHF9Mp0SWFSuDf2IxA="
   }
 }

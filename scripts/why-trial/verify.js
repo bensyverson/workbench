@@ -13,7 +13,7 @@ const dir = resolve(args.find((a) => !a.startsWith("--")) ?? new URL("./scenario
 const host = await import(pathToFileURL(join(dir, "host.js")).href);
 
 /** @param {number} T @param {boolean} right */
-const pad = (T, right) => ({ kind: "control", T, part: "game", name: "pad", value: { up: false, down: false, left: false, right } });
+const pad = (T, right) => ({ kind: "in", T, part: "game", name: "pad", value: { up: false, down: false, left: false, right } });
 const once = () => [pad(1 / 30, true), pad(1 / 4, false)];
 const twice = () => [...once(), pad(0.6, true), pad(39 / 60, false)];
 const actions = () => [{ T: 1, slider: "roughness", value: 46 }, { T: 1.2, save: true }];

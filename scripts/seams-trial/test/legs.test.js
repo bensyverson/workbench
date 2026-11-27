@@ -68,8 +68,8 @@ test("G003: no new example", async () => {
   assert.ok(c.includes("G003"), c.join(" "));
 });
 
-test("G006: a runtime that reads the D-pad under another name never reaches a coin", async () => {
-  const { codes: c } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "controls.pad", "controls.dpad"); });
+test("G006: a runtime that ignores the pad input never reaches a coin", async () => {
+  const { codes: c } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "const pad = inputs.pad.length ? inputs.pad.at(-1) : state.pad;", "const pad = state.pad;"); });
   assert.ok(c.length > 0 && c.every((x) => x === "G006"), c.join(" "));
 });
 
@@ -79,7 +79,7 @@ test("G007: a runtime that picks the coin but pushes no record", async () => {
 });
 
 test("N codes: a runtime that changes the state it is handed stops with N003, at the runtime's file", async () => {
-  const { codes: c, r } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "return { ...state, t: state.t + dt,", "state.t = 1; return { ...state, t: state.t + dt,"); });
+  const { codes: c, r } = await codes("maze", (d) => { sub(d, "maze.runtime.js", "return { ...state, pad:", "state.t = 1; return { ...state, pad:"); });
   assert.ok(c.includes("N003"), c.join(" "));
   assert.ok(r.diagnostics.filter((x) => x.code === "N003").every((x) => x.file === "maze.runtime.js"));
 });

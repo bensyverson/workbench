@@ -3,12 +3,13 @@
 import { diag } from "./codes.js";
 import { withoutBom } from "./content.js";
 import { isDotPath, isModulePath, isPackagePath } from "./paths.js";
+import { testsShape } from "./tests.js";
 
 export const MANIFEST_PATH = "wb-package.json";
 
 /** The entry modules: dialect and grammar required, ui and runtime optional. */
 const ENTRIES = ["dialect", "grammar", "ui", "runtime"];
-const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "elements", "examples", "refusals", "files"];
+const KEYS = ["name", "version", "kit", "description", "entry", "lib", "foreign", "elements", "examples", "refusals", "tests", "files"];
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
 const DIAGNOSTIC_CODE = /^[A-Z][0-9]{3}$/;
 const HASH = /^sha256-[A-Za-z0-9+/]{43}=$/;
@@ -75,6 +76,7 @@ export function checkManifest(text) {
       if (typeof r.code !== "string" || !DIAGNOSTIC_CODE.test(r.code)) bad(`${at}.code must be a diagnostic code: a capital letter and three digits${typeof r.code === "string" ? ` (got "${r.code}")` : ""}`, `write "code": "L004", the code the kit refuses the module with`);
     });
   }
+  if (m.tests !== undefined) for (const p of testsShape(m.tests, m)) bad(p.message, p.fix);
   if (m.foreign !== undefined) {
     if (!Array.isArray(m.foreign)) bad(`"foreign" must be an array of { module, targets, why }`, `write "foreign": [{ "module": "foreign/x.js", "targets": ["js"], "why": "what it is for" }]`);
     else m.foreign.forEach((f, i) => {

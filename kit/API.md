@@ -225,8 +225,8 @@ import { <builder> } from "./<file>.grammar.js";
 export const <runtime> = defineRuntime(<builder>, {
   clock: (record) => ({ tick: <seconds> }),                 // or { frame: true }, or { demand: true }. <seconds>: the step length your spec wants
   init: (record, ctx) => ({ <field>: <initial>, … }),       // a state that fits your Dialect's state
-  step(state, { T, dt, record, kernels, controls, inputs, events, rng }) {   // init's ctx has no T, dt, inputs or events
-    kernels.<slot>(<instance>, controls.<pad>);               // the part's own lambda by slot; any by id: kernels["<construct>.<slot>"]
+  step(state, { T, dt, record, kernels, inputs, events, rng }) {   // init's ctx has no T, dt, inputs or events
+    kernels.<slot>(<instance>, <what inputs.<event-input> gave>);   // the part's own lambda by slot; any by id: kernels["<construct>.<slot>"]
     kernels["<construct>.<slot>.<name>"](<instance>);         // a call that declares a name (.<slot>("<name>", …)), by that name
     // …
     for (const <rec> of <records>) events.<event-port>.push(<rec>);   // an Event output is pushed, never kept in state
@@ -240,6 +240,25 @@ export const <runtime> = defineRuntime(<builder>, {
 - **`ctx.inputs`** holds each value input converted into your frames, and each Event input's records since your last step, in order. Each record carries `<record>.$T`, the instant in seconds its producer sent it at: read-only, and not among its keys. `ctx.globals` is what your lambdas' globals read: set an Event record's name, `ctx.globals.<name> = <record>`, before calling a lambda that reads it, and `ctx.globals.<name> = null` before calling one of those slots without a record (a spawn by rate, say). A lambda in a slot listed in `record.slots` reads the name as possibly null, so it checks first, `if (<name> != null) { … <name>.<field> … }` or `if (<name> == null) return;`; an unchecked read is L008.
 - **`ctx.kernels`** holds each lambda by its id: `<instance>.<slot>`, with `#<n>` unless the slot is `once` (`<n>` counts the instance's calls). That id is the stable one. A call whose slot declares a name (`.<slot>("<name>", …)`) is also there as `kernels["<instance>.<slot>.<name>"]`, the same function. The part's own lambdas are there by slot name alone too (`kernels.<slot>`). `Object.keys(ctx.kernels)` lists the ids only.
 - **Every Event port needs its max** in `events` (D033). The composition sizes each queue from the maxes and the clocks, and refuses a reliable wire that could overflow (S116).
+- **A control is an Event input.** The page's D-pad and buttons reach a part as records on an Event input whose seam is the control's (`Event<{ up: bool, down: bool, left: bool, right: bool }>` for the pad, `Event<{ held: bool }>` for a button): a record each time the held state changes. There is no other way in, so keep the last record in your state to know what is held now. Played alone, the page wires the control to the one input whose seam is exactly the control's.
+- **Testing it** (optional: [package/README.md](package/README.md) ▸ Tests). A test is data in your manifest, not code: the kit runs one example alone, sends your records, and checks what you expect.
+
+  ```json
+  "tests": [
+    { "name": "<test>", "example": "<example>.js",
+      "inputs": [ { "T": <seconds>, "in": "<input>", "value": { "<field>": <value> } } ],
+      "expect": [
+        { "at": <seconds>, "state": { "<path>": <value> } },
+        { "at": <seconds>, "output": "<value output>", "value": <value> },
+        { "events": "<output>", "from": <seconds>, "to": <seconds>, "records": [ { "<field>": <value> } ] },
+        { "diagnostic": "<code>" }
+      ] }
+  ]
+  ```
+
+  - A record is in your input's own seam, as `ctx.inputs.<input>` reads it; a field with a default may be left out. It reaches your step at the first instant at or after `T`, with `$T` equal to `T`.
+  - `<path>` names a state value as checkState does (`<field>.<field>`, `<list>[<i>]`) or `<list>.length`, and `at` reads the state after every instant up to it. `output` reads the value a wire would read from a value output.
+  - A run error you don't list fails the test (H007); an expectation not met is H006, naming the test, the instant, what was expected and what came.
 
 ## A Program
 

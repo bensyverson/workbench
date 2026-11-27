@@ -8,6 +8,10 @@ export const PAGE_CODES = Object.freeze({
   H003: "An image's pixels are not available: its file is not in a loaded package, or the host's decoder failed on it; it draws as its box",
   H004: "A frame threw (the run's driver, or a draw: a host's decode result drawImage rejects, say); the page stopped its frame loop, and page.start() runs it again",
   H005: "A package example cannot run alone as a preset: its default export is not a function ($) => <builder chain>, or calling it threw or returned no Program (examplePreset)",
+  H006: "A package test's expectation was not met (runTests): the message names the test, the kind of expectation, the instant, the path or output, and the expected and actual values",
+  H007: "A package test's run reported an error diagnostic the test did not expect (N002, N003, N004, a J code), or its replay from its own record diverged (N005)",
+  H008: "A package test could not run: its example does not build alone, createRun refused it, an in input was refused when logged (N011, N012), or a state path names a Program field the built Program does not declare",
+  H009: "A part run alone could take a page control in more than one way, so none of those is wired: two of its Event inputs take one control's seam, or one input fits several controls (the buttons' { held: bool }); a warning, and a glue chooses",
 });
 
 /** How many page diagnostics the list keeps: past it, the oldest go (a refusal that comes and goes must not grow it without bound). */

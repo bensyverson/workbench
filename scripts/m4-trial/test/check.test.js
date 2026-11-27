@@ -9,6 +9,7 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hashDir } from "../../pkg/dir.js";
 
 const here = (/** @type {string} */ p) => fileURLToPath(new URL(p, import.meta.url));
 const CHECK = here("../check.js");
@@ -34,9 +35,14 @@ test("a missing folder, or one that is not a package, exits 4", () => {
   assert.equal(check([mkdtempSync(join(tmpdir(), "IhJ35P-")), "--role", "score"]).status, 4);
 });
 
-test("a game with no pad input is T006, and its examples still load; every run is logged", () => {
+test("a game with no pad input is T006, and its examples still load; every run is logged", async () => {
   const log = join(mkdtempSync(join(tmpdir(), "IhJ35P-")), "log.jsonl");
-  const r = check([copy("maze"), "--role", "game"], { M4_TRIAL_LOG: log });
+  const game = copy("maze");
+  // the massaged maze takes the pad (it is the page host's maze): its input is made one that is not the pad's seam
+  const dialect = join(game, "maze.dialect.js");
+  writeFileSync(dialect, readFileSync(dialect, "utf8").replace("Event<{ up: bool, down: bool, left: bool, right: bool }>", "Event<{ q: bool }>"));
+  await hashDir(game);
+  const r = check([game, "--role", "game"], { M4_TRIAL_LOG: log });
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /T006 /);
   assert.match(r.stdout, /  fix: /);

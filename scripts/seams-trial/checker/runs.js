@@ -9,9 +9,9 @@ import { compose } from "../../../kit/compose/index.js";
 import { createRun } from "../../../kit/run/index.js";
 import { printSeam } from "../../../kit/seam/index.js";
 
-/** The D-pad, nothing held. */
-export const RELEASED = Object.freeze({ up: false, down: false, left: false, right: false, a: false, b: false });
-/** The control name the page sends a D-pad as (runtime.md, "Controls"). */
+/** The D-pad, nothing held: the page's pad record. */
+export const RELEASED = Object.freeze({ up: false, down: false, left: false, right: false });
+/** The name of the Event input that takes the page's pad (runtime.md, "Controls"): the checker sends its records there as `in` inputs. */
 export const PAD = "pad";
 
 /**
@@ -96,7 +96,14 @@ export function steerToCoin(run, part, grid, limit, onStep = () => {}) {
     if (!p || typeof p.x !== "number" || typeof p.y !== "number") return { why: "its state has no player.x and player.y" };
     const dir = towards(grid, p, coins);
     if (!dir) return { why: `no coin can be reached from (${p.x}, ${p.y})` };
-    if (dir !== held) { run.input({ kind: "control", part, name: PAD, value: { ...RELEASED, [dir]: true } }); held = dir; }
+    if (dir !== held) {
+      try { run.input({ kind: "in", part, name: PAD, value: { ...RELEASED, [dir]: true } }); } catch (e) {
+        const d = /** @type {any} */ (e)?.diagnostics?.[0];
+        if (d?.code === "N011" || d?.code === "N012") return { why: `its Dialect has no Event input '${PAD}' taking the page's pad (${d.message})` };
+        throw e;
+      }
+      held = dir;
+    }
     let i = run.step();
     if (i) onStep(i);
     while (i && !i.stepped.includes(part)) { i = run.step(); if (i) onStep(i); }

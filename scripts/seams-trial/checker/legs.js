@@ -129,7 +129,7 @@ async function runMazeExamples(loaded, importModule, packages, runtimeFile, foun
     const r = steerToCoin(s.run, part, grid, REACH.example);
     if ("why" in r) {
       if (r.why === "its grid has no coin") notes.push(`${path}: no coin, so no D-pad run`);
-      else found.push({ file: path, line: 1, code: "G006", message: `the checker held the D-pad (controls.${PAD}) toward the nearest coin, and ${r.why}`, fix: "read controls.pad (runtime.md, \"Controls\") and walk the player the way the control lambda says; keep state.player.x and .y" });
+      else found.push({ file: path, line: 1, code: "G006", message: `the checker held the D-pad (sent to the Event input ${PAD}) toward the nearest coin, and ${r.why}`, fix: "take the pad as an Event input named pad (runtime.md, \"Controls\"), hold its last record, and walk the player the way the control lambda says; keep state.player.x and .y" });
     } else {
       const pushed = Object.entries(spy.caught.get(r.T) ?? {}).filter(([, v]) => v.length);
       if (pushed.length) notes.push(`${path}: coin at ${pointText(r.cell)} picked at T = ${num(r.T)}; ${pushed.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join("; ")}`);

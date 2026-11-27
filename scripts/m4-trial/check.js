@@ -67,7 +67,7 @@ async function main(argv) {
     const errors = r.diagnostics.filter((d) => d.severity === "error").length;
     console.log(r.ok ? `${args.dir}: no violations` : `${args.dir}: ${errors} violation${errors === 1 ? "" : "s"}`);
     // `codes` (the errors' codes) is the field scripts/seams-trial/summary.js counts
-    Object.assign(entry, { ok: r.ok, codes: r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code), diagnostics: r.diagnostics });
+    Object.assign(entry, { ok: r.ok, tests: r.tests ?? { run: 0, passed: 0 }, codes: r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code), diagnostics: r.diagnostics });
     return finish(r.ok ? EXIT.ok : EXIT.violations);
   } catch (e) {
     const err = /** @type {Error} */ (e);

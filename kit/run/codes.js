@@ -13,6 +13,8 @@ export const RUN_CODES = Object.freeze({
   N007: "A composed record kit/compose would not have built (a hand-edited record): a wire's overflow is neither \"keepLast\" nor \"keepFirst\" (compose's S102 refuses it at the glue), or a layer has fewer than two inputs, an input with no wire or several, an input from anything but a Draw output of a part in the run, or layers that feed each other; refused at createRun, never drawn empty",
   N008: "A param's value does not fit the param's declaration (its type, finite, min..max, options): a param wire's is not set and the part keeps its build, noted once per value; a param input's is refused when it is logged if it fits no record that can be in force at its stamp (run.input throws a RunError, and the run is unchanged), and otherwise is not applied when the record in force as it applies refuses it (noted)",
   N009: "An input names a part the composition does not have: refused when it is logged (run.input throws a RunError, and the run is unchanged)",
+  N011: "An in input addressed to an input the part does not have, to a value or Draw input, or to an Event input a wire feeds, or a control input addressed to any part but the built-in page: refused when it is logged (a RunError, and the run is unchanged)",
+  N012: "An in input whose value does not fit the input's seam (a field missing that has no default, an unknown field, a value of the wrong type): refused when it is logged (a RunError, and the run is unchanged)",
   N010: "A param input changes a param that build-time code reads, and the run was given no build(part, params) to rebuild the part with: refused when it is logged (a RunError), or, when only a rebuild logged before it made the param build-time, not applied (noted)",
 });
 

@@ -6,14 +6,16 @@ import { maze } from "./maze.grammar.js";
 // that many cells, stopping at a wall, and picks up each coin it enters: an Event pushed to `picked`.
 
 const STILL = { up: false, down: false, left: false, right: false, a: false, b: false };
+const NO_PAD = { up: false, down: false, left: false, right: false };
 const countCoins = (grid) => grid.reduce((n, row) => n + [...row].filter((c) => c === "c").length, 0);
 
 export const mazeRuntime = defineRuntime(maze, {
   clock: (record) => ({ tick: record.tick ?? 1 / 8 }),
-  init: (record) => ({ t: 0, score: 0, coinsLeft: countCoins(record.grid), player: { x: record.start.x, y: record.start.y }, grid: record.grid, picked: [] }),
-  step(state, { dt, kernels, controls, events }) {
+  init: (record) => ({ t: 0, pad: NO_PAD, score: 0, coinsLeft: countCoins(record.grid), player: { x: record.start.x, y: record.start.y }, grid: record.grid, picked: [] }),
+  step(state, { dt, kernels, inputs, events }) {
     const pl = { x: state.player.x, y: state.player.y, dx: 0, dy: 0, steps: 0 };
-    kernels.control(pl, controls.pad ?? STILL);
+    const pad = inputs.pad.length ? inputs.pad.at(-1) : state.pad;
+    kernels.control(pl, { ...STILL, ...pad });
     let { x, y } = state.player;
     let grid = state.grid, score = state.score, coinsLeft = state.coinsLeft;
     const picked = [];
@@ -29,8 +31,8 @@ export const mazeRuntime = defineRuntime(maze, {
         events.picked.push({ at: [x, y] });
       }
     }
-    return { t: state.t + dt, score, coinsLeft, player: { x, y }, grid, picked };
+    return { t: state.t + dt, pad: { up: pad.up, down: pad.down, left: pad.left, right: pad.right }, score, coinsLeft, player: { x, y }, grid, picked };
   },
   // a dash walks at most 4 cells (the dash param's max), so a step picks at most 4 coins; the state list holds 8
-  events: { out: { picked: 8 } },
+  events: { in: { pad: 128 }, out: { picked: 8 } },
 });
