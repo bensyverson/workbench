@@ -21,7 +21,7 @@ test("13. run(fn, { args }) overrides a literal, a key in a data object, a list 
   assert.equal(at({ "s.voices:0": 8 }).voices, 8, "a once slot has no #");
   assert.equal(at({ "s.k#1:0": 7 }, () => g("s").k(1).k(2)).k[1], 7, "a literal argument");
   const voices = () => g("s").voice().gain(0.1).voice().gain(0.2).voice().gain(0.3);
-  // unnamed instances go by their construct's name, the second voice~2 (kit/define's Ref ids); a record: "calls" construct numbers in call order
+  // unnamed instances go by their construct's name, the second voice~2 (kit/define's Ref ids); #<n> counts the calls of one slot, in a record: "calls" construct too
   const r = run(voices, { args: { "voice~2.gain#0:0": 0.9 } });
   assert.equal(r.record.voice[1].calls[0].args[0], 0.9, `a repeated instance name, in a calls construct: ${JSON.stringify(r.diagnostics)}`);
   assert.equal(r.record.voice[0].calls[0].args[0], 0.1, "the first instance is untouched");
