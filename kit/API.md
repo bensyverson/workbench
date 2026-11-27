@@ -225,14 +225,14 @@ import { <builder> } from "./<file>.grammar.js";
 export const <runtime> = defineRuntime(<builder>, {
   clock: (record) => ({ tick: <seconds> }),                 // or { frame: true }, or { demand: true }. <seconds>: the step length your spec wants
   init: (record, ctx) => ({ <field>: <initial>, … }),       // a state that fits your Dialect's state
-  step(state, { dt, kernels, controls, inputs, events, rng }) {
+  step(state, { T, dt, record, kernels, controls, inputs, events, rng }) {   // init's ctx has no T, dt, inputs or events
     kernels.<slot>(<instance>, controls.<pad>);               // the part's own lambda by slot; any by id: kernels["<construct>.<slot>"]
     kernels["<construct>.<slot>.<name>"](<instance>);         // a call that declares a name (.<slot>("<name>", …)), by that name
     // …
     for (const <rec> of <records>) events.<event-port>.push(<rec>);   // an Event output is pushed, never kept in state
     return { ...state, <field>: <next> };                     // a new state: never change the one you are handed
   },
-  events: { out: { <event-port>: <max> } },                 // each Event port's most records per step: count what your step can push at most
+  events: { in: { <event-input>: <max> }, out: { <event-port>: <max> } },   // each Event port's most records per step: in, what one step takes; out, what your step can push at most
 });
 ```
 

@@ -46,13 +46,16 @@ const driver = createDriver(live);   // the page calls driver.frame(wallSeconds)
 
 ## What a step is handed
 
-`init(record, ctx)` and `step(state, ctx)` are the package's ([kit/define](../define/README.md#runtimes-defineruntime)). `ctx` is:
+`init(record, ctx)` and `step(state, ctx)` are the package's ([kit/define](../define/README.md#runtimes-defineruntime)). `ctx` is below; `init`'s holds only `part`, `revision`, `record`, `kernels`, `rng`, `params`, `controls` and `globals`.
+
+> **Corrected 2026-11-26 (M4 trial, leaf `IhJ35P`):** this table listed `T` and `dt` without "step only", so an author read `ctx.T` in `init`, got undefined, and the part stopped (N002).
+
 
 | Key | What |
 |---|---|
 | `part`, `revision`, `record` | the part's name (its identity), its revision, its built record (read-only) |
-| `T`, `dt` | the instant in seconds, and the step's length: a tick part's period, a frame part's time since its last frame (0 at its first), 0 for a demand part |
-| `inputs` | each value input, converted (a default when unwired); each Event input's records since the part's last step, converted, in order, each with a read-only `$T` (below); `$rev` the revision of the producer snapshot each input read (null unwired) |
+| `T`, `dt` | (step only: `init` gets neither, so a state that needs a start time takes it from the first step) the instant in seconds, and the step's length: a tick part's period, a frame part's time since its last frame (0 at its first), 0 for a demand part |
+| `inputs` | (step only) each value input, converted (a default when unwired); each Event input's records since the part's last step, converted, in order, each with a read-only `$T` (below); `$rev` the revision of the producer snapshot each input read (null unwired) |
 | `controls` | the outside inputs addressed to the part by name (`{ <name>: <value> }`), each the latest value at or before T: for a part run without a glue that wires the page (below); a page input never lands here |
 | `kernels` | the Program's compiled lambdas by id, `<instance>.<slot>` (with `#<n>` unless the slot is `once`: the stable id), the part's own (the root instance is the part) by slot name too (`kernels.<slot>` is `kernels["<part>.<slot>"]`), and a call whose slot declares a name by `<instance>.<slot>.<name>` too, the same function as its positional id (ruling 1, 2026-11-26; a call with no name has only its id); the aliases are not enumerable, so `Object.keys` lists ids |
 | `rng` | the part's seeded stream: `rng()` in [0, 1) |
