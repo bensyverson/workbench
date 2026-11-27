@@ -253,3 +253,5 @@ Two package-trial items belong to the host, not the seams: two versions of one p
 ## Next
 
 The relay trial (`Qw03tp`), as the dogfood ruling asks, before any of this is built: for each of a few relays, one fresh agent adds ports to maze knowing nothing of particles, a second adds ports to particles knowing nothing of maze, and a third composes the two from the packages alone, to make the burst. The design passes if the composer's wiring checks clean with no edits to either package, and every frame fact lives in the glue.
+
+> **Ruled 2026-11-26 (Ben): page inputs deliver every press and release.** "We need tap and release." This reverses the integrator's call in `ada0afe`, which held only the latest value per control until the consumer took it, so a tap between two steps of a slow part arrived as its release alone. A page wire now delivers each control change in order, and kit/compose sizes page wires for that (a press and a release can land in one frame) instead of one record per control per frame. Past the size, the wire's overflow policy applies, never a silent drop.
