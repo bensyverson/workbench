@@ -16,7 +16,7 @@ export const PAGE_CODES = Object.freeze({
   H011: "A warning: a Grip, or a Control with to, whose target cannot be written: an address no call reaches, a param the Program lacks, a computed argument (a name, a const, arithmetic, a call, a template), or one call reached several times (a loop, a helper called twice); it is drawn disabled, and the message names the expression",
   H012: "A write-back that cannot apply: the span no longer holds the text the record was built from, or the edited text does not build; nothing is kept and the text is unchanged",
   H013: "An action threw, or gave the wrong shape: a file action { name, type, bytes } with bytes a Uint8Array, an edits action [{ to, value }]",
-  H014: "A warning: a device adapter is absent or refused (MIDI, a gamepad); the other adapters still play",
+  H014: "A warning: a device adapter is absent or refused (MIDI, a gamepad), an unlock hook threw, or a record it made was dropped because the page threw on it; the other adapters still play",
 });
 
 /** How many page diagnostics the list keeps: past it, the oldest go (a refusal that comes and goes must not grow it without bound). */

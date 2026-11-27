@@ -122,7 +122,7 @@ Its codes: **H006** an expectation not met (the test, the kind, the instant, the
 | H011 | a warning: a Grip (or a Control with `to`) whose target cannot be written (an address no call reaches, a computed argument, one call reached several times); it is drawn disabled |
 | H012 | a write-back that cannot apply: the text changed since the record was built (the call at the recorded place is another, or its literal is not the record's), or the edited text does not build; nothing is kept. Also a drag's preview whose build fails (no record, or a throw): the preview is skipped and the drag goes on, reported once until one builds again |
 | H013 | an action threw, or gave the wrong shape (edits that overlap included) |
-| H014 | a warning: a device adapter is absent or refused (MIDI, a gamepad), or an unlock hook threw |
+| H014 | a warning: a device adapter is absent or refused (MIDI, a gamepad), an unlock hook threw, or a record a device made was dropped because the page threw on it |
 | H010 | the shown layer's bottom frame has no extent, so the page has no size and the canvas stays hidden (a layer has no text stage to fall back on, as a shown part with no extent does); a warning, once, at creation |
 
 H is reserved for the kit (kit/define's `RESERVED_LETTERS`).

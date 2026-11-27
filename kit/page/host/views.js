@@ -1,6 +1,7 @@
 // The panels' DOM: each function turns data the kit and ui-eval.js made into elements. They decide nothing.
 
 import { h } from "./dom.js";
+import { vectorWidget, pointsWidget, pickWidget } from "./widgets.js";
 
 /** @typedef {import("./load.js").HostDiagnostic} HostDiagnostic */
 
@@ -92,22 +93,29 @@ export function codeView(text, name) {
   return h("div", { class: "code", "aria-label": `source of ${name}` }, lines.map((l, i) => h("div", { class: "ln" }, h("span", { class: "no" }, String(i + 1)), h("code", null, l || " "))));
 }
 
+/** A scoped Control's part, as a tag. @param {any} form */
+const scope = (form) => (form.part ? h("span", { class: "tag" }, form.part) : null);
+/** A Control's shown name: its label, else its own name (a scoped Control is named `<part>.<control>` on the page). @param {any} form */
+const shownName = (form) => form.label ?? (form.part && String(form.name).startsWith(`${form.part}.`) ? String(form.name).slice(form.part.length + 1) : form.name);
+
 /**
  * One declared Control's on-screen form (the generated `controls` view), from its declaration: buttons laid out by
- * its grid (else in a row), a row of triggers, a slider, a checkbox, a menu, a text field, a color well; vectors,
- * points and picks as a JSON field until their own widgets land. `send(record, phase?)` logs the Control's record
+ * its grid (else in a row), a row of triggers, a slider, a checkbox, a menu, a text field, a color well, a vector's
+ * components, a point list, a pick from its data file (widgets.js). A scoped Control (`part`, named `<part>.<control>`)
+ * is tagged with its part, and shown by its control's own name. `send(record, phase?)` logs the Control's record
  * (`"preview"` while a Control with `to` moves, then nothing, a commit, on its change); `focus(on)` tells the page a
  * text field has the keys. A keyed Control (the form's `keyed`: its composed declaration is plain data, with no
  * `each`) shows one form per instance, each sending its record with the instance's key.
  * @param {any} form  a session form @param {(record: Record<string, unknown>, phase?: "preview") => void} send @param {(on: boolean) => void} focus
+ * @param {(form: any) => ({ kind: string, text?: string, value?: unknown } | null)} [data]  a pick's data file (pick-data.js's `dataFileOf`)
  */
-export function controlForm(form, send, focus) {
+export function controlForm(form, send, focus, data = () => null) {
   if (form.keyed) {
     const { instances = [], ...rest } = form;
-    return h("div", { class: "control" }, h("span", { class: "dim" }, form.label ?? form.name),
-      instances.map((/** @type {any} */ i) => controlForm({ ...rest, ...i, keyed: false, name: i.key, label: i.label ?? i.key }, (record, phase) => send({ ...record, key: i.key }, phase), focus)));
+    return h("div", { class: "control keyed" }, scope(form), h("span", { class: "dim" }, shownName(form)),
+      instances.map((/** @type {any} */ i) => controlForm({ ...rest, ...i, keyed: false, part: undefined, name: i.key, label: i.label ?? i.key }, (record, phase) => send({ ...record, key: i.key }, phase), focus, data)));
   }
-  const label = h("span", { class: "dim" }, form.label ?? form.name);
+  const label = h("span", { class: "dim" }, scope(form), shownName(form));
   /** A button that is held while pressed. @param {string} text @param {(down: boolean) => void} set */
   const hold = (text, set) => h("button", {
     class: "btn", onpointerdown: (/** @type {any} */ e) => { e.target.setPointerCapture?.(e.pointerId); set(true); },
@@ -143,6 +151,9 @@ export function controlForm(form, send, focus) {
       const hex = (/** @type {number[]} */ c) => `#${c.map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("")}`;
       return h("label", { class: "control" }, label, h("input", { type: "color", value: hex(form.value), oninput: (/** @type {any} */ e) => send({ value: [1, 3, 5].map((i) => parseInt(e.target.value.slice(i, i + 2), 16) / 255) }) }));
     }
+    case "vector": return h("div", { class: "control" }, label, vectorWidget(form, send));
+    case "points": return h("div", { class: "control" }, label, pointsWidget(form, send));
+    case "pick": return h("div", { class: "control" }, label, pickWidget(form, send, () => data(form)));
     default: return h("label", { class: "control" }, label, h("input", { type: "text", value: JSON.stringify(form.value ?? null), onfocus: () => focus(true), onblur: () => focus(false), onchange: (/** @type {any} */ e) => { try { send({ value: JSON.parse(e.target.value) }); } catch { /* not JSON yet: nothing is sent */ } } }));
   }
 }
