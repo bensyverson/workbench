@@ -30,7 +30,7 @@ test("the coin-bursts composition checks clean and plans the burst's position ×
   assert.equal(r.show, "fx");
   assert.deepEqual(r.wires, [{
     from: "level.out.picked", to: "fx.in.burst",
-    convert: [{ field: "at", kind: "point", from: "maze.cell", to: "particles.px", scale: [32, 32], offset: [16, 48] }],
+    convert: [{ field: "at", kind: "point", from: "maze.cell", to: "particles.px", fromId: "level.cell", toId: "fx.px", scale: [32, 32], offset: [16, 48] }],
     rename: {}, delay: false, dropped: [], delivery: "reliable",
   }]);
   // a "fit" step names the two boxes it was computed from (leaf QqirvU: the plan line used to end at the edge)
@@ -267,8 +267,8 @@ test("a rate converts by its frame's edge alone; the kit's s joins every part wi
   const c = pair(ev("Event<{ v: vec2@px/s, d: f64@s }>"), ev("Event<{ v: vec2@px/s, d: f64@s }>"), { rel: { scale: 4, offset: 1 } });
   assert.deepEqual(check(c), []);
   const conv = c.build().wires[0].convert;
-  assert.deepEqual(conv.find((/** @type {any} */ x) => x.field === "v"), { field: "v", kind: "vector", rate: true, from: "prod.px", to: "cons.px", scale: [4, 4], offset: [0, 0] });
-  assert.deepEqual(conv.find((/** @type {any} */ x) => x.field === "d"), { field: "d", kind: "quantity", from: "s", to: "s", scale: [1], offset: [0] });
+  assert.deepEqual(conv.find((/** @type {any} */ x) => x.field === "v"), { field: "v", kind: "vector", rate: true, from: "prod.px", to: "cons.px", fromId: "a.px", toId: "b.px", scale: [4, 4], offset: [0, 0] });
+  assert.deepEqual(conv.find((/** @type {any} */ x) => x.field === "d"), { field: "d", kind: "quantity", from: "s", to: "s", fromId: "s", toId: "s", scale: [1], offset: [0] });
 });
 
 test("S301: a handle read as a value at build time", () => {

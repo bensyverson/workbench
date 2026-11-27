@@ -122,7 +122,7 @@ test("point1: a 1-D position converts by scale and offset (100 C is 212 F)", () 
   const c = compose("t").part(a).part(b).frame(a.frame.c, b.frame.f, { scale: 1.8, offset: 32 }).wire(a.out.temp, b.in.temp);
   assert.deepEqual(short(c.check()), []);
   const conv = c.build().wires[0].convert;
-  assert.deepEqual(conv, [{ field: "", kind: "point", from: "ta.c", to: "tb.f", scale: [1.8], offset: [32] }]);
+  assert.deepEqual(conv, [{ field: "", kind: "point", from: "ta.c", to: "tb.f", fromId: "a.c", toId: "b.f", scale: [1.8], offset: [32] }]);
   assert.match(c.plan()[0], /point, ×1\.8 \+32/);
 });
 
@@ -136,7 +136,7 @@ test("point1 is not a quantity, a vector or a 2-D point; point1@s is an instant 
   const t = /** @type {any} */ (T("a")), u = /** @type {any} */ (U("b"));
   const c = compose("t").part(t).part(u).wire(t.out.now, u.in.at);
   assert.deepEqual(short(c.check()), []);
-  assert.deepEqual(c.build().wires[0].convert, [{ field: "", kind: "point", from: "s", to: "s", scale: [1], offset: [0] }]);
+  assert.deepEqual(c.build().wires[0].convert, [{ field: "", kind: "point", from: "s", to: "s", fromId: "s", toId: "s", scale: [1], offset: [0] }]);
   assert.deepEqual(dialectCodes(() => tiny("t3", { out: { p: out("point1@px", "t") } })), ["D025"], "a 2-dim frame is not a 1-D position's");
   assert.deepEqual(dialectCodes(() => tiny("t4", { out: { p: out("point2@c") } }, { c: { dims: 1, note: "n" } })), ["D025"]);
 });

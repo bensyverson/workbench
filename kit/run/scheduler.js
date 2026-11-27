@@ -48,13 +48,14 @@ import { createPlanner } from "./replan.js";
 /** What a consumer of the page reads of it: no state, and one revision. @type {View} */
 const PAGE_VIEW = Object.freeze({ state: null, revision: 1, part: null });
 
-/** A number, a rational or rational text, as a rational. @param {number | Q | string} t */
+/** A number, a rational or rational text, as a rational of at least 0. @param {number | Q | string} t */
 const toQ = (t) => {
   const r = typeof t === "number" ? fromNumber(t)
     : typeof t === "string" ? (/^-?\d+(\/[1-9]\d*)?$/.test(t) ? parseQ(t) : null)
     : t !== null && typeof t === "object" && Number.isInteger(/** @type {any} */ (t).n) && Number.isInteger(/** @type {any} */ (t).d) && /** @type {any} */ (t).d > 0 ? t : null;
   // anything else would never compare past an instant, and the run would step forever
   if (!r) throw new Error(`${typeof t === "string" ? JSON.stringify(t) : String(t)} is not a time a run can stamp: seconds as a number with a denominator up to a million, a rational, or "<n>/<d>"`);
+  if (r.n < 0) throw new Error(`a run time is at least 0, not ${qText(r)}`);
   return r;
 };
 
@@ -68,7 +69,8 @@ export function createRun(composed, options) {
   const seed = options.seed ?? 0;
   const frames = options.frames ?? "nominal";
   const catchUp = catchUpOf(options.catchUp);
-  const every = toQ(options.checkpointEvery ?? 1);
+  const every = (() => { try { return toQ(options.checkpointEvery ?? 1); } catch (e) { throw new Error(`checkpointEvery: ${/** @type {Error} */ (e).message}`); } })();
+  if (every.n === 0) throw new Error("checkpointEvery is above 0: an interval of 0 would checkpoint at every instant forever");
   /** @type {RunDiagnostic[]} */
   const diagnostics = [];
   /** @type {BuildEvent[]} */
@@ -92,8 +94,10 @@ export function createRun(composed, options) {
   const hasPage = composed.parts.some((cp) => cp.dialect === PAGE && cp.name === PAGE);
   /** @type {Array<{ code: string, message: string }>} */
   const refused = [];
+  if (!Array.isArray(composed.frames)) refused.push({ code: "N007", message: "the composed record has no `frames` list (kit/compose gives every record one, empty when the glue relates no frames), so a rebuild could not plan its glue edges again" });
   for (const w of composed.wires) {
     if (w.overflow !== undefined && w.overflow !== null && w.overflow !== "keepLast" && w.overflow !== "keepFirst") refused.push({ code: "N007", message: `wire ${w.from} → ${w.to}: overflow is ${JSON.stringify(w.overflow)}, not "keepLast" or "keepFirst"` });
+    for (const c of w.convert) if (typeof c.fromId !== "string" || typeof c.toId !== "string") refused.push({ code: "N007", message: `wire ${w.from} → ${w.to}: its conversion of ${c.field || "the value"} has no fromId and toId (the frame ids kit/compose records), so a rebuild could not plan it again` });
   }
   /** @type {Part[]} */
   const parts = [];

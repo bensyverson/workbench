@@ -58,7 +58,8 @@ export function createPlanner(composed, byName, wires, layers) {
     trial(name, compiled) {
       if (!current.edges) {
         const base = replan(composed, framesOf(null));
-        current = { ...current, edges: base.ok ? base.edges : [] };
+        if (!base.ok) return { ok: false, diagnostics: base.diagnostics.map((d) => ({ code: d.code, message: `the composed record's own plan fails before this rebuild: ${d.message}` })) };
+        current = { ...current, edges: base.edges };
       }
       const r = replan(composed, framesOf({ name, compiled }));
       if (!r.ok) return r;
@@ -75,7 +76,7 @@ export function createPlanner(composed, byName, wires, layers) {
         ...composed,
         parts: composed.parts.map((cp) => { const p = cp.layer === undefined ? byName.get(cp.name) : undefined; return p ? { ...cp, record: p.record } : cp; }),
         wires: composed.wires.map((w, i) => ({ ...w, convert: current.convert[i] })),
-        frames: (composed.frames ?? []).map((f, i) => (current.frames?.[i] ? { ...f, edge: current.frames[i] } : f)),
+        frames: composed.frames.map((f, i) => (current.frames?.[i] ? { ...f, edge: current.frames[i] } : f)),
       };
     },
   };

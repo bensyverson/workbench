@@ -28,7 +28,7 @@ test("a Draw wire plans one draw conversion along the frame path, and the page s
   assert.deepEqual(errors(c.check()), []);
   const rec = /** @type {any} */ (c.build());
   const w = rec.wires.find((/** @type {any} */ x) => x.to === "scr.in.board");
-  assert.deepEqual(w.convert, [{ field: "", kind: "draw", from: "maze.cell", to: "screen.px", scale: [8, 8], offset: [4, 4] }]);
+  assert.deepEqual(w.convert, [{ field: "", kind: "draw", from: "maze.cell", to: "screen.px", fromId: "level.cell", toId: "scr.px", scale: [8, 8], offset: [4, 4] }]);
   assert.equal(rec.view, "view");
   assert.match(c.plan().join("\n"), /level\.out\.view → scr\.in\.board: \(value\): maze\.cell → screen\.px, draw, ×8 \+4/);
 });

@@ -189,7 +189,7 @@ export function analyze(name, start, given, options) {
   const wires = planLayers({
     parts, byName, broken, add, resolve, side, partSide, anySide, node, graph, refusedPairs, frameName,
     extentOf: (id) => { const [pn, f] = id.split("."); return byName.get(pn)?.extents[f]; },
-    conversion: (fromId, toId, path) => { const conv = { field: "", kind: /** @type {const} */ ("draw"), from: frameName(fromId), to: frameName(toId), ...planOf("draw", path.edge) }; return { ...conv, text: convertText({ ...conv, edge: path.edge }) + notesOf(path) }; },
+    conversion: (fromId, toId, path) => { const conv = { field: "", kind: /** @type {const} */ ("draw"), from: frameName(fromId), to: frameName(toId), fromId, toId, ...planOf("draw", path.edge) }; return { ...conv, text: convertText({ ...conv, edge: path.edge }) + notesOf(path) }; },
   });
   /** Each wired input or param, by its handle's text. @type {Map<string, At>} */
   const wired = new Map();
@@ -273,7 +273,7 @@ export function analyze(name, start, given, options) {
         add(at, "S254", `${text}: ${field} is a quantity (a length) in ${frameName(fromId)}, and the path to ${frameName(toId)} scales its axes differently (${edgeText(path.edge)}): ${pathText(path)}`, "relate the frames with one scale for every axis (or a flip), or offer the value as a vector", sides);
         continue;
       }
-      const conv = { field: leaf.field, kind: leaf.kind, ...(leaf.rate ? { rate: /** @type {const} */ (true) } : {}), from: frameName(fromId), to: frameName(toId), ...planOf(leaf.kind, path.edge) };
+      const conv = { field: leaf.field, kind: leaf.kind, ...(leaf.rate ? { rate: /** @type {const} */ (true) } : {}), from: frameName(fromId), to: frameName(toId), fromId, toId, ...planOf(leaf.kind, path.edge) };
       wire.convert.push({ ...conv, text: convertText({ ...conv, edge: path.edge }) + notesOf(path) });
     }
   }

@@ -39,7 +39,7 @@ const split = (id) => { const i = id.indexOf("."); return [id.slice(0, i), id.sl
  * Plans a composed record's conversions again, from the parts' frames in force. Each wire's conversions keep their
  * fields, kinds and frame names; only their numbers follow the edges. `frames` is each glue edge as computed now, in
  * the record's order; `edges` the graph's edges, for telling which moved.
- * @param {Pick<Composed, "parts" | "wires"> & { frames?: Composed["frames"] }} composed
+ * @param {Pick<Composed, "parts" | "wires" | "frames">} composed
  * @param {(part: string) => PartFrames | null} framesOf  null for the page, a layer, or a part not running
  * @returns {Replan}
  */
@@ -49,11 +49,8 @@ export function replan(composed, framesOf) {
   const graph = new FrameGraph();
   graph.addNode(SECONDS, 1);
   /** @type {Map<string, string>} */
-  const layerFrame = new Map();
-  /** @type {Map<string, string>} */
   const dialectOf = new Map();
-  for (const cp of composed.parts) { dialectOf.set(cp.name, cp.dialect); if (cp.layer) layerFrame.set(cp.name, cp.layer.frame); }
-  const node = (/** @type {string} */ part, /** @type {string} */ f) => (f === SECONDS ? SECONDS : layerFrame.get(part) ?? `${part}.${f}`);
+  for (const cp of composed.parts) { dialectOf.set(cp.name, cp.dialect); }
   /** A frame as messages write it: maze.cell. @param {string} id */
   const frameName = (id) => { if (id === SECONDS) return SECONDS; const [pn, f] = split(id); return `${dialectOf.get(pn) ?? pn}.${f}`; };
   /** @param {Path} path */
@@ -72,7 +69,7 @@ export function replan(composed, framesOf) {
   }
   /** @type {Edge[]} */
   const frames = [];
-  for (const f of composed.frames ?? []) {
+  for (const f of composed.frames) {
     const [pa, fa] = split(f.from), [pb, fb] = split(f.to);
     const ea = framesOf(pa)?.extents[fa], eb = framesOf(pb)?.extents[fb];
     if (derived(f.given) && (!ea || !eb)) {
@@ -90,9 +87,7 @@ export function replan(composed, framesOf) {
 
   /** @type {Conversion[][]} */
   const convert = composed.wires.map((w) => w.convert.map((c) => {
-    const a = node(split(w.from)[0], c.from === SECONDS ? SECONDS : split(c.from)[1]);
-    const b = node(split(w.to)[0], c.to === SECONDS ? SECONDS : split(c.to)[1]);
-    const path = graph.path(a, b);
+    const path = graph.path(c.fromId, c.toId);
     if (!path) { fail.push({ code: "S251", message: `${w.from} → ${w.to}: ${c.field || "the value"} in ${c.from} has no frame path to ${c.to} for the records now in force` }); return c; }
     if (c.kind === "quantity" && !uniform(path.edge)) { fail.push({ code: "S254", message: `${w.from} → ${w.to}: ${c.field || "the value"} is a quantity, and the path from ${c.from} to ${c.to} now scales its axes differently (${edgeText(path.edge)}): ${pathText(path)}` }); return c; }
     return { ...c, ...planOf(c.kind, path.edge) };

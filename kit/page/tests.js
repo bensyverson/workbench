@@ -6,7 +6,7 @@
 
 import { createRun, replay } from "../run/index.js";
 import { checkTests, pathProblem, readStatePath, sameData, stampOf } from "../package/index.js";
-import { parseQ, toNumber } from "../define/rational.js";
+import { parseQ, toNumber, fromNumber, cmp } from "../define/rational.js";
 import { examplePreset } from "./preset.js";
 
 /** Run time between checks of the wall-time budget, in seconds, as sweepRuns slices. */
@@ -81,6 +81,15 @@ export function endOf(t) {
   return Math.max(0, ...stamps.map((s) => /** @type {number} */ (stampOf(s))));
 }
 
+/** A valid stamp as the exact rational a run takes: text is parsed, not read through a float. @param {unknown} stamp @returns {import("../define/rational.js").Q} */
+const qOf = (stamp) => (typeof stamp === "string" ? parseQ(stamp) : /** @type {import("../define/rational.js").Q} */ (fromNumber(/** @type {number} */ (stamp))));
+
+/** The exact rational `endOf` gives as a float. @param {any} t */
+function endQOf(t) {
+  const stamps = [t.until, ...t.inputs.map((/** @type {any} */ i) => i.T), ...t.expect.flatMap((/** @type {any} */ e) => [e.at, e.from, e.to])].filter((x) => x !== undefined);
+  return stamps.map(qOf).reduce((a, b) => (cmp(b, a) > 0 ? b : a), qOf(0));
+}
+
 /**
  * @param {any} loaded @param {any} t
  * @param {{ importModule: TestsOptions["importModule"], buildOptions: TestsOptions["buildOptions"], pause: (extra: number) => Promise<boolean> }} env
@@ -122,31 +131,34 @@ async function runOne(loaded, t, { importModule, buildOptions, pause }) {
     const ds = /** @type {any} */ (e)?.diagnostics;
     return cantRun(Array.isArray(ds) ? ds.map((/** @type {any} */ d) => `${d.code} ${d.message}`).join("; ") : messageOf(e));
   }
-  const end = endOf(t);
-  /** @type {Array<{ at: number, e: any }>} */
-  const reads = t.expect.filter((/** @type {any} */ e) => e.state !== undefined || e.output !== undefined).map((/** @type {any} */ e) => ({ at: /** @type {number} */ (stampOf(e.at)), e })).sort((/** @type {any} */ a, /** @type {any} */ b) => a.at - b.at);
+  const end = endOf(t), endQ = endQOf(t);
+  /** @type {Array<{ at: import("../define/rational.js").Q, e: any }>} */
+  const reads = t.expect.filter((/** @type {any} */ e) => e.state !== undefined || e.output !== undefined).map((/** @type {any} */ e) => ({ at: qOf(e.at), e })).sort((/** @type {any} */ a, /** @type {any} */ b) => cmp(a.at, b.at));
   // a run is the same however runUntil is chunked (kit/run), so the slices and the reads change no result
   let at = 0;
-  /** @param {number} to @returns {Promise<boolean>} true when cancelled */
+  // the slices are floats, since where a run is cut changes nothing; the stop itself is the exact rational
+  /** @param {import("../define/rational.js").Q} to @returns {Promise<boolean>} true when cancelled */
   const advance = async (to) => {
-    while (at + SLICE < to) { at += SLICE; run.runUntil(at); if (await pause(at)) return true; }
-    run.runUntil(to); at = Math.max(at, to);
+    const target = toNumber(to);
+    while (at + SLICE < target) { at += SLICE; run.runUntil(at); if (await pause(at)) return true; }
+    run.runUntil(to); at = Math.max(at, target);
     return false;
   };
   try {
     for (const { at: when, e } of reads) {
       if (await advance(when)) return "cancelled";
+      const whenNumber = toNumber(when);
       if (e.state !== undefined) {
         for (const [path, want] of Object.entries(e.state)) {
           const got = readStatePath(run.state(part), path);
-          if (!sameData(got, want, e.within ?? 0)) fail("H006", `state at ${e.at} s: ${path}: expected ${show(want)}, got ${show(got)}`, when);
+          if (!sameData(got, want, e.within ?? 0)) fail("H006", `state at ${e.at} s: ${path}: expected ${show(want)}, got ${show(got)}`, whenNumber);
         }
       } else {
         const got = run.output(part, e.output);
-        if (!sameData(got, e.value, e.within ?? 0)) fail("H006", `output at ${e.at} s: ${e.output}: expected ${show(e.value)}, got ${show(got)}`, when);
+        if (!sameData(got, e.value, e.within ?? 0)) fail("H006", `output at ${e.at} s: ${e.output}: expected ${show(e.value)}, got ${show(got)}`, whenNumber);
       }
     }
-    if (await advance(end)) return "cancelled";
+    if (await advance(endQ)) return "cancelled";
   } catch (e) { return cantRun(`the run threw: ${messageOf(e)}`); }
   for (const e of t.expect) if (e.events !== undefined) eventsProblem(run, `${part}.out.${e.events}`, e, end, (m) => fail("H006", m, e.to !== undefined ? stampOf(e.to) ?? end : end));
   const expected = t.expect.filter((/** @type {any} */ e) => e.diagnostic !== undefined);

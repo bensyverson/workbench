@@ -21,7 +21,8 @@ import { makeLayer, SHORTHAND } from "./layer.js";
  * One diagnostic of a composition: at the glue's line (or a part's own, for a part's diagnostic), with the sides.
  * @typedef {{ code: string, severity: "error" | "warning", message: string, file: string, loc: Loc, from?: Side, to?: Side, fix: string }} ComposeDiagnostic
  */
-/** @typedef {{ field: string, kind: "point" | "vector" | "quantity" | "draw", rate?: true, from: string, to: string, scale: number[], offset: number[] }} Conversion */
+/** @typedef {{ field: string, kind: "point" | "vector" | "quantity" | "draw", rate?: true, from: string, to: string, fromId: string, toId: string, scale: number[], offset: number[] }} Conversion */
+// `from` and `to` are the frames as messages print them (<dialect>.<frame>); `fromId` and `toId` are their ids in the frame graph (<part>.<frame>, or s), which replan reads: a printed name may hold dots.
 /**
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
  * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants

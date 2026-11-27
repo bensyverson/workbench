@@ -37,7 +37,7 @@ test("a layer draws its inputs bottom first in the bottom producer's frame, with
   assert.deepEqual(rec.parts[2], { name: "top", dialect: "layer", record: {}, layer: { inputs: ["scr.out.view", "level.out.view"], max: 69, frame: "scr.px" } });
   assert.deepEqual(rec.wires, [
     { from: "scr.out.view", to: "top.in.0", convert: [], rename: {}, delay: false, dropped: [] },
-    { from: "level.out.view", to: "top.in.1", convert: [{ field: "", kind: "draw", from: "maze.cell", to: "screen.px", scale: [8, 8], offset: [4, 4] }], rename: {}, delay: false, dropped: [] },
+    { from: "level.out.view", to: "top.in.1", convert: [{ field: "", kind: "draw", from: "maze.cell", to: "screen.px", fromId: "level.cell", toId: "scr.px", scale: [8, 8], offset: [4, 4] }], rename: {}, delay: false, dropped: [] },
   ]);
   assert.equal(rec.show, "top");
   assert.equal(rec.view, "view");
@@ -52,7 +52,7 @@ test("the shorthand .show(<output>, <output>) adds a layer named layers and show
   assert.equal(rec.show, "layers");
   // the maze is at the bottom now, so the layer is in its cells and the screen's pixels convert into them
   assert.deepEqual(rec.parts.at(-1).layer, { inputs: ["level.out.view", "scr.out.view"], max: 69, frame: "level.cell" });
-  assert.deepEqual(rec.wires[1].convert, [{ field: "", kind: "draw", from: "screen.px", to: "maze.cell", scale: [0.125, 0.125], offset: [-0.5, -0.5] }]);
+  assert.deepEqual(rec.wires[1].convert, [{ field: "", kind: "draw", from: "screen.px", to: "maze.cell", fromId: "scr.px", toId: "level.cell", scale: [0.125, 0.125], offset: [-0.5, -0.5] }]);
 });
 
 test("a layer joins at its first mention; .part of it is allowed and not needed; a layer is one part", () => {
@@ -86,7 +86,7 @@ test("a layered output wires into a part's Draw input through the bottom produce
   c.part(hud).frame(level.frame.cell, hud.frame.px, { scale: 2, offset: 1 }).wire(top.out.view, hud.in.board).show(hud);
   assert.deepEqual(errors(c.check()), []);
   const w = /** @type {any} */ (c.build()).wires.find((/** @type {any} */ x) => x.to === "hud.in.board");
-  assert.deepEqual(w.convert, [{ field: "", kind: "draw", from: "maze.cell", to: "screen.px", scale: [2, 2], offset: [1, 1] }]);
+  assert.deepEqual(w.convert, [{ field: "", kind: "draw", from: "maze.cell", to: "screen.px", fromId: "level.cell", toId: "hud.px", scale: [2, 2], offset: [1, 1] }]);
 });
 
 test("a layer of a layer: its max sums, its frame is the bottom layer's bottom frame", () => {

@@ -198,3 +198,10 @@ test("buildOptions(path, module) is the example's module scope, as checkExamples
   await runTests(p.loaded, { ...p.options, buildOptions: (path, mod) => { asked.push([path, typeof mod.default]); return {}; } });
   assert.deepEqual(asked, [["examples/01.js", "function"]]);
 });
+
+test("a text stamp past one second runs to exactly that rational: it is not read back through a float", async () => {
+  const stamp = "1000000001/999983";
+  const r = await run([T({ name: "late", inputs: [], until: stamp, expect: [{ at: stamp, state: { n: 0 } }] })]);
+  assert.deepEqual(r.diagnostics, []);
+  assert.equal(r.results[0].T, 1000000001 / 999983, "the run stopped at the stamp's own rational");
+});

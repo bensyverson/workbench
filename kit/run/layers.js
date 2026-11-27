@@ -72,6 +72,17 @@ export function makeLayers(composed, byName) {
       const below = b.layer ? entries.find((e) => e.name === b.part)?.layer?.frame : (() => { const f = /** @type {any} */ (byName.get(b.part)?.runtime.dialect.seams.out)?.[b.port]?.seam?.frame; return f === undefined ? undefined : `${b.part}.${f}`; })();
       if (typeof below === "string" && below !== rec.frame) bad(`its record's frame is ${rec.frame}, but its bottom input ${b.part}.${b.port} draws in ${below}`);
     }
+    // its max is the sum of its inputs' (compose's rule): a producer's built max, or the layer's own max for a layer
+    if (inputs.length === n && typeof rec.max === "number") {
+      /** @type {number[]} */
+      const maxes = [];
+      for (const i of inputs) {
+        const m = i.layer ? entries.find((e) => e.name === i.part)?.layer?.max : byName.get(i.part)?.compiled.draws?.[i.port]?.max;
+        if (typeof m === "number") maxes.push(m);
+      }
+      const sum = maxes.reduce((a, b) => a + b, 0);
+      if (maxes.length === n && sum !== rec.max) bad(`its record's max is ${rec.max}, but its inputs' maxes sum to ${sum}`);
+    }
     layers.set(cp.name, inputs);
   }
   // a layer has one output, `view`: a wire from any other port of it would be answered with the layer's list

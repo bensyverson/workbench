@@ -29,7 +29,6 @@ export function inputEntry(e, toQ) {
   if (!e || typeof e !== "object" || !INPUT_KINDS.includes(e.kind)) throw new Error(`an input is { kind, T, … } with kind ${INPUT_KINDS.join(", ")}, not ${JSON.stringify(e)}`);
   if (e.T === undefined || e.T === null) throw new Error(`an input needs its stamp T: ${JSON.stringify(e)}`);
   const T = toQ(e.T);
-  if (T.n < 0) throw new Error(`an input's stamp is at least 0, not ${qText(T)}`);
   if (e.kind !== "frame" && typeof e.part !== "string") throw new Error(`a ${e.kind} input names its part: ${JSON.stringify(e)}`);
   if ((e.kind === "control" || e.kind === "param" || e.kind === "in") && typeof e.name !== "string") throw new Error(`a ${e.kind} input names what it sets: ${JSON.stringify(e)}`);
   if (e.kind === "rebuild" && (e.record === null || typeof e.record !== "object")) throw new Error("a rebuild input carries the part's new built record");

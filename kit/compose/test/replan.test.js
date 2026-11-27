@@ -29,7 +29,7 @@ test("for the records it was built with, replan gives the composed record's own 
 test("a wider bottom picture moves the anchored panel: four 16-pixel cells wider puts it at [48, 4], with no edit", () => {
   const r = replan(hud(), (p) => (p === "big" ? px(256, 128) : p === "hud" ? px(160, 24) : null));
   assert.ok(r.ok);
-  assert.deepEqual(r.convert[1], [{ field: "", kind: "draw", from: "hudscreen.px", to: "screen.px", scale: [1, 1], offset: [48, 4] }]);
+  assert.deepEqual(r.convert[1], [{ field: "", kind: "draw", from: "hudscreen.px", to: "screen.px", fromId: "hud.px", toId: "big.px", scale: [1, 1], offset: [48, 4] }]);
 });
 
 /** A hand-made record: part a's cell and px related by its Dialect's edge, and both related by the glue to b's q. */
@@ -39,7 +39,7 @@ const triangle = {
     { from: "a.cell", to: "b.q", line: 3, given: { scale: [2], offset: [0] }, edge: { scale: [2], offset: [0] } },
     { from: "a.px", to: "b.q", line: 4, given: { scale: [1], offset: [0] }, edge: { scale: [1], offset: [0] } },
   ],
-  wires: [{ from: "a.out.at", to: "b.in.at", convert: [{ field: "", kind: /** @type {const} */ ("point"), from: "da.cell", to: "db.q", scale: [2], offset: [0] }], rename: {}, delay: false, dropped: [] }],
+  wires: [{ from: "a.out.at", to: "b.in.at", convert: [{ field: "", kind: /** @type {const} */ ("point"), from: "da.cell", to: "db.q", fromId: "a.cell", toId: "b.q", scale: [2], offset: [0] }], rename: {}, delay: false, dropped: [] }],
 };
 /** @param {Array<{ from: string, to: string, edge: any }>} edges @returns {(p: string) => import("../replan.js").PartFrames | null} */
 const framesOf = (edges) => (p) => {
