@@ -1,0 +1,331 @@
+{
+  "name": "cavern",
+  "version": "0.1.0",
+  "kit": "0.5",
+  "description": "A grid game: walk a figure around walls and pick up gems.",
+  "entry": {
+    "dialect": "cavern.dialect.js",
+    "grammar": "cavern.grammar.js",
+    "ui": "cavern.ui.js",
+    "runtime": "cavern.runtime.js"
+  },
+  "examples": [
+    "examples/first-cave.js"
+  ],
+  "tests": [
+    {
+      "name": "move-steps-once-per-press",
+      "example": "examples/first-cave.js",
+      "inputs": [
+        {
+          "T": 0.1,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        },
+        {
+          "T": 0.2,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        },
+        {
+          "T": 0.3,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.4,
+          "in": "move",
+          "value": {
+            "left": true
+          }
+        },
+        {
+          "T": 0.5,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.6,
+          "in": "move",
+          "value": {
+            "down": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 0,
+          "state": {
+            "player": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "at": 0.1,
+          "state": {
+            "player": [
+              2,
+              1
+            ]
+          }
+        },
+        {
+          "at": 0.2,
+          "state": {
+            "player": [
+              2,
+              1
+            ]
+          }
+        },
+        {
+          "at": 0.4,
+          "state": {
+            "player": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "at": 0.6,
+          "state": {
+            "player": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "at": 0.6,
+          "output": "player",
+          "value": [
+            1.5,
+            2.5
+          ]
+        }
+      ]
+    },
+    {
+      "name": "move-stops-at-walls",
+      "example": "examples/first-cave.js",
+      "inputs": [
+        {
+          "T": 0.1,
+          "in": "move",
+          "value": {
+            "up": true
+          }
+        },
+        {
+          "T": 0.2,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.3,
+          "in": "move",
+          "value": {
+            "left": true
+          }
+        },
+        {
+          "T": 0.4,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.5,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 0.2,
+          "state": {
+            "player": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "at": 0.4,
+          "state": {
+            "player": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "at": 0.5,
+          "state": {
+            "player": [
+              2,
+              1
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "pickup-pushes-picked-once",
+      "example": "examples/first-cave.js",
+      "inputs": [
+        {
+          "T": 0.1,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        },
+        {
+          "T": 0.2,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.3,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        },
+        {
+          "T": 0.4,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.5,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        },
+        {
+          "T": 0.6,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.7,
+          "in": "move",
+          "value": {
+            "left": true
+          }
+        },
+        {
+          "T": 0.8,
+          "in": "move",
+          "value": {}
+        },
+        {
+          "T": 0.9,
+          "in": "move",
+          "value": {
+            "right": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 0.4,
+          "output": "collected",
+          "value": 0
+        },
+        {
+          "events": "picked",
+          "from": 0,
+          "to": 0.4,
+          "count": 0
+        },
+        {
+          "events": "picked",
+          "from": 0.5,
+          "to": 0.5,
+          "records": [
+            {
+              "at": [
+                4.5,
+                1.5
+              ]
+            }
+          ]
+        },
+        {
+          "events": "picked",
+          "from": 0.6,
+          "to": 0.9,
+          "count": 0
+        },
+        {
+          "at": 0.9,
+          "state": {
+            "player": [
+              4,
+              1
+            ],
+            "collected": 1,
+            "gems.length": 2
+          }
+        },
+        {
+          "at": 0.9,
+          "output": "collected",
+          "value": 1
+        },
+        {
+          "at": 0.9,
+          "output": "remaining",
+          "value": 2
+        }
+      ]
+    }
+  ],
+  "files": {
+    "cavern.dialect.js": "sha256-5Syahc3sPvjDh/eEP7CWXdrpHwj0fatNPU6KBP7MQhU=",
+    "cavern.grammar.js": "sha256-txC2JYT0Yl/T8Mv7QvqHKNT7aKaURYAxNRiVtIjwKX8=",
+    "cavern.runtime.js": "sha256-FGPMyDH/xaNKAwQMryTNC7fx0NvSKeQoJNbBKAoZH6g=",
+    "cavern.ui.js": "sha256-xtzULsqiCUJF9QRu78LjqXKGT2oNEft2jqdyqZCLQbY=",
+    "examples/first-cave.js": "sha256-80TdgXNpGKbN34xs4ukevUGdHiWVAEd6ucwPHQfgP+A=",
+    "refusals/bad-cell.js": "sha256-KVRUm5uPzluhXNu0FxbO0jfgRQIoHKi6r/1gLlRa32c=",
+    "refusals/no-rows.js": "sha256-6U3ks4O7eoH5aRGT5JWqPCiS5B6tqZHf1CGcjGUcD6Y=",
+    "refusals/too-wide.js": "sha256-e8AiwZYUaMgSls71l2kubnrmOeIWZECvH00WitolL4A=",
+    "refusals/two-starts.js": "sha256-ey0pMgo8JqAgOQ6BIN7efvdqJPBq+NLEvO//UBEwSkg=",
+    "refusals/uneven.js": "sha256-8vpveOHStdZkFR5sHm6CEPJ1nLeZX2I1i2MN+SYFQHk=",
+    "sprites.png": "sha256-wVOZWeMW9DDm1K4yptwaCrzKZjAKzhtRJgYbJ8X7YiU="
+  },
+  "refusals": [
+    {
+      "module": "refusals/bad-cell.js",
+      "code": "G001"
+    },
+    {
+      "module": "refusals/too-wide.js",
+      "code": "G002"
+    },
+    {
+      "module": "refusals/uneven.js",
+      "code": "G003"
+    },
+    {
+      "module": "refusals/two-starts.js",
+      "code": "G004"
+    },
+    {
+      "module": "refusals/no-rows.js",
+      "code": "B005"
+    }
+  ]
+}

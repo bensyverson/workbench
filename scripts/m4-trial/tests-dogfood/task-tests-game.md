@@ -5,7 +5,7 @@ Your package must test its runtime with a `tests` entry in its manifest. Tests a
 
 Your tests must cover:
 
-- **every Event input** your Dialect declares (the pad, at least): a test sends records to it and expects what they do (the player moves, and does not walk into a wall);
+- **every Event input** your Dialect declares: a test sends records to it and expects what they do (for the input that steers the player: the player moves, and does not walk into a wall);
 - **your pickup Event output**: a test expects the records a pickup pushes.
 
 Write your tests only in the manifest. **Don't write a test harness outside it**: no script that imports your runtime, stubs `defineRuntime` or calls `step` itself, in your folder or anywhere else. If the tests entry cannot say something you want to test, that is a gap: report it.

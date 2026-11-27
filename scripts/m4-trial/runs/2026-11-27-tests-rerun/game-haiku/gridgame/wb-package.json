@@ -1,0 +1,353 @@
+{
+  "name": "gridgame",
+  "version": "0.1.0",
+  "kit": "0.5",
+  "description": "A player walks one cell per press on a grid of walls, gems and floor, picking up gems.",
+  "entry": {
+    "dialect": "gridgame.dialect.js",
+    "grammar": "gridgame.grammar.js",
+    "ui": "gridgame.ui.js",
+    "runtime": "gridgame.runtime.js"
+  },
+  "examples": [
+    "examples/first.js"
+  ],
+  "tests": [
+    {
+      "name": "steer-right-moves",
+      "example": "examples/first.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 2,
+          "state": {
+            "player.x": 2,
+            "player.y": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "steer-held-does-not-repeat",
+      "example": "examples/first.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 2,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 1.5,
+          "state": {
+            "player.x": 2
+          }
+        },
+        {
+          "at": 3,
+          "state": {
+            "player.x": 2,
+            "player.y": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "steer-into-wall-stays",
+      "example": "examples/first.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": true,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 1.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 2,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 2.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 1.2,
+          "state": {
+            "player.x": 1,
+            "player.y": 2
+          }
+        },
+        {
+          "at": 3,
+          "state": {
+            "player.x": 1,
+            "player.y": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "steer-onto-gem-picks-it-up",
+      "example": "examples/first.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 1.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 2,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 2.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 3,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 3.5,
+          "state": {
+            "player.x": 4,
+            "player.y": 1,
+            "cells[11].gem": false
+          }
+        },
+        {
+          "at": 3.5,
+          "output": "picked",
+          "value": 1
+        },
+        {
+          "events": "pickup",
+          "from": 0,
+          "to": 4,
+          "records": [
+            {
+              "at": [
+                4,
+                1
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "steer-back-over-taken-gem-picks-nothing",
+      "example": "examples/first.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 1.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 2,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 2.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 3,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        },
+        {
+          "T": 3.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 4,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": true,
+            "right": false
+          }
+        },
+        {
+          "T": 4.5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": false
+          }
+        },
+        {
+          "T": 5,
+          "in": "steer",
+          "value": {
+            "up": false,
+            "down": false,
+            "left": false,
+            "right": true
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 6,
+          "output": "picked",
+          "value": 1
+        },
+        {
+          "at": 6,
+          "state": {
+            "player.x": 4,
+            "player.y": 1
+          }
+        },
+        {
+          "events": "pickup",
+          "from": 4,
+          "to": 6,
+          "count": 0
+        }
+      ]
+    }
+  ],
+  "files": {
+    "examples/first.js": "sha256-Av6rraIk2Ytevne85zJf5k9U6G+u6LMCG2bOaDntVEY=",
+    "gridgame.dialect.js": "sha256-77iBYGxrFX2o9lkQvVkeo3X5TqpU7RxW9DD3/zmNCS4=",
+    "gridgame.grammar.js": "sha256-KeFZnulurHwpUoD4y22eZbdgJbeYZUUWp1Cg0qokxt8=",
+    "gridgame.runtime.js": "sha256-cxqAyyDH9HR6/MKnyu82m28znBqeUky++6auH8XDZ+4=",
+    "gridgame.ui.js": "sha256-GK9PzTy7Oe40pWfsO8WF1t8U0ZqOR+d8x8HnJPJzuBk=",
+    "sprites.png": "sha256-wVOZWeMW9DDm1K4yptwaCrzKZjAKzhtRJgYbJ8X7YiU="
+  }
+}

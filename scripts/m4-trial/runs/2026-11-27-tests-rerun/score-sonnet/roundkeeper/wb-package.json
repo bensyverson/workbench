@@ -1,0 +1,199 @@
+{
+  "name": "roundkeeper",
+  "version": "0.1.0",
+  "kit": "0.5",
+  "description": "One timed round and its score.",
+  "entry": {
+    "dialect": "roundkeeper.dialect.js",
+    "grammar": "roundkeeper.grammar.js",
+    "ui": "roundkeeper.ui.js",
+    "runtime": "roundkeeper.runtime.js"
+  },
+  "examples": [
+    "examples/sprint.js",
+    "examples/minute.js"
+  ],
+  "tests": [
+    {
+      "name": "scored-adds-worth",
+      "example": "examples/sprint.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 2,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 2,
+          "in": "scored",
+          "value": {}
+        }
+      ],
+      "expect": [
+        {
+          "at": 0.5,
+          "output": "score",
+          "value": 0
+        },
+        {
+          "at": 1.5,
+          "output": "score",
+          "value": 10
+        },
+        {
+          "at": 1.5,
+          "output": "met",
+          "value": false
+        },
+        {
+          "at": 2.5,
+          "output": "score",
+          "value": 30
+        },
+        {
+          "at": 2.5,
+          "output": "met",
+          "value": true
+        },
+        {
+          "at": 2.5,
+          "output": "over",
+          "value": false
+        },
+        {
+          "at": 2.5,
+          "output": "left",
+          "value": 7.5,
+          "within": 0.000001
+        },
+        {
+          "at": 2.5,
+          "state": {
+            "scoreText": "Gems 30/30",
+            "timeText": "Time 8"
+          }
+        }
+      ]
+    },
+    {
+      "name": "round-over-holds-score",
+      "example": "examples/sprint.js",
+      "inputs": [
+        {
+          "T": 9.9,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 9.999,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 10,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 11,
+          "in": "scored",
+          "value": {}
+        }
+      ],
+      "expect": [
+        {
+          "at": 9.95,
+          "output": "score",
+          "value": 10
+        },
+        {
+          "at": 9.95,
+          "output": "over",
+          "value": false
+        },
+        {
+          "at": 10,
+          "output": "over",
+          "value": true
+        },
+        {
+          "at": 10,
+          "output": "left",
+          "value": 0
+        },
+        {
+          "at": 10,
+          "output": "score",
+          "value": 20
+        },
+        {
+          "at": 15,
+          "output": "score",
+          "value": 20
+        },
+        {
+          "at": 15,
+          "output": "over",
+          "value": true
+        },
+        {
+          "at": 15,
+          "state": {
+            "timeText": "TIME UP",
+            "fraction": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "defaults-count-one",
+      "example": "examples/minute.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "scored",
+          "value": {}
+        }
+      ],
+      "expect": [
+        {
+          "at": 2,
+          "output": "score",
+          "value": 1
+        },
+        {
+          "at": 2,
+          "output": "met",
+          "value": false
+        },
+        {
+          "at": 2,
+          "state": {
+            "scoreText": "Score 1",
+            "timeText": "Time 43"
+          }
+        }
+      ]
+    }
+  ],
+  "files": {
+    "examples/minute.js": "sha256-5JTkXY6LJwEpeLxkdRE3rkLnoGNaYZrJJxjgV61dZ/8=",
+    "examples/sprint.js": "sha256-qQyXXQ93lSqZFKKoyP5kQTqHqTtl2KDShwWdpg5Jw8g=",
+    "refusals/long-label.js": "sha256-S1AYi4hVEAPoj/CBJrh6+w12ldQrf/IaonL9UYLhIJA=",
+    "roundkeeper.dialect.js": "sha256-qYsSYT3EGY17TF30GbPH55Br0OoxTxtib0nCbFgCW3Q=",
+    "roundkeeper.grammar.js": "sha256-XzSXqfvK+jytB+8at22Q/eaIKbCvVABEYhZx1UVDOS8=",
+    "roundkeeper.runtime.js": "sha256-cVeaBwo0K8YoigMNbx8M5pbQoDqcDKNp7VWTWTOGt3c=",
+    "roundkeeper.ui.js": "sha256-6sI02qHRf1y/ULDVhPhMK/qnxEfr/AsMTQztLWMws98="
+  },
+  "refusals": [
+    {
+      "module": "refusals/long-label.js",
+      "code": "Q001"
+    }
+  ]
+}

@@ -98,6 +98,37 @@ test("the game hand-in of run 1 checks clean: its pad input has the page pad's s
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
 
+/** Run 1's game, copied, with its Control's UI declaration replaced (and, given `rename`, its input and buttons renamed). @param {string} controls @param {boolean} [rename] */
+const run1Variant = async (controls, rename = false) => {
+  const d = join(mkdtempSync(join(tmpdir(), "aWrZQr-")), "gemgrid");
+  cpSync(join(RUNS, "game-run1/gemgrid"), d, { recursive: true });
+  /** @param {string} f @param {(s: string) => string} edit */
+  const rewrite = (f, edit) => writeFileSync(join(d, f), edit(readFileSync(join(d, f), "utf8")));
+  const to = /** @type {Record<string, string>} */ ({ up: "n", down: "s", left: "w", right: "e" });
+  if (rename) {
+    rewrite("gemgrid.runtime.js", (s) => s.replace(/\b(up|down|left|right)\b/g, (w) => to[w]).replace(/\bpad\b/g, "steer"));
+    rewrite("gemgrid.dialect.js", (s) => s.replace('"up", "down", "left", "right"', '"n", "s", "w", "e"')
+      .replace('struct({ up: "bool", down: "bool", left: "bool", right: "bool" })', 'struct({ n: "bool", s: "bool", w: "bool", e: "bool" })')
+      .replace("pad: {\n        seam: \"Event<{ up: bool, down: bool, left: bool, right: bool }>\"", "steer: {\n        seam: \"Event<{ n: bool, s: bool, w: bool, e: bool }>\""));
+  }
+  rewrite("gemgrid.ui.js", (s) => s.replace(/  controls: \{[\s\S]*?\n  \},\n/, controls));
+  await hashDir(d);
+  return d;
+};
+
+test("a game steered by a Control of its own name and buttons, with no keys, is played on screen and checks clean (the checker held ArrowRight and ArrowDown, and took only the D-pad's seam)", async () => {
+  const d = await run1Variant('  controls: { steer: { kind: "buttons", buttons: ["n", "s", "w", "e"] } },\n', true);
+  const r = check([d, "--role", "game"]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test("a game whose input has the D-pad's seam but whose UI declares no Control is T006: nothing on the page steers it", async () => {
+  const d = await run1Variant("");
+  const r = check([d, "--role", "game"]);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /T006 /);
+});
+
 test("the game hand-in of run 2 checks clean", () => {
   const r = check([join(RUNS, "game-run2/gemgrid"), "--role", "game"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);

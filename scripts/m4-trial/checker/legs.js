@@ -8,10 +8,10 @@ import { basename, join } from "node:path";
 import { readPackageDir, PackageDirError } from "../../pkg/dir.js";
 import { checkExamples, textOf } from "../../../kit/package/index.js";
 import { runTests } from "../../../kit/page/index.js";
-import { compose, page } from "../../../kit/compose/index.js";
+import { compose, page, PAGE } from "../../../kit/compose/index.js";
 import { loadOnePackage, loadWorkbench, hostDiagnostic } from "../../../kit/page/host/load.js";
 import { moduleScope } from "../../../kit/define/index.js";
-import { parseSeam, compareSeams } from "../../../kit/seam/index.js";
+import { keyMap } from "../../../kit/page/keys.js";
 import { ENV, drivenPage } from "./env.js";
 
 /** @typedef {{ code: string, severity: "error" | "warning", message: string, fix: string, file: string, line: number }} Diagnostic */
@@ -37,12 +37,11 @@ export const fromHost = (d, file) => ({ code: d.code, severity: d.severity === "
 
 /** @param {any} seam */
 const kindOf = (seam) => seam?.kind;
-/** The D-pad's seam the trial's game takes, as a Dialect's input would hold it. The kit once offered this pad itself
- * (PAGE_CONTROLS); since declared Controls (2026-11-27) the game's own UI declares a Control of its input's name. */
-const PAD_TEXT = "Event<{ up: bool, down: bool, left: bool, right: bool }>";
-const PAD_SEAM = /** @type {any} */ (parseSeam(PAD_TEXT)).type;
-/** Whether the page's pad can be wired to an input of this seam, by kit/seam's own comparison (what kit/compose uses). @param {any} seam */
-const takesPad = (seam) => kindOf(seam) === "event" && compareSeams(PAD_SEAM, seam).problems.length === 0;
+/** The Event inputs a person plays from the page: those the package's UI declares a Control for, by name (declared
+ * Controls, 2026-11-27: the kit knows no Control of its own, and until then the trial took only its D-pad's seam).
+ * @param {any} loaded @param {[string, any][]} ins @returns {string[]} */
+const controlled = (loaded, ins) => Object.entries(loaded.ui?.controls ?? {})
+  .filter(([name, c]) => !c.local && ins.some(([k, i]) => k === name && kindOf(i.seam) === "event")).map(([name]) => name);
 
 /** @param {string} dir @returns {Record<string, string | Uint8Array>} */
 export function readPackage(dir) {
@@ -107,17 +106,17 @@ export async function checkAuthor(dir, role) {
   if (!outs.some((o) => kindOf(o.seam) === "draw")) out.push(t("T003", "the Dialect offers no picture: no Draw output", "add a Draw<<max>>@<frame> output to ports.out (docs/kit/API.md, Seams: \"A picture on the wire\")", dialectFile));
   if (!loaded.runtime) out.push(t("T008", "the package has no runtime, so it cannot run on the page", "name your defineRuntime module in the manifest's entry.runtime"));
   if (!outs.some((o) => kindOf(o.seam) !== "draw" && kindOf(o.seam) !== "event")) out.push(t("T007", "the Dialect offers no value output", "add a value output to ports.out (a path or a value lambda in `from`)", dialectFile));
-  /** @type {string | undefined} */
-  let padInput;
+  /** @type {string[]} */
+  let played = [];
   if (role === "game") {
     if (!loaded.ui?.stage?.draw) out.push(t("T004", "the package's UI has no Draw stage", 'give the UI stage: { draw: "<your Draw output>" }', checkedEntry(files, "ui")));
     if (!Object.values(loaded.data ?? {}).some((/** @type {any} */ d) => d.kind === "image")) out.push(t("T005", "the Dialect declares no image with a PNG file", "copy sprites.png into the package, declare it in images with its file, and hash the package", dialectFile));
-    padInput = ins.find(([, i]) => takesPad(i.seam))?.[0];
-    if (padInput === undefined) out.push(t("T006", `the Dialect has no Event input with the D-pad's seam, ${PAD_TEXT}, so the page's D-pad cannot be wired to it`, "add that input to ports.in (docs/kit/compose/README.md, \"The page\")", dialectFile));
+    played = controlled(loaded, ins);
+    if (!played.length) out.push(t("T006", "the UI declares no Control on an Event input, so nothing on the page steers the player", "declare a Control in your UI's controls, named by the Event input that moves the player (docs/kit/API.md, defineUI, \"Controls\")", checkedEntry(files, "ui")));
     if (!outs.some((o) => kindOf(o.seam) === "event")) out.push(t("T009", "the Dialect offers no Event output for a pickup", "add an Event output that your runtime pushes a record to on each pickup", dialectFile));
   } else if (!ins.some(([, i]) => kindOf(i.seam) === "event")) out.push(t("T009", "the Dialect has no Event input for a scoring event", "add an Event input to ports.in", dialectFile));
   if (ex.length || !loaded.runtime) return { ...done(out), tests: count, testedInputs: tested, eventInputs: ins.filter(([, i]) => kindOf(i.seam) === "event").map(([k]) => k) };
-  for (const example of loaded.examples) out.push(...(await playExample(pkg, example, role, padInput)));
+  for (const example of loaded.examples) out.push(...(await playExample(pkg, example, role, played)));
   return { ...done(out), tests: count, testedInputs: tested, eventInputs: ins.filter(([, i]) => kindOf(i.seam) === "event").map(([k]) => k) };
 }
 
@@ -127,19 +126,19 @@ function checkedEntry(files, which) {
 }
 
 /**
- * One example on the page, alone (the page's pad wired to the game's pad input).
- * @param {any} pkg @param {string} example @param {"game" | "score"} role @param {string | undefined} padInput
+ * One example on the page, alone (each Control the game's UI declares wired to the input of its name).
+ * @param {any} pkg @param {string} example @param {"game" | "score"} role @param {string[]} played
  * @returns {Promise<Diagnostic[]>}
  */
-async function playExample(pkg, example, role, padInput) {
+async function playExample(pkg, example, role, played) {
   const loaded = pkg.loaded;
   /** @type {Diagnostic[]} */
   const out = [];
   const mod = await ENV.importUrl(pkg.urls.get(example));
   const builder = mod.default(Object.freeze({}));
   let composition = compose(loaded.name).part(builder);
-  // the package's own Control of the pad input's name (declared Controls): page.out.<input>
-  if (padInput !== undefined) composition = composition.wire(/** @type {any} */ (page.out)[padInput], builder.in[padInput]);
+  // the package's own Controls (declared Controls): page.out.<input>, as the page wires a part played alone
+  for (const name of played) composition = composition.wire(/** @type {any} */ (page.out)[name], builder.in[name]);
   composition = composition.show(builder);
   const options = { packages: [loaded], build: moduleScope(textOf(pkg.files[example]) ?? "", mod), runtimes: [loaded.runtime] };
   const found = composition.check(options).map((/** @type {any} */ d) => fromHost(hostDiagnostic("composition", d), example));
@@ -152,10 +151,9 @@ async function playExample(pkg, example, role, padInput) {
   const sample = () => { lists.push(shownList(pg) ?? "null"); };
   if (role === "game") {
     frames(FPS); sample();
-    key(pg, "ArrowRight", "keydown"); frames(FPS); key(pg, "ArrowRight", "keyup");
-    key(pg, "ArrowDown", "keydown"); frames(FPS); key(pg, "ArrowDown", "keyup");
+    playControls(pg, frames);
     frames(5); sample();
-    if (lists[0] === lists[1]) out.push(t("T010", `${example}: holding right, then down, changed nothing in the picture`, "move the player on the pad's records, and draw the player where it stands", example));
+    if (lists[0] === lists[1]) out.push(t("T010", `${example}: playing each of your Controls in turn changed nothing in the picture`, "move the player on your Control's records, and draw the player where it stands", example));
     if (!context.calls.drawImage) out.push(t("T012", `${example}: no image was drawn`, "draw the player (or the gems) with an image op naming your declared image", example));
   } else {
     frames(FPS); sample();
@@ -166,6 +164,28 @@ async function playExample(pkg, example, role, padInput) {
   if (lists.some((l) => l === "null" || l === "[]")) out.push(t("T011", `${example}: the shown picture was empty`, "build at least one op in your Draw output", example));
   out.push(...runDiagnostics(pg, example));
   return out;
+}
+
+/**
+ * Plays each wired Control in turn, a second for each thing it can send, as a person would: a buttons Control on
+ * screen (each button held alone, then released, the record the page host's on-screen form sends), any other kind
+ * through the keys it declares (each code held a second). A Control of another kind with no keys is not played.
+ * @param {any} pg @param {(n: number) => void} frames
+ */
+export function playControls(pg, frames) {
+  const controls = Object.fromEntries(pg.controls().map((/** @type {any} */ c) => [c.name, c]));
+  const keys = [...keyMap(controls).entries()];
+  for (const [name, c] of Object.entries(controls)) {
+    if (c.kind === "buttons") {
+      const none = Object.fromEntries(c.decl.buttons.map((/** @type {string} */ b) => [b, false]));
+      for (const b of c.decl.buttons) {
+        pg.run.input({ kind: "control", part: PAGE, name, value: { ...none, [b]: true } }); frames(FPS);
+        pg.run.input({ kind: "control", part: PAGE, name, value: none }); frames(1);
+      }
+    } else {
+      for (const [code] of keys.filter(([, k]) => k.control === name)) { key(pg, code, "keydown"); frames(FPS); key(pg, code, "keyup"); frames(1); }
+    }
+  }
 }
 
 /** @param {Diagnostic[]} out @returns {CheckResult} */

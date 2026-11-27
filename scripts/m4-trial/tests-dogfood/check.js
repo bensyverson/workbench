@@ -6,7 +6,7 @@
 // trial tests the tests design. Prints, logs and exits as check.js does (M4_TRIAL_LOG; exit 0 clean, 1 violations, 2
 // usage, 3 the checker failed, 4 the folder is missing).
 
-import { appendFileSync, existsSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { checkAuthor, CheckTargetError } from "../checker/legs.js";
@@ -31,6 +31,11 @@ function parse(argv) {
   return { role: /** @type {"game" | "score"} */ (role), dir: rest[0] };
 }
 
+/** Whether the folder's manifest lists any test (unreadable JSON is kit/package's to report). @param {string} dir */
+function listsTests(dir) {
+  try { const t = JSON.parse(readFileSync(join(dir, "wb-package.json"), "utf8")).tests; return Array.isArray(t) ? t.length > 0 : t !== undefined; } catch { return true; }
+}
+
 /** @param {string[]} argv @returns {Promise<number>} */
 async function main(argv) {
   const log = process.env.M4_TRIAL_LOG;
@@ -53,7 +58,8 @@ async function main(argv) {
     /** @type {any[]} */
     const ds = [...r.diagnostics];
     const counts = r.tests ?? { run: 0, passed: 0 };
-    if (!counts.run && !ds.some((d) => d.code === "K002" || d.code === "K020" || d.code === "K021")) {
+    // T030 is a manifest that lists no tests, not one whose tests never ran (a package that did not load, an example that did not build)
+    if (!listsTests(args.dir) && !ds.some((d) => d.code === "K002" || d.code === "K020" || d.code === "K021")) {
       ds.push({ code: "T030", severity: "error", message: "the manifest has no tests", fix: "list tests in the manifest's \"tests\": docs/kit/package/README.md, Tests", file: "wb-package.json", line: 1 });
     }
     for (const k of r.eventInputs ?? []) if (counts.run && !(r.testedInputs ?? []).includes(k)) ds.push({ code: "T031", severity: "error", message: `no test sends a record to the Event input ${k}`, fix: `add a test whose inputs send ${k} records, and expect what they do`, file: "wb-package.json", line: 1 });
