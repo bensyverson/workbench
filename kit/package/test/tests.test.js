@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkManifest, checkTests, readStatePath, sameData } from "../index.js";
-import { defineDialect } from "../../define/index.js";
+import { defineDialect, struct, union } from "../../define/index.js";
 import { mazeDecl } from "../../define/fixtures/seams-dialects.js";
 
 const H = "sha256-" + "A".repeat(43) + "=";
@@ -188,4 +188,13 @@ test("readStatePath and sameData: a path's value, and exact JSON-data equality w
   assert.equal(sameData(1, 1.2, 0.1), false);
   assert.equal(sameData([1], { 0: 1 }, 0), false);
   assert.equal(sameData(null, null, 0), true);
+});
+
+test("a state path into a union's members is K020 only when no member takes it", () => {
+  const d = decl();
+  d.state = { ...d.state, shape: union(struct({ r: "f64" }), struct({ w: "f64", h: "f64" })), n: union("f64", struct({ q: "f64" })) };
+  const u = defineDialect(/** @type {any} */ (d));
+  const at = (/** @type {string} */ path) => checkTests({ name: "maze", dialect: u, tests: [T({ expect: [{ at: 1, state: { [path]: 1 } }] })], diagnostics: [] });
+  for (const ok of ["shape.r", "shape.w", "shape.h", "n.q"]) assert.deepEqual(at(ok).map((x) => x.message), [], ok);
+  assert.equal(at("shape.z").length, 1);
 });

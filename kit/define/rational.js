@@ -37,7 +37,7 @@ export const qText = (a) => (a.d === 1 ? String(a.n) : `${a.n}/${a.d}`);
 /** The rational a qText wrote. @param {string} s @returns {Q} */
 export const parseQ = (s) => { const [n, d] = s.split("/").map(Number); return q(n, d ?? 1); };
 
-const MAX_DENOMINATOR = 1_000_000;
+export const MAX_DENOMINATOR = 1_000_000;
 
 /**
  * The rational a number means, by continued fractions: the simplest one within 1e-12 (relative) whose denominator

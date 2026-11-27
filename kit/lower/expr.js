@@ -39,10 +39,16 @@ export function describe(t) {
  * @param {Type} before  the join of the items before it
  */
 function itemsDoNotJoin(L, at, t, before) {
-  if (describe(t) === describe(before) && typeof t === "object" && "list" in t && typeof before === "object" && "list" in before) {
+  if (describe(t) === describe(before)) {
     const kind = (/** @type {{ max: number, len?: number }} */ x) => (x.len === undefined ? `a list of at most ${x.max}` : `a list of exactly ${x.len}`);
-    L.error("L003", at, `An array's items share one type, but this is ${kind(t)} and the items before it are ${kind(before)} (both ${describe(t)}): a list literal's known length does not join a list with only a max.`, "Write every item the same way: each as a literal of its items, [<a>, <b>], reading a list's item into a const and checking it for null first; or each as a list you were given.");
-    return;
+    // the difference may be inside the items: step down while the two lists are alike at this level
+    let [a, b, depth] = [/** @type {any} */ (t), /** @type {any} */ (before), 0];
+    while (a && b && typeof a === "object" && typeof b === "object" && "list" in a && "list" in b && kind(a) === kind(b)) { [a, b] = [a.list, b.list]; depth++; }
+    if (a && b && typeof a === "object" && typeof b === "object" && "list" in a && "list" in b) {
+      const where = depth ? `, inside ${depth === 1 ? "the items of each list" : `each list's items, ${depth} levels down`}` : "";
+      L.error("L003", at, `An array's items share one type, but this is ${kind(a)} and the items before it are ${kind(b)}${where} (both ${describe(a)}): a list literal's known length does not join a list with only a max.`, "Write every item the same way: each as a literal of its items, [<a>, <b>], reading a list's item into a const and checking it for null first; or each as a list you were given.");
+      return;
+    }
   }
   L.error("L003", at, `An array's items share one type, but this is ${describe(t)} and the items before it are ${describe(before)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
 }

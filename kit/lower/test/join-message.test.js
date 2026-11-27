@@ -30,3 +30,14 @@ for (const [name, src] of [
     assert.ok(tip && /null/.test(tip), `the tip says how to read a list's items: ${tip}`);
   });
 }
+
+test("a known length against a max one list level down names the inner lists, not the outer ones that are alike", () => {
+  const found = l003("(p, n, b) => [[p], [[n, 1]]]");
+  assert.equal(found.length, 1);
+  const m = found[0].message.match(/this is (.*?) and the items before it are (.*?) \(/);
+  assert.ok(m, found[0].message);
+  assert.notEqual(m[1], m[2], found[0].message);
+  assert.match(found[0].message, /exactly 2/);
+  assert.match(found[0].message, /at most 2/);
+  assert.match(found[0].message, /inside|within|one level down|items of the items/);
+});

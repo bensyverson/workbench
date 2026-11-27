@@ -5,7 +5,7 @@
 // reports anything. kit/page does the running because kit/package may not import kit/run. No DOM, no Node built-ins.
 
 import { createRun, replay } from "../run/index.js";
-import { checkTests, readStatePath, sameData, stampOf } from "../package/index.js";
+import { checkTests, pathProblem, readStatePath, sameData, stampOf } from "../package/index.js";
 import { parseQ, toNumber } from "../define/rational.js";
 import { examplePreset } from "./preset.js";
 
@@ -75,9 +75,9 @@ export async function runTests(loaded, { importModule, buildOptions, signal, onP
   return { results, diagnostics: flat() };
 }
 
-/** The seconds a test runs to: the largest of `until`, every input's T and every `at` and `to`. @param {any} t */
+/** The seconds a test runs to: the largest of `until`, every input's T and every `at`, `from` and `to`. @param {any} t */
 export function endOf(t) {
-  const stamps = [t.until, ...t.inputs.map((/** @type {any} */ i) => i.T), ...t.expect.flatMap((/** @type {any} */ e) => [e.at, e.to])].filter((x) => x !== undefined);
+  const stamps = [t.until, ...t.inputs.map((/** @type {any} */ i) => i.T), ...t.expect.flatMap((/** @type {any} */ e) => [e.at, e.from, e.to])].filter((x) => x !== undefined);
   return Math.max(0, ...stamps.map((s) => /** @type {number} */ (stampOf(s))));
 }
 
@@ -111,6 +111,11 @@ async function runOne(loaded, t, { importModule, buildOptions, pause }) {
     composed = preset.composition.build({ packages: [loaded], runtimes: [loaded.runtime] });
     part = composed.parts.find((/** @type {any} */ p) => p.dialect === loaded.name)?.name ?? "";
     for (const e of t.expect) if (e.events !== undefined) taps.push(`${part}.out.${e.events}`);
+    const state = loaded.dialect?.stateTypeFor?.(composed.parts.find((/** @type {any} */ p) => p.name === part)?.record ?? {});
+    if (state) {
+      const undeclared = t.expect.filter((/** @type {any} */ e) => e.state !== undefined).flatMap((/** @type {any} */ e) => Object.keys(e.state)).filter((/** @type {string} */ path) => pathProblem(state, null, path));
+      if (undeclared.length) return cantRun(`a state path names a field its example's Program does not declare: ${[...new Set(undeclared)].join(", ")}`);
+    }
     const inputs = t.inputs.map((/** @type {any} */ i) => ({ kind: "in", T: i.T, part, name: i.in, value: i.value }));
     run = createRun(composed, { runtimes: [loaded.runtime], packages, seed: t.seed ?? 0, inputs, build: preset.build ?? undefined, taps: [...new Set(taps)] });
   } catch (e) {

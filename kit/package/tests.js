@@ -4,7 +4,7 @@
 // (`checkTests`, K020 and K021), and reads a state path and compares values (`readStatePath`, `sameData`), which kit/page's
 // `runTests` uses to check what a run did. kit/page runs them: kit/package never imports kit/run.
 
-import { fromNumber } from "../define/rational.js";
+import { fromNumber, MAX_DENOMINATOR } from "../define/rational.js";
 import { extensibleOf } from "../define/state.js";
 import { fillDefaults, valueProblem } from "../seam/index.js";
 import { diag } from "./codes.js";
@@ -22,10 +22,10 @@ const COMPONENTS = ["x", "y", "z", "w", "r", "g", "b", "a"];
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** A stamp as seconds, or null when it is not one a run can stamp: a number with a denominator up to a million, or "<n>/<d>". @param {unknown} t */
+/** A stamp as seconds, or null when it is not one a run can stamp: a number with a denominator up to a million, or "<n>/<d>" with <d> up to a million. @param {unknown} t */
 export function stampOf(t) {
   if (typeof t === "number") return Number.isFinite(t) && t >= 0 && fromNumber(t) ? t : null;
-  if (typeof t === "string" && /^\d+\/[1-9]\d*$/.test(t)) { const [n, d] = t.split("/").map(Number); return n / d; }
+  if (typeof t === "string" && /^\d+\/[1-9]\d*$/.test(t)) { const [n, d] = t.split("/").map(Number); return d <= MAX_DENOMINATOR ? n / d : null; }
   return null;
 }
 
@@ -87,6 +87,8 @@ export function testsShape(tests, manifest) {
         if ("records" in e && !(Array.isArray(e.records) && e.records.every(isObject))) bad(`expect[${j}].records must be an array of records, each an object`);
         if ("count" in e && !(Number.isInteger(e.count) && /** @type {number} */ (e.count) >= 0)) bad(`expect[${j}].count must be a whole number`);
         for (const k of ["from", "to"]) if (k in e) needStamp(k);
+        const [from, to] = [stampOf(e.from), stampOf(e.to)];
+        if (from !== null && to !== null && "from" in e && "to" in e && from > to) bad(`expect[${j}] (events) has from (${JSON.stringify(e.from)}) after to (${JSON.stringify(e.to)}): the window is empty`, "write from at or before to");
       } else {
         if (typeof e.diagnostic !== "string" || !/^[A-Z][0-9]{3}$/.test(e.diagnostic)) bad(`expect[${j}].diagnostic must be a code: a capital letter and three digits, not ${JSON.stringify(e.diagnostic)}`);
         if ("at" in e) needStamp("at");
@@ -106,12 +108,22 @@ export function testsShape(tests, manifest) {
  * @param {any} type  the Dialect's resolved state type @param {any} open  its extensible struct, or null @param {string} path
  * @returns {string | null}
  */
-function pathProblem(type, open, path) {
+export function pathProblem(type, open, path) {
+  return walkPath(type, open, path.replace(/\[(\d+)\]/g, ".[$1]").split("."));
+}
+
+/** @param {any} type @param {any} open @param {string[]} parts @returns {string | null} */
+function walkPath(type, open, parts) {
   let t = type;
   let unknown = false;
-  for (const p of path.replace(/\[(\d+)\]/g, ".[$1]").split(".")) {
+  for (const [k, p] of parts.entries()) {
     if (unknown) return null;
     while (t && typeof t === "object" && "opt" in t) t = t.opt;
+    if (t && typeof t === "object" && "union" in t) {
+      // the rest of the path, from each member: the path is good when any member takes it
+      const tried = t.union.map((/** @type {any} */ m) => walkPath(m, open, parts.slice(k)));
+      return tried.some((/** @type {string | null} */ x) => x === null) ? null : tried[0];
+    }
     if (t && typeof t === "object" && "list" in t) {
       if (p === "length") { t = "f64"; continue; }
       if (/^\[\d+\]$/.test(p)) { t = t.list; continue; }
