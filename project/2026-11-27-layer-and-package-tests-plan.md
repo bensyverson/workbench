@@ -131,3 +131,4 @@ tasks:
 ## Later rulings
 
 - **2026-11-27, Ben, on the tests draft's two questions.** (1) "A smaller and simpler API surface is always better if possible": the `in` input kind retires `ctx.controls`, the `control` input addressed to a part by name, wherever `in` can cover it. (2) "Tests should always be optional; some authors will not want to produce them": no page, checker or kit/package path requires them. Recorded on leaf `ceE4ib` and in the draft (kit/package/README.md, "Tests (draft)").
+- **2026-11-27, Ben, after the tests dogfood.** Keep the `output` expectation kind, so tests have four kinds: state, output, events, diagnostic. When a part run alone has two Event inputs that both take one page control's seam, the page refuses with a code naming both, rather than following a naming convention. The anchored `.frame` edge stays parked (project/backlog.md).
