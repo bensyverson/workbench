@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workbench</title>
+<link rel="stylesheet" href="host.css">
+</head><body>
+<div id="app">
+  <header class="bar">
+    <div class="brand"><span class="mark"></span>Workbench <i>kit page</i></div>
+    <label class="btn sm">Folder <input id="up-folder" type="file" webkitdirectory multiple hidden></label>
+    <label class="btn sm">Bundle <input id="up-bundle" type="file" accept=".json,application/json" multiple hidden></label>
+    <label class="btn sm">Glue file <input id="up-glue" type="file" accept=".js,text/javascript" hidden></label>
+    <label class="btn sm">Profile
+      <select id="profile"><option value="">none</option><option value="canvas">canvas</option><option value="gameboy">gameboy</option></select></label>
+    <span class="sp"></span>
+    <span id="status" class="dim" role="status">starting…</span>
+  </header>
+  <main>
+    <section class="pane stagecol">
+      <div class="bezel">
+        <canvas id="stage" width="160" height="144" aria-label="stage" hidden></canvas>
+        <div id="textstage" class="textstage" hidden></div>
+      </div>
+      <div class="transport">
+        <button id="pause" class="btn sm">Pause</button>
+        <button id="step" class="btn sm">Step</button>
+        <input id="scrub" type="range" min="0" max="0" step="any" value="0" aria-label="time">
+      </div>
+      <div class="padrow" aria-label="on-screen controls">
+        <div class="dpad">
+          <button id="pad-up" class="btn">&#9650;</button>
+          <button id="pad-left" class="btn">&#9664;</button>
+          <button id="pad-right" class="btn">&#9654;</button>
+          <button id="pad-down" class="btn">&#9660;</button>
+        </div>
+        <div class="abtns">
+          <button id="pad-select" class="btn sm">select</button>
+          <button id="pad-start" class="btn sm">start</button>
+          <button id="pad-b" class="btn">B</button>
+          <button id="pad-a" class="btn">A</button>
+        </div>
+      </div>
+      <p class="dim hint">Keys: arrows or WASD, A: <span id="keys"></span>, Start: Enter, Select: Shift.</p>
+      <h4>Presets <span class="dim">(each package's examples, run alone)</span></h4>
+      <div id="presets" class="presets"></div>
+      <h4>Why</h4>
+      <pre id="why" class="why"></pre>
+    </section>
+    <section class="pane midcol">
+      <div id="parts"></div>
+    </section>
+    <section class="pane rightcol">
+      <h4>Diagnostics <span id="diag-count" class="tag">0</span></h4>
+      <div id="diag"></div>
+      <h4>Source <span id="code-name" class="dim"></span></h4>
+      <div id="code" class="codebox"></div>
+    </section>
+  </main>
+</div>
+<script type="module">
+  // The kit's modules hold no dynamic import (they also run where it is not allowed), so the page's one is here.
+  import { start } from "./main.js";
+  start({ importModule: (url) => import(url) });
+</script>
+</body></html>

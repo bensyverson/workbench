@@ -1,0 +1,222 @@
+// Loading a workbench in the page: packages (each a `{ path: text | bytes }` map) through kit/package, a glue
+// program through kit/compose, or one package's example as a one-part composition (a preset). The host's own parts
+// are the URLs of the modules (a blob URL in the page: kit/package's `rewriteSpecifiers` makes the specifiers
+// resolve), the module scope of a Program file, and turning every diagnostic of the kit's into one shape the page
+// lists. No decision is made here that the kit makes: each check, each build and each refusal is the kit's.
+
+import { KIT_VERSION } from "../../define/index.js";
+import { compose, scanGlue, isComposition, formatDiagnostic } from "../../compose/index.js";
+import { loadPackage, rewriteSpecifiers, checkManifest, textOf, MANIFEST_PATH } from "../../package/index.js";
+import { isDotPath } from "../../package/paths.js";
+import { withScope, moduleScope } from "./scope.js";
+
+/**
+ * One diagnostic of any source, as the page lists it. `text` is the kit's printed form where it has one.
+ * @typedef {{ source: string, code: string, severity: "error" | "warning", message: string, fix?: string, file?: string, line?: number, text: string }} HostDiagnostic
+ */
+
+/**
+ * What the host gives the loader.
+ * @typedef {object} LoadEnv
+ * @property {{ define: string, compose: string }} urls  the URLs of kit/define and kit/compose, which a package's `kit/define` and a glue's `kit/compose` become
+ * @property {(text: string) => string} makeUrl  a URL a module can be imported from: a blob URL in the page
+ * @property {(url: string) => Promise<any>} importUrl  `import(url)`, the host's (the kit's modules hold no dynamic import)
+ */
+
+/**
+ * A loaded package as the host keeps it.
+ * @typedef {{ label: string, name: string, files: Record<string, string | Uint8Array>, urls: Map<string, string>, loaded: any }} HostPackage
+ */
+
+/**
+ * @param {string} source @param {any} d
+ * @returns {HostDiagnostic}
+ */
+export function hostDiagnostic(source, d) {
+  const line = d.loc?.start?.line ?? d.line;
+  const text = typeof d.text === "string" ? d.text : `${d.code} ${d.message}${d.fix ? `\n  fix: ${d.fix}` : ""}`;
+  return { source, code: String(d.code), severity: d.severity === "warning" ? "warning" : "error", message: String(d.message), ...(d.fix ? { fix: String(d.fix) } : {}), ...(d.file ? { file: String(d.file) } : {}), ...(typeof line === "number" ? { line } : {}), text };
+}
+
+/** @param {string} source @param {string} message @param {string} [fix] @returns {HostDiagnostic} */
+const loadError = (source, message, fix) => hostDiagnostic(source, { code: "LOAD", severity: "error", message, ...(fix ? { fix } : {}) });
+
+/**
+ * Loads one package: its modules become URLs (examples with their module scope's epilogue), then kit/package's
+ * `loadPackage` checks and imports it.
+ * @param {string} label  where it came from (a folder name), for messages
+ * @param {Record<string, string | Uint8Array>} given
+ * @param {LoadEnv} env
+ * @returns {Promise<{ pkg: HostPackage | null, diagnostics: HostDiagnostic[] }>}
+ */
+export async function loadOnePackage(label, given, env) {
+  const source = `package ${label}`;
+  const files = Object.fromEntries(Object.entries(given).filter(([p]) => !isDotPath(p)));
+  /** @type {Map<string, string>} */
+  const urls = new Map();
+  const { manifest } = checkManifest(textOf(files[MANIFEST_PATH] ?? "") ?? "");
+  if (manifest) {
+    const examples = new Set(manifest.examples ?? []);
+    const rewritten = rewriteSpecifiers(files, (p) => /** @type {string} */ (urls.get(p)), env.urls.define);
+    if (rewritten.diagnostics.length) return { pkg: null, diagnostics: rewritten.diagnostics.map((d) => hostDiagnostic(source, d)) };
+    for (const m of rewritten.modules) urls.set(m.path, env.makeUrl(examples.has(m.path) ? withScope(m.text) : m.text));
+  }
+  const loaded = await loadPackage(files, {
+    kitVersion: KIT_VERSION,
+    importModule: (path) => {
+      const url = urls.get(path);
+      if (url === undefined) throw new Error(`${path} is not a module of the package`);
+      return env.importUrl(url);
+    },
+  });
+  if (loaded.diagnostics.length) return { pkg: null, diagnostics: loaded.diagnostics.map((d) => hostDiagnostic(source, d)) };
+  return { pkg: { label, name: /** @type {string} */ (loaded.name), files, urls, loaded }, diagnostics: [] };
+}
+
+/**
+ * What loading the glue (or a preset) made, whatever it got as far as.
+ * @typedef {object} Loaded
+ * @property {HostPackage[]} packages
+ * @property {HostDiagnostic[]} diagnostics  every diagnostic, errors and warnings, in the order they arose
+ * @property {string[]} plan  each wire's plan line
+ * @property {any} composition
+ * @property {any} composed  kit/compose's built record, or null
+ * @property {any[]} runtimes
+ * @property {string} source  the glue's text, or the preset's example's
+ * @property {string} sourceName
+ * @property {Record<string, any>} options  compose's options (packages, build scope, runtimes, profile)
+ */
+
+/** @returns {Loaded} */
+const nothing = () => ({ packages: [], diagnostics: [], plan: [], composition: null, composed: null, runtimes: [], source: "", sourceName: "", options: {} });
+
+/**
+ * The packages of a workbench, loaded; `all` is false when one did not load.
+ * @param {Record<string, Record<string, string | Uint8Array>>} packages  by label
+ * @param {LoadEnv} env
+ */
+async function loadPackages(packages, env) {
+  const out = nothing();
+  for (const [label, files] of Object.entries(packages)) {
+    const r = await loadOnePackage(label, files, env);
+    out.diagnostics.push(...r.diagnostics);
+    if (r.pkg) out.packages.push(r.pkg);
+  }
+  return { out, all: out.diagnostics.length === 0 };
+}
+
+/**
+ * Compose's checks and build on an imported composition, into `out`.
+ * @param {Loaded} out @param {any} composition @param {Record<string, any>} options @param {string} gluePath
+ */
+function checkAndBuild(out, composition, options, gluePath) {
+  const base = (/** @type {any[]} */ list) => list.map((d) => hostDiagnostic("composition", { ...d, file: gluePath, text: formatDiagnostic({ ...d, file: gluePath }) }));
+  const found = base(composition.check(options));
+  out.diagnostics.push(...found);
+  out.options = options;
+  if (found.some((d) => d.severity === "error")) return;
+  try { out.plan = composition.plan(options); } catch (e) { out.diagnostics.push(loadError("composition", `plan threw: ${message(e)}`)); }
+  try { out.composed = composition.build(options); } catch (e) {
+    const ds = /** @type {any} */ (e)?.diagnostics;
+    if (Array.isArray(ds)) out.diagnostics.push(...base(ds.filter((d) => !found.some((f) => f.code === d.code && f.message === d.message))));
+    else out.diagnostics.push(loadError("composition", `the build threw: ${message(e)}`));
+  }
+}
+
+/** @param {unknown} e */
+const message = (e) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Loads packages and a glue: the glue's imports read by `scanGlue`, each bare name resolved to its package's Grammar
+ * module, the module imported with its scope, its default export called with an empty frozen `$`, and the composition
+ * checked and built.
+ * @param {{ packages: Record<string, Record<string, string | Uint8Array>>, glue: { path: string, text: string }, profile?: string }} input
+ * @param {LoadEnv} env
+ * @returns {Promise<Loaded>}
+ */
+export async function loadWorkbench(input, env) {
+  const { out, all } = await loadPackages(input.packages, env);
+  out.source = input.glue.text;
+  out.sourceName = input.glue.path;
+  if (!all) return out;
+  const { path, text } = input.glue;
+  const names = out.packages.map((p) => p.name);
+  const scanned = scanGlue(text, names, path);
+  if (scanned.diagnostics.length) { out.diagnostics.push(...scanned.diagnostics.map((d) => hostDiagnostic("glue", d))); return out; }
+  /** @type {Record<string, string>} */
+  const named = { "kit/compose": env.urls.compose, "kit/define": env.urls.define };
+  for (const p of out.packages) named[p.name] = /** @type {string} */ (p.urls.get(entryGrammar(p)));
+  let rewritten = text;
+  for (const i of [...scanned.imports].sort((a, b) => b.start - a.start)) {
+    const url = named[i.resolved ?? i.specifier];
+    if (url === undefined) { out.diagnostics.push(loadError("glue", `${path}:${i.line}: no module for '${i.specifier}'`)); return out; }
+    rewritten = rewritten.slice(0, i.start) + url + rewritten.slice(i.end);
+  }
+  /** @type {any} */
+  let mod;
+  try { mod = await env.importUrl(env.makeUrl(withScope(rewritten))); } catch (e) { out.diagnostics.push(loadError("glue", `${path} did not load: ${message(e)}`)); return out; }
+  /** @type {any} */
+  let composition;
+  try { composition = typeof mod.default === "function" ? mod.default(Object.freeze({})) : undefined; } catch (e) {
+    const code = /** @type {any} */ (e)?.code;
+    out.diagnostics.push(hostDiagnostic("glue", { code: typeof code === "string" && /^[A-Z]\d{3}$/.test(code) ? code : "LOAD", severity: "error", message: `the default export threw: ${message(e)}` }));
+    return out;
+  }
+  if (!isComposition(composition)) { out.diagnostics.push(loadError("glue", `${path}'s default export is not a function ($) => composition`, 'export default ($) => compose("name").part(…)…')); return out; }
+  finish(out, composition, text, mod, path, input.profile);
+  return out;
+}
+
+/** @param {HostPackage} p @returns {string} the manifest's grammar path */
+function entryGrammar(p) {
+  const { manifest } = checkManifest(textOf(p.files[MANIFEST_PATH]) ?? "");
+  return manifest?.entry.grammar ?? "";
+}
+
+/**
+ * Options for compose from the loaded packages and the Program file's scope, then check and build.
+ * @param {Loaded} out @param {any} composition @param {string} text @param {any} mod @param {string} path @param {string | undefined} profile
+ */
+function finish(out, composition, text, mod, path, profile) {
+  /** @type {any} */
+  let build;
+  try { build = moduleScope(text, mod); } catch (e) { out.diagnostics.push(loadError("glue", `${path}'s top level could not be read: ${message(e)}`)); return; }
+  const missing = out.packages.filter((p) => !p.loaded.runtime).map((p) => p.name);
+  if (missing.length) out.diagnostics.push(loadError("glue", `package ${missing.join(", ")} has no runtime, so the workbench cannot run`, "name a runtime module in the manifest's entry.runtime"));
+  out.runtimes = out.packages.map((p) => p.loaded.runtime).filter(Boolean);
+  const options = { packages: out.packages.map((p) => p.loaded), build, ...(missing.length ? {} : { runtimes: out.runtimes }), ...(profile ? { profile } : {}) };
+  checkAndBuild(out, composition, options, path);
+}
+
+/**
+ * Loads packages and one package's example as a one-part composition shown on the page: a preset.
+ * @param {{ packages: Record<string, Record<string, string | Uint8Array>>, package: string, example: string, profile?: string }} input  `package` is the package's name
+ * @param {LoadEnv} env
+ * @returns {Promise<Loaded>}
+ */
+export async function loadPreset(input, env) {
+  const { out, all } = await loadPackages(input.packages, env);
+  out.sourceName = input.example;
+  if (!all) return out;
+  const pkg = out.packages.find((p) => p.name === input.package);
+  const url = pkg?.urls.get(input.example);
+  if (!pkg || url === undefined) { out.diagnostics.push(loadError("preset", `package ${input.package} has no example ${input.example}`)); return out; }
+  out.source = textOf(pkg.files[input.example]) ?? "";
+  try {
+    const mod = await env.importUrl(url);
+    const builder = typeof mod.default === "function" ? mod.default(Object.freeze({})) : undefined;
+    const composition = compose(pkg.name).part(builder).show(builder);
+    finish(out, composition, out.source, mod, input.example, input.profile);
+  } catch (e) { out.diagnostics.push(loadError("preset", `${input.example} did not make a composition: ${message(e)}`)); }
+  return out;
+}
+
+/**
+ * Loads packages alone (no glue yet), so the page can list their examples as presets and show their diagnostics.
+ * @param {Record<string, Record<string, string | Uint8Array>>} packages
+ * @param {LoadEnv} env
+ * @returns {Promise<Loaded>}
+ */
+export async function loadPackagesOnly(packages, env) {
+  return (await loadPackages(packages, env)).out;
+}
