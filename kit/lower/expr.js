@@ -30,6 +30,23 @@ export function describe(t) {
   return typeof t === "object" && "enum" in t && t.enum.length === 1 ? `str ${showType(t)}` : showType(t);
 }
 
+/**
+ * L003 for an array item whose type does not join the items before it. When the two print the same,
+ * they are lists that differ only in a known length (a literal's) against a max, so say so.
+ * @param {Lowerer} L
+ * @param {AST.Node} at
+ * @param {Type} t  this item's type
+ * @param {Type} before  the join of the items before it
+ */
+function itemsDoNotJoin(L, at, t, before) {
+  if (describe(t) === describe(before) && typeof t === "object" && "list" in t && typeof before === "object" && "list" in before) {
+    const kind = (/** @type {{ max: number, len?: number }} */ x) => (x.len === undefined ? `a list of at most ${x.max}` : `a list of exactly ${x.len}`);
+    L.error("L003", at, `An array's items share one type, but this is ${kind(t)} and the items before it are ${kind(before)} (both ${describe(t)}): a list literal's known length does not join a list with only a max.`, "Write every item the same way: each as a literal of its items, [<a>, <b>], reading a list's item into a const and checking it for null first; or each as a list you were given.");
+    return;
+  }
+  L.error("L003", at, `An array's items share one type, but this is ${describe(t)} and the items before it are ${describe(before)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
+}
+
 /** @param {AST.Node} n @returns {Span} */
 export const spanOf = (n) => [n.range[0], n.range[1]];
 
@@ -655,7 +672,7 @@ function array(L, node, expected) {
   if (item === "unknown") items.forEach((e, i) => {
     const joined = strictJoin(item, e.t);
     if (joined === null) {
-      L.error("L003", elements[i], `An array's items share one type, but this is ${describe(e.t)} and the items before it are ${describe(item)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
+      itemsDoNotJoin(L, elements[i], e.t, item);
       return;
     }
     item = joined;
@@ -701,7 +718,7 @@ function concat(L, node, elements, expected) {
       if (item === "unknown") for (const [j, e] of items.entries()) {
         const joined = strictJoin(item, e.t);
         if (joined === null) {
-          L.error("L003", run[j], `An array's items share one type, but this is ${describe(e.t)} and the items before it are ${describe(item)}.`, "Use items of one type; for a pair of different things, use an object: { name: \"up\", dx: 0 }.");
+          itemsDoNotJoin(L, run[j], e.t, item);
           return bad(node);
         }
         item = joined;
