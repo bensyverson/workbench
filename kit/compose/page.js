@@ -1,8 +1,9 @@
 // The page: a built-in part whose Event outputs are the controls (Ben's ruling 5, 2026-11-26). A glue wires one like
 // any port, `.wire(page.out.<control>, <part>.in.<input>)`, with the usual seam, rename and S checks; it needs no
 // `.part(page)`, since a wire from it adds it. The page has no step: kit/run delivers a page input in the log (a
-// `control` input addressed to the part "page") to every wire from that control at the input's own stamp. For queue
-// sizing (S116) it counts as a frame part that sends at most one record per control per frame.
+// `control` input addressed to the part "page") to every wire from that control at the input's own stamp, every press
+// and release in order. For queue sizing (S116) it counts as a frame part that sends at most PAGE_CHANGES_PER_FRAME
+// records per control per frame.
 
 import { defineDialect, defineGrammar, defineRuntime, exact, name } from "../define/index.js";
 import { programOf } from "../define/grammar.js";
@@ -19,6 +20,14 @@ export const PAGE_CONTROLS = Object.freeze({
   start: "Event<{ held: bool }>",
   select: "Event<{ held: bool }>",
 });
+
+/**
+ * The most records the page is sized to send on one control in one display frame: a press and a release (Ben,
+ * 2026-11-26: "we need tap and release"). For the pad, any two changes of the held directions. The host does not
+ * enforce it; past it, the wire's overflow policy trims what a step takes, or with none the consumer's step is
+ * refused (kit/run's N002), both reported.
+ */
+export const PAGE_CHANGES_PER_FRAME = 2;
 
 const NOTES = /** @type {Record<string, string>} */ ({
   pad: "the D-pad: one record each time the person's held directions change, each field true while that direction is held",
@@ -51,7 +60,7 @@ export const pageRuntime = defineRuntime(/** @type {any} */ (pageGrammar), {
   clock: () => ({ frame: true }),
   init: () => ({ none: 0 }),
   step: (/** @type {any} */ s) => s,
-  events: { out: Object.fromEntries(Object.keys(PAGE_CONTROLS).map((n) => [n, 1])) },
+  events: { out: Object.fromEntries(Object.keys(PAGE_CONTROLS).map((n) => [n, PAGE_CHANGES_PER_FRAME])) },
 });
 
 /** Whether a handle is one of the page's. @param {unknown} h */

@@ -194,9 +194,9 @@ export function createRun(composed, options) {
       if (before && inputs[cursor].wire && cmp(inputs[cursor].T, before) === 0) return;
       const e = inputs[cursor++];
       if (e.kind === "frame") { slowdown.frame(e); continue; }
-      // a page input is the page part's Event: one record on each wire from that control, at the input's stamp; a
-      // record its consumer has not yet taken is replaced, so a page wire holds the latest value per control per instant
-      if (e.kind === "control" && e.part === PAGE && hasPage) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T, true); continue; }
+      // a page input is the page part's Event: one record on each wire from that control, at the input's stamp, so
+      // every press and release reaches its consumers in log order (Ben, 2026-11-26; ada0afe kept only the latest)
+      if (e.kind === "control" && e.part === PAGE && hasPage) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T); continue; }
       const p = byName.get(e.part ?? "");
       if (!p) throw new Error(`an input names no part '${e.part}': the parts are ${parts.map((x) => x.name).join(", ")}`);
       if (e.kind === "control") p.controls = { ...p.controls, [/** @type {string} */ (e.name)]: deepFreeze(structuredClone(e.value)) };

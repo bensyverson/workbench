@@ -7,6 +7,8 @@
 1. **Calls the integrator made while Ben was away.** Each can be reversed; say so and it gets a leaf.
    - **Draw ruling 2:** op kinds are checked at composition, counts at draw time. Ben had confirmed only that the composer owns the budget. Ruling 3, tiles scale their cell size, was left to the integrator. Both are in [the draw-list draft](2026-11-26-draw-list-draft.md), final rulings block.
    - **Page inputs coalesce** to the latest value per control until the consumer takes it (`ada0afe`). A tap that presses and releases between two steps of a slow part is lost. Say if taps should queue instead.
+
+     > **Reversed 2026-11-26 (Ben):** taps queue. Page inputs deliver every press and release in order, and kit/compose sizes page wires for two changes per control per frame (`PAGE_CHANGES_PER_FRAME`); see the ruling at the end of [the seams draft](2026-11-25-seams-draft.md) and leaf `mEQycb`.
    - **A param wire's input is stamped with the instant that made it**, and applied right after that instant (`553040a`). Stamping at the next instant, or at that instant plus 1 ms, is unsound: frames logged later move the stamp, and two instants can share a millisecond.
    - **The param-wire ruling has a marked correction** in [the seams draft](2026-11-25-seams-draft.md): bounds are checked at run time (N008), and the loop rule (S117) is narrow. Read literally, the rule would have refused the double descent's own fix.
    - **Game Boy:** text counts as sprites. A second tiles layer must be exactly the window. A mirrored image uses the flip bit.

@@ -26,7 +26,7 @@ function walker() {
       for (const r of c.inputs.fire) a += r.held ? 1 : 0;
       return { x, a, seen };
     },
-    events: { in: { pad: 32, fire: 32 } },
+    events: { in: { pad: 60, fire: 60 } },
   });
 }
 

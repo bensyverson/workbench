@@ -63,7 +63,7 @@ test("a delivered record is frozen, read-only in $T, and not enumerable", () => 
 /** A walker fed by the page. */
 function walker() {
   return tiny("walk", { state: { x: "f64", seen: list("f64", 1000) }, inputs: false, ports: { in: { pad: { seam: "Event<{ up: bool, down: bool, left: bool, right: bool }>", note: "the pad" } } } },
-    { clock: () => ({ tick: 1 / 4 }), init: () => ({ x: 0, seen: [] }), events: { in: { pad: 64 } },
+    { clock: () => ({ tick: 1 / 4 }), init: () => ({ x: 0, seen: [] }), events: { in: { pad: 120 } },
       step: (/** @type {any} */ s, /** @type {any} */ c) => ({ x: s.x, seen: [...s.seen, ...c.inputs.pad.map((/** @type {any} */ r) => r.$T ?? -1)] }) });
 }
 

@@ -9,7 +9,7 @@ import { list } from "../../define/index.js";
 import { tiny } from "./helpers.js";
 
 /** A walker that takes the D-pad as Events: it keeps each record's right and $T. @param {any} [port] @param {number} [max] */
-function walker(port = { seam: "Event<{ right: bool }>", note: "the pad" }, max = 64) {
+function walker(port = { seam: "Event<{ right: bool }>", note: "the pad" }, max = 120) {
   return tiny("walk", { state: { x: "f64", seen: list("f64", 1000) }, inputs: false, ports: { in: { pad: port } } },
     { clock: () => ({ tick: 1 / 4 }), init: () => ({ x: 0, seen: [] }),
       step: (/** @type {any} */ s, /** @type {any} */ c) => {
