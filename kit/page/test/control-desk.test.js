@@ -21,7 +21,7 @@ function desk(o = {}) {
     uiOfPart: (part) => (part === "s" ? ui : null),
     compiledOf: () => ({ instances: { ratio: [{ key: "a", value: 2, to: "arg.s.a" }, { key: "b", value: 3, to: o.badB ? "arg.s.zz" : "arg.s.b" }] } }),
     writeProblem: (_part, to) => (to === "arg.s.zz" ? { code: "H011", message: "no call is at arg.s.zz" } : null),
-    preview: (part, to, value, what, log = true) => { previews.push({ part, to, value, what, log }); return true; },
+    preview: (part, to, value, what, how = "frame") => { previews.push({ part, to, value, what, how }); return true; },
     logInput: (e, event) => logged.push({ e, event }),
     report: (d) => reports.push(d),
     now: () => "0",
@@ -43,7 +43,7 @@ test("createControls: a wired Control logs a page input and its release is check
   assert.deepEqual(c.control("ratio", { key: "b", value: 6 }, { timeStamp: 12 }), { part: "s", to: "arg.s.b", value: 6 });
   assert.deepEqual(logged.map((l) => [l.e.kind, l.e.part, l.e.name, l.e.value]), [["control", "page", "ratio", { key: "b", value: 5 }], ["control", "page", "ratio", { key: "b", value: 6 }]]);
   assert.equal(logged[1].event.timeStamp, 12);
-  assert.deepEqual(previews.map((p) => [p.to, p.value, p.log]), [["arg.s.b", 6, false]]);
+  assert.deepEqual(previews.map((p) => [p.to, p.value, p.how]), [["arg.s.b", 6, "check"]], "checked, not logged");
 });
 
 test("createControls: a part-local Control's previews wait for flush, the latest of each target, and its release previews at once", () => {
@@ -52,8 +52,9 @@ test("createControls: a part-local Control's previews wait for flush, the latest
   c.control("s.gain", { value: 1.4 }, { phase: "preview" });
   assert.equal(previews.length, 0);
   c.flush();
-  assert.deepEqual(previews.map((p) => [p.to, p.value]), [["param.gain", 1.4]]);
+  assert.deepEqual(previews.map((p) => [p.to, p.value, p.how]), [["param.gain", 1.4, "frame"]]);
   assert.deepEqual(c.control("s.gain", { value: 1.5 }), { part: "s", to: "param.gain", value: 1.5 });
+  assert.deepEqual(previews.at(-1).how, "now", "the release's value is in force at once, before its write-back");
   assert.equal(logged.length, 0, "a part-local Control is never a page input");
 });
 

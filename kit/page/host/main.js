@@ -127,13 +127,15 @@ export function start({ importModule }) {
     const c = /** @type {Current} */ (current);
     c.devices?.stop();
     const session = createSession(loaded, {
-      // a release (a Grip, a Control with to, a custom element's commit) is written back into the text: one undo step
-      onCommit: (commit) => editorPanel.write(c, commit),
+      // a release (a Grip, a Control with to, a custom element's commit) is written back into the text: one undo step;
+      // a session a remount or a reload replaced writes nothing
+      onCommit: (commit) => { if (current === c && c.session === session) editorPanel.write(c, commit); },
       context: canvas.getContext("2d"),
       requestFrame: (cb) => requestAnimationFrame(cb),
       decode: (bytes) => createImageBitmap(new Blob([/** @type {BlobPart} */ (bytes)], { type: "image/png" })),
       onFrame: (snap) => { fit(); stage.showGrips(session); const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
       onProblem: problem,
+      onStage: (ds) => listed("stage", ds),
       ...(opening ? { run: { inputs: opening.inputs, seed: opening.seed } } : {}),
     });
     c.session = session;
@@ -258,11 +260,13 @@ export function start({ importModule }) {
         c.elements.set(stage.element, null);
         const { url, diagnostics } = pkg ? elementModuleUrl(pkg, String(stage.module)) : { url: null, diagnostics: [] };
         for (const d of diagnostics) problem(`${d.code}: ${d.message}`);
+        // the session this element was made for: after a remount or a reload its events reach nothing
+        const owner = c.session;
         (url ? importModule(url).then(() => {
           if (customElements.get(stage.element)) {
             const made = document.createElement(stage.element);
             // its wb-control, wb-param and wb-edit, checked against the declarations: logged, or listed with the kit's code
-            for (const type of ELEMENT_EVENTS) made.addEventListener(type, (/** @type {CustomEvent} */ ev) => listed("stage", c.session?.element(type, ev.detail) ?? []));
+            for (const type of ELEMENT_EVENTS) made.addEventListener(type, (/** @type {CustomEvent} */ ev) => { if (current === c && c.session === owner && owner) listed("stage", owner.element(type, ev.detail)); });
             c.elements.set(stage.element, made);
           } else problem(`${stage.module} did not define <${stage.element}>`); }).catch((e) => problem(`${stage.module} did not load: ${e.message}`)) : Promise.resolve(problem(`no module ${stage.module} in package ${dialect}`)));
       }

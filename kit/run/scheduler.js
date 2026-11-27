@@ -483,7 +483,10 @@ export function createRun(composed, options) {
    * a stamp at a time, at their own stamps (ruling R2): a rebuild among them may restart a part, whose clock then
    * counts from that stamp, whatever other parts are due. A display run whose frame part waits on a frame not yet
    * logged applies none ahead of an instant it will not run now: they wait for that frame, which may come first, and
-   * then take effect at their stamps.
+   * then take effect at their stamps. That holds only for step(), which has no limit: a run moved to a limit
+   * (runUntil, advance, a rewind, inputNow) stands there afterward, so it applies every input stamped by it, and no
+   * frame can come before them (the driver and runUntil log frames after the run's T only). So whether an input is in
+   * force at a T is a function of the log and that T, as a replay and a rewind need.
    * @param {Q | null} limit
    */
   function upcoming(limit) {
@@ -491,7 +494,7 @@ export function createRun(composed, options) {
       const T = nextInstant();
       const runs = T && (!limit || cmp(T, limit) <= 0);
       const e = inputs[cursor];
-      if (e && (!T || cmp(e.T, T) < 0) && (!limit || cmp(e.T, limit) <= 0) && (runs || !awaitingFrame())) {
+      if (e && (!T || cmp(e.T, T) < 0) && (!limit || cmp(e.T, limit) <= 0) && (runs || limit || !awaitingFrame())) {
         applyInputs(e.T, null);
         at.floor = e.T;
         if (cmp(now, e.T) < 0) now = e.T;
@@ -503,7 +506,7 @@ export function createRun(composed, options) {
 
   /**
    * Runs every instant at or before `target` and applies the inputs stamped by it, from the log alone (what a replay
-   * and a rewind do); in a display run whose next frame is not logged yet, those wait for it. @param {Q} target
+   * and a rewind do), a display run waiting on its next frame included. @param {Q} target
    */
   function advance(target) {
     for (let T = upcoming(target); T; T = upcoming(target)) instant(T);
@@ -601,6 +604,21 @@ export function createRun(composed, options) {
       if (lastT && cmp(entry.T, lastT) <= 0) throw new Error(`an input stamped ${qText(entry.T)} is not after the last instant run, ${qText(lastT)}`);
       insert(entry);
       if (cmp(entry.T, now) <= 0) advance(now);
+      return entry;
+    },
+    /**
+     * Adds an outside input that takes effect at once: stamped at the run's T, or the first millisecond after it when
+     * an instant already ran there, and applied there (an instant due by then runs first), so the run stands at that
+     * stamp. A display run waiting on its next frame does not hold it back: what a host puts in force (a rebuild of an
+     * edited text, a preview while paused) is in force before the next frame, and no frame is logged before it. A
+     * replay, a chunked run and a rewind apply it at the same stamp. Refusals are run.input's. @param {Record<string, any>} e
+     */
+    inputNow(e) {
+      if (e && typeof e === "object" && e.T !== undefined) throw new Error("run.inputNow stamps the input itself (run.T, or the first millisecond after it): pass no T, or use run.input");
+      const { lastT } = at;
+      const entry = inputEntry({ ...e, T: lastT && cmp(now, lastT) <= 0 ? afterMs(now) : now }, toQ);
+      insert(entry);
+      advance(entry.T);
       return entry;
     },
     /** The records a tapped Event output (`<part>.out.<output>`, named in createRun's `taps`) pushed, in order, each with its instant in seconds. @param {string} handle */

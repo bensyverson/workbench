@@ -103,13 +103,40 @@ const shownName = (form) => form.label ?? (form.part && String(form.name).starts
  * its grid (else in a row), a row of triggers, a slider, a checkbox, a menu, a text field, a color well, a vector's
  * components, a point list, a pick from its data file (widgets.js). A scoped Control (`part`, named `<part>.<control>`)
  * is tagged with its part, and shown by its control's own name. `send(record, phase?)` logs the Control's record
- * (`"preview"` while a Control with `to` moves, then nothing, a commit, on its change); `focus(on)` tells the page a
- * text field has the keys. A keyed Control (the form's `keyed`: its composed declaration is plain data, with no
+ * (`"preview"` while a Control with `to` moves, then nothing, a commit, on its change or release, for every kind: a
+ * toggle, a choice, a pick, an added or a removed point is its own commit); `focus(on)` tells the page a text field
+ * has the keys. A Control with `to` whose target cannot be written (`disabled`, its H011) is drawn disabled, every
+ * input of it, with its message beside them and as each one's title. A keyed Control (the form's `keyed`: its composed declaration is plain data, with no
  * `each`) shows one form per instance, each sending its record with the instance's key.
  * @param {any} form  a session form @param {(record: Record<string, unknown>, phase?: "preview") => void} send @param {(on: boolean) => void} focus
  * @param {(form: any) => ({ kind: string, text?: string, value?: unknown } | null)} [data]  a pick's data file (pick-data.js's `dataFileOf`)
  */
 export function controlForm(form, send, focus, data = () => null) {
+  const el = formOf(form, send, focus, data);
+  if (!form.keyed && typeof form.to === "string" && form.disabled) drawnDisabled(el, form.disabled);
+  return el;
+}
+
+/** The tags a person can act on. */
+const ACTIVE = new Set(["input", "select", "button", "textarea"]);
+/** Disables every input under a form and says why, on each and beside them. @param {any} el @param {{ code: string, message: string }} d */
+function drawnDisabled(el, d) {
+  const why = `${d.code} ${d.message}`;
+  /** @param {any} n */
+  const walk = (n) => {
+    if (ACTIVE.has(String(n.tagName ?? n.tag ?? "").toLowerCase())) { n.disabled = true; n.setAttribute("title", why); }
+    for (const c of Array.from(n.children ?? [])) walk(c);
+  };
+  walk(el);
+  el.append(h("span", { class: "dim bad" }, why));
+}
+
+/** @param {any} form @param {(record: Record<string, unknown>, phase?: "preview") => void} send @param {(on: boolean) => void} focus @param {(form: any) => any} data @returns {any} */
+function formOf(form, send, focus, data) {
+  /** A move of a form with `to` previews; without, it is sent as it is. @param {Record<string, unknown>} r */
+  const move = (r) => (typeof form.to === "string" ? send(r, "preview") : send(r));
+  /** The commit on a change, for a form with `to`. */
+  const onCommit = typeof form.to === "string";
   if (form.keyed) {
     const { instances = [], ...rest } = form;
     return h("div", { class: "control keyed" }, scope(form), h("span", { class: "dim" }, shownName(form)),
@@ -139,17 +166,18 @@ export function controlForm(form, send, focus, data = () => null) {
       // with to, a slider previews while it moves and commits once it is let go
       const to = typeof form.to === "string";
       return h("label", { class: "control" }, label, h("input", {
-        type: "range", min: form.min, max: form.max, step: form.step ?? "any", value: form.value, ...(to && form.disabled ? { disabled: true, title: `${form.disabled.code} ${form.disabled.message}` } : {}),
+        type: "range", min: form.min, max: form.max, step: form.step ?? "any", value: form.value,
         oninput: (/** @type {any} */ e) => (to ? send({ value: Number(e.target.value) }, "preview") : send({ value: Number(e.target.value) })),
         ...(to ? { onchange: (/** @type {any} */ e) => send({ value: Number(e.target.value) }) } : {}),
       }));
     }
     case "toggle": return h("label", { class: "control" }, label, h("input", { type: "checkbox", checked: !!form.value, onchange: (/** @type {any} */ e) => send({ value: e.target.checked }) }));
     case "choice": return h("label", { class: "control" }, label, h("select", { onchange: (/** @type {any} */ e) => send({ value: e.target.value }) }, form.options.map((/** @type {string} */ o) => h("option", { value: o, ...(o === form.value ? { selected: true } : {}) }, o))));
-    case "text": return h("label", { class: "control" }, label, h("input", { type: "text", value: form.value ?? "", maxlength: form.max ?? 256, onfocus: () => focus(true), onblur: () => focus(false), oninput: (/** @type {any} */ e) => send({ value: e.target.value }) }));
+    case "text": return h("label", { class: "control" }, label, h("input", { type: "text", value: form.value ?? "", maxlength: form.max ?? 256, onfocus: () => focus(true), onblur: () => focus(false), oninput: (/** @type {any} */ e) => move({ value: e.target.value }), ...(onCommit ? { onchange: (/** @type {any} */ e) => send({ value: e.target.value }) } : {}) }));
     case "color": {
       const hex = (/** @type {number[]} */ c) => `#${c.map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("")}`;
-      return h("label", { class: "control" }, label, h("input", { type: "color", value: hex(form.value), oninput: (/** @type {any} */ e) => send({ value: [1, 3, 5].map((i) => parseInt(e.target.value.slice(i, i + 2), 16) / 255) }) }));
+      const rgb = (/** @type {string} */ v) => ({ value: [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16) / 255) });
+      return h("label", { class: "control" }, label, h("input", { type: "color", value: hex(form.value), oninput: (/** @type {any} */ e) => move(rgb(e.target.value)), ...(onCommit ? { onchange: (/** @type {any} */ e) => send(rgb(e.target.value)) } : {}) }));
     }
     case "vector": return h("div", { class: "control" }, label, vectorWidget(form, send));
     case "points": return h("div", { class: "control" }, label, pointsWidget(form, send));

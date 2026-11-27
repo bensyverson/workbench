@@ -22,9 +22,11 @@ const WARNING_CODES = new Set(["H011"]);
 const diagnostic = (d) => ({ code: d.code, severity: WARNING_CODES.has(d.code) ? "warning" : "error", message: d.message, ...(d.fix ? { fix: d.fix } : {}) });
 
 /**
- * @param {{ text: string, recordOf: (part: string) => Record<string, any>, rebuild: (text: string) => Promise<Built> }} o
+ * @param {{ text: string, recordOf: (part: string) => Record<string, any>, rebuild: (text: string) => Promise<Built>, inForce?: () => boolean }} o
  *   `text` the Program's text as loaded; `recordOf(part)` the record in force for a part, which the text was built
- *   from; `rebuild(text)` builds a text and puts it in force (rebuildWith below), or says why it did not build
+ *   from; `rebuild(text)` builds a text and puts it in force (rebuildWith below), or says why it did not build;
+ *   `inForce()` whether the record in force was built from the text (the session's `textInForce`), so an Apply of the
+ *   unchanged text puts it in force again when it is not
  */
 export function createEditor(o) {
   const history = createHistory(o.text);
@@ -75,9 +77,17 @@ export function createEditor(o) {
       if (!r.ok) return { ok: false, diagnostics: [diagnostic(r)] };
       return keep(r.text, `the edits of ${edits.map((e) => e.to).join(", ")}`);
     }),
-    /** The person's text, built: one step; a text that does not build is its build's own diagnostics, and the history is unchanged. @param {string} draft @returns {Promise<Outcome>} */
+    /**
+     * The person's text, built: one step; a text that does not build is its build's own diagnostics, and the history
+     * is unchanged. The unchanged text is no step: it is built and put in force again only when the record in force
+     * is not its own (`inForce`). @param {string} draft @returns {Promise<Outcome>}
+     */
     apply: (draft) => inTurn(async () => {
-      if (draft === history.text) return same(draft);
+      if (draft === history.text) {
+        if (o.inForce?.() ?? true) return same(draft);
+        const built = await o.rebuild(draft);
+        return built.ok ? same(draft) : { ok: false, diagnostics: built.diagnostics };
+      }
       const built = await o.rebuild(draft);
       if (!built.ok) return { ok: false, diagnostics: built.diagnostics };
       history.commit(draft);
@@ -103,6 +113,31 @@ export function createEditor(o) {
     const why = built.diagnostics.map((d) => `${d.code} ${d.message}`).join("; ");
     return { ok: false, diagnostics: [{ code: "H012", severity: "error", message: `that text no longer builds, so the history stays where it was: ${why}`, fix: "edit the text and Apply it" }] };
   }
+}
+
+/** The one span two texts differ in: `a`'s `start..end`, which `b` has as `text`. @param {string} a @param {string} b */
+function changeOf(a, b) {
+  let start = 0;
+  const n = Math.min(a.length, b.length);
+  while (start < n && a[start] === b[start]) start++;
+  let ea = a.length, eb = b.length;
+  while (ea > start && eb > start && a[ea - 1] === b[eb - 1]) { ea--; eb--; }
+  return { start, end: ea, text: b.slice(start, eb) };
+}
+
+/**
+ * A draft rebased onto a written text: both were made from `base`, and when the draft's change and the write's do not
+ * meet (each is the one span its text differs from `base` in; spans that overlap or touch meet), the written text with
+ * the draft's change, else `{ ok: false }`, and the panel keeps the draft and says the text changed under it.
+ * @param {string} base @param {string} draft @param {string} written @returns {{ ok: true, text: string } | { ok: false }}
+ */
+export function rebaseDraft(base, draft, written) {
+  if (draft === base) return { ok: true, text: written };
+  if (written === base) return { ok: true, text: draft };
+  const d = changeOf(base, draft), w = changeOf(base, written);
+  if (d.start <= w.end && w.start <= d.end) return { ok: false };
+  const [first, second] = d.start < w.start ? [d, w] : [w, d];
+  return { ok: true, text: base.slice(0, first.start) + first.text + base.slice(first.end, second.start) + second.text + base.slice(second.end) };
 }
 
 /**

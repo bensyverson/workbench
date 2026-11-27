@@ -6,33 +6,38 @@
 
 import { PAGE, scopedName } from "../compose/page.js";
 import { roundNumber } from "./round.js";
+import { PREVIEW } from "./preview.js";
 
 /** @typedef {import("./codes.js").PageDiagnostic} PageDiagnostic */
 /**
  * What the Controls block takes from the page: the composed record; the wired page Controls (the composed page's
  * `controls` that some wire takes); a part's UI and its compiled UI for the record in force; why a target cannot be
- * written; a preview of a target (`log` false: a commit checked, logging nothing); why a target cannot be checked for lack of
+ * written; a preview of a target (how it is logged: preview.js's PREVIEW, `CHECK` a commit checked, logging nothing); why a target cannot be checked for lack of
  * a build (optional); the page's input log;
- * its diagnostics; and the run's T as text.
+ * its diagnostics, and taking one back; and the run's T as text.
  * @typedef {{
  *   composed: any,
  *   controls: Record<string, any>,
  *   uiOfPart: (part: string) => any,
  *   compiledOf: (part: string) => any,
  *   writeProblem: (part: string, to: string) => { code: string, message: string } | null,
- *   preview: (part: string, to: string, value: unknown, what: string, log?: boolean) => boolean,
+ *   preview: (part: string, to: string, value: unknown, what: string, how?: import("./preview.js").PreviewMode) => boolean,
  *   buildProblem?: (to: string) => string | null,
  *   logInput: (e: Record<string, any>, event?: { timeStamp?: number }) => unknown,
  *   report: (d: PageDiagnostic) => void,
+ *   retract?: (d: PageDiagnostic) => void,
  *   now: () => string,
  * }} ControlSeams
  */
 
 /** @param {ControlSeams} seams */
 export function createControls(seams) {
-  const { composed, controls, uiOfPart, compiledOf, writeProblem, preview, buildProblem, logInput, report, now } = seams;
-  /** The H011s already listed, so one is one diagnostic. */
-  const said = new Set();
+  const { composed, controls, uiOfPart, compiledOf, writeProblem, preview, buildProblem, logInput, report, retract = () => {}, now } = seams;
+  /**
+   * The H011 listed for each Control (or keyed instance) that cannot write back, so one is one diagnostic while it
+   * lasts; one that can again takes its own back. @type {Map<string, { text: string, d: PageDiagnostic }>}
+   */
+  const said = new Map();
   /**
    * The part whose UI declares a page Control, and that UI: a scoped one's own part (keyed, or with `to`: kit/compose
    * names it `<part>.<control>`), else the first part that declares a shared one.
@@ -50,10 +55,18 @@ export function createControls(seams) {
   /** Why a Control's target cannot be written, reported once as H011, or null. @param {string} part @param {string} what @param {string} to */
   const controlProblem = (part, what, to) => {
     const d = writeProblem(part, to);
+    const key = JSON.stringify([part, what]);
+    const was = said.get(key);
     if (d) {
-      const key = `${part}.${what} ${to}`;
-      if (!said.has(key)) { said.add(key); report({ code: "H011", severity: "warning", message: `the Control ${what} of part ${part} cannot write back to ${to}: ${d.message}`, T: now(), part }); }
-    }
+      const text = `the Control ${what} of part ${part} cannot write back to ${to}: ${d.message}`;
+      if (was?.text !== text) {
+        if (was) retract(was.d);
+        /** @type {PageDiagnostic} */
+        const listed = { code: "H011", severity: "warning", message: text, T: now(), part };
+        said.set(key, { text, d: listed });
+        report(listed);
+      }
+    } else if (was) { retract(was.d); said.delete(key); }
     return d ? { code: d.code, message: d.message } : null;
   };
   /**
@@ -136,9 +149,9 @@ export function createControls(seams) {
       const key = `${part} ${to}`;
       if (phase === "preview") { waiting.set(key, { part, to, value, what: `the Control ${what}` }); return null; }
       waiting.delete(key);
-      if (!preview(part, to, value, `the Control ${what}`)) return null;
+      if (!preview(part, to, value, `the Control ${what}`, PREVIEW.NOW)) return null;
     } else if (phase === "preview") return null;
-    else if (!preview(part, to, value, `the Control ${what}`, false)) return null;
+    else if (!preview(part, to, value, `the Control ${what}`, PREVIEW.CHECK)) return null;
     return { part, to, value };
   }
   return { list, control, flush };

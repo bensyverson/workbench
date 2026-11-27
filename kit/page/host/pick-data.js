@@ -29,7 +29,7 @@ export function parseCsv(text) {
 
 /**
  * The rows a pick shows, from its data file: `{ columns, rows }` (every row an object by column; a CSV cell stays text, so a key like "007" is kept, and `pickRecord` converts a carried f64 column), or an `error` when
- * the file is not a table, or names no `key` column. A JSON file is a list of objects.
+ * the file is not a table, or names no `key` column (a JSON file: a list of objects, each with the key).
  * @param {{ kind: string, text?: string, value?: unknown } | null} file  the package's decoded data file
  * @param {{ key: string }} form
  * @returns {{ columns: string[], rows: Array<Record<string, any>>, error?: undefined } | { error: string }}
@@ -42,20 +42,33 @@ export function pickTable(file, form) {
     const [head = [], ...body] = parseCsv(file.text ?? "");
     rows = body.map((r) => Object.fromEntries(head.map((c, i) => [c, r[i] ?? ""])));
     if (!head.includes(form.key)) return { error: `the file has no column '${form.key}' (its columns are ${head.join(", ") || "none"})` };
-  } else if (file.kind === "json" && Array.isArray(file.value) && file.value.every((r) => r && typeof r === "object")) rows = /** @type {any[]} */ (file.value);
-  else return { error: `the data file is ${file.kind}, not a csv table or a json list of rows` };
+  } else if (file.kind === "json" && Array.isArray(file.value) && file.value.every((r) => r && typeof r === "object")) {
+    rows = /** @type {any[]} */ (file.value);
+    const i = rows.findIndex((r) => !Object.hasOwn(r, form.key));
+    if (i >= 0) return { error: `row ${i} has no '${form.key}' (the pick's key column), so the file is not a table of it` };
+  } else return { error: `the data file is ${file.kind}, not a csv table or a json list of rows` };
   return { columns: [...new Set(rows.flatMap((r) => Object.keys(r)))], rows };
 }
 
 /**
- * The record one row makes: `{ value: <key>, <carried column>: … }`, each carried column as its declared type.
+ * The record one row makes, `{ record: { value: <key>, <carried column>: … } }`, each carried column as its declared
+ * type; or why it cannot be made (`{ error }`): a carried f64 cell that is empty or not a number is refused, never
+ * sent as 0 or NaN.
  * @param {Record<string, string | number>} row @param {{ key: string, carry?: Record<string, "f64" | "str"> }} form
+ * @returns {{ record: Record<string, unknown>, error?: undefined } | { error: string, record?: undefined }}
  */
 export function pickRecord(row, form) {
   /** @type {Record<string, unknown>} */
   const rec = { value: String(row[form.key]) };
-  for (const [c, t] of Object.entries(form.carry ?? {})) rec[c] = t === "f64" ? Number(row[c]) : String(row[c] ?? "");
-  return rec;
+  for (const [c, t] of Object.entries(form.carry ?? {})) {
+    if (t !== "f64") { rec[c] = String(row[c] ?? ""); continue; }
+    const cell = row[c];
+    if (cell === undefined || cell === null || String(cell).trim() === "") return { error: `the row ${rec.value} has no ${c}: its cell is empty, and the pick carries ${c} as a number` };
+    const x = typeof cell === "number" ? cell : Number(cell);
+    if (!Number.isFinite(x)) return { error: `the row ${rec.value}'s ${c} is ${JSON.stringify(cell)}, which is not a number, and the pick carries ${c} as one` };
+    rec[c] = x;
+  }
+  return { record: rec };
 }
 
 /**

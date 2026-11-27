@@ -19,6 +19,7 @@ import { toStage, fromStage, hitsOf, edgeInto, intoPart, pointerRecord, PHASES }
 import { createGripDesk } from "./grip-desk.js";
 import { targetProblem } from "./writeback.js";
 import { createControls } from "./controls.js";
+import { PREVIEW } from "./preview.js";
 
 /** @typedef {import("./codes.js").PageDiagnostic} PageDiagnostic */
 /** @typedef {import("./sources.js").Decode} Decode */
@@ -58,6 +59,8 @@ export function createPage(options) {
     diagnostics.push(d);
     if (diagnostics.length > MAX_PAGE_DIAGNOSTICS) diagnostics.splice(0, diagnostics.length - MAX_PAGE_DIAGNOSTICS);
   };
+  /** Takes a diagnostic back out of the list (in place), once what it said no longer holds: a Grip enabled again. @param {PageDiagnostic} d */
+  const retract = (d) => { const i = diagnostics.indexOf(d); if (i >= 0) diagnostics.splice(i, 1); };
   /** @type {Record<string, unknown>} */
   let sources = {};
   const now = () => qText(run.T);
@@ -187,14 +190,18 @@ export function createPage(options) {
   };
   /**
    * Previews a target's value through the log: a `param` input, or a `rebuild` built with the argument overridden
-   * (createPage's `run.build`). A preview whose build fails (no record, or a throw: the Grammar or the Dialect refused
-   * the value) is skipped and reported once as H012, so the drag goes on and its release gives the last value that
-   * built. True when it was logged, or, with `log` false (a wired Control's commit, which has no preview to show),
-   * when the value is accepted: a param's value inside its declared bounds, built when the page has a build; an
-   * argument's built, so the page must have one (a host mistake, thrown).
-   * @param {string} part @param {string} to @param {unknown} value @param {string} what @param {boolean} [log]
+   * (createPage's `run.build`), logged as `how` says (preview.js's PREVIEW: for the next frame, at once, or not at all).
+   * A preview whose build fails (no record, or a throw: the Grammar or the Dialect refused the value) is skipped and
+   * reported once as H012, so the drag goes on and its release gives the last value that built. True when it was
+   * logged, or, with `PREVIEW.CHECK` (a wired Control's commit, which has no preview to show), when the value is
+   * accepted: a param's value inside its declared bounds, built when the page has a build; an argument's built, so the
+   * page must have one (a host mistake, thrown).
+   * @param {string} part @param {string} to @param {unknown} value @param {string} what @param {import("./preview.js").PreviewMode} [how]
    */
-  function preview(part, to, value, what, log = true) {
+  function preview(part, to, value, what, how = PREVIEW.FRAME) {
+    const log = how !== PREVIEW.CHECK;
+    /** @param {Record<string, any>} e */
+    const logged = (e) => (how === PREVIEW.NOW ? logNow(e) : logPreview(e));
     const param = to.startsWith("param.") ? to.slice(6) : null;
     const build = options.run?.build;
     const missing = buildProblem(to);
@@ -203,7 +210,7 @@ export function createPage(options) {
     try {
       if (param !== null) {
         // a commit with no preview to log is checked against the declaration, then by building the part with the value
-        if (log) logInput({ kind: "param", part, name: param, value });
+        if (log) logged({ kind: "param", part, name: param, value });
         else {
           const why = declaredProblem(part, to, value);
           if (why) throw new Error(why);
@@ -215,7 +222,7 @@ export function createPage(options) {
       } else {
         const record = /** @type {Function} */ (build)(part, { ...run.params(part) }, { args: { [to.slice(4)]: value } });
         if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
-        if (log) logInput({ kind: "rebuild", part, record });
+        if (log) logged({ kind: "rebuild", part, record });
       }
       failing.delete(key);
       return true;
@@ -229,10 +236,10 @@ export function createPage(options) {
   }
 
   // ---- Grips (requirements 7 and 8): grip-desk.js ----
-  const gripDesk = createGripDesk({ composed, uiOfPart, compiledOf, state: (part) => run.state(part), params: (part) => run.params(part), view, composedNow: () => run.composed ?? composed, siteOf: (part, to) => siteOf(recordOf(part), to), writeProblem, preview, report, now });
+  const gripDesk = createGripDesk({ composed, uiOfPart, compiledOf, state: (part) => run.state(part), params: (part) => run.params(part), view, composedNow: () => run.composed ?? composed, siteOf: (part, to) => siteOf(recordOf(part), to), writeProblem, preview, report, retract, now });
 
   // ---- Controls with `to` (requirements 1, 2 and 8): controls.js ----
-  const desk = createControls({ composed, controls, uiOfPart, compiledOf, writeProblem, preview, buildProblem, logInput: (e, event) => logInput(e, event), report, now });
+  const desk = createControls({ composed, controls, uiOfPart, compiledOf, writeProblem, preview, buildProblem, logInput: (e, event) => logInput(e, event), report, retract, now });
 
   // ---- the pointer (requirements 5 and 10) ----
   /** The part a pointer is captured by, from its down to its up or cancel, and where it last was. @type {Map<number, { part: string, output: string, at?: number[] }>} */
@@ -301,6 +308,19 @@ export function createPage(options) {
     const T = Math.max(typeof event.timeStamp === "number" ? stampOf(event.timeStamp) : afterNow(), latestNow());
     latest = T;
     return run.input({ ...e, T });
+  };
+  /**
+   * Logs a preview (a Grip's, a part-local Control's). While the run goes, as a page input: the frame that flushes it
+   * applies it before it draws. While paused there is no next frame to apply it at, so it takes effect at once
+   * (kit/run's inputNow, at T or the first millisecond after it), and the drag shows on a paused stage.
+   * @param {Record<string, any>} e
+   */
+  const logPreview = (e) => (driver.paused ? logNow(e) : logInput(e));
+  /** Logs an input that takes effect at once (kit/run's inputNow); no later page input is stamped before it. @param {Record<string, any>} e */
+  const logNow = (e) => {
+    const entry = run.inputNow(e);
+    latest = Math.max(latest, toNumber(entry.T));
+    return entry;
   };
   /**
    * A device time (an event's timeStamp, in ms) as a stamp in seconds: mapped onto T through the last display frame,

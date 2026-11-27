@@ -2,14 +2,24 @@
 // once per animation frame and Web MIDI listened to after the page's one gesture, each turned into Control records
 // with the device's own time, only for Controls that declare the device (`gamepad`, `midi`). The adapters that read the
 // state and the messages are kit/page's devices.js; this module holds the polling, the previous state and the
-// listeners, over a `navigator` and a frame source the host passes, so it runs under Node with stubs.
+// listeners, over a `navigator` and a frame source the host passes, so it runs under Node with stubs. A device on a
+// Control with `to` previews while its messages flow and commits once per gesture (issue wZAGIk, the integrator's
+// ruling of 2026-11-27): one commit, one write-back and one undo step when no message has reached that Control for
+// GESTURE_IDLE_MS of device time.
 
 import { gamepadRecords, midiRecords, midiAccess } from "../devices.js";
 
 /**
+ * How long a device must leave a Control with `to` alone, in ms of device time (a message's or a pad's timeStamp,
+ * against the frame's), before its gesture ends and its last value is committed. A knob turned by hand sends a message
+ * every few ms; a pause past this is the hand letting go.
+ */
+export const GESTURE_IDLE_MS = 300;
+
+/**
  * @typedef {object} InputDeviceOptions
  * @property {() => Array<Record<string, any>>} forms  the page's Controls with their declarations spread over them (`session.forms()`)
- * @property {(name: string, record: Record<string, unknown>, event: { timeStamp: number }) => Array<{ code: string, message: string }>} control  `session.control`
+ * @property {(name: string, record: Record<string, unknown>, event: { timeStamp: number, phase?: "preview" | "commit" }) => Array<{ code: string, message: string }>} control  `session.control`
  * @property {any} navigator  `getGamepads()` and `requestMIDIAccess()`, either may be absent
  * @property {(callback: (ms: number) => void) => unknown} requestFrame
  * @property {(diagnostic: { code: string, severity: string, message: string }) => void} report  where H014 and a refused record go
@@ -28,15 +38,42 @@ export function createInputDevices(o) {
   const previous = new Map();
   /** The H014 already said, so one refusal is one diagnostic. @type {Set<string>} */
   const said = new Set();
-  let running = false, listening = false;
+  let running = false, listening = false, ticking = false, stopped = false;
+  /** Each Control with `to` a device is moving: its last record and that record's device time. @type {Map<string, { record: Record<string, unknown>, at: number }>} */
+  const gestures = new Map();
+  /** The MIDI inputs listened to, and the access, so stop takes the listeners back off. @type {{ access: any, inputs: Set<any> } | null} */
+  let midi = null;
   /** @param {{ code: string, severity: string, message: string }} d */
   const once = (d) => { const k = `${d.code} ${d.message}`; if (!said.has(k)) { said.add(k); o.report({ code: d.code, severity: d.severity, message: d.message }); } };
-  /** @param {string} name @param {Record<string, unknown>} record @param {number} timeStamp */
-  const send = (name, record, timeStamp) => {
+  /** @param {string} name @param {Record<string, unknown>} record @param {{ timeStamp: number, phase?: "preview" | "commit" }} event */
+  const deliver = (name, record, event) => {
     let refused;
-    try { refused = o.control(name, record, { timeStamp }); } catch (e) { once({ code: "H014", severity: "warning", message: `a device record for Control ${name} was dropped: ${e instanceof Error ? e.message : e}` }); return; }
+    try { refused = o.control(name, record, event); } catch (e) { once({ code: "H014", severity: "warning", message: `a device record for Control ${name} was dropped: ${e instanceof Error ? e.message : e}` }); return; }
     for (const d of refused) once({ code: d.code, severity: "error", message: d.message });
   };
+  /** A device's record for a form: a Control with `to` previews and waits for its gesture to end. @param {Record<string, any>} f @param {Record<string, unknown>} record @param {number} timeStamp */
+  const send = (f, record, timeStamp) => {
+    if (typeof f.to !== "string") { deliver(f.name, record, { timeStamp }); return; }
+    gestures.set(f.name, { record, at: timeStamp });
+    deliver(f.name, record, { timeStamp, phase: "preview" });
+    tickOn();
+  };
+  /** Commits each gesture that has been idle GESTURE_IDLE_MS by the frame's device time `ms`. @param {number} ms */
+  const settle = (ms) => {
+    for (const [name, g] of [...gestures]) {
+      if (ms - g.at < GESTURE_IDLE_MS) continue;
+      gestures.delete(name);
+      deliver(name, g.record, { timeStamp: ms, phase: "commit" });
+    }
+  };
+  /** One frame: the pad polled (when one is), the idle gestures committed; frames go on while either needs them. @param {number} ms */
+  const tick = (ms) => {
+    if (stopped) { ticking = false; return; }
+    if (running) poll();
+    settle(ms);
+    if (running || gestures.size) o.requestFrame(tick); else ticking = false;
+  };
+  const tickOn = () => { if (!ticking && !stopped) { ticking = true; o.requestFrame(tick); } };
 
   /** One gamepad poll: each Control that declares a gamepad gets the records the first connected pad makes against its last state. */
   function poll() {
@@ -46,22 +83,21 @@ export function createInputDevices(o) {
     if (!pad) return;
     const prev = previous.get(pad.index) ?? null;
     const stamp = typeof pad.timestamp === "number" ? pad.timestamp : 0;
-    for (const f of o.forms()) if (plays(f, "gamepad")) for (const r of gamepadRecords(f, pad, prev)) send(f.name, r, stamp);
+    for (const f of o.forms()) if (plays(f, "gamepad")) for (const r of gamepadRecords(f, pad, prev)) send(f, r, stamp);
     previous.set(pad.index, snapshot(pad));
   }
 
   /** @param {ArrayLike<number>} data @param {number} timeStamp */
   function message(data, timeStamp) {
     if (o.locked?.()) return;
-    for (const f of o.forms()) if (plays(f, "midi")) for (const r of midiRecords(f, data)) send(f.name, r, timeStamp);
+    for (const f of o.forms()) if (plays(f, "midi")) for (const r of midiRecords(f, data)) send(f, r, timeStamp);
   }
 
   /** Starts the per-frame gamepad poll, when some Control declares a pad. */
   function start() {
-    if (running || !o.forms().some((f) => plays(f, "gamepad"))) return;
+    if (stopped || running || !o.forms().some((f) => plays(f, "gamepad"))) return;
     running = true;
-    const tick = () => { if (!running) return; poll(); o.requestFrame(tick); };
-    o.requestFrame(tick);
+    tickOn();
   }
 
   /**
@@ -72,14 +108,29 @@ export function createInputDevices(o) {
     if (listening || !o.forms().some((f) => plays(f, "midi"))) return;
     listening = true;
     const r = await midiAccess(o.navigator);
+    // a set stopped while access was asked for binds nothing: a reload's new set listens instead
+    if (stopped) return;
     if (!r.ok) { once({ code: String(r.code), severity: String(r.severity), message: String(r.message) }); return; }
     const access = /** @type {any} */ (r.access);
     /** @type {Set<any>} */
     const bound = new Set();
+    midi = { access, inputs: bound };
     const bind = () => { for (const input of access.inputs?.values?.() ?? []) if (!bound.has(input)) { bound.add(input); input.onmidimessage = (/** @type {any} */ e) => message(e.data, e.timeStamp); } };
     bind();
     access.onstatechange = bind;
   }
 
-  return { start, stop() { running = false; }, listen, poll, message };
+  /** Stops for good: no more polling, a gesture in flight dropped, and the MIDI listeners taken off, so an old load's devices reach nothing. */
+  function stop() {
+    stopped = true;
+    running = false;
+    gestures.clear();
+    if (midi) {
+      for (const input of midi.inputs) input.onmidimessage = null;
+      midi.access.onstatechange = null;
+      midi = null;
+    }
+  }
+
+  return { start, stop, listen, poll, message };
 }

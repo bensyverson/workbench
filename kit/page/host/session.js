@@ -22,6 +22,7 @@ const shapeOf = (c) => JSON.stringify({ parts: c.parts.map((/** @type {any} */ p
  * @property {(snapshot: Snapshot) => void} [onFrame]  called after each display frame and each step, rewind or input made through the session
  * @property {{ inputs?: Array<Record<string, any>>, seed?: number }} [run]  a run to start from (Open on a failed test: its input log and seed)
  * @property {(message: string) => void} [onProblem]  a snapshot or an `onFrame` that throws, said once while it keeps throwing the same (the frames go on)
+ * @property {(refusals: Array<{ code: string, severity: "error" | "warning", message: string, fix?: string }>) => void} [onStage]  a custom element's refusal found after its event (a preview that does not build when the frame builds it, H012), with its own code, for the stage's list; without it, said through onProblem
  * @property {(commit: { part: string, to: string, value: unknown }) => void} [onCommit]  a release to write back into the part's text (the editor's write, kit/page's writeBack): a Control with `to`, a Grip, a custom element's commit
  */
 
@@ -53,12 +54,27 @@ export function createSession(loaded, options) {
   const texts = loaded.source ? Object.fromEntries(userParts.map((/** @type {string} */ n) => [n, loaded.source])) : {};
   /** The build in force: `install` swaps in the new text's, so a preview builds the text the record came from. */
   let rebuild = loaded.rebuild;
+  /** The composition the text in force built (`install` swaps it), whose records a workbench with no rebuild puts in force. */
+  let textComposed = composed;
+  /**
+   * The records built from the text in force: its build's, `install`'s, and a build-time param's rebuild of it (a
+   * preview built with an argument overridden is not one). A record in force that is not among them came from another
+   * text (a scrub back past a write-back), and the session puts the text in force again (`restoreText`).
+   * @type {WeakSet<object>}
+   */
+  let ofText = new WeakSet(composed.parts.map((/** @type {any} */ p) => p.record).filter((/** @type {unknown} */ r) => r !== null && typeof r === "object"));
+  /** @param {string} part @param {Record<string, unknown>} params @param {{ args?: Record<string, unknown> }} [more] */
+  const built = (part, params, more) => {
+    const record = /** @type {NonNullable<typeof rebuild>} */ (rebuild)(part, params, more);
+    if (record !== null && typeof record === "object" && !Object.keys(more?.args ?? {}).length) ofText.add(record);
+    return record;
+  };
   const page = createPage({
     composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), context: options.context,
     requestFrame: (cb) => frame((ms) => { flushEdits(); cb(ms); notify(); }),
     texts,
     ...(options.decode ? { decode: options.decode } : {}),
-    ...(loaded.rebuild || options.run ? { run: { ...(loaded.rebuild ? { build: (/** @type {string} */ part, /** @type {Record<string, unknown>} */ params, /** @type {any} */ more) => /** @type {NonNullable<typeof rebuild>} */ (rebuild)(part, params, more) } : {}), ...(options.run ?? {}) } } : {}),
+    ...(loaded.rebuild || options.run ? { run: { ...(loaded.rebuild ? { build: built } : {}), ...(options.run ?? {}) } } : {}),
   });
   /** The record in force for a part (a rebuild changes it, one that keeps the key included). @param {string} part @returns {Record<string, any>} */
   const recordOf = (part) => (page.run.composed ?? composed).parts.find((/** @type {any} */ p) => p.name === part)?.record ?? {};
@@ -120,6 +136,8 @@ export function createSession(loaded, options) {
   let stopped = false;
   notify = () => {
     if (stopped) return;
+    // the scrubber's top, whether or not a panel reads the snapshot
+    head = Math.max(head, page.run.seconds);
     try { options.onFrame?.(snapshot()); said = null; } catch (e) {
       const m = `the panels threw: ${e instanceof Error ? e.message : e}`;
       if (m !== said) { said = m; options.onProblem?.(m); }
@@ -129,7 +147,9 @@ export function createSession(loaded, options) {
 
   /** @param {string} part @param {string} name @param {number | string | boolean} value @returns {Array<{ code: string, message: string, part?: string }>} */
   const setParam = (part, name, value) => {
-    try { page.run.input({ kind: "param", part, name, value }); } catch (e) {
+    // while paused there is no next frame to apply it at, so it is in force at once
+    const e = { kind: "param", part, name, value };
+    try { if (page.driver.paused) page.run.inputNow(e); else page.run.input(e); } catch (e) {
       if (e instanceof RunError) { notify(); return /** @type {any[]} */ (e.diagnostics); }
       throw e;
     }
@@ -158,11 +178,41 @@ export function createSession(loaded, options) {
       if (!rebuild) throw new Error("this workbench has no build to preview an argument with");
       return rebuild(part, { ...page.run.params(part) }, { args: { [to.slice(4)]: value } });
     },
-    logRebuild: (part, record) => { page.run.input({ kind: "rebuild", part, record }); },
+    // a commit's at once (the write-back's rebuild follows it at once), and a preview at once while paused
+    logRebuild: (part, record, phase) => { const e = { kind: "rebuild", part, record }; if (phase === "commit" || page.driver.paused) page.run.inputNow(e); else page.run.input(e); },
     commit: (c) => options.onCommit?.(c),
-    problem: (m) => options.onProblem?.(m),
+    refused: (r) => { if (options.onStage) options.onStage([r]); else options.onProblem?.(`${r.code} ${r.message}`); },
   });
   flushEdits = () => elements.flush();
+
+  /**
+   * Puts a record of the text in force at once (kit/run's inputNow: no frame shows the text new and the record old),
+   * and, for each param whose declared value it changes from `was`'s, that value, unless the run already has it.
+   * @param {string} part @param {Record<string, any>} record @param {Record<string, any>} was
+   */
+  function putInForce(part, record, was) {
+    ofText.add(record);
+    page.run.inputNow({ kind: "rebuild", part, record });
+    const now = page.run.params(part);
+    for (const [name, decl] of Object.entries(/** @type {Record<string, any>} */ (record.params ?? {}))) {
+      if (decl?.value !== was.params?.[name]?.value && decl?.value !== now[name]) {
+        try { page.run.inputNow({ kind: "param", part, name, value: decl.value }); } catch (e) { if (!(e instanceof RunError)) throw e; }
+      }
+    }
+  }
+  /**
+   * The text is the source of truth, and a rewind is a branch of the run, not of the text (the integrator's ruling,
+   * 2026-11-27): after a scrub or a seek, each part whose record in force is not the text's gets the text's, built with
+   * the run's params, at the new T, as `install` does.
+   */
+  function restoreText() {
+    for (const part of userParts) {
+      const was = recordOf(part);
+      if (ofText.has(was)) continue;
+      const record = rebuild ? built(part, { ...page.run.params(part) }) : textComposed.parts.find((/** @type {any} */ p) => p.name === part)?.record;
+      if (record) putInForce(part, record, was);
+    }
+  }
 
   return {
     page, series, snapshot, compiledOf, recordOf,
@@ -179,6 +229,7 @@ export function createSession(loaded, options) {
     seek(seconds) {
       page.driver.pause();
       page.run.runUntil(seconds);
+      restoreText();
       changed();
     },
     /** Moves to `seconds`: a rewind below where the run is, a run forward up to the furthest point it reached. Pauses. @param {number} seconds */
@@ -186,11 +237,14 @@ export function createSession(loaded, options) {
       page.driver.pause();
       const t = Math.max(0, Math.min(seconds, head));
       if (t < page.run.seconds) page.run.rewind(t); else page.run.runUntil(t);
+      restoreText();
       changed();
     },
+    /** Whether every part's record in force was built from the text in force (a rewind past the session can leave one that was not). */
+    textInForce: () => userParts.every((/** @type {string} */ part) => ofText.has(recordOf(part))),
     /**
-     * A param edit, as a logged input the run applies at its next instant: the diagnostics the run refused it with
-     * (N008: a value that does not fit the param's declaration), empty when it was logged.
+     * A param edit, as a logged input the run applies at its next instant, or at once while paused: the diagnostics
+     * the run refused it with (N008: a value that does not fit the param's declaration), empty when it was logged.
      */
     setParam,
     /**
@@ -298,15 +352,13 @@ export function createSession(loaded, options) {
       if (!next.composed) return { ok: false, reload: true, why: "the text did not build" };
       if (shapeOf(next.composed) !== shapeOf(composed)) return { ok: false, reload: true, why: "the composition's parts or wires changed, so it runs again as a new run" };
       rebuild = next.rebuild;
+      textComposed = next.composed;
+      ofText = new WeakSet();
       for (const part of userParts) {
         const was = recordOf(part);
-        const record = next.rebuild ? next.rebuild(part, { ...page.run.params(part) }) : next.composed.parts.find((/** @type {any} */ p) => p.name === part).record;
-        page.run.input({ kind: "rebuild", part, record });
+        const record = next.rebuild ? built(part, { ...page.run.params(part) }) : next.composed.parts.find((/** @type {any} */ p) => p.name === part).record;
         if (next.source) texts[part] = next.source;
-        const now = page.run.params(part);
-        for (const [name, decl] of Object.entries(/** @type {Record<string, any>} */ (record.params ?? {}))) {
-          if (decl?.value !== was.params?.[name]?.value && decl?.value !== now[name]) setParam(part, name, decl.value);
-        }
+        putInForce(part, record, was);
       }
       changed();
       return { ok: true };

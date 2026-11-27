@@ -4,7 +4,7 @@
 // The primary target is a synth with MIDI note triggers and knobs (a number Control by CC); a game's pad is the other leg.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createInputDevices } from "../input-devices.js";
+import { createInputDevices, GESTURE_IDLE_MS } from "../input-devices.js";
 import { createSession } from "../session.js";
 import { fakeContext, frames } from "../../fixtures/bench.js";
 import { synthKit } from "../../fixtures/controls-bench.js";
@@ -154,4 +154,72 @@ test("MIDI access is asked for once, however often the gesture is reported", asy
   const { d } = rig({ notes: SYNTH.notes, tempo: { kind: "number", min: 40, max: 240, value: 120 } }, { requestMIDIAccess: async () => { asked++; return access; } });
   await d.listen(); await d.listen();
   assert.equal(asked, 1);
+});
+
+/** Devices over stub forms, recording each call to `control` (issue wZAGIk, reviewer-79). */
+function stubbed(forms, navigator = {}) {
+  const calls = [];
+  const poll = frames();
+  const d = createInputDevices({ forms: () => forms, control: (n, r, e) => { calls.push({ n, r, e }); return []; }, navigator, requestFrame: poll.requestFrame, report: () => {} });
+  return { d, calls, poll };
+}
+const FOCUS = { name: "bench.focus", kind: "number", min: 0, max: 10, value: 5, to: "param.focus", part: "bench", local: true, midi: { cc: 74 }, keyed: false, disabled: null };
+
+test("a knob on a Control with to previews while its messages flow and commits once, GESTURE_IDLE_MS of device time after the last", () => {
+  const { d, calls, poll } = stubbed([FOCUS, { name: "tone", kind: "number", min: 0, max: 1, value: 0, midi: { cc: 75 }, keyed: false }]);
+  for (const [v, t] of [[70, 1000], [75, 1010], [80, 1020], [90, 1030]]) d.message([0xb0, 74, v], t);
+  assert.deepEqual(calls.map((c) => c.e.phase), ["preview", "preview", "preview", "preview"], "each message previews");
+  assert.deepEqual(calls.map((c) => c.e.timeStamp), [1000, 1010, 1020, 1030], "stamped with its own time");
+  assert.equal(poll.waiting, 1, "a frame is asked for, to see the gesture end");
+  poll.tick(1030 + GESTURE_IDLE_MS - 1);
+  assert.equal(calls.length, 4, "not yet idle");
+  poll.tick(1030 + GESTURE_IDLE_MS);
+  assert.equal(calls.length, 5);
+  assert.deepEqual([calls[4].n, calls[4].e.phase, calls[4].r], ["bench.focus", "commit", calls[3].r], "one commit, of the last value");
+  assert.equal(poll.waiting, 0, "no frames once nothing waits");
+  // the next gesture commits once more; a Control without to sends each message as it is, with no phase
+  d.message([0xb0, 74, 10], 5000);
+  d.message([0xb0, 75, 64], 5001);
+  poll.tick(5000 + GESTURE_IDLE_MS);
+  assert.deepEqual(calls.slice(5).map((c) => [c.n, c.e.phase]), [["bench.focus", "preview"], ["tone", undefined], ["bench.focus", "commit"]]);
+});
+
+test("a pad's axis on a Control with to previews per change and commits once it rests; stop drops a gesture in flight", () => {
+  let now = pad([], [0], 1000);
+  const tempo = { name: "s.tempo", kind: "number", min: 40, max: 240, value: 120, to: "param.tempo", part: "s", local: true, gamepad: { axis: 0 }, keyed: false, disabled: null };
+  const { d, calls, poll } = stubbed([tempo], { getGamepads: () => [now] });
+  d.start();
+  poll.tick(1000);
+  now = pad([], [0.5], 1016);
+  poll.tick(1016);
+  poll.tick(1032);
+  assert.deepEqual(calls.map((c) => c.e.phase), ["preview", "preview"], "a change previews; an unchanged pad makes nothing");
+  poll.tick(1016 + GESTURE_IDLE_MS);
+  assert.deepEqual(calls.map((c) => c.e.phase), ["preview", "preview", "commit"]);
+  assert.equal(poll.waiting, 1, "the pad is still polled");
+  now = pad([], [1], 2000);
+  poll.tick(2000);
+  d.stop();
+  poll.tick(2000 + GESTURE_IDLE_MS);
+  assert.equal(calls.at(-1).e.phase, "preview", "a stopped set commits nothing");
+  assert.equal(poll.waiting, 0);
+});
+
+test("devices.stop() unbinds MIDI: a message after a reload reaches nothing, and a listen that resolves after stop binds nothing", async () => {
+  const m = midiStub();
+  const { d, calls } = stubbed([FOCUS], m.navigator);
+  await d.listen();
+  assert.equal(typeof m.input.onmidimessage, "function");
+  d.stop();
+  assert.equal(m.input.onmidimessage, null, "the input's listener is taken off");
+  assert.equal(m.access.onstatechange, null);
+  assert.equal(calls.length, 0);
+  let release;
+  const late = midiStub();
+  const slow = createInputDevices({ forms: () => [FOCUS], control: () => [], navigator: { requestMIDIAccess: () => new Promise((r) => { release = () => r(late.access); }) }, requestFrame: () => {}, report: () => {} });
+  const p = slow.listen();
+  slow.stop();
+  release();
+  await p;
+  assert.equal(late.input.onmidimessage, undefined, "nothing was bound after stop");
 });
