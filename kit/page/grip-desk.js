@@ -5,6 +5,7 @@
 
 import { edgeInto, intoPart, fromPart } from "./pointer.js";
 import { gripValue } from "./grips.js";
+import { PAGE } from "../compose/page.js";
 
 /** @typedef {import("./codes.js").PageDiagnostic} PageDiagnostic */
 /**
@@ -43,7 +44,7 @@ export function createGripDesk(seams) {
     /** @type {Array<{ part: string, grip: string, index: number, kind: string, label?: string, at: number[], to: string, disabled: { code: string, message: string } | null, item: unknown, axis?: number[], center?: number[], decl: any }>} */
     const out = [];
     for (const cp of composed.parts) {
-      if (cp.name === "page" || cp.layer !== undefined) continue;
+      if (cp.name === PAGE || cp.layer !== undefined) continue;
       const ui = uiOfPart(cp.name);
       if (!ui || !Object.keys(ui.grips ?? {}).length) continue;
       const c = compiledOf(cp.name);
