@@ -148,14 +148,54 @@ export function createRun(composed, options) {
   /** The parts' snapshots as the instant began, which a delayed wire reads. @type {Map<string, View>} */
   let startView = new Map();
 
-  const nextInstant = () => instantAfter(parts, at);
   const awaitingFrame = () => waitsOnFrame(parts, at);
+  /**
+   * The next instant: a clocked part's, or, while no clocked part is running (a run of demand parts, such as a package
+   * played or tested alone), the stamp of the next logged input that reaches a demand part (Ben, 2026-11-27, issue
+   * qsEYlW). Beside a running clocked part an input makes none: its demand parts step at that part's instants, which
+   * is what kit/compose's S116 sized their queues by. Read from the log and the parts alone, so a replay and a rewind
+   * make the same instants.
+   */
+  const nextInstant = () => {
+    const T = instantAfter(parts, at);
+    if (T || awaitingFrame()) return T;
+    for (let k = cursor; k < inputs.length; k++) {
+      // one stamped at the last instant (logged behind a param wire's input) is applied ahead of the next
+      if (at.lastT && cmp(inputs[k].T, at.lastT) <= 0) continue;
+      if (reachesDemand(inputs[k])) return inputs[k].T;
+    }
+    return null;
+  };
+  /** @param {Part | undefined} p */
+  const onDemand = (p) => !!p && running(p) && p.clock.kind === "demand";
+  /**
+   * Whether an outside input reaches a running demand part at its stamp: an in or pointer input to it, a page Control
+   * wired to it undelayed, a param input to it (a Grip's preview), or a rebuild of it (a Grip's commit on an argument;
+   * by the new record's clock too, and a stopped part restarts). A param wire's input is the run's own, made after an
+   * instant. @param {Entry} e
+   */
+  function reachesDemand(e) {
+    if (e.kind === "control") return e.part === PAGE && hasPage && wires.some((w) => w.fromPage && w.from.port === e.name && !w.delay && onDemand(byName.get(w.to.part)));
+    const p = byName.get(e.part ?? "");
+    if (!p) return false;
+    if (e.kind === "in" || e.kind === "pointer") return onDemand(p);
+    if (e.kind === "param") return !e.wire && onDemand(p);
+    if (e.kind === "rebuild") {
+      if (p.clock.kind === "demand") return true;
+      const c = clockOf(p.runtime, /** @type {Record<string, any>} */ (e.record));
+      return c.ok && c.clock.kind === "demand";
+    }
+    return false;
+  }
 
   /** @param {Omit<RunDiagnostic, "severity"> & { severity?: "error" | "warning" }} d */
   const report = (d) => { diagnostics.push({ severity: "error", ...d }); };
-  // nothing makes an instant past the first in a run of demand parts only ("Not here"): played, it would do nothing
-  const stepping = parts.filter((p) => p.dialect !== PAGE);
-  if (stepping.length && stepping.every((p) => p.clock.kind === "demand")) report({ code: "N014", severity: "warning", T: "0", message: `every part of this run steps on demand (${stepping.map((p) => p.name).join(", ")}), and a demand part makes no instant of its own, so after the first instant nothing steps: an input, a page Control's record or a test's in record waits for an instant that never comes. Give one part a tick or frame clock (a part whose step reads dt and does nothing while nothing changed)` });
+  // in a run of demand parts only, the instants are the inputs' (nextInstant): what a delayed wire or a param wire
+  // carries into a demand part at one is read at the next, which only the next input makes
+  if (parts.length && parts.every((p) => p.clock.kind === "demand")) {
+    const late = composed.wires.filter((w) => (w.delay || ends(w.to).side === "param") && byName.has(ends(w.to).part)).map((w) => `${w.from} → ${w.to}${w.delay ? " (delayed)" : ""}`);
+    if (late.length) report({ code: "N014", severity: "warning", T: "0", message: `${late.join(", ")}: every part of this run steps on demand (${parts.map((p) => p.name).join(", ")}), so its instants are the inputs' stamps (an input makes one for the demand part it reaches), and what crosses ${late.length === 1 ? "this wire" : "these wires"} at an instant is read only at the next, when the next input comes. Give one part a tick or frame clock, or, where no cycle needs the delay, drop it` });
+  }
   const delivery = createDelivery(wires, byName, report);
   const { dropStopped } = delivery;
   const params = createParamFeed(composed, byName, report, options.params);
@@ -391,7 +431,8 @@ export function createRun(composed, options) {
       if (!due(p, T, frames, frameLog)) continue;
       const { values, rev, pending } = readInputs(p, T, wireTo, viewOf);
       const shown = canonical(values);
-      if (p.clock.kind === "demand" && p.stepped && !p.rebuilt && pending === 0 && shown === p.lastValues) continue;
+      // a demand part wakes for an Event, a changed value input, a rebuild, or a param changed since its last commit
+      if (p.clock.kind === "demand" && p.stepped && !p.rebuilt && pending === 0 && shown === p.lastValues && canonical(p.params) === canonical(p.drawParams)) continue;
       /** @type {Record<string, unknown>} */
       const inputs = { ...values, $rev: Object.freeze(rev) };
       const over = intake(p, T, wireTo, catchUp);

@@ -69,6 +69,8 @@ In fact, a part run alone with a demand clock never steps after T = 0. Neither a
 
 Reproduced by hand: copy `cavern/` and change only its clock to `{ demand: true }`, then `node scripts/pkg/hash.js <copy>` and `node scripts/m4-trial/tests-dogfood/check.js --role game <copy>`. It gives the leg's first-run H006s. Each leg switched to a tick (1/60 s and 1/10 s), and neither knew why that worked.
 
+> **Resolved 2026-11-27** (issue `qsEYlW`, Ben's option (a)): an outside input now makes an instant at its stamp for the demand part it reaches while no tick or frame part runs (kit/run, "A demand part"). The same reproduction now gives `tests: 3 of 3 passed`. The run did not step "once, at 0", as both READMEs said: it never stepped, since no part made even the first instant.
+
 ### What the tests cover (read by hand)
 
 - **`cavern`** (3 tests):

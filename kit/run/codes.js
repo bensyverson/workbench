@@ -16,7 +16,7 @@ export const RUN_CODES = Object.freeze({
   N011: "An in input addressed to an input the part does not have, to a value or Draw input, or to an Event input a wire feeds, or a control input addressed to any part but the built-in page: refused when it is logged (a RunError, and the run is unchanged)",
   N012: "An in input whose value does not fit the input's seam (a field missing that has no default, an unknown field, a value of the wrong type), a control input whose value does not fit its declared Control's seam, or a pointer input whose value does not fit the part's pointer input: refused when it is logged (a RunError, and the run is unchanged)",
   N013: "A control input naming a Control the composed page lacks, or a pointer input to a part that takes no pointer (its UI names no pointer input there): refused when it is logged (a RunError, and the run is unchanged)",
-  N014: "A run whose every stepping part is on a demand clock: nothing makes an instant past the first, so inputs never reach a step; a warning at createRun (kit/run's \"Not here\": a workbench of demand parts only)",
+  N014: "A run whose every stepping part is on a demand clock, with a delayed wire or a param wire into a demand part: the instants are the outside inputs' stamps, so what the wire carries at one instant is read only at the next input's; a warning at createRun, naming the wires",
   N010: "A param input changes a param that build-time code reads, and the run was given no build(part, params) to rebuild the part with: refused when it is logged (a RunError), or, when only a rebuild logged before it made the param build-time, not applied (noted)",
 });
 
