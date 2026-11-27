@@ -15,7 +15,7 @@ import { uiFor } from "../compose/page.js";
 import { MAX_PAGE_DIAGNOSTICS } from "./codes.js";
 import { keyMap, keyState } from "./keys.js";
 import { decodeSources } from "./sources.js";
-import { toStage, hitsOf, edgeInto, intoPart, pointerRecord, PHASES } from "./pointer.js";
+import { toStage, fromStage, hitsOf, edgeInto, intoPart, pointerRecord, PHASES } from "./pointer.js";
 import { createGripDesk } from "./grip-desk.js";
 import { targetProblem } from "./writeback.js";
 import { createControls } from "./controls.js";
@@ -407,6 +407,14 @@ export function createPage(options) {
     hits,
     /** A canvas point in the shown frame. @param {number} x @param {number} y */
     toStage: (x, y) => toStage(x, y, viewport, box),
+    /** A shown-frame point in canvas pixels: toStage inverted, where a host draws its Grips. @param {number[]} p */
+    fromStage: (p) => fromStage(p, viewport, box),
+    /**
+     * Why a part's target (`param.<name>` or `arg.<address>`) cannot be written, or null: no call of the record in
+     * force is there, the call runs several times, or, given the part's text, the argument is not a literal (H011) or
+     * the text is not the one the record was built from (H012). What a Grip or a Control with `to` is disabled by.
+     */
+    writeProblem,
     /** The host's zoom and pan of the stage (not logged). @param {{ zoom?: number, pan?: number[] }} v */
     setView(v) { viewport = { zoom: v.zoom ?? viewport.zoom, pan: v.pan ?? viewport.pan }; },
     /** The focus left: every held button and trigger is let go, and a captured pointer is cancelled; the run goes on. */

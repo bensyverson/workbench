@@ -88,3 +88,19 @@ test("39. a point maps only through the shown layer's path, whichever layer the 
     assert.deepEqual(pg.run.state("b").got, ["down@50,50"], `other first: ${otherFirst}`);
   }
 });
+
+test("yJU9zy. page.fromStage is page.toStage inverted: a shown-frame point in canvas pixels, through the zoom, the pan and the stage's corner", () => {
+  const { page: pg } = lensPage();
+  pg.setView({ zoom: 2, pan: [10, -4] });
+  assert.deepEqual(pg.fromStage([30, 30]), [70, 56]);
+  for (const p of [[0, 0], [12.5, 99], [100, 3]]) assert.deepEqual(pg.toStage(...pg.fromStage(p)), p, `round trip of ${p}`);
+  pg.setView({ zoom: 1, pan: [0, 0] });
+  assert.deepEqual(pg.fromStage([5, 6]), [5, 6]);
+});
+
+test("yJU9zy. page.writeProblem says why a target cannot be written, or null: what a Grip or a Control with to shows as H011", () => {
+  const { page: pg } = lensPage();
+  assert.equal(pg.writeProblem("b", "arg.b.surface#0:0.radius"), null, "a literal at a call the record made");
+  assert.deepEqual([pg.writeProblem("b", "arg.b.surface#9:0.radius")?.code, /no call/.test(pg.writeProblem("b", "arg.b.surface#9:0.radius")?.message)], ["H011", true]);
+  assert.equal(pg.writeProblem("b", "surface.radius")?.code, "H011", "not a target");
+});

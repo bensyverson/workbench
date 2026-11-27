@@ -143,3 +143,21 @@ test("a custom element stage's wb-control, wb-param and wb-edit: checked against
   assert.deepEqual(s.element("wb-edit", { to: "lens.radius", value: 3 }).map((d) => d.code), ["H011"], "not a target");
   assert.deepEqual(s.element("wb-edit", { to: "arg.bench.lens#1:0.radius", value: 400, phase: "commit" }).map((d) => d.code), ["H012"], "a value the Grammar refuses does not build");
 });
+
+test("yJU9zy. a second and a third Grip release each write back: the run keeps the record of the text it was built from (kit/run, a same-key rebuild)", async () => {
+  const b = await lensBench();
+  const s = b.session;
+  let T = 32;
+  for (const [from, to, r] of [[42, 47, 17], [47, 50, 20], [50, 51, 21]]) {
+    const drag = s.grab({ part: "bench", grip: "radius", index: 0 }, from, 40);
+    drag.move(to, 40);
+    b.f.tick(T); T += 16;
+    drag.release();
+    await settle(); await settle();
+    b.f.tick(T); T += 16;
+    assert.deepEqual(b.said, [], `release to ${r} wrote`);
+    assert.match(b.editor.text, new RegExp(`radius: ${r}, at: \\[30, 40\\]`));
+    assert.equal(s.recordOf("bench"), s.page.run.composed.parts.find((p) => p.name === "bench").record, "the session reads the run's record");
+    assert.equal(s.grips().find((g) => g.grip === "radius" && g.index === 0).disabled, null, "the Grip stays enabled");
+  }
+});

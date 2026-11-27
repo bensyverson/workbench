@@ -16,6 +16,12 @@ export const PHASES = Object.freeze({ pointerdown: "down", pointermove: "move", 
 export const toStage = (x, y, view, box) => [(x - view.pan[0]) / view.zoom + (box?.min[0] ?? 0), (y - view.pan[1]) / view.zoom + (box?.min[1] ?? 0)];
 
 /**
+ * A shown-frame point in canvas pixels: toStage inverted (the stage's corner, then the host's zoom and pan).
+ * @param {number[]} p @param {View} view @param {{ min: number[] } | null} box
+ */
+export const fromStage = (p, view, box) => [(p[0] - (box?.min[0] ?? 0)) * view.zoom + view.pan[0], (p[1] - (box?.min[1] ?? 0)) * view.zoom + view.pan[1]];
+
+/**
  * The draw edge that carries a part's output into the shown layer, from the composed wires: `{ scale, offset }`,
  * composed through nested layers, or null when the part is the shown one (no edge). Only the layer wires on the path
  * down from the shown layer count: an output that also feeds a layer the page does not show is not mapped through it.

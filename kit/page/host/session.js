@@ -5,8 +5,7 @@
 // stage side (project/2026-11-27-controls-draft.md, requirements 7 to 10): the Grips in canvas pixels and their drags,
 // the host's zoom and pan, a custom element stage's events, and a new text of the Program put in force (`install`).
 
-import { createPage, sweepRuns, targetProblem } from "../index.js";
-import { siteOf } from "../../define/index.js";
+import { createPage, sweepRuns } from "../index.js";
 import { RunError } from "../../run/index.js";
 import { shownTiles, SeriesStore, numberPaths } from "./ui-eval.js";
 import { createElementEvents } from "./element-events.js";
@@ -52,37 +51,17 @@ export function createSession(loaded, options) {
   const userParts = composed.parts.filter((/** @type {any} */ p) => p.name !== "page" && p.layer === undefined).map((/** @type {any} */ p) => /** @type {string} */ (p.name));
   /** Each part's Program text now (the glue's, or the preset's example): `install` changes it. @type {Record<string, string>} */
   const texts = loaded.source ? Object.fromEntries(userParts.map((/** @type {string} */ n) => [n, loaded.source])) : {};
-  /**
-   * The text the record in force in the run was built from, by part, which the page reads to tell a literal (H011) and
-   * a stale span (H012). kit/run keeps its old record on a rebuild with the same content key (a release that writes
-   * back the last preview's value), so until the run takes a record of the new text the page reads the old one.
-   * @type {Record<string, string>}
-   */
-  const pageTexts = { ...texts };
-  /** An installed text's record the run has not taken yet: its record, its text, and the record in force when it was logged. @type {Map<string, { record: any, text: string, kept: any }>} */
-  const pending = new Map();
   /** The build in force: `install` swaps in the new text's, so a preview builds the text the record came from. */
   let rebuild = loaded.rebuild;
   const page = createPage({
     composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), context: options.context,
-    requestFrame: (cb) => frame((ms) => { syncAll(); flushEdits(); cb(ms); notify(); }),
-    texts: pageTexts,
+    requestFrame: (cb) => frame((ms) => { flushEdits(); cb(ms); notify(); }),
+    texts,
     ...(options.decode ? { decode: options.decode } : {}),
     ...(loaded.rebuild || options.run ? { run: { ...(loaded.rebuild ? { build: (/** @type {string} */ part, /** @type {Record<string, unknown>} */ params, /** @type {any} */ more) => /** @type {NonNullable<typeof rebuild>} */ (rebuild)(part, params, more) } : {}), ...(options.run ?? {}) } } : {}),
   });
-  /** The record in force in the run for a part (a rebuild changes it). @param {string} part @returns {Record<string, any>} */
-  const runRecord = (part) => (page.run.composed ?? composed).parts.find((/** @type {any} */ p) => p.name === part)?.record ?? {};
-  /** Follows the run: once it holds a record of an installed text (that one, or a later build of it), the page reads that text. @param {string} part */
-  const sync = (part) => {
-    const w = pending.get(part);
-    if (!w || runRecord(part) === w.kept) return w ?? null;
-    pageTexts[part] = w.text;
-    pending.delete(part);
-    return null;
-  };
-  /** The record the Program's text now was built from: an installed one the run kept its old record for, else the run's. @param {string} part @returns {Record<string, any>} */
-  const recordOf = (part) => sync(part)?.record ?? runRecord(part);
-  const syncAll = () => { for (const p of pending.keys()) sync(p); };
+  /** The record in force for a part (a rebuild changes it, one that keeps the key included). @param {string} part @returns {Record<string, any>} */
+  const recordOf = (part) => (page.run.composed ?? composed).parts.find((/** @type {any} */ p) => p.name === part)?.record ?? {};
   const series = new SeriesStore();
   let head = 0;
   const uiOf = (/** @type {string} */ part) => {
@@ -105,28 +84,9 @@ export function createSession(loaded, options) {
     if (compiled.get(part)?.record !== record) compiled.set(part, { record, ui: uiOf(part)?.compile(record) ?? null });
     return compiled.get(part)?.ui ?? null;
   };
-  /**
-   * Why a target of a part cannot be written, or null: the H011 or H012 kit/page's writeback finds in the part's text,
-   * or, with no text, the record's own site (no call there, or a call that runs several times).
-   * @param {string} part @param {string} to @returns {{ code: string, message: string, fix?: string } | null}
-   */
-  const writeProblem = (part, to) => {
-    if (!/^(param|arg)\./.test(to)) return { code: "H011", message: `the target ${JSON.stringify(to)} is neither "param.<name>" nor "arg.<address>"` };
-    const record = recordOf(part);
-    if (texts[part]) return targetProblem(texts[part], record, to);
-    // with no text there is nothing to read the argument from: only the record's own site
-    const site = siteOf(record, to);
-    if (!site) return { code: "H011", message: to.startsWith("param.") ? `the Program declares no param '${to.slice(6)}'` : `no call of part ${part}'s Program is at ${to}` };
-    return site.calls > 1 ? { code: "H011", message: `this call runs ${site.calls} times, so its argument is not one value` } : null;
-  };
   /** The host's zoom and pan of the stage, which kit/page draws through (not logged). */
   /** @type {{ zoom: number, pan: number[] }} */
   let view = { zoom: FIT.zoom, pan: [...FIT.pan] };
-  /** A shown-frame point from a canvas point, and back: kit/page's toStage, which is affine, inverted. @param {number[]} p */
-  const toCanvas = (p) => {
-    const o = page.toStage(0, 0), u = page.toStage(1, 1);
-    return [(p[0] - o[0]) / (u[0] - o[0]), (p[1] - o[1]) / (u[1] - o[1])];
-  };
 
   /** @returns {Snapshot} */
   function snapshot() {
@@ -191,7 +151,9 @@ export function createSession(loaded, options) {
   const elements = createElementEvents({
     shown: () => String(composed.show ?? ""),
     controls: () => /** @type {Array<{ name: string }>} */ (page.controls()),
-    control, setParam, writeProblem,
+    control, setParam,
+    writeProblem: (part, to) => page.writeProblem(part, to),
+    declares: (part, name) => Object.hasOwn(recordOf(part).params ?? {}, name),
     build: (part, to, value) => {
       if (!rebuild) throw new Error("this workbench has no build to preview an argument with");
       return rebuild(part, { ...page.run.params(part) }, { args: { [to.slice(4)]: value } });
@@ -289,17 +251,16 @@ export function createSession(loaded, options) {
      * The Grips over the stage, in canvas pixels (kit/page's `page.grips()` through the zoom and pan): what the host
      * draws in a layer above the canvas, a disabled one with its H011.
      */
-    grips: () => { syncAll(); return page.grips().map((g) => {
-      const [x, y] = toCanvas(g.at);
+    grips: () => page.grips().map((g) => {
+      const [x, y] = page.fromStage(g.at);
       return { part: g.part, grip: g.grip, index: g.index, kind: g.kind, ...(g.label ? { label: g.label } : {}), x, y, to: g.to, disabled: g.disabled };
-    }); },
+    }),
     /**
      * Takes hold of a Grip at a canvas point: its moves preview through the log (kit/page's `page.grab`, at most one
      * input a frame), and its release hands `{ part, to, value }` to `onCommit` and returns it.
      * @param {{ part: string, grip: string, index: number }} ref @param {number} x @param {number} y
      */
     grab(ref, x, y) {
-      syncAll();
       const drag = page.grab(ref, page.toStage(x, y));
       return {
         /** @param {number} px @param {number} py @param {{ alt?: boolean }} [o] */
@@ -340,9 +301,8 @@ export function createSession(loaded, options) {
       for (const part of userParts) {
         const was = recordOf(part);
         const record = next.rebuild ? next.rebuild(part, { ...page.run.params(part) }) : next.composed.parts.find((/** @type {any} */ p) => p.name === part).record;
-        const kept = runRecord(part);
         page.run.input({ kind: "rebuild", part, record });
-        if (next.source) { texts[part] = next.source; pending.set(part, { record, text: next.source, kept }); }
+        if (next.source) texts[part] = next.source;
         const now = page.run.params(part);
         for (const [name, decl] of Object.entries(/** @type {Record<string, any>} */ (record.params ?? {}))) {
           if (decl?.value !== was.params?.[name]?.value && decl?.value !== now[name]) setParam(part, name, decl.value);

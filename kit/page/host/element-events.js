@@ -18,6 +18,7 @@ export const ELEMENT_EVENTS = Object.freeze(["wb-control", "wb-param", "wb-edit"
  *   control: (name: string, record: Record<string, unknown>, event: { phase?: "preview" | "commit" }) => Array<{ code: string, message: string }>,
  *   setParam: (part: string, name: string, value: any) => Array<{ code: string, message: string }>,
  *   writeProblem: (part: string, to: string) => { code: string, message: string, fix?: string } | null,
+ *   declares: (part: string, name: string) => boolean,
  *   build: (part: string, to: string, value: unknown) => Record<string, any>,
  *   logRebuild: (part: string, record: Record<string, any>) => void,
  *   commit: (c: { part: string, to: string, value: unknown }) => void,
@@ -55,9 +56,9 @@ export function createElementEvents(s) {
   /** @param {string} part @param {string} name @param {unknown} value @param {"preview" | "commit"} phase @returns {Refusal[]} */
   function param(part, name, value, phase) {
     const to = `param.${name}`;
-    const problem = s.writeProblem(part, to);
     // a param the Program does not declare is no target; one it declares but cannot write back still plays
-    if (problem && /declares no param/.test(problem.message)) return [no("H011", `a custom element's wb-param names ${name}: ${problem.message}`, problem.fix)];
+    if (!s.declares(part, name)) return [no("H011", `a custom element's wb-param names ${name}, and part ${part}'s Program declares no param '${name}'`, "name a param the Program declares")];
+    const problem = s.writeProblem(part, to);
     if (typeof value !== "number" && typeof value !== "string" && typeof value !== "boolean") return [no("N008", `a custom element's wb-param ${name} = ${JSON.stringify(value)} is not a param value (a number, a string or a boolean)`)];
     const refused = s.setParam(part, name, value);
     if (refused.length) return refused.map((d) => no(d.code, d.message));
