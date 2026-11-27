@@ -1,0 +1,7 @@
+{
+  "sample": { "operators": [
+    { "name": "mod", "ratio": 2, "level": 0.5, "env": [[0, 0], [0.1, 1], [0.5, 0.6], [1, 0]] },
+    { "name": "car", "ratio": 1, "level": 0.8, "env": [[0, 0], [0.05, 1], [0.7, 0.5], [1, 0]] }
+  ] },
+  "validTargets": ["param.volume", "arg.mod.operator:1.ratio", "arg.car.operator:1.ratio", "arg.mod.operator:1.level", "arg.car.operator:1.level", "arg.mod.operator:1.env", "arg.car.operator:1.env"]
+}

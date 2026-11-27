@@ -1,0 +1,5 @@
+**Difficulty: 2 out of 5.** All the files are written and the four JavaScript modules import under Node. That is the only check possible, since the kit in the reference doesn't exist.
+
+**Hardest part:** composing with `score`, more than the controls themselves. The pad and the two buttons map directly onto two `buttons` Controls. The glue, though, needs the name of `score`'s picture output, which the task never gives, so `score.out.picture` is a guess that you should replace with the real name. The reference also gives no import paths for `examplePreset`, `compose` or `page`, so `preset-lines.js` and `glue-lines.js` export functions that take those names as arguments. The most important gap I found is that a quick jump or fire tap is only guaranteed to arrive depending on the consumer's "max", and the reference never says how to set it or what its default is. At a max of 1, the press would be lost and only the release would arrive. `REPORT.md` lists this with the other guesses, including the gamepad D-pad index order and where `tiles` goes in the UI declaration.
+
+(Saved by the integrator from the transcript's final message.)

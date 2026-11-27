@@ -2,6 +2,8 @@
 
 *2026-11-27, leaf `sSgaWG` (container `1ymuQu`), by controls-draft-51. Not ruled: Ben's open questions are at the end. Inputs: [the overfit finding](2026-11-27-founding-example-overfit.md); [the sketch feasibility findings](2026-11-27-sketch-feasibility-findings.md), "What the controls redesign must cover" (thirteen requirements, all of them this stage's: ruling 3) and "Rulings"; [Ben's sketches](2026-11-27-workbench-sketches.md); [the M4 UI decision](2026-11-25-m4-ui-decision.md) §3 and §4; the READMEs of kit/page, kit/page/host, kit/define, kit/compose, kit/run, kit/seam and kit/draw; [the glossary](../kit/glossary.md). Folds in `Lu11Q1` (one button input, four buttons, H009). The workbenches this contract must serve besides the founding ones (AGENTS.md, "Serve more than the founding examples"): the FM synth, Grotesk and the lens bench.*
 
+> **Dogfooded 2026-11-27** (leaf `822dDs`): three blind legs wrote declarations against this draft on paper; see [the findings](2026-11-27-controls-dogfood-findings.md). Each change they led to is marked "Changed 2026-11-27 (dogfood)"; the questions they leave for Ben are the last section.
+
 Snippets here use placeholders (`<control>`, `<part>`, `<input>`, `<button>`, `<code>`). They are never names the kit knows.
 
 ## What changes, in one paragraph
@@ -14,7 +16,7 @@ Each is built in this stage unless it says otherwise; where part of one is later
 
 ### 1. Declared, named Controls, bound by name and checked by seam
 
-**Settled.** A Control is declared under `controls` in a package's `defineUI`. Its name is the name of one of the Dialect's Event inputs: that is the binding, and the only one. defineUI compares the record seam the Control's kind makes ([the kind table](#the-kinds), below) with the input's seam through kit/seam's `compareSeams`: any problem is **U016**, naming both seams. A dropped field (a field the Control sends that the input leaves out) and a filled one (a field the input defaults) are fine, as on any wire. A name that is not an Event input is **U015** (with a did-you-mean, and "an Event input" when it names a value input).
+**Settled.** A Control is declared under `controls` in a package's `defineUI`. Its name is the name of one of the Dialect's Event inputs: that is the binding, and the only one for a Control that has an input. A Control with no input of its name is **part-local** and must have `to` (below). *Changed 2026-11-27 (dogfood), round 2: a leg read "the only one" as contradicting part-local Controls.)* defineUI compares the record seam the Control's kind makes ([the kind table](#the-kinds), below) with the input's seam through kit/seam's `compareSeams`: any problem is **U016**, naming both seams. A dropped field (a field the Control sends that the input leaves out) and a filled one (a field the input defaults) are fine, as on any wire. A name that is not an Event input is **U015** (with a did-you-mean, and "an Event input" when it names a value input).
 
 ```js
 // <package>.dialect.js
@@ -28,6 +30,12 @@ export const <ui> = defineUI(<builder>, {
 });
 ```
 
+- **A Control's declaration, whole.** *Changed 2026-11-27 (dogfood): the legs could not tell where `to` goes, nor what an `each` Control's top level must hold.)*
+  - The declaration holds the kind's keys, the required ones too (`min`, `max`, `value` for a `number`), so a Control without `each` and one with it look the same. An `each` entry's keys merge over the declaration's: an entry usually gives `key`, `label`, `value` and `to`.
+  - A Control may have **both** an input of its name and a `to`. The input carries the live value; `to` commits the release to source (requirement 8). With no input, the Control is part-local and `to` is required, in the declaration or in every entry.
+  - A Control's `to` is a string (a fixed target) or, per entry, a string `each` builds from the record. It is build-time: it reads the built record, never run state. A Grip's `to` is a lambda over run state, because a Grip sits on something the runtime computes. A Control that needs a per-item target in run state is a Grip, or a keyed Control over the record.
+  - With `each`, the declaration's own `value` (and the other kind keys) is the fallback for an entry that gives none; an entry's value wins. *Changed 2026-11-27 (dogfood), round 2.)*
+  - `curve` defaults to `"linear"` and `look` to the host's choice for the kind; both are optional, as the kind table says.
 - **Declared by a Program** (the sequencer, and the Program-level UI backlog entry, whose trigger is met). A Control may take `each: (record) => [{ key: "<key>", label?, value?, to?, <kind's keys> }]`, plain build-time JavaScript over the built record, as `extent(record)` and `edges(record)` are in a Dialect. Each entry is one instance of the Control, so a Program that declares four operators gets four knobs. A keyed Control's record gains `key: str`, and its input's seam must take it (U016). `<ui>.lower(record)` calls `each` and checks what it returns (**U017** at lower, with the instance's path).
 - **A Program's stage UI** (the sequencer's shapes that the person plays) needs nothing more: the Program's shapes are draw ops with an `id`, and the pointer reaches the part with the `id` of the op under it (requirements 5 and 6).
 - **Lu11Q1 closes.** One button input and four buttons was a seam question. With names binding it cannot arise: a Control named `<input>` goes to `in.<input>`, whatever the seams of the others.
@@ -37,9 +45,9 @@ export const <ui> = defineUI(<builder>, {
 
 **Settled:** the closed kind table below, built now. These kinds are UI vocabulary (a number, a choice, a point list), not any workbench's. Every kind sends a **state** record (the whole value now) except `triggers`, which sends **delta** records (requirement 3).
 
-- **A slider, number or knob** is the `number` kind: `min`, `max`, `value` (the start and reset value), `step?`, `curve: "linear" | "log"`, and `look: "slider" | "knob" | "field"`. Every look has fine-drag (Shift: a tenth of the speed), reset (a double-click sets `value`) and typed entry. `look` is a hint to the host. The record is the same for every look.
+- **A slider, number or knob** is the `number` kind: `min`, `max`, `value` (the start and reset value), `step?`, `curve: "linear" | "log"`, and `look: "slider" | "knob" | "field"`. A log curve needs `min` above 0, for a Control (U017) and for a param's annotation (U012) alike: a log knob has no zero, so a volume that must reach silence is linear, or has a small floor as its `min` (open question 14). *Changed 2026-11-27 (dogfood): the synth leg's volume ran into it.)* Every look has fine-drag (Shift: a tenth of the speed), reset (a double-click sets `value`) and typed entry. `look` is a hint to the host. The record is the same for every look.
 - **vec2 and vec3 entry, color, an enum dropdown** are `vector`, `color` and `choice`. A color is `vec3`, sRGB components from 0 to 1, because a Kernel computes with it and Bench cannot parse hex text. Draw colors are hex text, so a Draw builder cannot use one yet (open question 7).
-- **A catalog picker over a data file** is `pick`: `file` names an entry of the Dialect's `files` (csv or json), `key` its key column, `show` the columns listed, `map: { x, y }` two columns to scatter the rows on (the glasses on an nd/Vd map), and `carry: { <column>: "f64" | "str" }`, the columns sent with the key. The record is `{ value: str, <column>: … }`, so a runtime gets the row it needs without reading the file. Data files do not reach a runtime today (feasibility gap 2), and that plumbing needs a ruling (open question 5).
+- **A catalog picker over a data file** is `pick`: `file` names an entry of the Dialect's `files` (an entry is `{ kind: "csv" | "json", path: "<path>", note: "<note>" }`, kit/define's D034; *Changed 2026-11-27 (dogfood): a leg guessed a bare path string*), `key` its key column, `show` the columns listed, `map: { x, y }` two columns to scatter the rows on (the glasses on an nd/Vd map), and `carry: { <column>: "f64" | "str" }`, the columns sent with the key. The record is `{ value: str, <column>: … }`, so a runtime gets the row it needs without reading the file. Data files do not reach a runtime today (feasibility gap 2), and that plumbing needs a ruling (open question 5).
 - **Text entry** is `text`. Its record is the whole text, coalesced to one record a frame. Bench cannot read a string's characters, so a runtime (trusted JS) reads it. While a text Control has focus, it takes every key and no other Control gets one.
 - **Structured values:**
   - an envelope's point list is `points` (`max`, `x: [<min>, <max>]`, `y: [<min>, <max>]`, `value`), whose record is `{ value: list<vec2, <max>> }`;
@@ -53,7 +61,7 @@ export const <ui> = defineUI(<builder>, {
 **Settled.** The kind decides the class, and the composed page records it for each Control (`records: "state" | "delta"`):
 - **State** records (buttons, toggle, number, vector, color, choice, text, pick, points) fold as a page wire folds today: past the consumer's max, a step takes the first max − 1 records in order, then the latest. So a tap's press and release both arrive, and the final release always does. A keyed state Control folds per key: of a key's waiting records, only its latest is taken.
 - **Delta** records (`triggers`; the pointer's down, up, cancel and wheel, requirement 5) are **never folded and never dropped**. Past the consumer's max, they **carry over**: the step takes the first max in order, and the rest wait for the next step in the same order, each keeping its own `$T`. A person cannot be refused, and a note cannot be lost, so the cost of a burst is latency, never loss. `stats().carried` counts them. The first carried record of a wire notes N001 once (a warning).
-- `PAGE_CHANGES_PER_FRAME` (2 for every Control) retires. Each kind has a default **`perFrame`**, the records one Control sends in a display frame, which a declaration may raise: buttons 2 (a press and a release), triggers 32 (sixteen notes on and sixteen off), the pointer 8, and 1 for every other kind (the host coalesces their changes to one a frame). The page's sizing runtime is made from these (S116), and S116's warning on a page wire names what happens past the max: "folds" or "carries over". A four-note chord in one frame is 4 records against triggers' 32, and arrives whole.
+- `PAGE_CHANGES_PER_FRAME` (2 for every Control) retires. Each kind has a default **`perFrame`**, the records one Control sends in a display frame, which a declaration may raise: buttons 2 (a press and a release), triggers 32 (sixteen notes on and sixteen off), the pointer 8, and 1 for every other kind (the host coalesces their changes to one a frame). The page's sizing runtime is made from these (S116), and S116's warning on a page wire names what happens past the max: "folds" or "carries over". A four-note chord in one frame is 4 records against triggers' 32, and arrives whole. The consumer's max is its runtime's `events.in` (kit/define); a consumer that keeps only one record a step (a max of 1) sees only the latest of a press and its release, so a Dialect that wants taps raises it, and S116 says so. *Changed 2026-11-27 (dogfood), round 2: a leg did not know where the max is set.)* `perFrame` counts **records, not presses**: a `buttons` record holds every button, so one Control with six buttons still sends two a frame, and the default needs no raising for a crowd of buttons. *Changed 2026-11-27 (dogfood): a Sonnet leg raised it to 12 to "fit six buttons".)*
 
 ### 4. One declared input, many hosts
 
@@ -66,6 +74,11 @@ export const <ui> = defineUI(<builder>, {
 | gamepad | `gamepad: { <button>: <index> }`, `gamepad: { axis: <index> }` | buttons, number |
 | MIDI | `midi: { notes: true, channel?: <n> }`, `midi: { cc: <n>, channel?: <n> }` | triggers (note on and off, velocity / 127; a note on with velocity 0 is off), number (a CC scaled to `min..max` by `curve`) |
 
+- **Several codes, partial maps, collisions.** *Changed 2026-11-27 (dogfood): the legs asked.)*
+  - A button with several codes is held while any one is down, and released when none is.
+  - `keys` and `gamepad` may name some of a Control's buttons; an unnamed one is played on screen only.
+  - A `gamepad` index is the browser's standard-layout index (12 to 15 are the directions of the D-pad).
+  - **S121** (a warning): two different Controls of one composition bind one `KeyboardEvent.code`. The first declared wins the key and the warning names both, since one keyboard has one meaning per key. Proposed by the dogfood (open question 15).
 - **Device-only fields.** The page always sends every field of a kind's record, and an adapter without one sends the neutral value (keys send `velocity: 1`). A Dialect that does not need a field leaves it out of its input's seam, and the wire drops it. So velocity is optional where it matters, on the consumer's side, with no new mechanism.
 - **A device's timestamp is the stamp.** The host passes the event's own time (`event.timeStamp`, or a MIDI message's), and kit/page maps it onto T through the driver's last frame: `page.stampOf(ms)`, never at or before the last instant run (then the first millisecond after it), and the next instant while paused. The input log keeps the stamp, so `$T` is the device time and a replay gives the same. A note struck mid-frame reaches its part with the time it was struck.
 - The default keys are the package's, never the kit's. `DEFAULT_KEYS` and `KEY_TARGETS` retire. createPage's `keys` option becomes a host override, `{ "<code>": "<target>" }`, where a target is `<control>.<button>`, `<control>[<i>]`, `<control>.up` or `<control>.down`, `<control>.prev` or `<control>.next`, or `<control>` for a toggle.
@@ -121,6 +134,10 @@ grips: {
   - **scale:** v₀ × |p − c| / |p₀ − c|.
 - **Constraints** come from the target's own declaration: an argument's number shape in the Grammar (`data("number", { min, max, whole })`), or a param's `min` and `max`. The value is clamped, then rounded when the shape is whole or the Grip has a `step`. Alt suspends the `step`.
 - The lambdas are UI lambdas, lowered against the state as a table column's are (`<item>` is the list's item type). `at`, `axis` and `center` give a point, and `to` gives a `str` (L003 otherwise).
+- **A Grip has no bound of its own.** *Changed 2026-11-27 (dogfood): the lens leg looked for a `min` and `max`.)* Its range is the target's Grammar shape (`data("number", { min: <n>, max: <n> })`) or the param's `min` and `max`, so a range is stated once, in the Dialect's Grammar, and the preview and the commit both honor it. A UI-only range narrower than the Grammar's is not offered (open question 13).
+- **`each` names a list with a max.** A state list is always `list<T, <max>>`, so "a list with a max" is any state list; U018 refuses an `each` that names something else. *Changed 2026-11-27 (dogfood): a leg read "a max" as a missing one.)*
+- **`to` gives the whole target.** The text starts `param.` or `arg.`; a state item that stores an address stores it without the prefix (the glossary's Argument address has none), and the lambda adds `"arg." + <address>`. *Changed 2026-11-27 (dogfood).)*
+- **A Grip needs a Draw stage and no pointer input.** The host drags it; `stage.pointer` is for the Dialect's own pointer events. *Changed 2026-11-27 (dogfood).)*
 - **U018** refuses a malformed Grip: a UI with no Draw stage, an `each` that is not a state list with a max, an unknown `kind`, `axis` missing for `length`, `center` missing for `rotate` or `scale`, or an unknown key.
 - A Grip whose target cannot be written (requirement 8) is still drawn, as disabled, and the page lists its reason as **H011** (a warning).
 
@@ -146,6 +163,7 @@ arg.<instance>.<slot>#<n>:<i>.<key>[<i>]
 | Node | What a release does |
 |---|---|
 | a number, string or boolean literal, or `-` before a number literal | replaces its `start..end` with the new literal: a number printed shortest round-trip (to the `step` when there is one), a string quoted as the original was |
+| an array literal whose elements are all number literals, or arrays of them (a point list) | replaces its `start..end` with the new list, printed on one line as `[[<x>, <y>], …]`, each number as above; the new value must be a list of the same depth. *Changed 2026-11-27 (dogfood): the synth leg's envelope had no row.)* |
 | `$.<name>` (a read of a param of the Program's export) | retargets the Grip or Control to `param.<name>`, and goes on as a param |
 | anything else: a name (a `const` included), arithmetic, a call, a template, a spread | **refused.** The Grip is drawn disabled, H011 names the expression's text, and the fix reads "write the literal at the call, or declare a param and pass `$.<name>`" |
 | one span reached by several calls (a call in a loop, or a helper called twice) | **refused**, H011: "this call runs <n> times, so its argument is not one value" |
@@ -156,9 +174,18 @@ arg.<instance>.<slot>#<n>:<i>.<key>[<i>]
 - **In a glue.** A glue's parts' calls are in the glue file, and their spans are found the same way. A preview calls the glue again with the override (`callGlue(exported, path, { args })`) and logs a `rebuild` for the part. After a commit, every part whose content key changed is rebuilt. An edit that changes the composition's parts or wires reloads it as a new run, and says so.
 - **The editor stage** (requirement 9) shows the Program's text, editable. Write-back lands in it, Apply builds it, and both make one undo step.
 
+- **Every call needs a Ref id.** *Changed 2026-11-27 (dogfood): a leg asked whether a call with literal arguments has one.)* kit/define's README defines Ref ids by the instance's tag and slot (`<tag>.<slot>#<n>`), written there for the lambdas under a call, and the build must confirm that a call with no lambda has the same id and a LOCS entry; if it does not, `record.js` records one for every call (a build task, and a test: 49a below). The legs took the task's word for it.
+
 ### 9. Layout
 
 **Settled, all built now.**
+- **A tile, whole.** *Changed 2026-11-27 (dogfood): all three legs asked for the tile's shape, which only the stripped worked example held.)*
+  ```js
+  tiles: { <tile>: { title: "<title>", place: { <direction>: "<view or tile>" }, body: [<component>, …] } }
+  ```
+  `place` takes one direction, from `splitRight`, `splitLeft`, `splitAbove`, `splitBelow` and `tabWith`, naming a **view** (the generated views, `stage`, `controls` and `editor` among them) or another tile. `body` is a list of components: `{ kind: "control" | "param" | "action" | "view" | "row", … }`, where a `row` holds `items: [<component>, …]` laid out side by side. The stage is the generated view `stage`: `tabWith: "stage"` tabs a tile with it.
+- **`tiles` is a key of the UI declaration,** beside `controls`, `stage` and `grips`. A `{ kind: "control", control: "<control>" }` component of a keyed Control places **every instance** of it, one form each. A Control placed in a tile leaves the generated `controls` view, which keeps the ones no tile placed. *Changed 2026-11-27 (dogfood), round 2: a leg could not tell whether a placed Control showed twice, or where `tiles` goes.)*
+- **The generated `controls` view** shows the page's Controls in declaration order, each as its own group, in a row that wraps. A Control's `grid` lays out only its own buttons, so a pad and two buttons that sit apart on screen are two Controls, and a tile's `row` puts them side by side. *Changed 2026-11-27 (dogfood): a Sonnet leg merged a pad and two buttons into one Control to get them beside each other.)*
 - **Tabs:** `place: { tabWith: "<view or tile>" }` (declared today, never laid out) makes a tab group.
 - **Splits:** the existing split directions are laid out as a tree. A pure function in the host, `layoutOf(uis, views)`, returns the tree and is tested without a DOM.
 - **The editor stage:** the generated view `editor` (already in `VIEWS`) is the Program's text in a textarea over a `<pre>`. Syntax highlighting is later: it needs a lexer the playground will bring.
@@ -232,7 +259,7 @@ A keyed Control (`each`) adds `key: str` to its record. `to` makes the Control c
 - **One name, one Control.** When two parts' UIs declare one name with equal declarations (canonical JSON, with no `each` and no `to`), it is one Control, which the glue may wire to both. Any other pair is **S119** (an error) naming both parts and both declarations. The person has one keyboard, so two different Controls under one name would confuse them as well as the kit.
 - **S120** (a warning): a part's UI declares a Control whose input the glue leaves unwired by anything. Wiring that input from another part silences it.
 - **The composed record.** The page's entry gains `controls: { <control>: { kind, seam, records, perFrame, latency?, keyed?, decl } }`, which kit/run checks page inputs against (N012, N013) and the host builds its on-screen forms and key maps from. Each part's entry gains `pointer: { <Draw output>: "<input>" }` from its UI's stage and view tiles.
-- **A part run alone.** `examplePreset(name, fn, build, { ui, wirePage })` wires `page.out.<control>` to `<part>.in.<control>` for every Control in `ui` that has an input, by name. With no `ui`, nothing is wired. Part-local Controls and Grips need no wire.
+- **A part run alone.** `examplePreset(name, fn, build, { ui, wirePage })` (`ui` is what `defineUI` returned; `wirePage` is today's option, true unless `false`, which wires nothing and is how a test runs) wires `page.out.<control>` to `<part>.in.<control>` for every Control in `ui` that has an input, by name. With no `ui`, nothing is wired. *Changed 2026-11-27 (dogfood): a leg took `wirePage` for a thing to pass through.)* Part-local Controls and Grips need no wire.
 - `PAGE_CONTROLS`, `PAGE_CHANGES_PER_FRAME`, `pageInputProblem` and the `pageRuntime` constant retire. In their place, `pageRuntimeFor(controls)` sizes the page from each Control's `perFrame`.
 - **A custom element stage** speaks the same targets as the host's own widgets. It may dispatch `wb-control` (`{ control, value }`), `wb-param` (`{ param, value, phase: "preview" \| "commit" }`) and `wb-edit` (`{ to, value, phase }`). The host checks each one against the declarations, and logs it or refuses it with the kit's own code (N012, N013, H011). `emits`, its event list (`pick`, `select`, `param`) and U009 retire: no host ever listened for them.
 
@@ -336,6 +363,7 @@ actions: { <action>: { label: "<label>", module: "./<file>.js", export: "<name>"
 | U014 | define | widened: a `view` naming no Draw output, a `pointer` on a stage with no Draw output |
 | U001 | define | widened: `inputs` and `emits` are unknown keys, whose tips say to write `controls` and to dispatch `wb-control` |
 | S119 | compose | two parts' UIs declare one Control name differently (or either has `each` or `to`) |
+| S121 | compose | a warning: two different Controls bind one key code (open question 15) |
 | S120 | compose | a warning: a part's UI declares a Control whose input nothing wires |
 | S111 | compose | widened: a page Control no part's UI declares, or no UI given |
 | N012 | run | widened: a `control` or `pointer` input whose value does not fit its seam (until now a plain Error for a page input) |
@@ -500,6 +528,9 @@ Retired, numbers not reused: **U009** (`emits`), **U010** (`inputs`), **H009** (
    - a stale span is H012.
 47. A param's write-back replaces its declaration's `value` literal.
 48. History: one step per release; undo and redo give the texts; a new edit after an undo drops the redo.
+49a. Every builder call has a Ref id and a `siteOf` entry, a call with only literal arguments included.
+49b. A point list's write-back: an array literal of number pairs is replaced whole; a ragged or computed one is H011.
+49c. S121 warns for two Controls on one code and not for one Control with two codes on one button; the generated `controls` view lists Controls in declaration order.
 49. Integration: after a release the rebuilt record's content key equals the last preview's, and the part's revision does not bump.
 50. `runAction`:
    - a file result's shape is checked, and a bad shape or a throw is H013;
@@ -580,3 +611,14 @@ Retired, numbers not reused: **U009** (`emits`), **U010** (`inputs`), **H009** (
 Ben accepted the integrator's recommendation on each open question above: (1) H009 retires, the misfit is U016 at `defineUI`; (2) composition-wide Control names, ruling 5 kept; (3) the pointer is part-addressed; (4) a computed argument refuses its Grip, revisit after the dogfood; (5) **both**: `pick` carries its columns *and* data files reach runtimes as `ctx.files` (feasibility gap 2), in this stage; (6) `elements` becomes `modules` (`KIT_VERSION` 0.5); (7) this stage adds a `vec3` color to kit/draw; (8) one feed per input for now, a merge part later; (9) on blur the run goes on with every Control released, and a Dialect may opt into pausing; (10) the latency class is declared now and delivered by the frame path until the audio runner exists; (11) a blind dogfood runs before the build, and the build then has ruling 3's shape; (12) a write-back release restarts its part once for now, and live arguments that keep a part running through a rebuild go to the backlog.
 
 **The latency class is named `"direct"`, not `"audio"`** (Ben, 2026-11-27: "Should the audio path be named realtime? It seems like that's the guarantee we're looking for. Unless there's something audio specific about that path"). Nothing in it is audio-specific: it means the input bypasses the frame loop and goes straight to a part running at its own rate. `realtime` collides with kit/run's real-time driver, so Ben chose `"direct"`. Read every `"audio"` latency above as `"direct"`.
+
+## Open questions from the dogfood (2026-11-27)
+
+Not ruled; each was raised by a leg or by checking its hand-in ([the findings](2026-11-27-controls-dogfood-findings.md) say which). The draft above carries a recommended answer where the change was a clarification; these six are choices.
+
+13. **A UI-only range on a Grip.** A Grip has no `min` or `max`: its range is the target's Grammar shape. A Dialect author who wants a drag range narrower than what the Grammar accepts (a lens radius that may be typed to 100 but dragged only to 80) has no way to say it. Recommend leaving it out until a Dialect needs it; adding `min` and `max` to Grips is small if one does.
+14. **A log knob that reaches zero.** `curve: "log"` needs `min` above 0, so a master volume that must reach 0 cannot be a log knob. Recommend the author's own floor (a `min` of 0.001 in the Program's param) and no kit change. Two alternatives: a floor the annotation gives (`annotate.params.<name>.floor`, which the knob maps to exactly `min`), which the synth leg proposed in both rounds, or a `curve: "log0"`. The legs could not change the Program's `min`, so the floor was out of their reach.
+15. **S121, one key code on two Controls.** A warning that names both; the first declared wins the key. The draft was silent, and a leg asked. Is a warning right, or should two Controls on one code be an error (S119's kin)?
+16. **Ref ids of calls with no lambda.** The write-back's addresses rest on every builder call having a Ref id, and kit/define's README describes ids for the lambdas under a call. If the build finds that a literal-only call has none, `record.js` must give it one; that changes kit/define's record, so it is yours to approve before the build starts.
+17. **A Control's `to` that reads run state.** A Control's `to` is build-time (the record), a Grip's is a lambda over state. Both lens rounds reached for the other: the glass picker wanted to target "the lens being edited", which is run state (Grotesk's double-click selection is the same case). The record-keyed `each` serves "one picker per lens". Recommend keeping it build-time until a Dialect has a selection no `each` can express; the alternative is `to: (s, $) => <target>` on a Control, as on a Grip.
+18. **A gamepad stick on a four-button Control.** `gamepad: { axis }` serves `number` only, so a pad played from a stick has no declaration (the game leg, round 2). Recommend leaving it: a Dialect that wants a stick declares a `vector` Control.

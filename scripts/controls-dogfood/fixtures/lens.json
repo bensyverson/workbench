@@ -1,0 +1,8 @@
+{
+  "sample": { "lenses": [
+    { "cx": 100, "cy": 50, "r": 40, "radiusTarget": "bench.lens#0:0.radius", "glassTarget": "bench.lens#0:0.glass" },
+    { "cx": 200, "cy": 50, "r": 25, "radiusTarget": "bench.lens#1:0.radius", "glassTarget": "bench.lens#1:0.glass" }
+  ] },
+  "gripItem": { "cx": 100, "cy": 50, "r": 40, "radiusTarget": "bench.lens#0:0.radius", "glassTarget": "bench.lens#0:0.glass" },
+  "validTargets": ["arg.bench.lens#0:0.radius", "arg.bench.lens#1:0.radius", "arg.bench.lens#0:0.glass", "arg.bench.lens#1:0.glass"]
+}
