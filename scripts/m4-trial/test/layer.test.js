@@ -149,6 +149,23 @@ test("layer-docs.js gives a leg the kit's docs as they are, minus the compose RE
   for (const f of ["START.md", "API.md"]) assert.equal(readFileSync(join(d, f), "utf8"), readFileSync(join(KIT, f), "utf8"), `${f} is the kit's own`);
 });
 
+test("layer-docs.js also drops the anchored-edge draft's HUD subsection, and nothing in the copy names the trial's parts or offset (leaf JBkhsf)", () => {
+  const d = docCopy();
+  const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  const compose = readFileSync(join(d, "compose/README.md"), "utf8");
+  assert.ok(!compose.includes("### The M4 trial's HUD, anchored"), "the HUD subsection is gone");
+  for (const answer of ["[16, 4]", "[16, 104]", "192 − 160", "round.frame.panel", "scoretimer.panel", "gemgrid.px"]) assert.ok(!compose.includes(answer), `the copy has no ${answer}`);
+  assert.ok(compose.includes("## Draft: an anchored edge") && compose.includes("### Beyond the HUD"), "the rest of the draft stays");
+});
+
+test("layer-docs.js exits 1 when the anchored draft's HUD subsection is not there, so a renamed heading stops the leg", () => {
+  const d = docCopy((t) => t.replace("### The M4 trial's HUD, anchored", "### Something else"));
+  const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /M4 trial's HUD, anchored/);
+});
+
 test("layer-docs.js exits 1 when the subsection to strip is not there, so a changed doc stops the leg", () => {
   const d = docCopy((t) => t.replace("### The M4 trial's glue, with a layer", "### Something else"));
   const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
