@@ -1,7 +1,7 @@
 // The lens bench (a non-founding workbench: the controls draft's Grips with write-back) as one module, so a Program or
 // glue text that a write-back test builds by a `data:` URL imports the same Grammar and runtime by this module's URL.
 // Each lens has a radius and a position, both bounded in the Grammar; the runtime lists one Grip item per lens, whose
-// targets it builds from the record (a Ref id's #n counts the root's calls across its slots, the params first).
+// targets it builds from the record (a Ref id's #n counts the calls of one slot).
 // Beside test/, since every file under a test/ folder runs as a test.
 
 import { list, struct, data, listOf, pointerSeam } from "../../define/index.js";
@@ -20,10 +20,7 @@ export const lens = tiny("lens", {
   },
 }, {
   clock: () => ({ tick: 1 / 60 }), events: { in: { pointer: 16 } },
-  init: (/** @type {any} */ r) => {
-    const before = Object.keys(r.params ?? {}).length;
-    return { seen: 0, grips: (r.lens ?? []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ x: l.at[0], y: l.at[1], dx: 1, dy: 0, r: `arg.${r.name}.lens#${before + i}:0.radius`, at: `arg.${r.name}.lens#${before + i}:0.at` })) };
-  },
+  init: (/** @type {any} */ r) => ({ seen: 0, grips: (r.lens ?? []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ x: l.at[0], y: l.at[1], dx: 1, dy: 0, r: `arg.${r.name}.lens#${i}:0.radius`, at: `arg.${r.name}.lens#${i}:0.at` })) }),
   step: (/** @type {any} */ s, /** @type {any} */ c) => ({ ...s, seen: s.seen + c.inputs.pointer.length }),
 });
 

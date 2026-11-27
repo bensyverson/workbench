@@ -68,7 +68,7 @@ export function lensKit(o = {}) {
     slots: { surface: { kind: "decl", args: [data({ radius: data("number", { min: 0, max: 40 }) })] } },
   }, {
     clock: () => ({ tick: 1 / 60 }), events: { in: { pointer: 16, zoom: 4 } },
-    init: () => ({ t: 0, got: [], grips: [{ x: 50, y: 50, dx: 1, dy: 0, target: "arg.b.surface#1:0.radius" }, { x: 20, y: 20, dx: 0, dy: 1, target: "arg.b.surface#9:0.radius" }] }),
+    init: () => ({ t: 0, got: [], grips: [{ x: 50, y: 50, dx: 1, dy: 0, target: "arg.b.surface#0:0.radius" }, { x: 20, y: 20, dx: 0, dy: 1, target: "arg.b.surface#9:0.radius" }] }),
     step: (/** @type {any} */ s, /** @type {any} */ c) => ({ ...s, got: [...s.got, ...c.inputs.pointer.map((/** @type {any} */ r) => `${r.phase}@${r.at[0]},${r.at[1]}:${r.hit}`)] }),
   });
   const marks = tiny("marks", {

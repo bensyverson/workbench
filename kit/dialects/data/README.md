@@ -18,7 +18,7 @@ const topCustomers = ($) => program("top-customers")
   .groupBy("name")
   .agg({ total: (g) => g.sum("amount") })                      // g's sum takes only a numeric column of this step
   .limit($.topN);                                              // read at build: the record holds the number
-const { record } = run(topCustomers);                          // record.reads: topN, read before top.limit#4
+const { record } = run(topCustomers);                          // record.reads: topN, read before top.limit#0
 const { lambdas, diagnostics, states, params } = program.lower(record); // params.year.live: a uniform
 ```
 

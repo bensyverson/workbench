@@ -30,7 +30,7 @@ test("run calls the Program with a recording $: a build-time read is the plain v
   assert.deepEqual(diagnostics, []);
   const t = record.table[0];
   assert.deepEqual(t.calls.at(-1), { slot: "limit", args: [12] });
-  assert.deepEqual(record.reads.map((r) => [r.param, r.value, r.by]), [["topN", 10, "t.limit#1"], ["both", 2, "t.limit#1"]]);
+  assert.deepEqual(record.reads.map((r) => [r.param, r.value, r.by]), [["topN", 10, "t.limit#0"], ["both", 2, "t.limit#0"]]);
   assert.equal(record.reads[0].file, HERE);
   assert.ok(record.reads[0].loc.start.line > 1);
 });
@@ -58,7 +58,7 @@ test("a Kernel read of a param stays a uniform: the lowered lambda reads $ at ru
 test("lower() gives each param's binding time, and bindingText prints one line per param", () => {
   const out = program.lower(run(query).record);
   assert.deepEqual(Object.keys(out.params), ["topN", "minUnits", "both", "unused"]);
-  assert.deepEqual(out.params.topN.build.map((b) => b.by), ["t.limit#1"]);
+  assert.deepEqual(out.params.topN.build.map((b) => b.by), ["t.limit#0"]);
   assert.deepEqual(out.params.topN.kernels, []);
   assert.equal(out.params.topN.live, false);
   assert.deepEqual(out.params.minUnits, { build: [], kernels: ["t.filter#0"], live: true });
@@ -67,9 +67,9 @@ test("lower() gives each param's binding time, and bindingText prints one line p
   assert.deepEqual(out.params.unused, { build: [], kernels: [], live: true });
   const text = bindingText(out).split("\n");
   assert.equal(text.length, 4);
-  assert.match(text[0], /^topN\s+folded at build, read at binding-time\.test\.js:\d+ \(before t\.limit#1\)$/);
+  assert.match(text[0], /^topN\s+folded at build, read at binding-time\.test\.js:\d+ \(before t\.limit#0\)$/);
   assert.match(text[1], /^minUnits\s+uniform, read by t\.filter#0$/);
-  assert.match(text[2], /^both\s+folded at build, read at binding-time\.test\.js:\d+ \(before t\.limit#1\); also read by t\.filter#0$/);
+  assert.match(text[2], /^both\s+folded at build, read at binding-time\.test\.js:\d+ \(before t\.limit#0\); also read by t\.filter#0$/);
   assert.match(text[3], /^unused\s+uniform, not read$/);
 });
 

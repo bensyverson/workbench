@@ -97,7 +97,7 @@ const argSpecs = (c, call) => (call.slot === OPENS ? /** @type {any[]} */ (c.def
 
 /**
  * The instances of a record, by the grammar: each with its calls in order (a by-slot record's calls are
- * replayed in slot order, so `index` there counts in declaration order, not call order).
+ * replayed in slot order). A call's `index` counts the calls of its own slot, which is the `#<n>` of its Ref id.
  * @param {import("./grammar.js").Compiled} g @param {Record<string, any>} record
  * @returns {RecInstance[]}
  */
@@ -110,7 +110,7 @@ export function instancesOf(g, record) {
     const slots = /** @type {Record<string, any>} */ (c.def.slots ?? {});
     const at = (/** @type {object} */ o) => LOCS.get(o) ?? NOWHERE;
     if (c.def.record === "calls") {
-      (rec.calls ?? []).forEach((/** @type {{ slot: string, args: unknown[] }} */ call, /** @type {number} */ index) => calls.push({ slot: call.slot, args: call.args, index, once: false, at: at(call) }));
+      (rec.calls ?? []).forEach((/** @type {{ slot: string, args: unknown[] }} */ call) => calls.push({ slot: call.slot, args: call.args, index: calls.filter((x) => x.slot === call.slot).length, once: false, at: at(call) }));
     } else {
       for (const [sn, s] of Object.entries(slots)) {
         if (s.kind === "unit") continue;
@@ -119,9 +119,9 @@ export function instancesOf(g, record) {
         const list = (/** @type {unknown[]} */ specs, /** @type {unknown} */ x) => (single(specs) ? [x] : /** @type {unknown[]} */ (x));
         const here = (/** @type {number} */ n) => (LOCS.get(rec)?.slots?.[sn]?.[n]) ?? at(rec);
         if (kindOf(s.args[0]) === "name") {
-          for (const [n, rest] of Object.entries(v)) calls.push({ slot: sn, args: [n, ...list(s.args.slice(1), rest)], index: calls.length, once: false, at: here(calls.filter((x) => x.slot === sn).length) });
-        } else if (s.once) calls.push({ slot: sn, args: list(s.args, v), index: calls.length, once: true, at: here(0) });
-        else for (const x of v) calls.push({ slot: sn, args: list(s.args, x), index: calls.length, once: false, at: here(calls.filter((y) => y.slot === sn).length) });
+          for (const [n, rest] of Object.entries(v)) calls.push({ slot: sn, args: [n, ...list(s.args.slice(1), rest)], index: calls.filter((x) => x.slot === sn).length, once: false, at: here(calls.filter((x) => x.slot === sn).length) });
+        } else if (s.once) calls.push({ slot: sn, args: list(s.args, v), index: 0, once: true, at: here(0) });
+        else for (const x of v) calls.push({ slot: sn, args: list(s.args, x), index: calls.filter((y) => y.slot === sn).length, once: false, at: here(calls.filter((y) => y.slot === sn).length) });
       }
     }
     const specs = /** @type {any[]} */ (c.def.opens ?? []);

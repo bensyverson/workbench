@@ -348,6 +348,8 @@ actions: { <action>: { label: "<label>", module: "./<file>.js", export: "<name>"
 
 > **Corrected 2026-11-27 (the build, leaf `FhnOhO`):** the `#${<n>}` address above is wrong whenever an earlier slot of the instance has calls. A Ref id's `#<n>` counts the instance's calls across all its slots, in the slots' declaration order, not the slot's own calls: in `g("s").param(…).op("a", …)` the op is `s.op#1`. An `each` lambda that builds the address from a list index must offset it by the calls before that slot; kit/define/README.md says how a Ref id is numbered.
 
+> **Corrected again 2026-11-27 (ruling of Ben, leaf `IlUYzu`):** the numbering now counts per slot. A Ref id's `#<n>` counts the calls of that one slot, whatever other slots hold, so in `g("s").param(…).op("a", …)` the op is `s.op#0` and the k-th call of `op` is always `s.op#<k>`. The original `#${<n>}` example above is right again, and the offset the block quote before this one asks for is gone.
+
 - The runtime writes each Grip's target into its state item, for example `"arg." + <the address>`, from the record it builds geometry from.
 - `<control>` is part-local, because its name is not an input. Picking a row writes the key's literal back at once, as a release.
 - The glue wires `page.out.<input2>` like any Control. The pointer and the Grips need no wire.

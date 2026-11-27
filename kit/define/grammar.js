@@ -308,9 +308,9 @@ class Program {
     const c = inst.construct;
     const s = c.def.slots[slot];
     const what = `${c.name} '${instanceName(inst)}'`;
-    // the call the build-time reads made since the last one land on: in a record: "calls" construct its index, as
-    // its lambdas' ids have it; elsewhere the count of this slot's earlier calls
-    const nth = c.def.record === "calls" ? inst.calls.length : inst.calls.filter((x) => x.slot === slot).length;
+    // the call the build-time reads made since the last one land on: the count of this slot's earlier calls, as its
+    // lambdas' ids have it
+    const nth = inst.calls.filter((x) => x.slot === slot).length;
     noteCall(this, `${instanceName(inst)}.${slot}${s.once ? "" : `#${nth}`}`);
     if (s.once && inst.calls.some((x) => x.slot === slot)) {
       this.diagnostics.push(diag("B006", `${what} already has ${an(slot)}: .${slot}(…) may be called once`, `remove the second .${slot}(…)`, at));

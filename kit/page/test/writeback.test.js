@@ -26,7 +26,7 @@ async function built(body) {
   return { text, fn, record: r.record, back: (/** @type {string} */ target, /** @type {unknown} */ value, o = {}) => writeBack(text, r.record, target, value, o) };
 }
 
-// the calls are numbered across the root's slots in declaration order: param, op, voices, env, k, tag, on
+// each slot numbers its own calls (Ref ids, kit/define): op#0 and op#1, k#0 and k#1, env#0, tag#0, on#0
 const BODY = `export default ($) => g("s")
   .param("gain", { value: 1, min: 0, max: 2 })
   .op("a", { ratio: 2, level: 0.5 })
@@ -43,22 +43,22 @@ const BODY = `export default ($) => g("s")
 test("44. spans: a number, a negative number, a string, a boolean, inside an object and a list, over lines and in a chain; the epilogue moves none", async () => {
   const b = await built(BODY);
   const line = (/** @type {any} */ r, /** @type {RegExp} */ re) => { assert.equal(r.ok, true, r.message); return r.text.split("\n").find((l) => re.test(l)); };
-  assert.equal(line(b.back("arg.s.op#1:1.ratio", 2.5), /"a"/), `  .op("a", { ratio: 2.5, level: 0.5 })`);
-  assert.equal(line(b.back("arg.s.k#4:0", 4), /\.k\(/), "  .k(4).k(7)", "a negative number, the first of a chain");
-  assert.equal(line(b.back("arg.s.k#5:0", -1), /\.k\(/), "  .k(-3).k(-1)", "the second of a chain");
-  assert.equal(line(b.back("arg.s.tag#6:0", "yo"), /tag/), "  .tag('yo')", "a string keeps its quotes");
-  assert.equal(line(b.back("arg.s.on#7:0", false), /\.on/), "  .on(false)");
-  assert.equal(line(b.back("arg.s.op#2:1.level", 0.25), /level: 0\.25/), "    level: 0.25,", "a call split over lines");
-  assert.equal(line(b.back("arg.s.env#3:0[1]", [0.5, 0.5]), /env/), "  .env([[0, 0], [0.5, 0.5]]);", "an item of a list");
-  const whole = b.back("arg.s.op#1:1.ratio", 2.5);
+  assert.equal(line(b.back("arg.s.op#0:1.ratio", 2.5), /"a"/), `  .op("a", { ratio: 2.5, level: 0.5 })`);
+  assert.equal(line(b.back("arg.s.k#0:0", 4), /\.k\(/), "  .k(4).k(7)", "a negative number, the first of a chain");
+  assert.equal(line(b.back("arg.s.k#1:0", -1), /\.k\(/), "  .k(-3).k(-1)", "the second of a chain");
+  assert.equal(line(b.back("arg.s.tag#0:0", "yo"), /tag/), "  .tag('yo')", "a string keeps its quotes");
+  assert.equal(line(b.back("arg.s.on#0:0", false), /\.on/), "  .on(false)");
+  assert.equal(line(b.back("arg.s.op#1:1.level", 0.25), /level: 0\.25/), "    level: 0.25,", "a call split over lines");
+  assert.equal(line(b.back("arg.s.env#0:0[1]", [0.5, 0.5]), /env/), "  .env([[0, 0], [0.5, 0.5]]);", "an item of a list");
+  const whole = b.back("arg.s.op#0:1.ratio", 2.5);
   assert.equal(whole.text.replace("ratio: 2.5", "ratio: 2"), b.text, "nothing else changed");
   const scoped = run(await programFrom(withScope(b.text))).record;
-  assert.equal(writeBack(b.text, scoped, "arg.s.op#1:1.ratio", 9).text, whole.text.replace("ratio: 2.5", "ratio: 9"), "the scope epilogue moves no span");
+  assert.equal(writeBack(b.text, scoped, "arg.s.op#0:1.ratio", 9).text, whole.text.replace("ratio: 2.5", "ratio: 9"), "the scope epilogue moves no span");
 });
 
 test("45. a name, a const, arithmetic, a template and a call are each H011 with their text; $.<name> retargets; a loop or a helper twice is H011", async () => {
   const b = await built(`const x = 2;\nconst n = "t";\nexport default ($) => g("s").param("gain", { value: 1, min: 0, max: 2 }).k(x).k(1 + 1).tag(\`\${n}!\`).k(Math.abs(-2)).k($.gain);\n`);
-  const cases = [["arg.s.k#1:0", "x"], ["arg.s.k#2:0", "1 + 1"], ["arg.s.tag#5:0", "`${n}!`"], ["arg.s.k#3:0", "Math.abs(-2)"]];
+  const cases = [["arg.s.k#0:0", "x"], ["arg.s.k#1:0", "1 + 1"], ["arg.s.tag#0:0", "`${n}!`"], ["arg.s.k#2:0", "Math.abs(-2)"]];
   for (const [target, text] of cases) {
     const r = b.back(target, 3);
     assert.equal(r.ok, false, target);
@@ -67,7 +67,7 @@ test("45. a name, a const, arithmetic, a template and a call are each H011 with 
     assert.match(r.fix, /write the literal at the call, or declare a param and pass \$\.<name>/);
     assert.equal(targetProblem(b.text, b.record, target).code, "H011");
   }
-  const re = b.back("arg.s.k#4:0", 1.5);
+  const re = b.back("arg.s.k#3:0", 1.5);
   assert.equal(re.ok, true, re.message);
   assert.equal(re.retarget, "param.gain");
   assert.match(re.text, /\.param\("gain", \{ value: 1\.5, min: 0, max: 2 \}\)/);
@@ -88,22 +88,22 @@ test("46. editSource: shortest round-trip numbers or to the step, quotes kept, t
 test("46. a stale text is H012 through writeBack: an edited literal, a line removed above, another method at the place; the text the record came from, and a preview's record, still write", async () => {
   const b = await built(BODY);
   const stale = (/** @type {string} */ text, /** @type {string} */ why) => {
-    const r = writeBack(text, b.record, "arg.s.op#1:1.ratio", 4);
+    const r = writeBack(text, b.record, "arg.s.op#0:1.ratio", 4);
     assert.equal(r.ok, false, `${why}: ${r.ok ? r.text : ""}`);
     assert.equal(r.code, "H012", `${why}: ${r.message}`);
   };
   stale(b.text.replace("ratio: 2,", "ratio: 7,"), "the person typed 7 over the literal the record holds");
   stale(b.text.replace(`  .param("gain", { value: 1, min: 0, max: 2 })\n`, ""), "a line above was removed, so op b sits at op a's place");
   stale(b.text.replace(`  .op("a", { ratio: 2, level: 0.5 })`, `  .tag({ ratio: 2, level: 0.5 })`), "another method at the place");
-  assert.equal(writeBack(b.text.replace("ratio: 3,", "ratio: 8,"), b.record, "arg.s.op#2:1.ratio", 4).code, "H012", "a nested literal edited");
+  assert.equal(writeBack(b.text.replace("ratio: 3,", "ratio: 8,"), b.record, "arg.s.op#1:1.ratio", 4).code, "H012", "a nested literal edited");
   // what must still work: the text the record was built from, and the record of a preview built with the override
-  assert.equal(b.back("arg.s.op#1:1.ratio", 4).ok, true);
-  const preview = run(b.fn, { args: { "s.op#1:1.ratio": 6 } }).record;
-  const r = writeBack(b.text, preview, "arg.s.op#1:1.ratio", 6);
+  assert.equal(b.back("arg.s.op#0:1.ratio", 4).ok, true);
+  const preview = run(b.fn, { args: { "s.op#0:1.ratio": 6 } }).record;
+  const r = writeBack(b.text, preview, "arg.s.op#0:1.ratio", 6);
   assert.equal(r.ok, true, r.message);
   assert.ok(r.text.includes(`.op("a", { ratio: 6, level: 0.5 })`));
-  const list = run(b.fn, { args: { "s.env#3:0[1]": [0.5, 0.5] } }).record;
-  assert.equal(writeBack(b.text, list, "arg.s.env#3:0", [[0, 0], [0.5, 0.5]]).ok, true, "a preview of an item, then the whole list written");
+  const list = run(b.fn, { args: { "s.env#0:0[1]": [0.5, 0.5] } }).record;
+  assert.equal(writeBack(b.text, list, "arg.s.env#0:0", [[0, 0], [0.5, 0.5]]).ok, true, "a preview of an item, then the whole list written");
   assert.equal(b.back("param.gain", 1.5).ok, true);
   assert.equal(writeBack(b.text.replace("value: 1,", "value: 2,"), b.record, "param.gain", 1.5).code, "H012", "a param's literal edited");
 });
@@ -118,10 +118,10 @@ test("47. a param's write-back replaces its declaration's value literal", async 
 
 test("49b. a point list's write-back replaces the array literal whole; a ragged or computed one is H011", async () => {
   const b = await built(BODY);
-  const r = b.back("arg.s.env#3:0", [[0, 0], [0.5, 1], [1, 0]]);
+  const r = b.back("arg.s.env#0:0", [[0, 0], [0.5, 1], [1, 0]]);
   assert.equal(r.ok, true, r.message);
   assert.ok(r.text.includes(".env([[0, 0], [0.5, 1], [1, 0]]);"));
-  assert.equal(b.back("arg.s.env#3:0", [0, 1]).code, "H011", "a list of another depth");
+  assert.equal(b.back("arg.s.env#0:0", [0, 1]).code, "H011", "a list of another depth");
   const ragged = await built(`export default ($) => g("s").env([[0, 0], [1]]);\n`);
   assert.equal(ragged.back("arg.s.env#0:0", [[0, 0], [1, 1]]).code, "H011");
   const computed = await built(`const y = 1;\nexport default ($) => g("s").env([[0, 0], [1, y]]);\n`);
@@ -135,12 +135,12 @@ test("49. after a release, the record built from the edited text is the last pre
   const composed = preset.composition.build({ runtimes: [rt] });
   const r = createRun(composed, { runtimes: [rt] });
   r.runUntil(1);
-  const preview = run(b.fn, { args: { "s.op#1:1.ratio": 4 } }).record;
+  const preview = run(b.fn, { args: { "s.op#0:1.ratio": 4 } }).record;
   r.input({ kind: "rebuild", T: 1.5, part: "s", record: preview });
   r.runUntil(2);
   const revision = r.snapshot("s").revision;
   assert.equal(revision, 2, "the preview restarted the part once");
-  const edited = b.back("arg.s.op#1:1.ratio", 4);
+  const edited = b.back("arg.s.op#0:1.ratio", 4);
   const again = run(await programFrom(edited.text)).record;
   r.input({ kind: "rebuild", T: 2.5, part: "s", record: again });
   r.runUntil(3);
@@ -169,13 +169,13 @@ test("45. a glue helper that makes two parts holds one literal for both: either 
 
 test("46. edits that overlap are refused, H011: one target twice, and a list with a point inside it; side by side they still apply", async () => {
   const b = await built(BODY);
-  const twice = writeBackAll(b.text, b.record, [{ to: "arg.s.k#4:0", value: 12345 }, { to: "arg.s.k#4:0", value: 2 }]);
+  const twice = writeBackAll(b.text, b.record, [{ to: "arg.s.k#0:0", value: 12345 }, { to: "arg.s.k#0:0", value: 2 }]);
   assert.deepEqual([twice.ok, twice.code], [false, "H011"]);
   assert.match(twice.message, /overlap/);
-  const inside = writeBackAll(b.text, b.record, [{ to: "arg.s.env#3:0", value: [[0, 0], [0.5, 0.5], [1, 1]] }, { to: "arg.s.env#3:0[1]", value: [9, 9] }]);
+  const inside = writeBackAll(b.text, b.record, [{ to: "arg.s.env#0:0", value: [[0, 0], [0.5, 0.5], [1, 1]] }, { to: "arg.s.env#0:0[1]", value: [9, 9] }]);
   assert.deepEqual([inside.ok, inside.code], [false, "H011"]);
   assert.equal(editSource(".k(1)", [{ start: 3, end: 4, expect: "1", value: 2 }, { start: 3, end: 4, expect: "1", value: 3 }]).code, "H011", "editSource itself");
-  const beside = writeBackAll(b.text, b.record, [{ to: "arg.s.k#4:0", value: 4 }, { to: "arg.s.k#5:0", value: 8 }, { to: "arg.s.env#3:0[0]", value: [1, 2] }, { to: "arg.s.env#3:0[1]", value: [3, 4] }]);
+  const beside = writeBackAll(b.text, b.record, [{ to: "arg.s.k#0:0", value: 4 }, { to: "arg.s.k#1:0", value: 8 }, { to: "arg.s.env#0:0[0]", value: [1, 2] }, { to: "arg.s.env#0:0[1]", value: [3, 4] }]);
   assert.equal(beside.ok, true, beside.message);
   assert.ok(beside.text.includes(".k(4).k(8)") && beside.text.includes(".env([[1, 2], [3, 4]]);"), beside.text);
 });

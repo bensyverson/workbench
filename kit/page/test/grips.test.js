@@ -11,7 +11,7 @@ test("40a. page.grips() lists each item's Grip at its stage position, and a disa
   const { page: pg } = lensPage();
   pg.run.runUntil(0.1);
   const gs = pg.grips();
-  assert.deepEqual(gs.map((g) => [g.part, g.grip, g.index, g.at, g.to]), [["b", "radius", 0, [50, 50], "arg.b.surface#1:0.radius"], ["b", "radius", 1, [20, 20], "arg.b.surface#9:0.radius"]]);
+  assert.deepEqual(gs.map((g) => [g.part, g.grip, g.index, g.at, g.to]), [["b", "radius", 0, [50, 50], "arg.b.surface#0:0.radius"], ["b", "radius", 1, [20, 20], "arg.b.surface#9:0.radius"]]);
   assert.equal(gs[0].disabled, null);
   assert.equal(gs[1].disabled.code, "H011");
   assert.match(gs[1].disabled.message, /no call/);
@@ -44,7 +44,7 @@ test("40c. an arg Grip logs at most one rebuild a frame, built with args; a para
   assert.equal(rebuilds[0].record.surface[0].radius, 15);
   drag.move([200, 50]);
   f.tick(48);
-  assert.deepEqual(drag.release(), { to: "arg.b.surface#1:0.radius", value: 40 }, "clamped to the Grammar's max");
+  assert.deepEqual(drag.release(), { to: "arg.b.surface#0:0.radius", value: 40 }, "clamped to the Grammar's max");
   assert.throws(() => pg.grab({ part: "b", grip: "radius", index: 1 }, [20, 20]), /H011/, "a disabled Grip cannot be grabbed");
 
   const param = lensPage({ grips: { focus: { kind: "length", at: () => [10, 10], axis: () => [1, 0], to: () => "param.focus" } } });

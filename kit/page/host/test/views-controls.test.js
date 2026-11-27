@@ -21,7 +21,7 @@ const all = (n) => [n, ...(n.children ?? []).flatMap(all)];
 
 test("a keyed Control shows one form per instance, each sending its key; it is known by keyed, not by each", () => {
   const sent = [];
-  const form = { name: "ratio", kind: "number", min: 0.25, max: 16, value: 1, keyed: true, to: undefined, instances: [{ key: "a", label: "a", value: 2, min: 0.25, max: 16, to: "arg.s.op#1:1.ratio" }, { key: "b", value: 3, min: 0.25, max: 16 }] };
+  const form = { name: "ratio", kind: "number", min: 0.25, max: 16, value: 1, keyed: true, to: undefined, instances: [{ key: "a", label: "a", value: 2, min: 0.25, max: 16, to: "arg.s.op#0:1.ratio" }, { key: "b", value: 3, min: 0.25, max: 16 }] };
   const el = controlForm(form, (record, phase) => sent.push([record, phase]), () => {});
   assert.ok(el, "a keyed form is shown");
   const sliders = all(el).filter((n) => n.tag === "input");

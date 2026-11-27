@@ -48,9 +48,9 @@ function codes(b) {
 
 test("example 2: the derive lowers against the cleaned columns and computes revenue", () => {
   const { kernels, states } = lowered(clean().build());
-  assert.deepEqual(Object.keys(kernels), ["sales.derive#6"]);
+  assert.deepEqual(Object.keys(kernels), ["sales.derive#0"]);
   assert.deepEqual(/** @type {any} */ (states).sales.columns, { date: "date", region: "str", units: "f64", price: "f64", revenue: "f64" });
-  assert.equal(both(kernels["sales.derive#6"], [{ date: 0, region: "North", units: 3, price: 2.5 }]), 7.5);
+  assert.equal(both(kernels["sales.derive#0"], [{ date: 0, region: "North", units: 3, price: 2.5 }]), 7.5);
 });
 
 test("example 3: three filters over params, a str select and a date param", () => {
@@ -83,7 +83,7 @@ test("example 5: a filter on year(date), a join typed from the other table at it
   assert.deepEqual(record.table[0].calls.at(-1), { slot: "limit", args: [10] });
   const { kernels, states } = lowered(record);
   const lines = bindingText(program.lower(record)).split("\n");
-  assert.match(lines[0], /^topN\s+folded at build, read at 05-query\.js:22 \(before top\.limit#5\)$/);
+  assert.match(lines[0], /^topN\s+folded at build, read at 05-query\.js:22 \(before top\.limit#0\)$/);
   assert.match(lines[1], /^year\s+uniform, read by top\.filter#0$/);
   // the filter and the two agg lambdas: .limit($.topN) is a folded value now, not a lambda
   assert.equal(Object.keys(kernels).length, 3);

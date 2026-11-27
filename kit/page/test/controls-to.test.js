@@ -31,7 +31,7 @@ async function synth(more = {}) {
   const fn = await fromText(SYNTH_TEXT);
   const ui = defineUI(synthG, {
     controls: {
-      ratio: { kind: "number", min: 0.25, max: 16, value: 1, look: "knob", each: (r) => Object.keys(r.ops).map((k, i) => ({ key: k, label: k, value: r.ops[k].ratio, to: `arg.s.op#${1 + i}:1.ratio` })).concat(more.stray ? [{ key: "x", value: 1, to: "arg.s.op#9:1.ratio" }] : []) },
+      ratio: { kind: "number", min: 0.25, max: 16, value: 1, look: "knob", each: (r) => Object.keys(r.ops).map((k, i) => ({ key: k, label: k, value: r.ops[k].ratio, to: `arg.s.op#${i}:1.ratio` })).concat(more.stray ? [{ key: "x", value: 1, to: "arg.s.op#9:1.ratio" }] : []) },
       detune: { kind: "number", min: 0, max: 2, value: 1, to: "param.gain", label: "gain" },
     },
   });
@@ -51,7 +51,7 @@ test("UYk5XG. page.controls() lists a keyed Control's instances with their to, a
   assert.deepEqual(cs.map((c) => c.name), ["ratio", "detune"]);
   const ratio = cs.find((c) => c.name === "ratio");
   assert.equal(ratio.keyed, true);
-  assert.deepEqual(ratio.instances.map((i) => [i.key, i.value, i.to, i.disabled]), [["a", 2, "arg.s.op#1:1.ratio", null], ["b", 3, "arg.s.op#2:1.ratio", null]]);
+  assert.deepEqual(ratio.instances.map((i) => [i.key, i.value, i.to, i.disabled]), [["a", 2, "arg.s.op#0:1.ratio", null], ["b", 3, "arg.s.op#1:1.ratio", null]]);
   const detune = cs.find((c) => c.name === "detune");
   assert.deepEqual([detune.local, detune.part, detune.to, detune.disabled], [true, "s", "param.gain", null]);
 });
@@ -60,7 +60,7 @@ test("UYk5XG. a keyed knob with an input carries the live value through it, and 
   const { pg, f } = await synth();
   assert.equal(pg.control("ratio", { key: "b", value: 5 }, { phase: "preview" }), null, "a preview commits nothing");
   const commit = pg.control("ratio", { key: "b", value: 6 });
-  assert.deepEqual(commit, { part: "s", to: "arg.s.op#2:1.ratio", value: 6 });
+  assert.deepEqual(commit, { part: "s", to: "arg.s.op#1:1.ratio", value: 6 });
   assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "control").map((e) => [e.name, e.value]), [["ratio", { key: "b", value: 5 }], ["ratio", { key: "b", value: 6 }]]);
   assert.equal(pg.run.log.inputs.filter((e) => e.kind === "rebuild").length, 0, "the input carries it: no preview rebuild");
   const w = writeBack(SYNTH_TEXT, pg.run.composed.parts.find((p) => p.name === "s").record, commit.to, commit.value);
@@ -90,7 +90,7 @@ test("UYk5XG. a target that cannot be written back is H011: the instance is list
   assert.ok(pg.diagnostics.some((d) => d.code === "H011" && /ratio/.test(d.message)), JSON.stringify(pg.diagnostics));
   assert.equal(pg.control("ratio", { key: "x", value: 2 }), null);
   assert.equal(pg.run.log.inputs.filter((e) => e.kind === "control").length, 1, "the live value still went through the input");
-  assert.deepEqual(pg.control("ratio", { key: "a", value: 4 }), { part: "s", to: "arg.s.op#1:1.ratio", value: 4 }, "the other instances still commit");
+  assert.deepEqual(pg.control("ratio", { key: "a", value: 4 }), { part: "s", to: "arg.s.op#0:1.ratio", value: 4 }, "the other instances still commit");
   assert.throws(() => pg.control("nope", { value: 1 }), /nope/);
   assert.throws(() => pg.control("ratio", { key: "zz", value: 1 }), /zz/, "an instance the Control lacks");
 });
@@ -172,7 +172,7 @@ test("x3LcAJ. a wired Control's commit is checked by a build: a value the Gramma
   assert.equal(refused, null, "ratio is bounded to 16 by the Grammar: no build accepts 1000");
   assert.deepEqual(pg.diagnostics.map((d) => d.code), ["H012"]);
   const ok = pg.control("ratio", { key: "b", value: 5 });
-  assert.deepEqual(ok, { part: "s", to: "arg.s.op#2:1.ratio", value: 5 });
+  assert.deepEqual(ok, { part: "s", to: "arg.s.op#1:1.ratio", value: 5 });
   const w = writeBack(SYNTH_TEXT, pg.run.composed.parts.find((p) => p.name === "s").record, ok.to, ok.value);
   assert.equal(w.ok, true, "and the commit writes");
   assert.ok(run(await fromText(w.text)).record, "into a text that builds");

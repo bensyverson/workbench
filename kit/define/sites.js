@@ -156,8 +156,7 @@ export function siteOf(record, target) {
 
 /**
  * The calls of a Program not yet built, numbered as its record will be (lower.js's instancesOf): each instance's tag
- * in record order, and each call's index, by slot in declaration order for a by-slot construct, in call order in a
- * record: "calls" one. Unit calls take no number.
+ * in record order, and each call's index among the calls of its own slot. Unit calls take no number.
  * @param {any} root  the Program's root Instance
  * @returns {Array<{ tag: string, inst: any, call: any, index: number, once: boolean }>}
  */
@@ -175,13 +174,18 @@ function numberedCalls(root) {
   order.forEach((inst, k) => {
     const slots = /** @type {Record<string, any>} */ (inst.construct.def.slots ?? {});
     if (inst.construct.def.record === "calls") {
-      inst.calls.forEach((/** @type {any} */ call, /** @type {number} */ index) => out.push({ tag: tags[k], inst, call, index, once: false }));
+      /** @type {Map<string, number>} */
+      const seen = new Map();
+      for (const call of inst.calls) {
+        const index = seen.get(call.slot) ?? 0;
+        seen.set(call.slot, index + 1);
+        out.push({ tag: tags[k], inst, call, index, once: false });
+      }
       return;
     }
-    let index = 0;
     for (const [sn, s] of Object.entries(slots)) {
       if (s.kind === "unit") continue;
-      for (const call of inst.calls.filter((/** @type {any} */ c) => c.slot === sn)) out.push({ tag: tags[k], inst, call, index: index++, once: !!s.once });
+      inst.calls.filter((/** @type {any} */ c) => c.slot === sn).forEach((/** @type {any} */ call, /** @type {number} */ index) => out.push({ tag: tags[k], inst, call, index, once: !!s.once }));
     }
   });
   return out;

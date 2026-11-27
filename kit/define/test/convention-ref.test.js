@@ -25,10 +25,10 @@ test("a root slot whose first argument is a name(): ref.key is the declared name
   const r = g.lower(g("x").force("gravity", "() => 1").size(3).force("drag", "() => 2").build());
   assert.deepEqual(r.diagnostics, []);
   const refs = byId(seen);
-  assert.deepEqual(refs.map((x) => [x.id, x.key, x.on]), [["x.force#1", "gravity", "x"], ["x.force#2", "drag", "x"]]);
+  assert.deepEqual(refs.map((x) => [x.id, x.key, x.on]), [["x.force#0", "gravity", "x"], ["x.force#1", "drag", "x"]]);
 });
 
-test("a record: \"calls\" construct: ref.index is the call's position, and ref.key the declared name", () => {
+test("a record: \"calls\" construct: ref.index is the call's position among its slot's calls, and ref.key the declared name", () => {
   /** @type {any[]} */
   const seen = [];
   const g = defineGrammar(recording(seen), { root: "p", constructs: {
@@ -40,7 +40,7 @@ test("a record: \"calls\" construct: ref.index is the call's position, and ref.k
   } });
   const r = g.lower(g("x").e("jet").size(1).force("gravity", "() => 1").force("drag", "() => 2").build());
   assert.deepEqual(r.diagnostics, []);
-  assert.deepEqual(byId(seen).map((x) => [x.index, x.key, x.on]), [[1, "gravity", "jet"], [2, "drag", "jet"]]);
+  assert.deepEqual(byId(seen).map((x) => [x.index, x.key, x.on]), [[0, "gravity", "jet"], [1, "drag", "jet"]]);
 });
 
 test("a lambda under a recordOf key keeps that key as ref.key; a slot without a name() gives none", () => {
@@ -54,5 +54,5 @@ test("a lambda under a recordOf key keeps that key as ref.key; a slot without a 
   } });
   const r = g.lower(g("x").on({ hit: "() => 1" }).plain("() => 2").build());
   assert.deepEqual(r.diagnostics, []);
-  assert.deepEqual(byId(seen).map((x) => [x.id, x.key]), [["x.on#0.hit", "hit"], ["x.plain#1", undefined]]);
+  assert.deepEqual(byId(seen).map((x) => [x.id, x.key]), [["x.on#0.hit", "hit"], ["x.plain#0", undefined]]);
 });

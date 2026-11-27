@@ -58,7 +58,7 @@ test("derived column types flow to later steps and tables, with no type argument
     .build();
   const r = program.lower(record);
   assert.deepEqual(r.diagnostics, []);
-  assert.deepEqual(r.lambdas.map((l) => l.ref.id), ["monthly.derive#0", "monthly.derive#1", "monthly.filter#2", "monthly.agg#4.total", "monthly.agg#4.n", "big.filter#0", "big.limit#1"]);
+  assert.deepEqual(r.lambdas.map((l) => l.ref.id), ["monthly.derive#0", "monthly.derive#1", "monthly.filter#0", "monthly.agg#0.total", "monthly.agg#0.n", "big.filter#0", "big.limit#0"]);
   assert.ok(r.lambdas.every((l) => l.result.kernel));
   assert.deepEqual(r.states.monthly, { columns: { region: "str", total: "f64", n: "f64" } });
   assert.deepEqual(r.states.big, r.states.monthly);

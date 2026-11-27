@@ -10,7 +10,7 @@ import { tiny } from "./helpers.js";
 /** A part whose step stores what its Kernel reads of the params, read by `paramsName`. @param {string} paramsName */
 function gainPart(paramsName) {
   const t = tiny("amp", { state: { v: "f64" }, ports: {}, inputs: false, paramsName }, {
-    clock: () => ({ tick: 1 / 4 }), init: () => ({ v: 0 }), step: (s, c) => ({ v: c.kernels["a.k#1"]() }),
+    clock: () => ({ tick: 1 / 4 }), init: () => ({ v: 0 }), step: (s, c) => ({ v: c.kernels["a.k#0"]() }),
   });
   const p = t.grammar("a").param("gain", { value: 3 }).k(`() => ${paramsName}.gain`);
   return { composed: compose("solo").part(p).build({ runtimes: [t.runtime] }), runtimes: [t.runtime] };
