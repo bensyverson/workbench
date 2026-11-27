@@ -179,9 +179,10 @@ L003 '+' takes two vec2s, not a vec2 and f32.
 ## Learn more
 
 - [kit/glossary.md](kit/glossary.md): the kit's terms
+- [kit/page/host/README.md](kit/page/host/README.md): the workbench page, where you load packages and a glue and play them in the browser
 - [kit/dialects/fields/README.md](kit/dialects/fields/README.md): the fields language used above
 - [kit/parse/README.md](kit/parse/README.md), [kit/ir/README.md](kit/ir/README.md), [kit/lower/README.md](kit/lower/README.md): parser, IR and lowering
-- [project/](project/): dated plans, findings and decisions; the current plan is [M3](project/2026-11-24-m3-kit-v0-plan.md)
+- [project/](project/): dated plans, findings and decisions; M1 to M4 are done; the latest handoff is [here](project/2026-11-26-handoff-page-and-m4-closed.md)
 - [AGENTS.md](AGENTS.md): the full list of docs, including the scripts
 
 ## Authors and license
