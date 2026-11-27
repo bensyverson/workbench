@@ -4,7 +4,8 @@
 /** @import { Loc } from "../parse/ast.js" */
 
 const HERE = new URL(".", import.meta.url).href;
-const FRAME = /((?:file|https?|data):[^\s()]+?):(\d+):(\d+)/g;
+// a data: URL keeps ( and ) unescaped (encodeURIComponent leaves them), and never a raw ":<n>:<n>" (it escapes ":")
+const FRAME = /((?:file|https?):[^\s()]+?|data:\S+?):(\d+):(\d+)/g;
 
 /**
  * @returns {{ file: string, loc: Loc }}
