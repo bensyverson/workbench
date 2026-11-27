@@ -221,3 +221,12 @@ test("the S4 codes include S404, and layer is exported beside page", () => {
   assert.ok(Object.hasOwn(COMPOSE_CODES, "S404"));
   assert.equal(typeof layer, "function");
 });
+
+test(".show() with no argument reads as that call, not as a layer of zero outputs", () => {
+  const { scr } = parts();
+  const s102 = compose("x").part(scr).show().check().find((d) => d.code === "S102");
+  assert.ok(s102);
+  assert.match(s102.message, /^\.show\(\): /);
+  assert.doesNotMatch(s102.message, /0 outputs/);
+  assert.match(compose("x").part(scr).show(scr.out.view, scr.out.view).check().find((d) => d.code === "S102")?.message ?? "", /^\.show\(2 outputs\)/, "a call with outputs still says how many");
+});

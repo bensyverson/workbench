@@ -7,7 +7,7 @@
 /**
  * Decodes every image with a file. Resolves to the sources and the H003 problems (a file no loaded package holds,
  * a decoder that threw or rejected); without a decoder there are no sources and no problems: every image draws as its box.
- * @param {Array<{ name: string, dialect: string }>} parts @param {any[]} runtimes @param {any[]} packages @param {Decode | undefined} decode
+ * @param {Array<{ name: string, dialect: string, layer?: unknown }>} parts @param {any[]} runtimes @param {any[]} packages @param {Decode | undefined} decode
  * @returns {Promise<{ sources: Record<string, unknown>, problems: Array<{ part: string, message: string }> }>}
  */
 export async function decodeSources(parts, runtimes, packages, decode) {
@@ -18,6 +18,7 @@ export async function decodeSources(parts, runtimes, packages, decode) {
   if (typeof decode !== "function") return { sources, problems };
   const jobs = [];
   for (const p of parts) {
+    if (p.layer !== undefined) continue; // a layer has no images: it is told by its record's field, not a Dialect name
     const rt = runtimes.find((r) => r.dialect?.name === p.dialect);
     const pkg = packages.find((k) => k?.name === p.dialect || k?.dialect === rt?.dialect);
     for (const [image, decl] of Object.entries(/** @type {Record<string, any>} */ (rt?.dialect?.seams?.images ?? {}))) {

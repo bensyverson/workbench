@@ -102,6 +102,7 @@ Its codes: **H006** an expectation not met (the test, the kind, the instant, the
 | H007 | a package test's run reported an error diagnostic it did not expect, or its replay diverged |
 | H008 | a package test could not run |
 | H009 | a part run alone could take a page control in more than one way, so none of those is wired (`examplePreset`); a warning |
+| H010 | the shown layer's bottom frame has no extent, so the page has no size and the canvas stays hidden (a layer has no text stage to fall back on, as a shown part with no extent does); a warning, once, at creation |
 
 H is reserved for the kit (kit/define's `RESERVED_LETTERS`).
 

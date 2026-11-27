@@ -34,7 +34,7 @@ test("the default key map is the DMG host's: arrows and WASD for the pad, X and 
   });
   // every value is a page control, or one of the pad's directions
   for (const v of Object.values(DEFAULT_KEYS)) assert.ok(Object.hasOwn(PAGE_CONTROLS, v.split(".")[0]), v);
-  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003", "H004", "H005", "H006", "H007", "H008", "H009"]);
+  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003", "H004", "H005", "H006", "H007", "H008", "H009", "H010"]);
   assert.ok(RESERVED_LETTERS.includes("H"), "H is the kit's, so a Dialect's own codes cannot take it");
 });
 

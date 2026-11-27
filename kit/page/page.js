@@ -60,6 +60,10 @@ export function createPage(options) {
     report({ code: "H002", severity: "warning", message, T: now(), ...(composed.show ? { part: composed.show } : {}) });
   }
   const box = first?.box ?? null;
+  const shown = composed.parts.find((/** @type {{ name: string }} */ p) => p.name === composed.show);
+  if (first && !box && shown?.layer !== undefined) {
+    report({ code: "H010", severity: "warning", message: `the page shows layer ${shown.name}, whose bottom frame ${shown.layer.frame} has no extent, so the page has no size and the canvas stays hidden (a layer has no text stage to fall back on)`, T: now(), part: shown.name });
+  }
   const size = box ? { width: box.max[0] - box.min[0], height: box.max[1] - box.min[1] } : null;
 
   const ready = decodeSources(composed.parts, runtimes, packages, options.decode).then((r) => {

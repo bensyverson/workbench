@@ -102,7 +102,7 @@ export function pageView(run, composed, runtimes, part) {
   const runtimeOf = (/** @type {string} */ dialect) => runtimes.find((r) => r.dialect?.name === dialect);
   /** @type {Record<string, Image>} */
   const images = {};
-  for (const p of composed.parts) Object.assign(images, imagesOf(p.name, runtimeOf(p.dialect)));
+  for (const p of composed.parts) if (p.layer === undefined) Object.assign(images, imagesOf(p.name, runtimeOf(p.dialect)));
   const name = part ?? composed.show;
   const cp = composed.parts.find((p) => p.name === name);
   if (!name || !cp) throw new Error(`pageView: the composition has no part '${name}'`);

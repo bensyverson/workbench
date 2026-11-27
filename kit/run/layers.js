@@ -42,6 +42,16 @@ export function makeLayers(composed, byName) {
     const bad = (/** @type {string} */ why) => problems.push({ code: "N007", message: `layer '${cp.name}': ${why}; kit/compose builds every layer from two or more Draw outputs, so the record was changed by hand` });
     if (n < 2) { bad(`its record names ${n} inputs, not two or more`); continue; }
     const into = composed.wires.filter((w) => ends(w.to).part === cp.name);
+    const rec = /** @type {{ inputs: string[], max: unknown, frame: unknown }} */ (cp.layer);
+    const listed = rec.inputs;
+    for (let i = 0; i < n; i++) {
+      const wired = into.filter((w) => w.to === `${cp.name}.in.${i}`);
+      if (wired.length === 1 && wired[0].from !== listed[i]) bad(`its record lists ${JSON.stringify(listed[i])} as input ${i}, but the wire into in.${i} comes from ${wired[0].from}`);
+    }
+    if (typeof rec.max !== "number" || !Number.isInteger(rec.max) || rec.max < 0) bad(`its record's max is ${JSON.stringify(rec.max)}, not a count of ops`);
+    if (typeof rec.frame !== "string") bad(`its record's frame is ${JSON.stringify(rec.frame)}, not a frame name`);
+    for (const w of into) if (w.delay || Object.keys(w.rename ?? {}).length) bad(`the wire ${w.from} → ${w.to} carries a delay or a rename, which mean nothing to a picture`);
+    const seenFrom = new Set();
     for (const w of into) { const i = ends(w.to).port; if (ends(w.to).side !== "in" || !/^\d+$/.test(i) || Number(i) >= n) bad(`the wire ${w.from} → ${w.to} names no input of it (in.0 to in.${n - 1})`); }
     /** @type {LayerInput[]} */
     const inputs = [];
@@ -49,13 +59,23 @@ export function makeLayers(composed, byName) {
       const ws = into.filter((w) => w.to === `${cp.name}.in.${i}`);
       if (ws.length !== 1) { bad(`in.${i} has ${ws.length === 0 ? "no wire" : `${ws.length} wires`}, so nothing it draws comes from a producer`); continue; }
       const w = ws[0], from = ends(w.from);
+      if (seenFrom.has(w.from)) { bad(`${w.from} is the same output on two inputs, which draws its list twice`); continue; }
+      seenFrom.add(w.from);
       const producer = byName.get(from.part);
       const draws = producer ? Object.values(/** @type {Record<string, any>} */ (producer.runtime.dialect.seams.out)).some((o) => o.name === from.port && o.draw) : names.has(from.part) && from.port === "view";
       if (from.side !== "out" || !draws) { bad(`in.${i} is wired from ${w.from}, which is not a Draw output of a part in the run`); continue; }
       inputs.push({ part: from.part, port: from.port, layer: !producer, wire: { rename: w.rename ?? {}, dropped: w.dropped ?? [], convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)) } });
     }
+    // its frame is its bottom input's: a stepping producer's output seam names it, a layer's own record does
+    const b = inputs[0];
+    if (inputs.length === n && typeof rec.frame === "string") {
+      const below = b.layer ? entries.find((e) => e.name === b.part)?.layer?.frame : (() => { const f = /** @type {any} */ (byName.get(b.part)?.runtime.dialect.seams.out)?.[b.port]?.seam?.frame; return f === undefined ? undefined : `${b.part}.${f}`; })();
+      if (typeof below === "string" && below !== rec.frame) bad(`its record's frame is ${rec.frame}, but its bottom input ${b.part}.${b.port} draws in ${below}`);
+    }
     layers.set(cp.name, inputs);
   }
+  // a layer has one output, `view`: a wire from any other port of it would be answered with the layer's list
+  for (const w of composed.wires) { const f = ends(w.from); if (names.has(f.part) && (f.side !== "out" || f.port !== "view")) problems.push({ code: "N007", message: `the wire ${w.from} → ${w.to} reads a port of layer '${f.part}' that it does not have: a layer's only output is 'view'; kit/compose cannot build it, so the record was changed by hand` }); }
   // layers that feed each other would never end: kit/compose cannot make them, since a layer's arguments exist before it
   /** @param {string} name @param {string[]} path @returns {boolean} */
   const loops = (name, path) => path.includes(name) || (layers.get(name) ?? []).some((i) => i.layer && loops(i.part, [...path, name]));
@@ -88,14 +108,4 @@ export function producersUnder(name, layers) {
   const inputs = layers.get(name);
   if (!inputs) return [name];
   return [...new Set(inputs.flatMap((i) => (i.layer ? producersUnder(i.part, layers) : [i.part])))];
-}
-
-/**
- * The stepping part and Draw output at the bottom of a layer, down through a layer at the bottom: its frame is the
- * layer's, so pageView sizes the page by it.
- * @param {string} name @param {Map<string, LayerInput[]>} layers @returns {{ part: string, port: string }}
- */
-export function bottomOf(name, layers) {
-  const b = /** @type {LayerInput[]} */ (layers.get(name))[0];
-  return b.layer ? bottomOf(b.part, layers) : { part: b.part, port: b.port };
 }

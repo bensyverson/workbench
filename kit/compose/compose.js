@@ -71,7 +71,7 @@ export function compose(name) {
     /** @param {unknown} from @param {unknown} to @param {unknown} [options] */
     wire: (from, to, options) => push({ kind: "wire", from, to, options }),
     /** A part or a layer; or two or more Draw outputs, bottom first, which make a layer named `layers`. @param {...unknown} shown */
-    show: (...shown) => push({ kind: "show", value: shown.length === 1 ? shown[0] : makeLayer(SHORTHAND, shown, glueSite(), `.show(${shown.length} outputs)`) }),
+    show: (...shown) => push({ kind: "show", value: shown.length === 1 ? shown[0] : makeLayer(SHORTHAND, shown, glueSite(), shown.length === 0 ? ".show()" : `.show(${shown.length} outputs)`) }),
     /** Every S diagnostic, and the parts' own. @param {ComposeOptions} [o] @returns {ComposeDiagnostic[]} */
     check: (o) => run(o).diagnostics,
     /** The composed record; throws ComposeError with every diagnostic (warnings included) when any is an error. @param {ComposeOptions} [o] @returns {Composed} */

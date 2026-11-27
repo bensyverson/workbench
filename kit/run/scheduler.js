@@ -105,7 +105,7 @@ export function createRun(composed, options) {
     if (typeof p === "string") { refused.push({ code: "N006", message: `part '${cp.name}' (${cp.dialect}): ${p}` }); return; }
     parts.push(p);
   });
-  const sized = composed.parts.map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
+  const sized = composed.parts.filter((p) => !isLayerEntry(p)).map((p) => ({ name: p.name, dialect: p.dialect, record: p.record }));
   // a policy trims what a step takes (ruling 7), and a page wire past its size folds (Ben, 2026-11-26): neither is refused
   const sizedWires = composed.wires.filter((w) => !intoParam(w) && w.overflow !== "keepLast" && w.overflow !== "keepFirst" && !(hasPage && ends(w.from).part === PAGE));
   for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntime], { catchUp })) {

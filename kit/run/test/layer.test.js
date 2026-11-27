@@ -138,3 +138,51 @@ test("a layer whose inputs come from no producer is refused (N007), never drawn 
   // and the record as built runs
   assert.doesNotThrow(() => createRun(composed, { runtimes }));
 });
+
+/** Whether createRun refuses `record` with an N007 whose message matches `re`. */
+const refusedN007 = (/** @type {any} */ record, /** @type {any[]} */ runtimes, /** @type {RegExp} */ re) =>
+  assert.throws(() => createRun(record, { runtimes }), (e) => e instanceof RunError && e.diagnostics.some((d) => d.code === "N007" && re.test(d.message)));
+
+test("a hand-edited layer record that compose would refuse is N007: an output twice, a record that disagrees with its wires, a bad max or frame, a delayed wire in", () => {
+  const { composed, runtimes } = bench((c, { level, scr }) => c.show(layer("top", scr.out.view, level.out.view)));
+  const edit = (/** @type {(l: any) => any} */ f) => ({ ...composed, parts: composed.parts.map((/** @type {any} */ p) => (p.name === "top" ? { ...p, layer: f(p.layer) } : p)) });
+  const dup = { ...composed, wires: composed.wires.map((/** @type {any} */ w) => (w.to === "top.in.1" ? { ...w, from: "scr.out.view", convert: [] } : w)) };
+  refusedN007(dup, runtimes, /layer 'top'.*scr\.out\.view.*twice|layer 'top'.*same output/);
+  refusedN007(edit((l) => ({ ...l, inputs: ["level.out.view", "ghost.out.view"] })), runtimes, /layer 'top'.*its record lists/);
+  refusedN007(edit((l) => ({ ...l, max: "many" })), runtimes, /layer 'top'.*max/);
+  refusedN007(edit((l) => ({ ...l, frame: "level.cell" })), runtimes, /layer 'top'.*frame/);
+  const delayed = { ...composed, wires: composed.wires.map((/** @type {any} */ w) => (w.to === "top.in.1" ? { ...w, delay: true } : w)) };
+  refusedN007(delayed, runtimes, /layer 'top'.*in\.1.*delay/);
+  assert.doesNotThrow(() => createRun(composed, { runtimes }), "the record as built runs");
+});
+
+test("a wire from a layer port other than view is N007; a layer's view still feeds a part", () => {
+  const b = bench((c, { level, scr, hud }) => c.part(hud).frame(scr.frame.px, hud.frame.px, { scale: 1, offset: 0 }).wire(layer("top", scr.out.view, level.out.view).out.view, hud.in.board).show(hud));
+  const bad = { ...b.composed, wires: b.composed.wires.map((/** @type {any} */ w) => (w.from === "top.out.view" ? { ...w, from: "top.out.zzz" } : w)) };
+  refusedN007(bad, b.runtimes, /top\.out\.zzz.*'view'|'view'.*top\.out\.zzz/);
+  assert.doesNotThrow(() => createRun(b.composed, { runtimes: b.runtimes }));
+});
+
+test("a user Dialect named layer is a stepping part, not a layer: only a part entry's `layer` field makes one", () => {
+  const ug = drawnMaze((d) => { d.name = "layer"; }), sg = screen();
+  const tick = { clock: () => ({ tick: 1 / 8 }), init: () => ({ t: 0 }), step: (/** @type {any} */ s, /** @type {any} */ ctx) => ({ t: s.t + ctx.dt }) };
+  const coinsOf = (/** @type {string[]} */ grid) => grid.flatMap((row, y) => [...row].flatMap((ch, x) => (ch === "c" ? [{ x, y }] : [])));
+  const runtimes = [
+    defineRuntime(ug, {
+      clock: () => ({ tick: 1 / 8 }),
+      init: (/** @type {any} */ r) => ({ t: 0, score: 0, player: { x: 1, y: 1 }, home: [1, 1], grid: r.grid, coins: coinsOf(r.grid) }),
+      step: (/** @type {any} */ s, /** @type {any} */ ctx) => { const n = mazeStep(s, ctx); return { ...n, coins: coinsOf(n.grid) }; },
+      events: { out: { picked: 8 } },
+    }),
+    defineRuntime(sg, tick),
+  ];
+  const u = /** @type {any} */ (ug("u")).grid(GRID).control(right), s = /** @type {any} */ (sg("scr")).size({ width: 40, height: 32 });
+  const composed = compose("named-layer").part(u).part(s).frame(u.frame.cell, s.frame.px, { scale: 8, offset: 4 }).show(layer("top", s.out.view, u.out.view)).build();
+  const run = createRun(composed, { runtimes });
+  assert.ok(run.snapshot("u").state, "the user's part has state");
+  run.runUntil(0.25);
+  assert.ok(run.snapshot("u").state.t > 0, "and steps");
+  const v = pageView(run, composed, runtimes);
+  assert.deepEqual(Object.keys(v.images).filter((k) => k.startsWith("top.")), [], "the layer holds no images of the user's Dialect");
+  assert.equal(v.part, "top");
+});
