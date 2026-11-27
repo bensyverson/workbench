@@ -124,7 +124,7 @@ test("a part with no runtime is refused when the run is created", () => {
   assert.throws(() => createRun(composed, { runtimes: [mazeKit().runtime] }), /part 'fx' \(particles\) has no runtime/);
 });
 
-test("every N code but N001, N005 and N008 has a case here (the driver's, replay's, and param-wire.test.js's)", () => {
+test("every N code but N001, N005, N008, N009 and N010 has a case here (the driver's, replay's, param-wire.test.js's and input-record.test.js's)", () => {
   for (const r of runs) for (const c of codes(r)) seen.add(c);
-  for (const c of Object.keys(RUN_CODES)) if (c !== "N001" && c !== "N005" && c !== "N008") assert.ok(seen.has(c), `no case for ${c}`);
+  for (const c of Object.keys(RUN_CODES)) if (!["N001", "N005", "N008", "N009", "N010"].includes(c)) assert.ok(seen.has(c), `no case for ${c}`);
 });

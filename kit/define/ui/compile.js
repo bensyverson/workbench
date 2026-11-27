@@ -24,7 +24,7 @@ import { lowerUI, idOf } from "./lower.js";
  * @property {boolean} ok  every lambda lowered
  * @property {UILowerDiagnostic[]} diagnostics  ui.lower's
  * @property {(state: any, $: Record<string, unknown>) => { tiles: EvaluatedTile[], annotate: Record<string, Record<string, Annotation>> }} evaluate
- * @property {(id: string, ...args: unknown[]) => unknown} value  one value by its id (`tiles.<tile>.body[0].y`): a lambda's Kernel called with `args` (`state, $`; a column's `row, state, $`), a path read from the first argument, a literal as it is; throws when the lambda did not lower
+ * @property {(id: string, ...args: unknown[]) => unknown} value  one value by its id (`tiles.<tile>.body[0].y`): a lambda's Kernel called with `args` (exactly `state, $`; a column's `row, state, $`), a path read from the first argument, a literal as it is; throws when the lambda did not lower or is handed another number of arguments
  * @property {(view: string, key: string, state: any, $: Record<string, unknown>) => Annotation} annotation  one key's annotation; under `params`, `"*"`'s fields under the key's own
  */
 
@@ -41,7 +41,8 @@ const messageOf = (e) => (e instanceof Error ? e.message : String(e));
 
 /**
  * The Dialect's globals a UI Kernel may name, bound so it never reads the host's, as kit/run binds a Program's: each
- * a forwarding object over `current[name]`. `$` is the params a call is handed (its last argument); the page globals
+ * a forwarding object over `current[name]`. The params' name (`params.name`, `$` by default) is the params a call is
+ * handed (its last argument); the page globals
  * are the page's; every other global has no value, since a view runs outside a step, and reading it throws. A name no
  * identifier spells cannot appear in a lambda's source, so it needs no binding.
  * @param {Record<string, any>} def @param {{ current: Record<string, unknown> }} globals
@@ -78,13 +79,17 @@ export function compileUI(ui, record) {
   const scope = globalScope(def, globals);
   const helperEmits = low.helpers.filter((h) => h.kind === "fn" && h.result?.kernel).map((h) => emitKernel(/** @type {any} */ (h.result.kernel), { intrinsics }));
   const helpers = helperEmits.length ? helpersWith(helperEmits, scope) : {};
+  // the name a lambda reads the params by, free (the Dialect's `params.name`)
+  const via = typeof def.params?.name === "string" ? def.params.name : "$";
   /** @type {Record<string, (...args: unknown[]) => unknown>} */
   const fns = {};
   for (const [id, k] of Object.entries(low.kernels)) {
     const fn = /** @type {(...args: unknown[]) => unknown} */ (instantiate(emitKernel(k, { intrinsics }), { ...scope, ...helpers }));
     // every call ends with the params: `state, $`, a column's `row, state, $`
-    fns[id] = (...args) => { globals.current = { $: args[args.length - 1] }; return fn(...args); };
+    fns[id] = (...args) => { globals.current = { [via]: args[args.length - 1] }; return fn(...args); };
   }
+  /** Each lambda's convention, which `value` holds a call to, by id. @type {Map<string, string[]>} */
+  const conventions = new Map(low.lambdas.map((l) => [l.id, l.row ? ["row", "state", "$"] : ["state", "$"]]));
   /** The first error lowering gave each lambda, by id. @type {Map<string, UILowerDiagnostic>} */
   const failed = new Map();
   for (const d of low.diagnostics) if ("id" in d && (d.severity === "error" || d.severity === undefined) && !failed.has(d.id)) failed.set(d.id, d);
@@ -180,6 +185,9 @@ export function compileUI(ui, record) {
       return { tiles, annotate };
     },
     value(id, ...args) {
+      // a lambda's params are its last argument, so a call one short would bind the state as them
+      const conv = conventions.get(id);
+      if (conv && args.length !== conv.length) throw new TypeError(`value(${id}) takes (${conv.join(", ")}), ${conv.length} arguments, not ${args.length}`);
       const fn = fns[id];
       if (fn) return fn(...args);
       const d = failed.get(id);

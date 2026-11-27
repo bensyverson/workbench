@@ -167,3 +167,37 @@ test("a UI's control is the run control its inputs reach the runtime as: the obj
   assert.equal(ui.control, "pad");
   assert.equal(tile({ kind: "text", value: "label" }).control, null, "a UI with no inputs has none");
 });
+
+/** The orbits Dialect and Grammar again, with the params read by the name `p` (review of d0b876c, finding 3). */
+const pDialect = defineDialect(/** @type {any} */ ({ ...dialect.def, name: "porbits", globals: { p: "Params", world: "World", Math: "Math" }, params: { object: "Params", name: "p" } }));
+const porbits = defineGrammar(pDialect, { root: "orbits", params: { slot: "param" }, constructs: orbits.grammar.constructs });
+
+test("a UI lambda reads the params by the Dialect's params name, not always $ (review of d0b876c, finding 3)", () => {
+  const { record } = run(() => porbits("o").param("cap", { value: 1, min: 0, max: 10 }));
+  const ui = defineUI(porbits, { tiles: { t: { title: "T", place: { splitBelow: "stage" }, body: [
+    { kind: "stat", label: "free", value: (s) => p.cap * s.t },
+    { kind: "stat", label: "named", value: (s, q) => q.cap + s.t },
+  ] } } });
+  const c = ui.compile(record);
+  assert.deepEqual(c.diagnostics, []);
+  const [free, named] = c.evaluate(STATE, { cap: 2 }).tiles[0].body;
+  assert.equal(free.value, 8, "a free p reads evaluate's params");
+  assert.equal(named.value, 6, "a lambda's own second parameter still works");
+  assert.equal(c.value("tiles.t.body[0].value", STATE, { cap: 3 }), 12);
+});
+
+test("value(id, ...args) refuses a call to a lambda without its whole convention, so the state is never bound as the params (finding 3)", () => {
+  const ui = tile(
+    { kind: "stat", label: "free", value: (s) => $.cap * s.t },
+    { kind: "table", label: "rows", rows: "bodies", columns: [{ label: "c", value: (row, s, $) => row.speed + $.cap }] },
+    { kind: "stat", label: "path", value: "bounds.width" },
+  );
+  const c = ui.compile(program("cap"));
+  assert.throws(() => c.value("tiles.t.body[0].value", STATE), /value\(tiles\.t\.body\[0\]\.value\) takes \(state, \$\), 2 arguments, not 1/);
+  assert.throws(() => c.value("tiles.t.body[1].columns[0].value", { speed: 1 }, STATE), /takes \(row, state, \$\), 3 arguments, not 2/);
+  assert.throws(() => c.value("tiles.t.body[0].value", STATE, { cap: 3 }, {}), /not 3/);
+  // what must still work: the whole convention, and a path or literal read from the first argument alone
+  assert.equal(c.value("tiles.t.body[0].value", STATE, { cap: 3 }), 12);
+  assert.equal(c.value("tiles.t.body[1].columns[0].value", { speed: 1 }, STATE, { cap: 3 }), 4);
+  assert.equal(c.value("tiles.t.body[2].value", STATE), 3);
+});

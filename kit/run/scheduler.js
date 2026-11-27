@@ -179,23 +179,62 @@ export function createRun(composed, options) {
       e = { ...e, value: structuredClone(e.value) };
       const bad = pageInputProblem(/** @type {string} */ (e.name), e.value);
       if (bad) throw new Error(bad);
+    } else if (e.kind !== "frame" && !byName.has(e.part ?? "")) {
+      throw new RunError([{ code: "N009", message: `an input names no part '${e.part}': the parts are ${parts.map((x) => x.name).join(", ")}; a ${e.kind} input at ${qText(e.T)}, so it is not logged and the run is unchanged` }]);
     }
-    if (e.kind === "param") paramProblem(e);
+    if (e.kind === "param") paramProblem(e, i);
     inputs.splice(i, 0, e);
     if (e.kind === "frame") frameLog.add(e.T);
   }
 
   /**
-   * Refuses a param input whose value does not fit the param's declaration in the part's record (its type, finite,
-   * min..max, options), before it is logged: applied, one past a build-time param's range would throw in the rebuild,
-   * and a run-time one would run with a value no control can give. A param the record does not declare is the host's.
-   * @param {Entry} e
+   * The records that can be in force for `p` at the log position `i`: its record now, and the record of each rebuild
+   * of it logged before `i` and not yet applied (a rebuild can fail and keep the record before it, so any of them can
+   * be the one). Null when one is not knowable before it applies: a build-time param edit of `p` before `i`, whose
+   * record only the host's build gives.
+   * @param {Part} p @param {number} i @returns {Array<Record<string, any>> | null}
    */
-  function paramProblem(e) {
-    const p = byName.get(e.part ?? "");
-    const decl = p?.record.params?.[/** @type {string} */ (e.name)];
-    const bad = p && decl && typeof decl === "object" ? misfit(e.value, decl) : null;
-    if (p && bad) throw new RunError([{ code: "N008", part: p.name, message: `a param input at ${qText(e.T)}: ${p.name}.$.${e.name} ${bad}, so it is not logged and the run is unchanged` }]);
+  function recordsAt(p, i) {
+    const records = [p.record];
+    for (let k = cursor; k < i; k++) {
+      const x = inputs[k];
+      if (x.part !== p.name) continue;
+      if (x.kind === "rebuild") records.push(/** @type {Record<string, any>} */ (x.record));
+      else if (x.kind === "param" && options.build && records.some((r) => needsRebuild(r, [/** @type {string} */ (x.name)]))) return null;
+    }
+    return records;
+  }
+
+  /**
+   * Why a param input cannot apply under `record`: a value that does not fit the param's declaration (its type,
+   * finite, min..max, options; N008: applied, one past a build-time param's range would throw in the rebuild, and a
+   * run-time one would run with a value no control can give), or a build-time param with no build option (N010).
+   * Null when it can; a param the record does not declare is the host's.
+   * @param {Part} p @param {Entry} e @param {Record<string, any>} record @returns {{ code: string, why: string } | null}
+   */
+  function paramMisfit(p, e, record) {
+    const name = /** @type {string} */ (e.name);
+    const decl = record.params?.[name];
+    const bad = decl && typeof decl === "object" ? misfit(e.value, decl) : null;
+    if (bad) return { code: "N008", why: `${p.name}.$.${name} ${bad}` };
+    if (!options.build && needsRebuild(record, [name])) return { code: "N010", why: `${p.name}.$.${name} is read at build time, so changing it rebuilds the part, and the run was given no build(part, params)` };
+    return null;
+  }
+
+  /**
+   * Refuses a param input, before it is logged at position `i`, that cannot apply under any record that can be in
+   * force at its instant (recordsAt). When that record is not knowable yet, or more than one can be in force, it is
+   * logged and judged again as it applies, against the record then in force (applyInputs).
+   * @param {Entry} e @param {number} i
+   */
+  function paramProblem(e, i) {
+    const p = /** @type {Part} */ (byName.get(e.part ?? ""));
+    const records = recordsAt(p, i);
+    if (!records) return;
+    const misfits = records.map((r) => paramMisfit(p, e, r));
+    // named by the record the log promises: the last rebuild's
+    const last = misfits.at(-1);
+    if (last && misfits.every(Boolean)) throw new RunError([{ code: last.code, part: p.name, message: `a param input at ${qText(e.T)}: ${last.why}, so it is not logged and the run is unchanged` }]);
   }
 
   /**
@@ -212,15 +251,17 @@ export function createRun(composed, options) {
       // a page input is the page part's Event: one record on each wire from that control, at the input's stamp, so
       // every press and release reaches its consumers in log order (Ben, 2026-11-26; ada0afe kept only the latest)
       if (e.kind === "control" && e.part === PAGE && hasPage) { for (const w of wires) if (w.from.part === PAGE && w.from.port === e.name) delivery.deliver(w, [e.value], e.T); continue; }
-      const p = byName.get(e.part ?? "");
-      if (!p) throw new Error(`an input names no part '${e.part}': the parts are ${parts.map((x) => x.name).join(", ")}`);
+      // insert refused an input naming no part (N009)
+      const p = /** @type {Part} */ (byName.get(e.part ?? ""));
       if (e.kind === "control") p.controls = { ...p.controls, [/** @type {string} */ (e.name)]: deepFreeze(structuredClone(e.value)) };
       else if (e.kind === "param") {
+        // judged against the record in force now: one logged behind a rebuild or a build-time edit was not knowable
+        const no = paramMisfit(p, e, p.record);
+        if (no) { report({ code: no.code, message: `a param input at ${qText(e.T)}: ${no.why}, so it is not applied; ${p.name} keeps its build`, part: p.name, T: qText(e.T), revision: p.revision }); continue; }
         const name = /** @type {string} */ (e.name), was = p.params[name];
         p.params = { ...p.params, [name]: e.value };
         params.noteSet(p.name, name);
-        if (needsRebuild(p.record, [name])) {
-          if (!options.build) throw new Error(`the param ${p.name}.$.${name} is read at build time, so changing it rebuilds the part, and the run was given no build(part, params)`);
+        if (needsRebuild(p.record, [name]) && options.build) {
           rebuild(p, options.build(p.name, { ...p.params }), paramTrigger(p.record, name, was, e.value), null, before ?? e.T);
         }
       } else if (e.kind === "rebuild") {

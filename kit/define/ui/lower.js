@@ -141,7 +141,7 @@ function required(gives, inferred, numberType) {
  * @typedef {object} UILowered
  * @property {Environment} environment  the UI's wrapper of the Program's Environment
  * @property {Record<string, Kernel>} kernels  each lambda's Kernel by id; a lambda that did not lower has none
- * @property {Array<{ id: string, path: Array<string | number>, tile: string | null, key: string, src: string, result: LowerResult }>} lambdas  in declaration order
+ * @property {Array<{ id: string, path: Array<string | number>, tile: string | null, key: string, row: boolean, src: string, result: LowerResult }>} lambdas  in declaration order; `row` when it is a column's (`row, s, $`)
  * @property {HelperResult[]} helpers  the Library units the lambdas use
  * @property {UILowerDiagnostic[]} diagnostics  each lambda's, in declaration order, then the units'
  */
@@ -208,7 +208,7 @@ export function lowerUI(ui, record) {
   return {
     environment: env,
     kernels,
-    lambdas: sites.map((s, i) => ({ id: s.id, path: s.path, tile: s.tile, key: s.key, src: srcs[i], result: results[i] })),
+    lambdas: sites.map((s, i) => ({ id: s.id, path: s.path, tile: s.tile, key: s.key, row: s.row !== null, src: srcs[i], result: results[i] })),
     helpers: helperResults,
     diagnostics,
   };
