@@ -1,0 +1,22 @@
+{
+  "name": "overlay",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "Two pictures from other parts drawn as one: the second over the first.",
+  "entry": {
+    "dialect": "overlay.dialect.js",
+    "grammar": "overlay.grammar.js",
+    "ui": "overlay.ui.js",
+    "runtime": "overlay.runtime.js"
+  },
+  "examples": [
+    "examples/hud.js"
+  ],
+  "files": {
+    "examples/hud.js": "sha256-OjGII3FMLO1qS04rJ4J4F7CAi3/qLw+Q8vSH6MS9hIc=",
+    "overlay.dialect.js": "sha256-X24BTMps5wuDaattV5OIdcWKHKkWCRVNbJRNb8mAMXs=",
+    "overlay.grammar.js": "sha256-LooQ90U9N9fqK9KYvgbBmyGO8DvczhCndtfVr88L5F0=",
+    "overlay.runtime.js": "sha256-QVub2GB0OU2TttenysNeFiLRpjYDOxXIHSPL1py/PA0=",
+    "overlay.ui.js": "sha256-sTZRN/wbb8M1S2SvfZpIDsgX/5R24bQBayOVqHx9ZhE="
+  }
+}

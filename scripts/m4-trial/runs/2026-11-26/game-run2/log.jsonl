@@ -1,0 +1,4 @@
+{"time":"2026-11-27T03:36:40.380Z","role":"game","dir":"/private/tmp/IhJ35P-game2/gemgrid","ok":true,"problem":null,"diagnostics":[]}
+{"time":"2026-11-27T03:36:54.076Z","role":"game","dir":"/private/tmp/IhJ35P-game2/gemgrid","ok":false,"problem":null,"diagnostics":[{"code":"K014","severity":"error","message":"refusals/empty.js is listed in \"refusals\" with G009, but the kit refused it with G001: a map is 1 to 24 rows of 1 to 24 cells","fix":"write \"code\": \"G001\" if that is the refusal meant, or change refusals/empty.js to break the rule that gives G009","file":"refusals/empty.js","line":1}]}
+{"time":"2026-11-27T03:36:59.424Z","role":"game","dir":"/private/tmp/IhJ35P-game2/gemgrid","ok":true,"problem":null,"diagnostics":[]}
+{"time":"2026-11-27T03:37:16.587Z","role":"game","dir":"/private/tmp/IhJ35P-game2/gemgrid","ok":true,"problem":null,"diagnostics":[]}

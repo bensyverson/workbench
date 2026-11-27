@@ -61,3 +61,7 @@ Twice this day a squash of a parallel agent's branch broke tests that had been g
 ## 2026-11-26: `git reset --hard` on main discards job's uncommitted events
 
 `.jobs/log/*.jsonl` is job's source of truth and is tracked, and every `job` write appends to it uncommitted; `.jobs.db` is only a cache that the next write rebuilds from the log. The integrator dropped a staged squash with `git reset --hard HEAD` and lost the session's claims, notes and a `done`, which then had to be redone. To drop a staged squash, run `git restore --staged --worktree -- <its paths>` (or `git reset --hard` only after committing the log), never a bare hard reset.
+
+## 2026-11-26: a blind leg that `cat`s a large doc reads it back from under `~/.claude`
+
+In the M4 trial (leaf `IhJ35P`) every `claude -p` leg's transcript shows it reading a saved tool result; game run 1 names the cause, `cat docs/kit/API.md` (36 KB), which is over the Bash tool's output limit, so the harness saved the output under `~/.claude/projects/…/tool-results/`, and the agent opened it there, outside its folder and against the brief's "read nothing outside". Only the agent's own output was there, so blindness held, but each leg had to disclose a rule break. Tell a blind leg in its brief to read long documents with the Read tool by offset, not `cat`.

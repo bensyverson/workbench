@@ -1,0 +1,50 @@
+{
+  "name": "gemgrid",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "A grid game: walk a level, pick up gems.",
+  "entry": {
+    "dialect": "gemgrid.dialect.js",
+    "grammar": "gemgrid.grammar.js",
+    "ui": "gemgrid.ui.js",
+    "runtime": "gemgrid.runtime.js"
+  },
+  "examples": [
+    "examples/cavern.js"
+  ],
+  "files": {
+    "examples/cavern.js": "sha256-T4KJgIWdkYgLPtT/nu/0gs8TvOlEuMhvKNQ83MypRSE=",
+    "gemgrid.dialect.js": "sha256-zFRnWtxJKxUXAsPhj9sSW8akfp14k1vbWfy0vMkmHF0=",
+    "gemgrid.grammar.js": "sha256-U2LAPXrRJvJ7vLTRe466fg1QHPV/KyX72FIOVVdpnw4=",
+    "gemgrid.runtime.js": "sha256-/sv8ksfn6OLZaesHaoTimDSvErTzBTmeuNyE2MDtE9g=",
+    "gemgrid.ui.js": "sha256-6Jo5THeJFLhqNKzIYJ/39lPfGqdnIrxg21RAQtA1kBs=",
+    "refusals/badchar.js": "sha256-0AAS/5PdynMWY0KgWMFtkGFMctbt0PRpLP26EiWOw/E=",
+    "refusals/empty.js": "sha256-vr5THFKYrn51g3Mt4IThsTFFBqSVIe6PO1yKuTvEVXE=",
+    "refusals/nogem.js": "sha256-a9mrsxtGab+IAtoePnGzk19PGu1wrPf9boL+KnRDw4o=",
+    "refusals/noplayer.js": "sha256-FwKhkmdl7Jp4JxVf1cdpfnKM0z9tG27NRYg/Zfjun8M=",
+    "refusals/ragged.js": "sha256-KuhXV4LrYEGGrnuqcUtehDSHzpXf8hnUIGiw1d9eMuc=",
+    "sprites.png": "sha256-wVOZWeMW9DDm1K4yptwaCrzKZjAKzhtRJgYbJ8X7YiU="
+  },
+  "refusals": [
+    {
+      "module": "refusals/ragged.js",
+      "code": "G002"
+    },
+    {
+      "module": "refusals/badchar.js",
+      "code": "G003"
+    },
+    {
+      "module": "refusals/noplayer.js",
+      "code": "G004"
+    },
+    {
+      "module": "refusals/nogem.js",
+      "code": "G005"
+    },
+    {
+      "module": "refusals/empty.js",
+      "code": "G001"
+    }
+  ]
+}
