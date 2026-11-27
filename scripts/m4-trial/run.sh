@@ -57,7 +57,7 @@ cp "$REPO/project/2026-11-25-package-format-draft.md" "$DIR/docs/project/"
 [ "$ROLE" = layer ] && node "$REPO/scripts/m4-trial/layer-docs.js" "$DIR/docs/kit"
 M4="$REPO/scripts/m4-trial"
 cp "$M4/docs/rules.md" "$DIR/rules.md"
-cp "$M4/docs/task-$ROLE.md" "$DIR/task.md"
+cp "${M4_TASK_FILE:-$M4/docs/task-$ROLE.md}" "$DIR/task.md"
 if [ "$ROLE" = compose ] || [ "$ROLE" = layer ]; then
   cp -R "$GAME_PKG" "$SCORE_PKG" "$DIR/"
   EXTRA=", and two package folders, \`$(basename "$GAME_PKG")/\` (the grid game) and \`$(basename "$SCORE_PKG")/\` (the score and timer)"

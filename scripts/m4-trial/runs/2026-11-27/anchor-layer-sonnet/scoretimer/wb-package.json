@@ -1,0 +1,24 @@
+{
+  "name": "scoretimer",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "One timed round that keeps its score.",
+  "entry": {
+    "dialect": "scoretimer.dialect.js",
+    "grammar": "scoretimer.grammar.js",
+    "ui": "scoretimer.ui.js",
+    "runtime": "scoretimer.runtime.js"
+  },
+  "examples": [
+    "examples/sprint.js",
+    "examples/practice.js"
+  ],
+  "files": {
+    "examples/practice.js": "sha256-uQBcgL3JLPoPPySg949K3ZEVyRWR98eg7/skNyUfIcs=",
+    "examples/sprint.js": "sha256-5PdtqeqaPBzcQtqd/ASOkdtRMBaoPGTiWi12nk0YYuc=",
+    "scoretimer.dialect.js": "sha256-RrTu1VAJMCLuat/MT4tDGi3/Mc3JfFF1fBheRUrXVEU=",
+    "scoretimer.grammar.js": "sha256-TPep2sr0wrDD7lLu4Tqno8uMdUrtRzJ9m/j4sTeRxVs=",
+    "scoretimer.runtime.js": "sha256-zrLqvCZca1G+jDR0P+09lpz7YYbTK89OWgD1F8R7HBs=",
+    "scoretimer.ui.js": "sha256-Csj9YpSSdHcjuvFQUmU5l2nwLmZfEsG8jJYO/DqeQM4="
+  }
+}
