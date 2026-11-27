@@ -23,6 +23,7 @@ import { createDelivery } from "./delivery.js";
 import { createParamFeed, intoParam } from "./param-wires.js";
 import { outsideWires, checkedIn, delivered, createTaps } from "./outside.js";
 import { isLayerEntry, makeLayers, layerList, producersUnder } from "./layers.js";
+import { createPlanner } from "./replan.js";
 
 /** @import { Q } from "../define/rational.js" */
 /** @import { Runtime } from "../define/runtime.js" */
@@ -126,6 +127,8 @@ export function createRun(composed, options) {
   /** @type {Map<string, Wire>} */
   const wireTo = new Map(wires.map((w) => [`${w.to.part}.${w.to.port}`, w]));
   const order = wireOrder(parts, wires, (name) => producersUnder(name, layers));
+  // the wires' conversions, planned again after a rebuild changes a part's record
+  const planner = createPlanner(composed, byName, wires, layers);
 
   let revision = 1;
   /** @type {Q} */
@@ -312,12 +315,17 @@ export function createRun(composed, options) {
     const after = { key, record, kernels: compiled.sources };
     // the record's declared values reach $ for the params nothing has set (a new default, a new param)
     if (key === was.key) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input })); p.params = params.after(p, record); return; }
+    // every wire's conversions planned again for the new record's frames: a plan that fails fails the rebuild
+    const planned = planner.trial(p.name, compiled);
+    if (!planned.ok) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: planned.diagnostics, input })); return; }
     // init runs on a trial copy, so a throw or a state that does not fit leaves the running part as it was
     const next = { record, compiled, clock: clock.clock, key, content, revision: nextRevision({ key: was.key, revision: was.revision }, key), rng: /** @type {Part["rng"]} */ ([...p.rng]), params: params.after(p, record) };
     const r = runInit({ ...p, ...next }, dev);
     if (!("state" in r)) { builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after: null, consumers, diagnostics: [{ code: r.code, message: r.message }], input })); return; }
-    builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input }));
+    builds.push(buildEvent({ part: p.name, boundary, trigger, before: was, after, consumers, input, edges: planned.moved }));
     Object.assign(p, next, { lastFrameT: null, rebuilt: true, snapT: null, stopped: false });
+    // from the rebuild's stamp on, what crosses a wire converts by the new plan; a queued record keeps its own
+    planner.apply(planned.plan);
     // a drop after a later stop is noted again: once per wire per stop (ruling R3)
     delivery.restarted(p.name);
     revision++;
@@ -421,7 +429,7 @@ export function createRun(composed, options) {
       parts: parts.map((p) => Object.fromEntries(PART_FIELDS.map((f) => [f, f === "rng" ? [...p.rng] : p[f]]))),
       wires: wires.map((w) => ({ queue: [...w.queue], drops: w.drops, stopDrops: w.stopDrops, overflowDrops: w.overflowDrops })),
       lens: { hashes: hashes.length, builds: builds.length, diagnostics: diagnostics.length }, taps: taps.save(),
-      ...delivery.save(), ...params.save(),
+      ...delivery.save(), ...params.save(), plan: planner.save(),
       floor: at.floor, ...slowdown.save(),
     });
   }
@@ -443,6 +451,11 @@ export function createRun(composed, options) {
     /** The composition's content key: its parts' keys by identity and its wires (kit/build). */
     get compositionKey() { return compositionKey(Object.fromEntries(parts.map((p) => [p.name, p.key])), composed.wires, composed.show); },
     diagnostics, builds, hashes, checkpoints,
+    /**
+     * The composed record in force: each part's record now and each wire's conversions as last planned (a rebuild
+     * plans them again); `pageView` reads it. The record createRun was given is never changed.
+     */
+    get composed() { return planner.composed(); },
     /** The input log as data: the header a replay needs and every outside input, stamped with T. */
     get log() { return { header: { name: composed.name, seed, frames, catchUp: qText(catchUp), params: options.params ?? {} }, inputs: inputs.map((e) => ({ ...e, T: qText(e.T) })) }; },
     /** What a replay compares: the log, each instant's state hashes, the build events; and the T it reached. */
@@ -551,6 +564,7 @@ export function createRun(composed, options) {
       delivery.restore(cp);
       taps.restore(cp.taps);
       params.restore(cp);
+      planner.restore(cp.plan);
       slowdown.restore(cp);
       at.floor = cp.floor; at.lastT = cp.T;
       ({ now, cursor, revision } = cp);

@@ -33,7 +33,8 @@ test("the coin-bursts composition checks clean and plans the burst's position ×
     convert: [{ field: "at", kind: "point", from: "maze.cell", to: "particles.px", scale: [32, 32], offset: [16, 48] }],
     rename: {}, delay: false, dropped: [], delivery: "reliable",
   }]);
-  assert.deepEqual(c.plan(), ["level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +[16, 48]"]);
+  // a "fit" step names the two boxes it was computed from (leaf QqirvU: the plan line used to end at the edge)
+  assert.deepEqual(c.plan(), ["level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +[16, 48] (fit at line 25: [-0.5, -0.5]..[9.5, 7.5] in [0, 0]..[320, 320])"]);
 });
 
 test("a producer's extra record fields are dropped and listed; an explicit edge plans as written", () => {

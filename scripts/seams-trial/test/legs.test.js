@@ -47,7 +47,7 @@ test("the reference particles hand-in passes: a probe record on burst makes part
 test("the reference composition passes: checked, planned with a rename, run to a burst at the pickup, replayed", async () => {
   const { r } = await codes("compose");
   assert.deepEqual(r.diagnostics, []);
-  assert.deepEqual(r.plan, ["level.out.coin → fx.in.burst: at: maze.cell → particles.px, point, ×32 +16"]);
+  assert.deepEqual(r.plan, ["level.out.coin → fx.in.burst: at: maze.cell → particles.px, point, ×32 +16 (fit at line 42: [-0.5, -0.5]..[9.5, 6.5] in [0, 0]..[320, 224])"]);
   assert.ok(r.notes.some((n) => /^run: coin at \(1, 3\) picked at T = 0\.125/.test(n)), r.notes.join("\n"));
   assert.ok(r.notes.some((n) => /^run: burst of 24 particles within 32 of \(48, 112\) in particles\.px at T = 0\.133/.test(n)), r.notes.join("\n"));
   assert.ok(r.notes.includes("run: replayed, same state hashes at every instant"), r.notes.join("\n"));

@@ -59,11 +59,13 @@ test("a shown layer draws the bottom producer's ops, then the top's converted in
   assert.deepEqual(run.diagnostics.filter((d) => d.severity === "error"), []);
 });
 
-test("the shorthand's layer draws the same, and the box follows the bottom producer, in its frame", () => {
+test("the shorthand's layer draws the same, and the box is the bottom producer's grown to hold the top's, in the bottom's frame", () => {
   const { composed, runtimes, run } = bench((c, { level, scr }) => c.show(level.out.view, scr.out.view));
   const v = pageView(run, composed, runtimes);
   assert.equal(v.part, "layers");
-  assert.deepEqual(v.box, { min: [-0.5, -0.5], max: [4.5, 2.5] }, "the maze's cell extent");
+  // the maze's cell extent, [-0.5, -0.5]..[4.5, 2.5], grown to the screen's 40 by 32 px placed in cells (Ben's ruling,
+  // 2026-11-27: until leaf QqirvU the box was the bottom producer's alone, so the screen's lowest row fell off it)
+  assert.deepEqual(v.box, { min: [-0.5, -0.5], max: [4.5, 3.5] });
   assert.deepEqual(v.list.map((op) => op.op), ["tiles", "ellipse", "text"]);
   assert.deepEqual(v.list[2].at, [-0.5, 2.5], "the text at (0, 24) px is at (-0.5, 2.5) in cells");
 });

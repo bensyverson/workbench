@@ -10,12 +10,14 @@ import { instanceName } from "../define/record.js";
 import { didYouMean } from "../define/codes.js";
 import { isHandle, handleText, valueReadsOf } from "../define/handles.js";
 import { withDrawMaxes, shownDraw } from "./draw.js";
-import { compareSeams, printValue, printSeam, FrameGraph, normalizeEdge, fitEdge, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
+import { compareSeams, printValue, printSeam, FrameGraph, edgeText, convertText, uniform, show as showValue, SECONDS } from "../seam/index.js";
 import { applyRename, applySet, undelayedLoops } from "./wires.js";
 import { paramWireProblems, paramLoops, rateOf } from "./param-wires.js";
 import { queueProblems } from "./queues.js";
 import { withPage, pageRuntime, isPageHandle } from "./page.js";
 import { layerOf, registerLayers, planLayers, layerHandleProblem, LAYER } from "./layer.js";
+import { glueEdge, derived, edgeFor, derivationText, edgeForms, noPathFix } from "./edges.js";
+import { planOf, notesOf } from "./replan.js";
 
 /** @import { Loc } from "../parse/ast.js" */
 /** @import { Handle } from "../define/handles.js" */
@@ -129,7 +131,7 @@ export function analyze(name, start, given, options) {
   /** A frame as messages write it: maze.cell, or the kit's s. @param {string} id */
   const frameName = (id) => { if (id === SECONDS) return SECONDS; const [pn, f] = id.split("."); return `${byName.get(pn)?.dialectName ?? pn}.${f}`; };
   /** @param {Path} path */
-  const pathText = (path) => path.steps.map((s) => `${frameName(s.backward ? s.to : s.from)} → ${frameName(s.backward ? s.from : s.to)} ${s.glue ? `(.frame at line ${s.line})` : `(${s.by}'s edges)`}${s.backward ? " run backward" : ""} ${edgeText(s.edge)}`).join("; ");
+  const pathText = (path) => path.steps.map((s) => `${frameName(s.backward ? s.to : s.from)} → ${frameName(s.backward ? s.from : s.to)} ${s.glue ? `(.frame at line ${s.line})` : `(${s.by}'s edges)`}${s.backward ? " run backward" : ""} ${edgeText(s.edge)}${s.note ? ` ${s.note}` : ""}`).join("; ");
   for (const p of parts.values()) {
     if (broken.has(p)) continue;
     for (const f of Object.values(p.seams.frames)) graph.addNode(node(p, f.name), f.dims);
@@ -138,6 +140,8 @@ export function analyze(name, start, given, options) {
       if (clash) add(p.at, "S253", `part '${p.name}': the ${p.dialectName} Dialect's edges relate ${frameName(node(p, e.from))} to ${frameName(node(p, e.to))} twice, and the two disagree: ${pathText(clash.existing)}, against ${edgeText(e.edge)}`, `fix the ${p.dialectName} package's edges(record)`, { from: partSide(p), to: partSide(p) });
     }
   }
+  /** The glue's edges that planned, in order: the record's `frames`, which kit/run plans again after a rebuild. @type {import("./compose.js").GlueFrame[]} */
+  const frames = [];
   /** Frame pairs a refused .frame meant to join: a wire across one is not also S251, which would only repeat it. @type {Set<string>} */
   const refusedPairs = new Set();
   for (const c of calls) {
@@ -150,35 +154,42 @@ export function analyze(name, start, given, options) {
     frameCall(c, pa, pb, ha, hb);
     if (out.length > before) for (const k of [`${node(pa, ha.name)}|${node(pb, hb.name)}`, `${node(pb, hb.name)}|${node(pa, ha.name)}`]) refusedPairs.add(k);
   }
-  /** One .frame call's checks and its edge. @param {GlueCall & { kind: "frame", at: At }} c @param {Part} pa @param {Part} pb @param {Handle} ha @param {Handle} hb */
+  /** One .frame call's checks and its edge, kept in the record's `frames` when it plans. @param {GlueCall & { kind: "frame", at: At }} c @param {Part} pa @param {Part} pb @param {Handle} ha @param {Handle} hb */
   function frameCall(c, pa, pb, ha, hb) {
     const at = c.at;
     const fa = pa.seams.frames[ha.name], fb = pb.seams.frames[hb.name];
     const sides = { from: side(ha), to: side(hb) };
     const text = `${handleText(ha)}, ${handleText(hb)}`;
+    const fromId = node(pa, ha.name), toId = node(pb, hb.name);
     if (pa === pb) { add(at, "S257", `.frame(${text}) relates two frames of one part; the ${pa.dialectName} Dialect's own edges(record) relate its frames`, `relate a frame of ${pa.name} to a frame of another part`, sides); return; }
-    /** @type {Edge} */
-    let edge;
-    if (c.edge === "fit") {
-      const ea = pa.extents[ha.name], eb = pb.extents[hb.name];
-      if (fa.dims !== fb.dims) { add(at, "S256", `.frame(${text}, "fit"): ${frameName(node(pa, ha.name))} has ${fa.dims} dims and ${frameName(node(pb, hb.name))} ${fb.dims}; fit maps one extent onto another of the same dims`, "relate frames of the same dims", sides); return; }
-      if (!ea || !eb) { const missing = [!ea ? frameName(node(pa, ha.name)) : null, !eb ? frameName(node(pb, hb.name)) : null].filter(Boolean); add(at, "S256", `.frame(${text}, "fit"): ${missing.join(" and ")} declare${missing.length === 1 ? "s" : ""} no extent, so fit has no size to map`, `give the edge: .frame(${text}, { scale: …, offset: … })`, sides); return; }
-      edge = fitEdge(ea, eb);
-    } else {
-      if (fa.dims !== fb.dims) { add(at, "S257", `.frame(${text}): ${frameName(node(pa, ha.name))} has ${fa.dims} dims and ${frameName(node(pb, hb.name))} ${fb.dims}; an edge joins frames of one dims`, "relate frames of the same dims", sides); return; }
-      const n = normalizeEdge(c.edge, fa.dims);
-      if (!n.ok) { add(at, "S257", `.frame(${text}, ${describe(c.edge)}): ${n.error}`, `.frame(${text}, { scale: 32, offset: 16 }), or "fit"`, sides); return; }
-      edge = n.edge;
+    if (fa.dims !== fb.dims) {
+      if (c.edge === "fit") add(at, "S256", `.frame(${text}, "fit"): ${frameName(fromId)} has ${fa.dims} dims and ${frameName(toId)} ${fb.dims}; fit maps one extent onto another of the same dims`, "relate frames of the same dims", sides);
+      else add(at, "S257", `.frame(${text}): ${frameName(fromId)} has ${fa.dims} dims and ${frameName(toId)} ${fb.dims}; an edge joins frames of one dims`, "relate frames of the same dims", sides);
+      return;
     }
-    const clash = graph.add({ from: node(pa, ha.name), to: node(pb, hb.name), edge, by: "glue", glue: true, line: at.loc.start.line });
-    if (clash) add(at, "S253", `.frame(${text}) gives ${edgeText(edge)}, and a path already joins the two frames with ${edgeText(clash.existing.edge)}: ${pathText(clash.existing)}`, "remove one of the two, or make them agree", sides);
+    const g = glueEdge(c.edge, fa.dims);
+    if (!g.ok) { add(at, "S257", `.frame(${text}, ${describe(c.edge)}): ${g.error}`, edgeForms(text, fa.dims), sides); return; }
+    const ea = pa.extents[ha.name], eb = pb.extents[hb.name];
+    if (derived(g.given) && (!ea || !eb)) {
+      const missing = [!ea ? frameName(fromId) : null, !eb ? frameName(toId) : null].filter(Boolean);
+      const what = g.given === "fit" ? `.frame(${text}, "fit")` : `.frame(${text}, ${describe(c.edge)})`;
+      const why = g.given === "fit" ? "so fit has no size to map" : "so an anchored edge has no box to align";
+      add(at, "S256", `${what}: ${missing.join(" and ")} declare${missing.length === 1 ? "s" : ""} no extent, ${why}`, `give the edge: .frame(${text}, { scale: …, offset: … })`, sides);
+      return;
+    }
+    const line = at.loc.start.line;
+    const edge = edgeFor(g.given, ea, eb);
+    const note = derivationText(g.given, line, ea, eb);
+    const clash = graph.add({ from: fromId, to: toId, edge, by: "glue", glue: true, line, ...(note ? { note } : {}) });
+    if (clash) { add(at, "S253", `.frame(${text}) gives ${edgeText(edge)}${note ? ` ${note}` : ""}, and a path already joins the two frames with ${edgeText(clash.existing.edge)}: ${pathText(clash.existing)}`, "remove one of the two, or make them agree", sides); return; }
+    frames.push({ from: fromId, to: toId, line, given: g.given, edge });
   }
 
   /** A layer's inputs are wires too, fixed when the layer was made. @type {Wire[]} */
   const wires = planLayers({
     parts, byName, broken, add, resolve, side, partSide, anySide, node, graph, refusedPairs, frameName,
     extentOf: (id) => { const [pn, f] = id.split("."); return byName.get(pn)?.extents[f]; },
-    conversion: (fromId, toId, path) => { const conv = { field: "", kind: /** @type {const} */ ("draw"), from: frameName(fromId), to: frameName(toId), ...planOf("draw", path.edge) }; return { ...conv, text: convertText({ ...conv, edge: path.edge }) }; },
+    conversion: (fromId, toId, path) => { const conv = { field: "", kind: /** @type {const} */ ("draw"), from: frameName(fromId), to: frameName(toId), ...planOf("draw", path.edge) }; return { ...conv, text: convertText({ ...conv, edge: path.edge }) + notesOf(path) }; },
   });
   /** Each wired input or param, by its handle's text. @type {Map<string, At>} */
   const wired = new Map();
@@ -253,8 +264,8 @@ export function analyze(name, start, given, options) {
           add(at, "S251", `${text}: ${field} is ${kind} in ${frameName(fromId)}; ${hi.name} takes ${kind} in ${frameName(toId)}, and no frame path joins them`, `the kit's s relates to no package frame (a .frame cannot name it, nor can a Dialect's edges); wire ports measured in s on both sides, or have ${leaf.from === SECONDS ? pb.name : pa.name} measure its time in s`, sides);
           continue;
         }
-        const fit = pa.extents[leaf.from] && pb.extents[leaf.to];
-        add(at, "S251", `${text}: ${field} is ${kind} in ${frameName(fromId)}; ${hi.name} takes ${kind} in ${frameName(toId)}, and no frame path joins them`, fit ? `write .frame(${fa}, ${fb}, "fit"), or give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … })` : `give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … }) ("fit" needs both frames to declare an extent)`, sides);
+        const fit = !!(pa.extents[leaf.from] && pb.extents[leaf.to]);
+        add(at, "S251", `${text}: ${field} is ${kind} in ${frameName(fromId)}; ${hi.name} takes ${kind} in ${frameName(toId)}, and no frame path joins them`, noPathFix(fa, fb, fit, leaf.kind === "draw"), sides);
         continue;
       }
       if (leaf.kind === "quantity" && !uniform(path.edge)) {
@@ -263,7 +274,7 @@ export function analyze(name, start, given, options) {
         continue;
       }
       const conv = { field: leaf.field, kind: leaf.kind, ...(leaf.rate ? { rate: /** @type {const} */ (true) } : {}), from: frameName(fromId), to: frameName(toId), ...planOf(leaf.kind, path.edge) };
-      wire.convert.push({ ...conv, text: convertText({ ...conv, edge: path.edge }) });
+      wire.convert.push({ ...conv, text: convertText({ ...conv, edge: path.edge }) + notesOf(path) });
     }
   }
 
@@ -353,6 +364,7 @@ export function analyze(name, start, given, options) {
       const consumer = w.into === "in" ? /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name] : null;
       return { from: handleText(w.from), to: handleText(w.to), convert: w.convert.map(({ text: _, ...c }) => c), rename: w.rename, delay: w.delay, ...(w.overflow ? { overflow: w.overflow } : {}), dropped: w.dropped, ...(Object.keys(w.fill).length ? { fill: { ...w.fill } } : {}), ...(Object.keys(w.set).length ? { set: structuredClone(w.set) } : {}), ...(consumer?.delivery ? { delivery: consumer.delivery } : {}) };
     }),
+    frames,
     show: live ? live.name : null,
     ...(drawn.view ? { view: drawn.view } : {}),
     ...(drawn.profile ? { profile: drawn.profile } : {}),
@@ -437,16 +449,4 @@ function describe(v) {
   const p = programOf(v);
   if (p) return instanceName(/** @type {any} */ (p).root);
   return showValue(v);
-}
-
-/**
- * A conversion's numbers as the record keeps them: a point's scale and offset per axis, a vector's scale per axis
- * (sign kept, no offset), a quantity's one magnitude (a length is a size: a flip does not make it negative). A rate
- * converts as its kind: the kit's s is the same in every part.
- * @param {"point" | "vector" | "quantity" | "draw"} kind @param {Edge} edge
- * @returns {{ scale: number[], offset: number[] }}
- */
-function planOf(kind, edge) {
-  if (kind === "quantity") return { scale: [Math.abs(edge.scale[0])], offset: [0] };
-  return { scale: edge.scale, offset: kind === "point" || kind === "draw" ? edge.offset : edge.offset.map(() => 0) };
 }

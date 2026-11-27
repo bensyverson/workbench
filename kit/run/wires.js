@@ -12,7 +12,9 @@ import { imagesOf } from "./draw.js";
 
 /**
  * `fromPage`: the wire leaves the built-in page part, so with no overflow policy a step past its max folds (delivery.js).
- * @typedef {{ index: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, fromPage: boolean, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire
+ * `source` is the wire's index in the composed record, which a re-plan after a rebuild reads (replan.js); an outside
+ * wire (outside.js) has none.
+ * @typedef {{ index: number, source?: number, from: { part: string, port: string }, to: { part: string, port: string }, event: boolean, delay: boolean, fromPage: boolean, keepLast: number | null, overflow: "keepLast" | "keepFirst" | null, convert: any[], rename: Record<string, string>, dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, queue: Array<{ T: Q, record: unknown }>, drops: number, stopDrops: number, overflowDrops: number, text: string }} Wire
  */
 /** What a consumer reads of a producer: its state and revision now, or as the instant began (the page's: no state, revision 1). @typedef {{ state: any, revision: number, part: Part | null, draws?: import("./draw.js").Draws }} View */
 
@@ -30,12 +32,12 @@ export function makeWires(composed, byName, page, layers = new Set()) {
   /** @type {Record<string, any>} */
   const images = {};
   for (const p of byName.values()) Object.assign(images, imagesOf(p.name, p.runtime));
-  return composed.wires.filter((w) => ends(w.to).side !== "param" && !layers.has(ends(w.to).part)).map((w, index) => {
+  return composed.wires.map((w, source) => ({ w, source })).filter(({ w }) => ends(w.to).side !== "param" && !layers.has(ends(w.to).part)).map(({ w, source }, index) => {
     const from = ends(w.from), to = ends(w.to);
     const consumer = /** @type {Part} */ (byName.get(to.part));
     const event = consumer.runtime.dialect.seams.in[to.port].seam.kind === "event";
     const keepLast = w.delivery && typeof w.delivery === "object" ? w.delivery.keepLast : null;
-    return { index, from, to, event, delay: w.delay, fromPage: page !== null && from.part === page, keepLast, overflow: w.overflow ?? null, convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)), rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
+    return { index, source, from, to, event, delay: w.delay, fromPage: page !== null && from.part === page, keepLast, overflow: w.overflow ?? null, convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)), rename: w.rename, dropped: w.dropped, fill: w.fill, set: w.set, queue: [], drops: 0, stopDrops: 0, overflowDrops: 0, text: `${w.from} → ${w.to}` };
   });
 }
 

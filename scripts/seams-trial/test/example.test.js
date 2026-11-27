@@ -20,8 +20,8 @@ async function example() {
 test("the light-show glue checks clean and plans the docs' three wires", async () => {
   const r = await example();
   assert.deepEqual(r.plan, [
-    "beat.out.hit → strip.in.flash: pos: drums.step → board.lamp, point, ×2 +0.5; drops lane",
-    "beat.out.tempo → strip.in.drift: (value): drums.step → board.lamp, quantity per second, ×2",
+    "beat.out.hit → strip.in.flash: pos: drums.step → board.lamp, point, ×2 +0.5 (fit at line 13: [-0.5]..[15.5] in [-0.5]..[31.5]); drops lane",
+    "beat.out.tempo → strip.in.drift: (value): drums.step → board.lamp, quantity per second, ×2 (fit at line 13: [-0.5]..[15.5] in [-0.5]..[31.5])",
     "strip.out.full → beat.in.mute: unchanged; delayed",
   ]);
 });

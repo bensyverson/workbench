@@ -7,7 +7,8 @@
 // commit one object keep their own. A rewound part's lists are built again from its restored state and the inputs
 // and params they were last built with (`redraw`, part.js): a list is a pure function of the state, the record, the
 // params and the inputs. A Draw wire converts its list op by op into the consumer's frame, and the page reads the
-// shown part's list; a shown layer's is its inputs' (layers.js), in the box of the producer at its bottom.
+// shown part's list; a shown layer's is its inputs' (layers.js), in the box of the producer at its bottom, grown to
+// hold its other inputs' placed boxes.
 
 import { runDraw, convertOp, carryList, checkDraw } from "../draw/index.js";
 
@@ -72,33 +73,68 @@ export function convertDraw(v, c) {
   return carryList(v.map((op) => convertOp(op, { scale: c.scale, offset: c.offset }, c.images ?? {})));
 }
 
+/** @typedef {{ parts: Array<{ name: string, dialect: string, record: any, layer?: unknown }>, wires: Array<{ from: string, to: string, convert: Array<{ kind: string, scale: number[], offset: number[] }> }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Shown */
+/** @typedef {{ min: number[], max: number[] }} Box */
+
 /**
- * The stepping part and Draw output at the bottom of a layer, read from the composed record's wires, down through a
- * layer at the bottom; null when the record does not say (kit/run refuses such a record, N007).
- * @param {{ parts: Array<{ name: string, layer?: unknown }>, wires: Array<{ from: string, to: string }> }} composed @param {string} name
- * @returns {{ part: string, port: string } | null}
+ * The box of a stepping part's Draw output: its frame's extent for the part's record in force; null when the frame
+ * declares none.
+ * @param {Shown} composed @param {string} part @param {string} port @param {(dialect: string) => any} runtimeOf @returns {Box | null}
  */
-function bottomOf(composed, name, seen = new Set()) {
+function outputBox(composed, part, port, runtimeOf) {
+  const cp = composed.parts.find((p) => p.name === part);
+  const rt = cp ? runtimeOf(cp.dialect) : undefined;
+  const seam = rt?.dialect.seams.out[port]?.seam;
+  const frame = seam ? rt.dialect.seams.frames[seam.frame] : undefined;
+  return frame?.extent ? frame.extent(/** @type {any} */ (cp).record) : null;
+}
+
+/**
+ * A layer's box in its frame (its bottom producer's): the bottom input's box, grown to hold each other input's box
+ * placed by its wire's conversion (Ben, 2026-11-27: a picture anchored outside the bottom one, a label under it,
+ * still shows), so it may not start at the origin. Null when the bottom input has none, or when the record does not
+ * say what feeds the layer (kit/run refuses such a record, N007).
+ * @param {Shown} composed @param {string} name @param {(dialect: string) => any} runtimeOf @returns {Box | null}
+ */
+function layerBox(composed, name, runtimeOf, seen = new Set()) {
   if (seen.has(name)) return null;
   seen.add(name);
-  const w = composed.wires.find((x) => x.to === `${name}.in.0`);
-  if (!w) return null;
-  const [part, , port] = w.from.split(".");
-  return composed.parts.find((p) => p.name === part)?.layer !== undefined ? bottomOf(composed, part, seen) : { part, port };
+  /** @type {Box | null} */
+  let box = null;
+  for (let i = 0; ; i++) {
+    const w = composed.wires.find((x) => x.to === `${name}.in.${i}`);
+    if (!w) break;
+    const [part, , port] = w.from.split(".");
+    const own = composed.parts.find((p) => p.name === part)?.layer !== undefined ? layerBox(composed, part, runtimeOf, new Set(seen)) : outputBox(composed, part, port, runtimeOf);
+    if (i === 0 && !own) return null;
+    if (!own) continue;
+    const placed = w.convert.filter((c) => c.kind === "draw").reduce((b, c) => mapBox(b, c), own);
+    box = box ? { min: box.min.map((v, k) => Math.min(v, placed.min[k])), max: box.max.map((v, k) => Math.max(v, placed.max[k])) } : placed;
+  }
+  return box;
+}
+
+/** A box by an edge, its ends swapped on an axis the edge flips. @param {Box} b @param {{ scale: number[], offset: number[] }} e @returns {Box} */
+function mapBox(b, e) {
+  const lo = b.min.map((v, i) => v * e.scale[i] + e.offset[i]), hi = b.max.map((v, i) => v * e.scale[i] + e.offset[i]);
+  return { min: lo.map((v, i) => Math.min(v, hi[i])), max: lo.map((v, i) => Math.max(v, hi[i])) };
 }
 
 /**
  * What the page draws: the shown part's (or `part`'s) Draw output, as it stands, with every part's images and the
- * box of its frame (its extent for the built record) for a renderer. For a layer, its one output `view`, in the box
- * of the producer at its bottom, as if that producer were shown. When the composition was built with a renderer
- * profile (the composed record's `profile`), `check` is that profile's draw-time check of the list (kit/draw's
- * checkDraw: J040–J044, the counts and positions composition cannot judge), else null; the list is never trimmed to pass it.
- * @param {{ snapshot: (part: string) => { state: any, draws?: Record<string, readonly Op[]> } }} run @param {{ parts: Array<{ name: string, dialect: string, record: any, layer?: unknown }>, wires: Array<{ from: string, to: string }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} composed
+ * box of its frame (its extent for the record in force) for a renderer. For a layer, its one output `view`, in the
+ * box of the producer at its bottom grown to hold its other inputs' placed boxes. Records and conversions are the
+ * run's in force (`run.composed`: a rebuild plans them again), else `composed`'s. When the composition was built
+ * with a renderer profile (the composed record's `profile`), `check` is that profile's draw-time check of the list
+ * (kit/draw's checkDraw: J040–J044, the counts and positions composition cannot judge), else null; the list is
+ * never trimmed to pass it.
+ * @param {{ snapshot: (part: string) => { state: any, draws?: Record<string, readonly Op[]> }, composed?: Shown }} run @param {Shown} given
  * @param {any[]} runtimes  kit/define's defineRuntime results, matched by Dialect name
  * @param {string} [part]
- * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: { min: number[], max: number[] } | null, check: ReturnType<typeof checkDraw> | null }}
+ * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: Box | null, check: ReturnType<typeof checkDraw> | null }}
  */
-export function pageView(run, composed, runtimes, part) {
+export function pageView(run, given, runtimes, part) {
+  const composed = run.composed ?? given;
   const runtimeOf = (/** @type {string} */ dialect) => runtimes.find((r) => r.dialect?.name === dialect);
   /** @type {Record<string, Image>} */
   const images = {};
@@ -108,12 +144,7 @@ export function pageView(run, composed, runtimes, part) {
   if (!name || !cp) throw new Error(`pageView: the composition has no part '${name}'`);
   const profile = composed.profile;
   if (cp.layer !== undefined) {
-    const bottom = bottomOf(composed, name);
-    const bp = bottom ? composed.parts.find((p) => p.name === bottom.part) : undefined;
-    const brt = bp ? runtimeOf(bp.dialect) : undefined;
-    const seam = bottom ? brt?.dialect.seams.out[bottom.port]?.seam : undefined;
-    const frame = seam ? brt.dialect.seams.frames[seam.frame] : undefined;
-    const box = frame?.extent ? frame.extent(/** @type {any} */ (bp).record) : null;
+    const box = layerBox(composed, name, runtimeOf);
     const list = run.snapshot(name).draws?.view ?? [];
     const check = profile ? checkDraw(profile, [...list], { images, box: box ?? { min: [0, 0], max: [0, 0] } }) : null;
     return { part: name, port: "view", list, images, box, check };
@@ -122,8 +153,7 @@ export function pageView(run, composed, runtimes, part) {
   const ports = rt ? drawPorts(rt) : [];
   const port = part === undefined && composed.view ? ports.find((o) => o.name === composed.view) : ports.length === 1 ? ports[0] : ports.find((o) => o.name === "view");
   if (!port) return { part: name, port: null, list: [], images, box: null, check: null };
-  const frame = rt.dialect.seams.frames[port.seam.frame];
-  const box = frame?.extent ? frame.extent(cp.record) : null;
+  const box = outputBox(composed, name, port.name, runtimeOf);
   const list = run.snapshot(name).draws?.[port.name] ?? [];
   const check = profile ? checkDraw(profile, [...list], { images, box: box ?? { min: [0, 0], max: [0, 0] } }) : null;
   return { part: name, port: port.name, list, images, box, check };

@@ -8,5 +8,7 @@ export { formatDiagnostic } from "./format.js";
 export { scanGlue, GLUE_SPECIFIERS } from "./glue.js";
 export { rewriteGlue, callGlue } from "./glue-load.js";
 export { layer } from "./layer.js";
+export { replan, planOf } from "./replan.js";
+export { ANCHORS } from "./edges.js";
 export { page, PAGE, PAGE_CONTROLS, PAGE_CHANGES_PER_FRAME, pageRuntime, pageInputProblem } from "./page.js";
 export { queueProblems, stepsIn, catchUpOf, CATCH_UP, NOMINAL_FRAME, MIN_FRAME } from "./queues.js";

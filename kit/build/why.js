@@ -6,6 +6,8 @@
 // did not change says so on its first line. No I/O: the text is a function of its arguments, so a replay gives the
 // same text. Format and trial: project/2026-11-26-why-text-trial-findings.md.
 
+import { edgeText } from "../seam/index.js";
+
 /** @typedef {import("./event.js").BuildEvent} BuildEvent */
 /** `wire`: the output a param wire set the param from (kit/run marks the inputs it makes). @typedef {{ kind: string, T: string, part?: string, name?: string, value?: unknown, wire?: string }} LogInput */
 /** @typedef {{ header?: unknown, inputs: LogInput[] }} RunLog */
@@ -104,6 +106,7 @@ export function formatBuild(e, o = {}) {
   const fields = e.record.length ? e.record.join(", ") : "none";
   out.push(line("key", e.changed ? `${short(e.key.before)} → ${short(e.key.after)} (record changed: ${fields})` : `${short(e.key.before)} unchanged`));
   out.push(line("kernels", kernelsText(e.kernels)));
+  if (e.edges?.length) out.push(line("edges", e.edges.map((m) => `${m.from} → ${m.to} ${m.before ? edgeText(m.before) : "(none)"} → ${m.after ? edgeText(m.after) : "(none)"}`).join("; ")));
   const who = e.consumers.join(", ");
   out.push(line("consumers", !e.consumers.length ? "none"
     : !e.changed ? `${who} keep reading ${rev} (no new revision)`

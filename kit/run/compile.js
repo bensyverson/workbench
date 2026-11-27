@@ -17,9 +17,10 @@ import { PAGE_GLOBALS } from "../define/page-globals.js";
  * A part compiled for one record. `kernels` by lambda id; `sources` their emitted text (what a build event compares),
  * each Draw builder layer's too; `outputs` a reader per value output, `(state, params, view) => value` (a Draw output's reads the lists the View holds); `draws` each
  * Draw output's max for this record and its layers' compiled Kernels, in order; `globals.current` what the
- * Kernels' global names read now; `aliases` each named call's `<instance>.<slot>.<name>` and the id it names.
+ * Kernels' global names read now; `aliases` each named call's `<instance>.<slot>.<name>` and the id it names;
+ * `frames` each frame's extent and the Dialect's edges(record), for this record.
  * @typedef {{ max: number, fns: Array<(...args: any[]) => unknown> }} CompiledDraw
- * @typedef {{ ok: true, kernels: Record<string, (...args: any[]) => any>, sources: Record<string, string>, aliases: Record<string, string>, outputs: Record<string, (state: any, params: any, view?: any) => unknown>, draws: Record<string, CompiledDraw>, globals: { current: Record<string, unknown> } }} Compiled
+ * @typedef {{ ok: true, kernels: Record<string, (...args: any[]) => any>, sources: Record<string, string>, aliases: Record<string, string>, outputs: Record<string, (state: any, params: any, view?: any) => unknown>, draws: Record<string, CompiledDraw>, globals: { current: Record<string, unknown> }, frames: { extents: Record<string, import("../seam/frames.js").Box>, edges: Array<{ from: string, to: string, edge: import("../seam/frames.js").Edge }> } }} Compiled
  */
 
 /**
@@ -84,7 +85,9 @@ export function compilePart(runtime, record) {
       };
     }
   }
-  return { ok: true, kernels, sources, aliases, outputs, draws, globals };
+  // each frame's box and the Dialect's edges for this record, which the re-plan after a rebuild reads (replan.js)
+  const frames = { extents: low.seams?.extents ?? {}, edges: low.seams?.edges ?? [] };
+  return { ok: true, kernels, sources, aliases, outputs, draws, globals, frames };
 }
 
 /** The names an Event input's record is read by: null in a Kernel called without one. @param {any} dialect @returns {string[]} */

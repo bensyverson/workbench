@@ -7,6 +7,7 @@
 // concatenates its inputs' converted lists wherever its output is read. This module makes layers and judges them
 // at composition (registerLayers, then planLayers once the frame graph is whole); analyze.js calls both.
 
+import { noPathFix } from "./edges.js";
 import { sideOf, paramSideOf, isHandle, handleText } from "../define/handles.js";
 import { printSeam } from "../seam/index.js";
 import { glueSite } from "./site.js";
@@ -209,8 +210,8 @@ export function planLayers(ctx) {
       const fa = fromId.replace(".", ".frame."), fb = toId.replace(".", ".frame.");
       const bottom = handleText(judged.inputs[0]);
       const sides = { from: ctx.side(h), to: { ...ctx.partSide(p), port: `in.${i}`, seam: seam.seamText } };
-      const fit = ctx.extentOf(fromId) && ctx.extentOf(toId);
-      ctx.add(p.at, "S251", `${handleText(h)} cannot feed ${p.name}.in.${i}: the value is a draw list in ${ctx.frameName(fromId)}; the layer draws in ${ctx.frameName(toId)}, its bottom producer's (${bottom}), and no frame path joins them`, fit ? `write .frame(${fa}, ${fb}, "fit"), or give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … })` : `give the edge: .frame(${fa}, ${fb}, { scale: …, offset: … }) ("fit" needs both frames to declare an extent)`, sides);
+      const fit = !!(ctx.extentOf(fromId) && ctx.extentOf(toId));
+      ctx.add(p.at, "S251", `${handleText(h)} cannot feed ${p.name}.in.${i}: the value is a draw list in ${ctx.frameName(fromId)}; the layer draws in ${ctx.frameName(toId)}, its bottom producer's (${bottom}), and no frame path joins them`, noPathFix(fa, fb, fit, true), sides);
     });
   }
   return wires;

@@ -33,7 +33,7 @@ test("the reference swarm hand-in passes: a probe record on lure draws agents to
 test("the reference composition passes: planned with a rename and an overflow policy, run to a gathering, replayed", async () => {
   const { r } = await codes("compose");
   assert.deepEqual(r.diagnostics, []);
-  assert.deepEqual(r.plan, ["table.out.wall → gnats.in.lure: spot: bounce.box → swarm.ground, point, ×2 +0; drops speed; fills pull = 1; overflow keepLast"]);
+  assert.deepEqual(r.plan, ["table.out.wall → gnats.in.lure: spot: bounce.box → swarm.ground, point, ×2 +0 (fit at line 28: [0, 0]..[160, 120] in [0, 0]..[320, 240]); drops speed; fills pull = 1; overflow keepLast"]);
   assert.ok(r.notes.some((n) => /^run: \d+ wall records by T = 8; the first at T = [\d.]+/.test(n)), r.notes.join("\n"));
   assert.ok(r.notes.some((n) => /^run: \d+ more agents within 40 of \([\d., ]+\) in swarm\.ground than without, at T = [\d.]+, [\d.]+ s after its record$/.test(n)), r.notes.join("\n"));
   assert.ok(r.notes.includes("run: replayed, same state hashes at every instant"), r.notes.join("\n"));

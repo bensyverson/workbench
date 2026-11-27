@@ -149,17 +149,17 @@ test("layer-docs.js gives a leg the kit's docs as they are, minus the compose RE
   for (const f of ["START.md", "API.md"]) assert.equal(readFileSync(join(d, f), "utf8"), readFileSync(join(KIT, f), "utf8"), `${f} is the kit's own`);
 });
 
-test("layer-docs.js also drops the anchored-edge draft's HUD subsection, and nothing in the copy names the trial's parts or offset (leaf JBkhsf)", () => {
+test("layer-docs.js also drops the anchored edge's HUD subsection, and nothing in the copy names the trial's parts or offset (leaf JBkhsf)", () => {
   const d = docCopy();
   const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   const compose = readFileSync(join(d, "compose/README.md"), "utf8");
   assert.ok(!compose.includes("### The M4 trial's HUD, anchored"), "the HUD subsection is gone");
   for (const answer of ["[16, 4]", "[16, 104]", "192 − 160", "round.frame.panel", "scoretimer.panel", "gemgrid.px"]) assert.ok(!compose.includes(answer), `the copy has no ${answer}`);
-  assert.ok(compose.includes("## Draft: an anchored edge") && compose.includes("### Beyond the HUD"), "the rest of the draft stays");
+  assert.ok(compose.includes("## An anchored edge") && compose.includes("### Beyond the HUD"), "the rest of the section stays");
 });
 
-test("layer-docs.js exits 1 when the anchored draft's HUD subsection is not there, so a renamed heading stops the leg", () => {
+test("layer-docs.js exits 1 when the anchored edge's HUD subsection is not there, so a renamed heading stops the leg", () => {
   const d = docCopy((t) => t.replace("### The M4 trial's HUD, anchored", "### Something else"));
   const r = spawnSync(process.execPath, [here("../layer-docs.js"), d], { encoding: "utf8" });
   assert.equal(r.status, 1);
@@ -178,5 +178,14 @@ test("the two recorded rerun legs (2026-11-27, leaf KYpY7Q: Sonnet, Haiku) build
     const r = await checkLayerCompose(here(`../runs/2026-11-27-layer-rerun/${leg}`), GIVEN);
     assert.deepEqual(codes(r), [], `${leg}: ${JSON.stringify(r.diagnostics)}`);
     assert.ok(r.notes.some((x) => x.startsWith(`layer layers: Draw<${max}>@`) && x.endsWith("page box 192 by 128")), `${leg}: ${r.notes.join("\n")}`);
+  }
+});
+
+test("the two recorded anchor panel legs (2026-11-27, leaf wCDTzk) check clean as handed in, now that the anchor is built: the kit computes the integrator's one-line massage, +[16, 0] (leaf QqirvU)", async () => {
+  for (const [leg, max, box] of [["sonnet", 77, "192 by 144"], ["haiku", 69, "192 by 128"]]) {
+    const r = await checkLayerCompose(here(`../runs/2026-11-27/anchor-layer-${leg}`), GIVEN);
+    assert.deepEqual(r.diagnostics, [], `${leg}: ${JSON.stringify(r.diagnostics)}`);
+    assert.ok(r.notes.some((x) => x.startsWith(`layer layers: Draw<${max}>@`) && x.endsWith(`page box ${box}`)), `${leg}: ${r.notes.join("\n")}`);
+    assert.ok(r.notes.some((x) => /^ {2}\w+\.out\.view → layers\.in\.1: \(value\): scoretimer\.panel → gemgrid\.px, draw, ×1 \+\[16, 0\]$/.test(x)), `${leg}: ${r.notes.join("\n")}`);
   }
 });

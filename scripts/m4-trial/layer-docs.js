@@ -2,7 +2,7 @@
 // kit's docs as for every leg, then this edits the copies only, never the repository's.
 //   node scripts/m4-trial/layer-docs.js <leg>/docs/kit
 // The legs get the kit's docs as they are, withholding only the answer: compose/README.md's subsections "The M4
-// trial's glue, with a layer" and "The M4 trial's HUD, anchored" (the anchored-edge draft's) hold this task's glue
+// trial's glue, with a layer" and "The M4 trial's HUD, anchored" (the anchored edge's) hold this task's glue
 // and panel offset with real names, so they are dropped from the leg's copy, each up to the next heading.
 // Exits 1 when either subsection is not there, so a changed doc stops the leg rather than giving it the answer.
 

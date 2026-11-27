@@ -19,8 +19,10 @@ import { canonical, keyed } from "./key.js";
  * after that instant (a param wire's input). `changed` is whether the key did;
  * `record` lists the record's top-level keys that differ; `consumers` the inputs fed by this part's outputs; `input`
  * (kit/run sets it) the position in the run log's inputs of the one that applied the rebuild, so the why text can
- * split inputs between builds at one stamp.
- * @typedef {{ kind: "build", part: string, boundary: { after: string | null, before: string }, trigger: Trigger, ok: boolean, changed: boolean, key: { before: string, after: string | null }, revision: { before: number, after: number }, record: string[], kernels: { changed: string[], added: string[], removed: string[], unchanged: string[] }, consumers: string[], diagnostics: unknown[], input?: number }} BuildEvent
+ * split inputs between builds at one stamp. `edges` (kit/run sets it, only when one did) names each frame edge the
+ * rebuild moved: its frames, and its numbers before and after (null: the edge was not there), from the re-plan.
+ * @typedef {{ from: string, to: string, before: import("../seam/frames.js").Edge | null, after: import("../seam/frames.js").Edge | null }} MovedEdge
+ * @typedef {{ kind: "build", part: string, boundary: { after: string | null, before: string }, trigger: Trigger, ok: boolean, changed: boolean, key: { before: string, after: string | null }, revision: { before: number, after: number }, record: string[], kernels: { changed: string[], added: string[], removed: string[], unchanged: string[] }, consumers: string[], diagnostics: unknown[], input?: number, edges?: MovedEdge[] }} BuildEvent
  */
 
 /**
@@ -56,10 +58,10 @@ export const glueTrigger = (call) => ({ kind: "glue", call: call ?? null });
 /**
  * The build event of one rebuild. `after` is null when the rebuild failed: the previous revision keeps running and
  * the event carries the diagnostics.
- * @param {{ part: string, boundary: BuildEvent["boundary"], trigger: Trigger, before: BuildSide & { revision: number }, after: BuildSide | null, consumers: string[], diagnostics?: unknown[], input?: number }} o
+ * @param {{ part: string, boundary: BuildEvent["boundary"], trigger: Trigger, before: BuildSide & { revision: number }, after: BuildSide | null, consumers: string[], diagnostics?: unknown[], input?: number, edges?: MovedEdge[] }} o
  * @returns {BuildEvent}
  */
-export function buildEvent({ part, boundary, trigger, before, after, consumers, diagnostics = [], input }) {
+export function buildEvent({ part, boundary, trigger, before, after, consumers, diagnostics = [], input, edges }) {
   const ok = after !== null;
   const changed = ok && after.key !== before.key;
   // the fields are compared as the key sees them, so a param's new value alone is no changed field
@@ -82,5 +84,6 @@ export function buildEvent({ part, boundary, trigger, before, after, consumers, 
     consumers,
     diagnostics,
     ...(input === undefined ? {} : { input }),
+    ...(ok && edges?.length ? { edges } : {}),
   };
 }

@@ -4,8 +4,11 @@
 // edges, running any of them backward, and a second path between two frames must agree with the first.
 
 /** @typedef {{ scale: number[], offset: number[] }} Edge */
-/** One edge in the graph and who gave it: "glue" for a .frame call, else the part whose Dialect's edges() did. */
-/** @typedef {{ from: string, to: string, edge: Edge, by: string, glue?: boolean, line?: number }} GraphEdge */
+/**
+ * One edge in the graph and who gave it: "glue" for a .frame call, else the part whose Dialect's edges() did. `note`
+ * says where a derived edge's numbers came from (a "fit" or anchored glue edge: kit/compose's edges.js).
+ */
+/** @typedef {{ from: string, to: string, edge: Edge, by: string, glue?: boolean, line?: number, note?: string }} GraphEdge */
 /** A path: its composed edge and the steps, each an edge as given and whether it was run backward. */
 /** @typedef {{ edge: Edge, steps: Array<GraphEdge & { backward: boolean }> }} Path */
 

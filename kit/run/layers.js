@@ -11,7 +11,7 @@ import { imagesOf } from "./draw.js";
 /** @import { Composed } from "../compose/compose.js" */
 /** @import { Part } from "./part.js" */
 /** @typedef {import("../draw/ops.js").Op} Op */
-/** One input of a layer: its producer (a stepping part's Draw output, or another layer) and the wire to carry it by. @typedef {{ part: string, port: string, layer: boolean, wire: { rename: Record<string, string>, dropped: string[], convert: any[] } }} LayerInput */
+/** One input of a layer: its producer (a stepping part's Draw output, or another layer), the wire to carry it by, and that wire's index in the composed record (`source`), which a re-plan reads. @typedef {{ part: string, port: string, layer: boolean, source: number, wire: { rename: Record<string, string>, dropped: string[], convert: any[] } }} LayerInput */
 
 /** @param {string} h  "level.out.view" */
 const ends = (h) => { const [part, side, port] = h.split("."); return { part, side, port }; };
@@ -64,7 +64,7 @@ export function makeLayers(composed, byName) {
       const producer = byName.get(from.part);
       const draws = producer ? Object.values(/** @type {Record<string, any>} */ (producer.runtime.dialect.seams.out)).some((o) => o.name === from.port && o.draw) : names.has(from.part) && from.port === "view";
       if (from.side !== "out" || !draws) { bad(`in.${i} is wired from ${w.from}, which is not a Draw output of a part in the run`); continue; }
-      inputs.push({ part: from.part, port: from.port, layer: !producer, wire: { rename: w.rename ?? {}, dropped: w.dropped ?? [], convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)) } });
+      inputs.push({ part: from.part, port: from.port, layer: !producer, source: composed.wires.indexOf(w), wire: { rename: w.rename ?? {}, dropped: w.dropped ?? [], convert: w.convert.map((c) => (c.kind === "draw" ? { ...c, images } : c)) } });
     }
     // its frame is its bottom input's: a stepping producer's output seam names it, a layer's own record does
     const b = inputs[0];

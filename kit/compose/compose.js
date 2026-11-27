@@ -25,8 +25,14 @@ import { makeLayer, SHORTHAND } from "./layer.js";
 /**
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
  * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants
- * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`. The renderer profile `check`/`build` was given (resolved from its name) is `profile`.
- * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any>, layer?: { inputs: string[], max: number, frame: string } }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
+ * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`. The renderer profile `check`/`build` was given (resolved from its name) is `profile`; the glue's edges are `frames`.
+ * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any>, layer?: { inputs: string[], max: number, frame: string } }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, frames: GlueFrame[], show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
+ */
+/**
+ * One glue `.frame` call that planned, in glue order: its two frames (`<part>.<frame>`), its line, the edge as written
+ * (normalized per axis, or "fit") and the edge computed for the records the composition was built with. kit/run plans
+ * the edges again from these after a rebuild (replan.js).
+ * @typedef {{ from: string, to: string, line: number, given: import("./edges.js").Given, edge: import("../seam/frames.js").Edge }} GlueFrame
  */
 /**
  * What `.check` and `.build` take: the loaded packages (for each part's version: kit/package's loadPackage results,

@@ -27,6 +27,6 @@ test("the trial's valid composition, its Event from removed, checks clean on kit
     for (const p of ["maze", "particles"]) await hashDir(join(dir, p));
     const r = await checkComposeReal(dir);
     assert.deepEqual(r.diagnostics, []);
-    assert.deepEqual(r.plan, ["level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +[16, 48]"]);
+    assert.deepEqual(r.plan, ["level.out.picked → fx.in.burst: at: maze.cell → particles.px, point, ×32 +[16, 48] (fit at line 41: [-0.5, -0.5]..[9.5, 7.5] in [0, 0]..[320, 320])"]);
   } finally { remove(dir); }
 });

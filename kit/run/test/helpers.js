@@ -100,7 +100,8 @@ export const rightAt = (T) => ({ kind: "in", T, part: "level", name: "pad", valu
 /**
  * A tiny Dialect and Grammar with the ports, state and frames given, and a runtime from `rt`.
  * `slots` adds construct slots beside param, k and size.
- * @param {string} n @param {{ ports: any, state: any, frames?: any, inputs?: boolean, slots?: Record<string, any> }} d @param {any} rt
+ * `edges` is the Dialect's edges(record).
+ * @param {string} n @param {{ ports: any, state: any, frames?: any, edges?: (record: any) => unknown, inputs?: boolean, slots?: Record<string, any> }} d @param {any} rt
  */
 export function tiny(n, d, rt) {
   for (const side of ["out", "in"]) for (const p of Object.values(d.ports[side] ?? {})) p.note ??= "n";
@@ -121,6 +122,7 @@ export function tiny(n, d, rt) {
     },
     state: d.state,
     frames: d.frames ?? { px: { dims: 2, note: "pixels" } },
+    ...(d.edges ? { edges: d.edges } : {}),
     ports: d.ports,
     ...(d.inputs === false ? {} : { inputs: { object: "In", name: "inp" } }),
   }));
