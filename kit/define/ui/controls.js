@@ -25,6 +25,9 @@ export const KIND_KEYS = {
   triggers: { req: ["count"], opt: ["first", "keys", "midi"] },
 };
 
+/** The shape of each required key, as U017's fix writes it, in placeholders. @type {Record<string, string>} */
+const REQ_SHAPE = { buttons: '["<button>", …]', value: "<value>", min: "<number>", max: "<number>", dims: "2", options: '["<option>", …]', file: '"<data file>"', key: '"<column>"', x: '"<column>"', y: '"<column>"', count: "<number of triggers>" };
+
 /** The records one Control sends in a display frame, unless its declaration raises it. */
 export const PER_FRAME = Object.freeze({ buttons: 2, triggers: 32 });
 /** A kind's default perFrame. @param {string} kind */
@@ -104,7 +107,7 @@ export function controlProblems(c, at, env) {
     if (allowed.includes(k)) continue;
     add([...at, k], `a ${kind} Control has no key '${k}'.${didYouMean(k, allowed)}`, `use: ${allowed.filter((x) => x !== "kind").join(", ")}`);
   }
-  for (const k of spec.req) if (!(k in c)) add(at, `the ${kind} Control '${name}' needs '${k}'`, `add ${k}: …`);
+  for (const k of spec.req) if (!(k in c)) add(at, `the ${kind} Control '${name}' needs '${k}'`, `add ${k}: ${REQ_SHAPE[k] ?? "…"} (kit/define/README.md, "The kinds": each kind's keys and record)`);
   const k = (/** @type {string} */ key) => [...at, key];
   for (const key of ["label", "note"]) if (key in c && typeof c[key] !== "string") add(k(key), `${key} is ${str(c[key])}, not a string`, `write ${key}: "…"`);
   if ("perFrame" in c && !(whole(c.perFrame) && c.perFrame >= 1)) add(k("perFrame"), `perFrame is ${str(c.perFrame)}; it takes a whole number of at least 1 (the records one Control sends in a display frame)`, "write perFrame: 4");

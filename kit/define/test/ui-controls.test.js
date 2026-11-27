@@ -191,3 +191,12 @@ test("12. the UI value is frozen, its controls, grips and actions included", () 
   assert.ok(Object.isFrozen(ui.grips.g));
   assert.ok(Object.isFrozen(ui.actions.save));
 });
+
+test("U017's fix for a missing key gives the key's shape in placeholders and points at the kind table (yiU76A)", () => {
+  const [d] = refused(one("pads", { kind: "buttons" }));
+  assert.equal(d.code, "U017");
+  assert.match(d.tip, /buttons: \["<button>", …\]/);
+  assert.match(d.tip, /"The kinds"/);
+  const [v] = refused(one("volume", { kind: "number", min: 0, max: 1 }));
+  assert.match(v.tip, /value: <value>/);
+});

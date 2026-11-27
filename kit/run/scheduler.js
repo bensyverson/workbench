@@ -153,6 +153,9 @@ export function createRun(composed, options) {
 
   /** @param {Omit<RunDiagnostic, "severity"> & { severity?: "error" | "warning" }} d */
   const report = (d) => { diagnostics.push({ severity: "error", ...d }); };
+  // nothing makes an instant past the first in a run of demand parts only ("Not here"): played, it would do nothing
+  const stepping = parts.filter((p) => p.dialect !== PAGE);
+  if (stepping.length && stepping.every((p) => p.clock.kind === "demand")) report({ code: "N014", severity: "warning", T: "0", message: `every part of this run steps on demand (${stepping.map((p) => p.name).join(", ")}), and a demand part makes no instant of its own, so after the first instant nothing steps: an input, a page Control's record or a test's in record waits for an instant that never comes. Give one part a tick or frame clock (a part whose step reads dt and does nothing while nothing changed)` });
   const delivery = createDelivery(wires, byName, report);
   const { dropStopped } = delivery;
   const params = createParamFeed(composed, byName, report, options.params);
