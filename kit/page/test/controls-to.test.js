@@ -48,11 +48,11 @@ async function synth(more = {}) {
 test("UYk5XG. page.controls() lists a keyed Control's instances with their to, and a part-local Control with its part and to", async () => {
   const { pg } = await synth();
   const cs = pg.controls();
-  assert.deepEqual(cs.map((c) => c.name), ["s.ratio", "detune"]);
+  assert.deepEqual(cs.map((c) => c.name), ["s.ratio", "s.detune"]);
   const ratio = cs.find((c) => c.name === "s.ratio");
   assert.equal(ratio.keyed, true);
   assert.deepEqual(ratio.instances.map((i) => [i.key, i.value, i.to, i.disabled]), [["a", 2, "arg.s.op#0:1.ratio", null], ["b", 3, "arg.s.op#1:1.ratio", null]]);
-  const detune = cs.find((c) => c.name === "detune");
+  const detune = cs.find((c) => c.name === "s.detune");
   assert.deepEqual([detune.local, detune.part, detune.to, detune.disabled], [true, "s", "param.gain", null]);
 });
 
@@ -72,12 +72,12 @@ test("UYk5XG. a keyed knob with an input carries the live value through it, and 
 
 test("UYk5XG. a part-local param Control previews a param input at most once a frame, and its release commits to the declaration", async () => {
   const { pg, f } = await synth();
-  pg.control("detune", { value: 1.2 }, { phase: "preview" });
-  pg.control("detune", { value: 1.4 }, { phase: "preview" });
+  pg.control("s.detune", { value: 1.2 }, { phase: "preview" });
+  pg.control("s.detune", { value: 1.4 }, { phase: "preview" });
   f.tick(32);
   assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "param").map((e) => [e.part, e.name, e.value]), [["s", "gain", 1.4]]);
   assert.equal(pg.run.log.inputs.filter((e) => e.kind === "control").length, 0, "a part-local Control is never a page input");
-  const commit = pg.control("detune", { value: 1.5 });
+  const commit = pg.control("s.detune", { value: 1.5 });
   assert.deepEqual(commit, { part: "s", to: "param.gain", value: 1.5 });
   assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "param").map((e) => e.value), [1.4, 1.5], "the release is logged at once");
   assert.equal(writeBack(SYNTH_TEXT, pg.run.composed.parts.find((p) => p.name === "s").record, commit.to, commit.value).ok, true);
@@ -121,20 +121,20 @@ async function bench(entries) {
 
 test("UYk5XG. a part-local keyed Control (one radius per lens) previews by a rebuild with the argument overridden, once a frame, and commits its entry's to", async () => {
   const { pg, f } = await bench();
-  const radius = pg.controls().find((c) => c.name === "radius");
+  const radius = pg.controls().find((c) => c.name === "b.radius");
   assert.deepEqual([radius.local, radius.part, radius.instances.map((i) => [i.key, i.to])], [true, "b", [["0", "arg.b.lens#0:0.radius"], ["1", "arg.b.lens#1:0.radius"]]]);
-  pg.control("radius", { key: "1", value: 30 }, { phase: "preview" });
-  pg.control("radius", { key: "1", value: 31 }, { phase: "preview" });
+  pg.control("b.radius", { key: "1", value: 30 }, { phase: "preview" });
+  pg.control("b.radius", { key: "1", value: 31 }, { phase: "preview" });
   f.tick(32);
   const rebuilds = pg.run.log.inputs.filter((e) => e.kind === "rebuild");
   assert.deepEqual(rebuilds.map((e) => e.record.lens.map((l) => l.radius)), [[10, 31]], "one rebuild for the frame, built with the override");
-  const commit = pg.control("radius", { key: "1", value: 32 });
+  const commit = pg.control("b.radius", { key: "1", value: 32 });
   assert.deepEqual(commit, { part: "b", to: "arg.b.lens#1:0.radius", value: 32 });
   const w = writeBack(LENS_TEXT, pg.run.composed.parts.find((p) => p.name === "b").record, commit.to, commit.value);
   assert.equal(w.ok, true, w.message);
   assert.ok(w.text.includes(".lens({ radius: 32, at: [60, 70] })"));
   // a value the Grammar refuses previews nothing and is reported, as a Grip's (H012)
-  pg.control("radius", { key: "0", value: 99 }, { phase: "preview" });
+  pg.control("b.radius", { key: "0", value: 99 }, { phase: "preview" });
   f.tick(48);
   assert.equal(pg.status().halted, null);
   assert.ok(pg.diagnostics.some((d) => d.code === "H012"));
@@ -148,11 +148,11 @@ test("UYk5XG. the host's generated forms list part-local Controls and a keyed Co
   const commits = [];
   const s = createSession(loaded, { context: fakeContext(), requestFrame: f.requestFrame, onCommit: (c) => commits.push(c) });
   s.start(); f.tick(0); f.tick(16);
-  const form = s.forms().find((x) => x.name === "radius");
+  const form = s.forms().find((x) => x.name === "b.radius");
   assert.ok(form, JSON.stringify(s.forms().map((x) => x.name)));
   assert.deepEqual([form.local, form.keyed, form.instances.map((i) => i.key)], [true, true, ["0", "1"]]);
-  assert.deepEqual(s.control("radius", { key: "0", value: 11 }, { phase: "preview" }), []);
-  assert.deepEqual(s.control("radius", { key: "0", value: 12 }), []);
+  assert.deepEqual(s.control("b.radius", { key: "0", value: 11 }, { phase: "preview" }), []);
+  assert.deepEqual(s.control("b.radius", { key: "0", value: 12 }), []);
   assert.deepEqual(commits, [{ part: "b", to: "arg.b.lens#0:0.radius", value: 12 }], "a release gives the commit to the host's write-back");
 });
 
@@ -163,7 +163,7 @@ test("FtbfNP. a wired keyed Control's form says it is keyed, though its composed
   const ratio = s.forms().find((x) => x.name === "s.ratio");
   assert.equal(ratio.each, undefined, "plain data");
   assert.deepEqual([ratio.keyed, ratio.instances.map((i) => i.key)], [true, ["a", "b"]]);
-  assert.equal(s.forms().find((x) => x.name === "detune").keyed, false);
+  assert.equal(s.forms().find((x) => x.name === "s.detune").keyed, false);
 });
 
 test("x3LcAJ. a wired Control's commit is checked by a build: a value the Grammar refuses gives null and H012, a value that builds still commits", async () => {
@@ -177,4 +177,13 @@ test("x3LcAJ. a wired Control's commit is checked by a build: a value the Gramma
   assert.equal(w.ok, true, "and the commit writes");
   assert.ok(run(await fromText(w.text)).record, "into a text that builds");
   assert.equal(pg.control("s.ratio", { key: "b", value: 1000 }, { phase: "preview" }), null, "a preview of a wired Control builds nothing and reports nothing new");
+});
+
+test("SO79nL. a Control's commit is rounded once: the preview and the value returned are the number the text will hold", async () => {
+  const { pg, f } = await synth();
+  pg.control("s.detune", { value: 1.2000000000000002 }, { phase: "preview" });
+  f.tick(32);
+  assert.equal(pg.run.log.inputs.filter((e) => e.kind === "param").at(-1).value, 1.2, "the preview is rounded");
+  assert.equal(pg.control("s.detune", { value: 1.4000000000000001 }).value, 1.4);
+  assert.equal(pg.control("s.ratio", { key: "b", value: 0.1 + 0.2 }).value, 0.3);
 });

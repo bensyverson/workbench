@@ -46,18 +46,18 @@ export const isPageHandle = (h) => isHandle(h) && h.program === pageProgram;
  */
 
 /**
- * The page Control a glue's `page.out.<name>` names when it feeds `consumer`: the name itself when a Control has it
- * (a shared one, or a scoped one spelled out as `page.out["<part>.<control>"]`), else the consumer's own scoped
- * Control of that name, else null.
+ * The page Control a glue's `page.out.<name>` names when it feeds `consumer`: the consumer's own scoped Control of
+ * that name when it declares one (its own wins over a shared Control of the name, which then reaches only the parts
+ * that share it), else the name itself (a shared Control, or a scoped one spelled out as `page.out["<part>.<control>"]`),
+ * else null.
  * @param {Record<string, PageControl>} controls @param {string} name @param {string | null} consumer  the part the wire feeds
  */
 export function pageControlFor(controls, name, consumer) {
-  if (Object.hasOwn(controls, name)) return name;
   if (consumer !== null) {
     const own = scopedName(consumer, name);
     if (Object.hasOwn(controls, own) && controls[own].control === name) return own;
   }
-  return null;
+  return Object.hasOwn(controls, name) ? name : null;
 }
 
 /** The scoped Controls declared under one name, by page name. @param {Record<string, PageControl>} controls @param {string} name */

@@ -58,6 +58,7 @@ export function analyze(name, start, given, options) {
     const program = programOf(c.value);
     if (!program) { add(c.at, "S102", `.part(${describe(c.value)}): a part is a Program built with a package's Grammar, such as maze("level").grid(…)…`, "pass the builder chain a package's Grammar returned"); continue; }
     const pn = instanceName(/** @type {any} */ (program.root));
+    if (pn.includes(".")) { add(c.at, "S102", `.part(${JSON.stringify(pn)}): a part's name has no dot, since a dot separates a part from its output, input or Control (${pn}.out.x, ${pn}.gain)`, `name it without a dot: ${JSON.stringify(pn.replaceAll(".", "-"))}`); continue; }
     if (parts.has(program)) { add(c.at, "S102", `.part(${pn}) is called twice with one Program`, "add each part once"); continue; }
     const dialect = program.g.dialect;
     /** @type {Part} */

@@ -60,3 +60,20 @@ test("ZNpW0f. both instances play: a keyed knob's record reaches its own part al
   assert.deepEqual(pg.control("lead.volume", { value: 1.25 }), { part: "lead", to: "param.level", value: 1.25 });
   assert.throws(() => pg.control("ratio", { key: "a", value: 1 }), /lead\.ratio/, "the unqualified name is no page Control");
 });
+
+test("two instances of one package list each part-local Control as <part>.<control>, and control() reaches each one (leaf YwzxDx)", () => {
+  const ui = defineUI(g, { controls: { detune: { kind: "number", min: 0, max: 2, value: 1, to: "param.level" } } });
+  const rt = defineRuntime(g, { clock: () => ({ tick: 1 / 60 }), init: () => ({ voices: 0, ops: [] }), step: (s) => s, events: { in: Object.fromEntries(Object.keys(SYNTH_INPUTS).map((n) => [n, 8])) } });
+  const lead = g("lead").param("level", { value: 1, min: 0, max: 2 }).op("a", { ratio: 2, level: 0.5 });
+  const bass = g("bass").param("level", { value: 0.5, min: 0, max: 2 }).op("c", { ratio: 0.5, level: 1 });
+  const packages = [{ name: "synth", ui }];
+  const composed = compose("duo").part(lead).part(bass).build({ runtimes: [rt], packages });
+  const f = frames();
+  const pg = createPage({ composed, runtimes: [rt], packages, context: fakeContext(), requestFrame: f.requestFrame });
+  pg.start(); f.tick(0); f.tick(16);
+  const cs = pg.controls().filter((c) => c.local);
+  assert.deepEqual(cs.map((c) => [c.name, c.part, c.control]), [["lead.detune", "lead", "detune"], ["bass.detune", "bass", "detune"]]);
+  assert.deepEqual(pg.control("bass.detune", { value: 1.5 }), { part: "bass", to: "param.level", value: 1.5 });
+  assert.deepEqual(pg.control("lead.detune", { value: 0.5 }), { part: "lead", to: "param.level", value: 0.5 });
+  assert.throws(() => pg.control("detune", { value: 1 }), /lead\.detune/, "the bare name is no Control");
+});

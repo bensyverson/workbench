@@ -88,3 +88,31 @@ test("ZNpW0f. page.out.<control> into a part that does not declare it names no o
   assert.deepEqual(ok.check({ packages: [s.pkg] }).filter((x) => x.severity === "error"), []);
   assert.deepEqual(ok.build({ runtimes: [s.runtime, l.runtime], packages: [s.pkg] }).wires.map((w) => w.from), ["page.out.lead.ratio", "page.out.bass.ratio", "page.out.bass.ratio"]);
 });
+
+test("a shared Control and another part's scoped one of a name: page.out.<name> into the scoped owner wires its own", () => {
+  // synth's gain has `to` (scoped: a.gain); mixer's gain is a plain knob (shared: gain); neither clashes
+  const gain = "Event<{ value: f64 }>";
+  const mk = (n, controls) => {
+    const t = tiny(n, { state: { got: list("f64", 100) }, inputs: false, ports: { in: { gain: { seam: gain } } } },
+      { clock: () => ({ frame: true }), init: () => ({ got: [] }), events: { in: { gain: 4 } }, step: (s) => s });
+    return { ...t, pkg: { name: n, ui: defineUI(t.grammar, { controls }) } };
+  };
+  const A = mk("synth", { gain: { kind: "number", min: 0, max: 2, value: 1, to: "param.gain" } });
+  const B = mk("mixer", { gain: { kind: "number", min: 0, max: 2, value: 1 } });
+  const a = A.grammar("a"), b = B.grammar("b");
+  const c = compose("mix").part(a).part(b).wire(page.out.gain, a.in.gain).wire(page.out.gain, b.in.gain);
+  const built = c.build({ runtimes: [A.runtime, B.runtime], packages: [A.pkg, B.pkg] });
+  assert.equal(built.wires.find((w) => w.to === "a.in.gain").from, "page.out.a.gain", "a's own Control feeds a");
+  assert.equal(built.wires.find((w) => w.to === "b.in.gain").from, "page.out.gain", "the shared one feeds b");
+});
+
+test("a dotted part name is refused (S102) with a clear diagnostic (leaf tqkXpr)", () => {
+  const t = tiny("synth", { state: { got: list("f64", 10) }, inputs: false, ports: { in: { gain: { seam: "Event<{ value: f64 }>" } } } }, { clock: () => ({ frame: true }), init: () => ({ got: [] }), events: { in: { gain: 4 } }, step: (s) => s });
+  const ui = defineUI(t.grammar, { controls: { gain: { kind: "number", min: 0, max: 2, value: 1, to: "param.gain" } } });
+  const ds = compose("d").part(t.grammar("a.b")).check({ packages: [{ name: "synth", ui }] });
+  const d = ds.find((x) => x.code === "S102" && /dot/.test(x.message));
+  assert.ok(d, JSON.stringify(ds.map((x) => x.code)));
+  assert.match(d.message, /a\.b/);
+  assert.match(d.message, /dot/);
+  assert.equal(compose("d").part(t.grammar("ab")).check({ packages: [{ name: "synth", ui }] }).some((x) => x.code === "S102" && /dot/.test(x.message)), false);
+});

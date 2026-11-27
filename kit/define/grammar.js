@@ -311,7 +311,7 @@ class Program {
     // the call the build-time reads made since the last one land on: the count of this slot's earlier calls, as its
     // lambdas' ids have it
     const nth = inst.calls.filter((x) => x.slot === slot).length;
-    noteCall(this, `${instanceName(inst)}.${slot}${s.once ? "" : `#${nth}`}`);
+    noteCall(this, `${this.tagOf(inst)}.${slot}${s.once ? "" : `#${nth}`}`);
     if (s.once && inst.calls.some((x) => x.slot === slot)) {
       this.diagnostics.push(diag("B006", `${what} already has ${an(slot)}: .${slot}(…) may be called once`, `remove the second .${slot}(…)`, at));
       return;
@@ -414,6 +414,29 @@ class Program {
     // first, so a Program constant may read a top-level one (a constant sees only those before it)
     if (units.length) record.units = [...units, .../** @type {unknown[]} */ (record.units ?? [])];
     return record;
+  }
+
+  /**
+   * The tag lowering gives an instance in Ref ids: its name, or `<name>~2`, `~3`, … when an instance before it in
+   * record order (root, then each child construct's instances in turn) has the name. An instance made later of a
+   * construct that comes earlier in record order would renumber this one in the final record, which a read made now
+   * cannot know.
+   * @param {Instance} inst
+   */
+  tagOf(inst) {
+    const used = new Set();
+    /** @type {string | null} */
+    let tag = null;
+    const walk = (/** @type {Instance} */ i) => {
+      if (tag !== null) return;
+      let t = instanceName(i);
+      for (let n = 2; used.has(t); n++) t = `${instanceName(i)}~${n}`;
+      used.add(t);
+      if (i === inst) { tag = t; return; }
+      for (const c of i.construct.children) for (const x of i.children) if (x.construct === c) walk(x);
+    };
+    walk(/** @type {Instance} */ (this.root));
+    return tag ?? instanceName(inst);
   }
 
   /** Every instance, root first, depth first. */

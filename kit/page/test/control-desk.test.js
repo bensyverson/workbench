@@ -32,7 +32,7 @@ function desk(o = {}) {
 test("createControls lists the wired Controls, then the part-local ones, with a keyed one's instances", () => {
   const { c } = desk();
   const list = c.list();
-  assert.deepEqual(list.map((x) => [x.name, x.part, x.local ?? false]), [["ratio", "s", false], ["gain", "s", true]]);
+  assert.deepEqual(list.map((x) => [x.name, x.part, x.local ?? false]), [["ratio", "s", false], ["s.gain", "s", true]]);
   assert.deepEqual(list[0].instances.map((i) => [i.key, i.to, i.disabled]), [["a", "arg.s.a", null], ["b", "arg.s.b", null]]);
   assert.deepEqual([list[1].to, list[1].disabled], ["param.gain", null]);
 });
@@ -48,12 +48,12 @@ test("createControls: a wired Control logs a page input and its release is check
 
 test("createControls: a part-local Control's previews wait for flush, the latest of each target, and its release previews at once", () => {
   const { c, logged, previews } = desk();
-  c.control("gain", { value: 1.2 }, { phase: "preview" });
-  c.control("gain", { value: 1.4 }, { phase: "preview" });
+  c.control("s.gain", { value: 1.2 }, { phase: "preview" });
+  c.control("s.gain", { value: 1.4 }, { phase: "preview" });
   assert.equal(previews.length, 0);
   c.flush();
   assert.deepEqual(previews.map((p) => [p.to, p.value]), [["param.gain", 1.4]]);
-  assert.deepEqual(c.control("gain", { value: 1.5 }), { part: "s", to: "param.gain", value: 1.5 });
+  assert.deepEqual(c.control("s.gain", { value: 1.5 }), { part: "s", to: "param.gain", value: 1.5 });
   assert.equal(logged.length, 0, "a part-local Control is never a page input");
 });
 

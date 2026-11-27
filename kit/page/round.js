@@ -1,14 +1,15 @@
 // A number as a person set it (leaf ZNpW0f, the integrator's ruling): a drag's or a knob's value goes through float
 // arithmetic, so 29.4 comes out as 29.400000000000006. A value the page previews and writes back is rounded here,
 // once, so the preview's record and the written text hold the same number: to the step's own decimals when there is
-// a step, else to the 15 significant digits every double holds faithfully. Pure.
+// a step, else, to the 15 significant digits every double holds faithfully when that moves it only by float noise (a few
+// ulps; a whole number is never moved). Pure.
 
 /** The significant decimal digits a double holds faithfully (C's DBL_DIG): any decimal of this many survives a round trip through a double. */
 export const NUMBER_DIGITS = 15;
 
 /**
  * A number rounded to a step (a multiple of it, written with the step's decimals) or, with none, to NUMBER_DIGITS
- * significant digits; -0 is 0, and a non-finite number is unchanged.
+ * significant digits when that only removes float noise; -0 is 0, and a non-finite number is unchanged.
  * @param {number} n @param {number} [step]
  */
 export function roundNumber(n, step) {
@@ -19,5 +20,9 @@ export function roundNumber(n, step) {
     const decimals = Math.min(100, Math.max(0, (mantissa.split(".")[1] ?? "").length - Number(exponent)));
     return Number((Math.round(n / step) * step).toFixed(decimals)) + 0;
   }
-  return Number(n.toPrecision(NUMBER_DIGITS)) + 0;
+  // only float noise goes: a whole number, or a value the 15-digit form would move by more than a few ulps (a typed
+  // 1234567890123456, 2**53, MAX_VALUE whose 15-digit form overflows), is kept as it is
+  if (Number.isInteger(n)) return n + 0;
+  const cut = Number(n.toPrecision(NUMBER_DIGITS));
+  return Number.isFinite(cut) && Math.abs(cut - n) <= 8 * Number.EPSILON * Math.abs(n) ? cut + 0 : n;
 }

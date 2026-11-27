@@ -4,7 +4,8 @@
 // committed for the host to write back. The page's own seams (its parts' UIs, the compiled records, the write problem,
 // the preview and the log) come in as functions, so this block holds no run of its own.
 
-import { PAGE } from "../compose/page.js";
+import { PAGE, scopedName } from "../compose/page.js";
+import { roundNumber } from "./round.js";
 
 /** @typedef {import("./codes.js").PageDiagnostic} PageDiagnostic */
 /**
@@ -83,7 +84,8 @@ export function createControls(seams) {
       for (const [name, c] of Object.entries(/** @type {Record<string, any>} */ (ui?.controls ?? {}))) {
         if (!c.local) continue;
         const { input: _, ...rest } = c;
-        out.push(entry(name, rest, { part: cp.name, ui }));
+        // a Control with `to` is its part's own, so its page name is `<part>.<control>` as a wired one's is
+        out.push(entry(scopedName(cp.name, name), { ...rest, control: name }, { part: cp.name, ui }));
       }
     }
     return out;
@@ -129,7 +131,7 @@ export function createControls(seams) {
     if (typeof to !== "string") return null;
     if (disabled) { if (c.local) throw new Error(`${disabled.code} ${disabled.message}`); return null; }
     if (!record || !("value" in record)) throw new TypeError(`the Control '${name}' writes its record's value back to ${to}, and ${JSON.stringify(record)} has none`);
-    const part = /** @type {string} */ (c.part), value = record.value;
+    const part = /** @type {string} */ (c.part), value = typeof record.value === "number" ? roundNumber(record.value, typeof c.decl?.step === "number" ? c.decl.step : undefined) : record.value;
     if (c.local) {
       const key = `${part} ${to}`;
       if (phase === "preview") { waiting.set(key, { part, to, value, what: `the Control ${what}` }); return null; }
