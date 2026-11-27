@@ -104,8 +104,8 @@ export function createSession(loaded, options) {
 
   return {
     page, series, snapshot, compiledOf,
-    start() { page.start(); },
-    /** Stops the frames and aborts every running sweep, so nothing of this session reaches the panels afterward. */
+    start() { if (stopped) throw new Error("this session is stopped, and a stopped session is final: create a new one"); page.start(); },
+    /** Stops the frames and aborts every running sweep, so nothing of this session reaches the panels afterward. Final: a later sweep runs nothing, and start throws. */
     stop() { stopped = true; page.stop(); for (const s of sweeps.values()) s.abort.abort(); },
     pause() { page.driver.pause(); notify(); },
     resume() { page.driver.resume(); notify(); },
@@ -147,6 +147,7 @@ export function createSession(loaded, options) {
      * @param {string} part @param {any} spec @returns {Promise<import("../sweep.js").Sweep>}
      */
     async sweep(part, spec) {
+      if (stopped) return { points: [], cancelled: true };
       const key = sweepKey(part, spec);
       const was = sweeps.get(key);
       was?.abort.abort();

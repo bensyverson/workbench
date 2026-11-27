@@ -157,6 +157,19 @@ test("stop() aborts every running sweep: afterward none notifies and onFrame nev
   assert.equal(s.sweepState("fountain", spec)?.running, false, "the aborted sweep is marked done, silently");
 });
 
+test("a stopped session is final: a sweep after stop() runs nothing, and start() throws (verify-34)", async () => {
+  const w = await loadPreset({ packages: pkgs(["particles"]), package: "particles", example: "examples/01.js" }, env);
+  const { s, seen } = mount(w);
+  const runs = s.snapshot().parts[0].tiles.flatMap((t) => t.body).find((c) => c.kind === "runs");
+  const spec = { ...runs?.spec, steps: 3, seconds: 20 };
+  s.stop();
+  const before = seen.length;
+  assert.deepEqual(await s.sweep("fountain", spec), { points: [], cancelled: true });
+  assert.equal(s.sweepState("fountain", spec), null, "no sweep was started");
+  assert.equal(seen.length, before);
+  assert.throws(() => s.start(), /stopped/);
+});
+
 test("a snapshot or panel that throws every frame is one reported problem, and the frames go on (review LOW)", async () => {
   const w = await loadPreset({ packages: pkgs(["particles"]), package: "particles", example: "examples/01.js" }, env);
   const f = frames();

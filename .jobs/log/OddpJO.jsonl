@@ -1756,3 +1756,5 @@
 {"v":1,"rep":"OddpJO","seq":1756,"ts":1795790811969,"actor":"claude","type":"done","task":"qynNme","data":{"note":"Accepted by Ben 2026-11-27; planned in project/2026-11-27-layer-and-package-tests-plan.md.","cascade":false,"was_status":"claimed","was_claimed_by":"claude","was_expires_at":1795792611}}
 {"v":1,"rep":"OddpJO","seq":1757,"ts":1795790811988,"actor":"claude","type":"claimed","task":"z3dUoJ","data":{"duration":"30m","expires_at":1795792611}}
 {"v":1,"rep":"OddpJO","seq":1758,"ts":1795790812004,"actor":"claude","type":"done","task":"z3dUoJ","data":{"note":"Accepted by Ben 2026-11-27; planned in project/2026-11-27-layer-and-package-tests-plan.md.","cascade":false,"was_status":"claimed","was_claimed_by":"claude","was_expires_at":1795792611}}
+{"v":1,"rep":"OddpJO","seq":1759,"ts":1795790863375,"actor":"layer-draft-35","type":"claimed","task":"LiOmY9","data":{"duration":"30m","expires_at":1795792663}}
+{"v":1,"rep":"OddpJO","seq":1760,"ts":1795790863870,"actor":"tests-draft-36","type":"claimed","task":"74YzpH","data":{"duration":"30m","expires_at":1795792663}}
