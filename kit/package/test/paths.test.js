@@ -38,3 +38,17 @@ test("a UI's element module is named from the UI module's folder (review M4.5): 
   assert.equal(uiModulePath("ui/p.ui.js", "./stage.js"), "ui/stage.js");
   assert.equal(uiModulePath("p.ui.js", "../out.js"), null);
 });
+
+const HASH = "sha256-" + "A".repeat(43) + "=";
+test("elementModulePath reads the manifest and names a UI's element module from entry.ui; a bad manifest is a K diagnostic, not a null", async () => {
+  const { elementModulePath, MANIFEST_PATH } = await import("../index.js");
+  const manifest = (/** @type {any} */ entry) => ({ [MANIFEST_PATH]: JSON.stringify({ name: "p", version: "1.0.0", kit: "0.4", entry: { dialect: "d.js", grammar: "g.js", ...entry }, files: Object.fromEntries(["d.js", "g.js", ...(entry.ui ? [entry.ui] : [])].map((f) => [f, HASH])) }) });
+  assert.deepEqual(elementModulePath(manifest({ ui: "ui/p.ui.js" }), "./stage.js"), { path: "ui/stage.js", diagnostics: [] });
+  assert.deepEqual(elementModulePath(manifest({}), "./stage.js"), { path: "stage.js", diagnostics: [] }, "no entry.ui: a UI at the root");
+  assert.deepEqual(elementModulePath(manifest({ ui: "p.ui.js" }), "../out.js"), { path: null, diagnostics: [] }, "a module that leaves the package");
+  const bad = elementModulePath({ [MANIFEST_PATH]: "{ not json" }, "./stage.js");
+  assert.equal(bad.path, null);
+  assert.deepEqual(bad.diagnostics.map((d) => d.code), ["K001"]);
+  assert.deepEqual(elementModulePath({}, "./stage.js").diagnostics.map((d) => d.code), ["K001"], "no manifest");
+  assert.deepEqual(elementModulePath({ [MANIFEST_PATH]: new Uint8Array([0xff, 0xfe]) }, "./x.js").diagnostics.map((d) => d.code), ["K001"], "not UTF-8");
+});

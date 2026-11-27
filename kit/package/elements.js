@@ -2,7 +2,8 @@
 // package's `elements` must list, no more and no fewer.
 
 import { diag } from "./codes.js";
-import { MANIFEST_PATH } from "./manifest.js";
+import { textOf } from "./content.js";
+import { MANIFEST_PATH, checkManifest } from "./manifest.js";
 import { resolveRelative } from "./paths.js";
 
 /**
@@ -11,6 +12,23 @@ import { resolveRelative } from "./paths.js";
  * @param {string} uiPath  the manifest's `entry.ui` @param {string} module
  */
 export const uiModulePath = (uiPath, module) => resolveRelative(uiPath, module);
+
+/**
+ * `uiModulePath` for a package's files: reads the manifest, takes its `entry.ui` (a UI at the root when it names
+ * none) and names the module from it. A manifest that cannot be read is reported as kit/package reports it (K001 and
+ * the manifest's other codes), with a null path; a module that leaves the package is a null path and no diagnostic.
+ * @param {Record<string, string | Uint8Array>} files  the package's files by path @param {string} module  as the UI names it
+ * @returns {{ path: string | null, diagnostics: import("./package.js").PackageDiagnostic[] }}
+ */
+export function elementModulePath(files, module) {
+  const raw = Object.hasOwn(files, MANIFEST_PATH) ? files[MANIFEST_PATH] : undefined;
+  if (raw === undefined) return { path: null, diagnostics: [diag("K001", `the package has no ${MANIFEST_PATH}`, `add ${MANIFEST_PATH}`)] };
+  const text = textOf(raw);
+  if (text === null) return { path: null, diagnostics: [diag("K001", `${MANIFEST_PATH} is not UTF-8 text`, `write ${MANIFEST_PATH} as a JSON object in UTF-8`, MANIFEST_PATH)] };
+  const { manifest, diagnostics } = checkManifest(text);
+  if (!manifest) return { path: null, diagnostics };
+  return { path: uiModulePath(manifest.entry.ui ?? "ui.js", module), diagnostics: [] };
+}
 
 /**
  * The package paths of the modules a UI's custom elements name, sorted and without repeats, each relative to the

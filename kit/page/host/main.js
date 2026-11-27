@@ -186,7 +186,8 @@ export function start({ importModule }) {
       let el = c.elements.get(stage.element);
       if (el === undefined) {
         c.elements.set(stage.element, null);
-        const url = pkg ? elementModuleUrl(pkg, String(stage.module)) : null;
+        const { url, diagnostics } = pkg ? elementModuleUrl(pkg, String(stage.module)) : { url: null, diagnostics: [] };
+        for (const d of diagnostics) problem(`${d.code}: ${d.message}`);
         (url ? importModule(url).then(() => { if (customElements.get(stage.element)) c.elements.set(stage.element, document.createElement(stage.element)); else problem(`${stage.module} did not define <${stage.element}>`); }).catch((e) => problem(`${stage.module} did not load: ${e.message}`)) : Promise.resolve(problem(`no module ${stage.module} in package ${dialect}`)));
       }
       el = c.elements.get(stage.element);

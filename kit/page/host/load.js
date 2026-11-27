@@ -7,9 +7,8 @@
 import { KIT_VERSION, withScope, moduleScope } from "../../define/index.js";
 import { rewriteGlue, callGlue, formatDiagnostic } from "../../compose/index.js";
 import { examplePreset } from "../index.js";
-import { loadPackage, rewriteSpecifiers, checkManifest, textOf, uiModulePath, MANIFEST_PATH } from "../../package/index.js";
+import { loadPackage, rewriteSpecifiers, checkManifest, textOf, elementModulePath, MANIFEST_PATH } from "../../package/index.js";
 import { isDotPath } from "../../package/paths.js";
-import { withoutBom } from "../../package/content.js";
 
 /**
  * One diagnostic of any source, as the page lists it. `text` is the kit's printed form where it has one.
@@ -167,16 +166,15 @@ function entryGrammar(p) {
 }
 
 /**
- * The URL of a custom element's module, named as the UI names it (`./field.js`): kit/package's `uiModulePath`,
- * relative to the UI module, the path kit/package checked against `elements`; null when the package has none.
+ * The URL of a custom element's module, named as the UI names it (`./field.js`): kit/package's `elementModulePath`
+ * decides the package path (and reports a manifest it cannot read); the host only looks the path up. A null url is a
+ * package without that module (or a module that leaves it).
  * @param {Pick<HostPackage, "files" | "urls">} p @param {string} module
+ * @returns {{ url: string | null, diagnostics: import("../../package/package.js").PackageDiagnostic[] }}
  */
 export function elementModuleUrl(p, module) {
-  /** @type {any} */
-  let manifest = null;
-  try { manifest = JSON.parse(withoutBom(textOf(p.files[MANIFEST_PATH] ?? "") ?? "")); } catch { return null; }
-  const path = uiModulePath(typeof manifest?.entry?.ui === "string" ? manifest.entry.ui : "ui.js", module);
-  return path === null ? null : p.urls.get(path) ?? null;
+  const { path, diagnostics } = elementModulePath(p.files, module);
+  return { url: path === null ? null : p.urls.get(path) ?? null, diagnostics };
 }
 
 /**

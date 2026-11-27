@@ -91,7 +91,10 @@ export function createSession(loaded, options) {
   }
   /** The last problem said, so one that repeats every frame is said once. @type {string | null} */
   let said = null;
+  /** Set by `stop()`: a stopped session tells its panels nothing more (a page loaded after it owns them). */
+  let stopped = false;
   notify = () => {
+    if (stopped) return;
     try { options.onFrame?.(snapshot()); said = null; } catch (e) {
       const m = `the panels threw: ${e instanceof Error ? e.message : e}`;
       if (m !== said) { said = m; options.onProblem?.(m); }
@@ -102,7 +105,8 @@ export function createSession(loaded, options) {
   return {
     page, series, snapshot, compiledOf,
     start() { page.start(); },
-    stop() { page.stop(); },
+    /** Stops the frames and aborts every running sweep, so nothing of this session reaches the panels afterward. */
+    stop() { stopped = true; page.stop(); for (const s of sweeps.values()) s.abort.abort(); },
     pause() { page.driver.pause(); notify(); },
     resume() { page.driver.resume(); notify(); },
     /** One instant forward (paused or not). */

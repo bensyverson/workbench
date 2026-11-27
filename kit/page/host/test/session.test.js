@@ -141,6 +141,22 @@ test("a sweep runs asynchronously, keyed by part and component id, with its prog
   s.cancelSweep("fountain", spec); // nothing running: nothing to cancel
 });
 
+test("stop() aborts every running sweep: afterward none notifies and onFrame never fires again (review g21AQF)", async () => {
+  const w = await loadPreset({ packages: pkgs(["particles"]), package: "particles", example: "examples/01.js" }, env);
+  const { s, seen } = mount(w);
+  const runs = s.snapshot().parts[0].tiles.flatMap((t) => t.body).find((c) => c.kind === "runs");
+  const spec = { ...runs?.spec, steps: 3, seconds: 20 };
+  const done = s.sweep("fountain", spec);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(s.sweepState("fountain", spec)?.running, true);
+  s.stop();
+  const before = seen.length;
+  assert.deepEqual(await done, { points: [], cancelled: true });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(seen.length, before, "no frame after stop");
+  assert.equal(s.sweepState("fountain", spec)?.running, false, "the aborted sweep is marked done, silently");
+});
+
 test("a snapshot or panel that throws every frame is one reported problem, and the frames go on (review LOW)", async () => {
   const w = await loadPreset({ packages: pkgs(["particles"]), package: "particles", example: "examples/01.js" }, env);
   const f = frames();

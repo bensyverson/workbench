@@ -102,13 +102,16 @@ test("a glue whose wire does not fit gives the S diagnostic with the glue's line
 
 test("a custom element's module is found relative to the UI module, as kit/package names it (review M4.5)", async () => {
   const { elementModuleUrl } = await import("../load.js");
-  const files = { "wb-package.json": JSON.stringify({ entry: { ui: "ui/p.ui.js" } }) };
+  const files = { "wb-package.json": JSON.stringify({ name: "p", version: "1.0.0", kit: "0.4", entry: { dialect: "d.js", grammar: "g.js", ui: "ui/p.ui.js" }, files: Object.fromEntries(["d.js", "g.js", "ui/p.ui.js"].map((f) => [f, "sha256-" + "A".repeat(43) + "="])) }) };
   const pkg = /** @type {any} */ ({ files, urls: new Map([["ui/stage.js", "blob:stage"], ["stage.js", "blob:wrong"]]) });
-  assert.equal(elementModuleUrl(pkg, "./stage.js"), "blob:stage");
-  assert.equal(elementModuleUrl(pkg, "../../out.js"), null);
+  assert.deepEqual(elementModuleUrl(pkg, "./stage.js"), { url: "blob:stage", diagnostics: [] });
+  assert.deepEqual(elementModuleUrl(pkg, "../../out.js"), { url: null, diagnostics: [] });
+  const broken = elementModuleUrl(/** @type {any} */ ({ files: { "wb-package.json": "{" }, urls: new Map() }), "./stage.js");
+  assert.equal(broken.url, null);
+  assert.deepEqual(broken.diagnostics.map((d) => d.code), ["K001"], "a bad manifest is reported, not swallowed");
   const w = await loadPreset({ packages: { particles: readPackageDir(root(`${DRAW}/particles`)) }, package: "particles", example: "examples/01.js" }, env);
   const p = w.packages[0];
-  assert.equal(elementModuleUrl(p, p.loaded.ui.stage.module), p.urls.get("particles-field.js"));
+  assert.equal(elementModuleUrl(p, p.loaded.ui.stage.module).url, p.urls.get("particles-field.js"));
 });
 
 test("a package's example loads as a one-part preset", async () => {
