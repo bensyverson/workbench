@@ -41,7 +41,7 @@ export function createPage(options) {
   let sources = {};
   const now = () => qText(run.T);
 
-  /** The page's view now, or null when there is nothing to draw (W002, reported once, at creation). */
+  /** The page's view now, or null when there is nothing to draw (H002, reported once, at creation). */
   const view = () => {
     if (!composed.show || !composed.parts.some((/** @type {{ name: string }} */ p) => p.name === composed.show)) return null;
     const v = pageView(run, composed, runtimes);
@@ -50,14 +50,14 @@ export function createPage(options) {
   const first = view();
   if (!first) {
     const message = composed.show ? `the page shows ${composed.show}, which has no Draw output (a custom element stage or the text view draws it), so the canvas stays empty` : "the composition shows no part (.show(<part>) in the glue), so the canvas stays empty";
-    diagnostics.push({ code: "W002", severity: "warning", message, T: now(), ...(composed.show ? { part: composed.show } : {}) });
+    diagnostics.push({ code: "H002", severity: "warning", message, T: now(), ...(composed.show ? { part: composed.show } : {}) });
   }
   const box = first?.box ?? null;
   const size = box ? { width: box.max[0] - box.min[0], height: box.max[1] - box.min[1] } : null;
 
   const ready = decodeSources(composed.parts, runtimes, packages, options.decode).then((r) => {
     sources = r.sources;
-    for (const p of r.problems) diagnostics.push({ code: "W003", severity: "warning", message: p.message, T: now(), part: p.part });
+    for (const p of r.problems) diagnostics.push({ code: "H003", severity: "warning", message: p.message, T: now(), part: p.part });
   });
 
   /** The refusal last reported, so one refusal is one diagnostic while it lasts. @type {string | null} */
@@ -78,7 +78,7 @@ export function createPage(options) {
       if (why !== refused) {
         // the instant the shown list was committed at (null: its init's, at 0), not the frame's time
         const T = run.snapshot(v.part).T ?? "0";
-        diagnostics.push({ code: "W001", severity: "error", message: `the ${label} refuses ${v.part}.out.${v.port} at T = ${T}: ${why}. The page draws it anyway, on Canvas`, T, part: v.part, check: check.diagnostics });
+        diagnostics.push({ code: "H001", severity: "error", message: `the ${label} refuses ${v.part}.out.${v.port} at T = ${T}: ${why}. The page draws it anyway, on Canvas`, T, part: v.part, check: check.diagnostics });
         refused = why;
       }
     } else refused = null;
@@ -100,7 +100,7 @@ export function createPage(options) {
 
   return {
     run, driver, ready, size, options,
-    /** The page diagnostics, W…, in the order they arose. */
+    /** The page diagnostics, H…, in the order they arose. */
     diagnostics,
     /** The decoded image sources, by carried name (`<part>.<image>`). */
     get sources() { return sources; },
@@ -122,7 +122,7 @@ export function createPage(options) {
       if (change) run.input({ kind: "control", part: PAGE, name: change.name, value: change.value });
       return true;
     },
-    /** What a host UI shows next: the instant, the run's N diagnostics, the page's W ones, and the shown view. */
+    /** What a host UI shows next: the instant, the run's N diagnostics, the page's H ones, and the shown view. */
     status() {
       const v = view();
       return {

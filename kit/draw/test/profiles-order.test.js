@@ -113,3 +113,8 @@ test("a wrapped tiles ring is judged where its cells are drawn: a scrolled ring 
   // a ring listed first is fine, wherever it wraps
   assert.deepEqual(codes(check([ring, sprite(152, 0)])), []);
 });
+
+test("J042 names an op kind with its article: an ellipse", () => {
+  const r = check([{ op: "ellipse", at: [8, 8], r: [4, 4], fill: "#000000ff" }]);
+  assert.ok(r.diagnostics.some((/** @type {any} */ d) => d.code === "J042" && / is an ellipse;/.test(d.message)), JSON.stringify(r.diagnostics));
+});

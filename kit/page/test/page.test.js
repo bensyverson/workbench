@@ -34,7 +34,7 @@ test("the default key map is the DMG host's: arrows and WASD for the pad, X and 
   });
   // every value is a page control, or one of the pad's directions
   for (const v of Object.values(DEFAULT_KEYS)) assert.ok(Object.hasOwn(PAGE_CONTROLS, v.split(".")[0]), v);
-  assert.deepEqual(Object.keys(PAGE_CODES), ["W001", "W002", "W003"]);
+  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003"]);
   assert.ok(RESERVED_LETTERS.includes("W"), "W is the kit's, so a Dialect's own codes cannot take it");
 });
 
@@ -121,7 +121,7 @@ test("the draw-time profile check runs where the page draws, and a refusal is a 
   f.tick(0);
   assert.equal(p.diagnostics.length, 0, "the init picture is the HUD alone, which the Game Boy draws");
   play(f, 0, 125);                      // the board arrives at the first instant, with its disc
-  assert.deepEqual(p.diagnostics.map((d) => d.code), ["W001"]);
+  assert.deepEqual(p.diagnostics.map((d) => d.code), ["H001"]);
   const d = p.diagnostics[0];
   assert.equal(d.severity, "error");
   assert.equal(d.part, "scr");
@@ -142,18 +142,18 @@ test("a refusal that changes is reported again", async () => {
   await p.ready;
   p.start();
   f.tick(0);
-  assert.deepEqual(p.diagnostics.map((x) => x.code), ["W001"], "the init picture: tiles one unit a cell, and the disc");
+  assert.deepEqual(p.diagnostics.map((x) => x.code), ["H001"], "the init picture: tiles one unit a cell, and the disc");
   play(f, 0, 100);
   assert.equal(p.diagnostics.length, 2, "the disc is gone, and the tiles are still refused: a different refusal");
   assert.doesNotMatch(p.diagnostics[1].message, /ellipse/);
 });
 
-test("a shown part with no Draw output is W002, and the page draws nothing", async () => {
+test("a shown part with no Draw output is H002, and the page draws nothing", async () => {
   const { composed, runtimes, packages } = await bench();
   const ctx = fakeContext(), f = frames();
   const p = createPage({ composed: { ...composed, show: "hero" }, runtimes, packages, context: ctx, requestFrame: f.requestFrame });
   await p.ready;
-  assert.deepEqual(p.diagnostics.map((d) => d.code), ["W002"]);
+  assert.deepEqual(p.diagnostics.map((d) => d.code), ["H002"]);
   assert.match(p.diagnostics[0].message, /the page shows hero, which has no Draw output/);
   p.start();
   f.tick(0);
@@ -161,19 +161,19 @@ test("a shown part with no Draw output is W002, and the page draws nothing", asy
   assert.equal(p.size, null);
 });
 
-test("an image the page cannot decode is W003, and draws as its box", async () => {
+test("an image the page cannot decode is H003, and draws as its box", async () => {
   const failing = await mount(undefined, { decode: async () => { throw new Error("bad bitmap"); } });
-  assert.deepEqual(failing.page.diagnostics.map((d) => d.code), ["W003"]);
+  assert.deepEqual(failing.page.diagnostics.map((d) => d.code), ["H003"]);
   assert.match(failing.page.diagnostics[0].message, /level\.sheet \(art\/sheet\.png\) did not decode: bad bitmap/);
   // with no decoder at all, every image draws as its box, and that is not a problem to report
   const none = await mount(undefined, { decode: undefined });
   assert.deepEqual(none.page.sources, {});
   assert.deepEqual(none.page.diagnostics, []);
-  // a package that does not carry the file (it was not loaded by kit/package) is W003 too
+  // a package that does not carry the file (it was not loaded by kit/package) is H003 too
   const { composed, runtimes } = await bench();
   const p = createPage({ composed, runtimes, packages: [], context: fakeContext(), requestFrame: frames().requestFrame, decode: async () => ({}) });
   await p.ready;
-  assert.deepEqual(p.diagnostics.map((d) => d.code), ["W003"]);
+  assert.deepEqual(p.diagnostics.map((d) => d.code), ["H003"]);
   assert.match(p.diagnostics[0].message, /level\.sheet's file art\/sheet\.png is not in a loaded package/);
 });
 

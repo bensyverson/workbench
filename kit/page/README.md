@@ -14,7 +14,7 @@ const page = createPage({
   decode: (bytes) => createImageBitmap(new Blob([bytes], { type: "image/png" })),
 });
 if (page.size) { canvas.width = page.size.width; canvas.height = page.size.height; }
-await page.ready;                             // the images are decoded (or reported, W003)
+await page.ready;                             // the images are decoded (or reported, H003)
 page.start();
 addEventListener("keydown", (e) => { if (page.key(e)) e.preventDefault(); });
 addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
@@ -28,7 +28,7 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 | `createPage(options)` | the page (below); throws when `requestFrame` is not a function, when `keys` maps a key to something that is not a control, and whatever `createRun` throws (kit/run: N006, N007, S116, a part with no runtime) |
 | `DEFAULT_KEYS` | the DMG host's key map, by `KeyboardEvent.code`: arrows and `KeyW` `KeyA` `KeyS` `KeyD` → the pad; `KeyX`, `KeyK` → `a`; `KeyZ`, `KeyJ` → `b`; `Enter` → `start`; `ShiftLeft`, `ShiftRight` → `select` |
 | `KEY_TARGETS` | what a key may map to: `"pad.up"`, `"pad.down"`, `"pad.left"`, `"pad.right"`, `"a"`, `"b"`, `"start"`, `"select"` |
-| `PAGE_CODES` | the W codes (below) |
+| `PAGE_CODES` | the H codes (below) |
 
 **Options.**
 
@@ -47,13 +47,13 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 
 | Member | |
 |---|---|
-| `page.ready` | a promise that settles when every image with a file is decoded or reported (W003); drawing before it settles draws boxes for the images not yet decoded |
+| `page.ready` | a promise that settles when every image with a file is decoded or reported (H003); drawing before it settles draws boxes for the images not yet decoded |
 | `page.start()`, `page.stop()` | start asks for frames: each frame advances the run by its wall time through the driver (`driver.frame`, which caps a frame at the run's catch-up, 1/15 s by default, so a slow machine runs in slow motion and drops nothing), then draws, then asks for the next. The first frame after a start only draws. Stop asks for no more; the run stays where it is. Starting again does not run the stopped time |
 | `page.draw()` | draws now: clears the stage box, draws the shown list, runs the check. Returns kit/run's `pageView` result, or null when there is nothing to draw. Frames call it; a host calls it after it moves the run itself (a step while paused, a rewind) if it wants the canvas current before the next frame |
 | `page.key(event)` | a key event, `{ type: "keydown" \| "keyup", code }` (a `KeyboardEvent` will do), as a page input: true when the key is in the map (the host may `preventDefault`), false for any other key, any other event type, or a composition that wires no page control. A direction sends a `pad` record each time the held directions change; a button sends `{ held: true }` when its first key goes down and `{ held: false }` when its last key comes up; a key repeat sends nothing. Each input goes into the run's log (`run.input`, stamped at the next instant) |
-| `page.status()` | what a host UI shows next: `{ T, seconds, paused, size, view, diagnostics, page }`. `T` is the run's time as rational text (`"1/8"`), `seconds` the same as a number; `paused` the driver's; `view` `{ part, port, ops, check }` (the shown part and output, how many ops its list holds, the draw-time check or null) or null; `diagnostics` the run's N diagnostics; `page` the page's W ones |
+| `page.status()` | what a host UI shows next: `{ T, seconds, paused, size, view, diagnostics, page }`. `T` is the run's time as rational text (`"1/8"`), `seconds` the same as a number; `paused` the driver's; `view` `{ part, port, ops, check }` (the shown part and output, how many ops its list holds, the draw-time check or null) or null; `diagnostics` the run's N diagnostics; `page` the page's H ones |
 | `page.why(part?, since?)` | the run's why text (kit/run's `run.why`) |
-| `page.diagnostics` | the W diagnostics, in the order they arose: `{ code, severity, message, T, part?, check? }` |
+| `page.diagnostics` | the H diagnostics, in the order they arose: `{ code, severity, message, T, part?, check? }` |
 | `page.size` | `{ width, height }` of the shown output's frame (its extent for the built record), or null when it has none (size the canvas yourself then) |
 | `page.sources` | the decoded images by carried name, as `drawCanvas` takes them |
 | `page.run`, `page.driver` | the kit/run run and its driver, for run control: `driver.pause()`, `driver.resume()`, `driver.step()`, `driver.paused`; `run.rewind(t)`, `run.state(part)`, `run.log`, `run.record()` |
@@ -61,8 +61,8 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 
 ## Invariants
 
-- **The list is drawn as it stands.** A profile's refusal never trims it: the page draws every op on Canvas and reports the refusal (W001), naming the profile, the part, the output, the instant its list was committed at and each of `checkDraw`'s J diagnostics (`check`). One refusal is one diagnostic while it lasts; a different refusal, or the same one after the list was drawn clean, is a new one.
-- **Nothing is silent.** A composition with nothing to draw is W002 at creation; an image whose pixels cannot be had is W003 when `ready` settles.
+- **The list is drawn as it stands.** A profile's refusal never trims it: the page draws every op on Canvas and reports the refusal (H001), naming the profile, the part, the output, the instant its list was committed at and each of `checkDraw`'s J diagnostics (`check`). One refusal is one diagnostic while it lasts; a different refusal, or the same one after the list was drawn clean, is a new one.
+- **Nothing is silent.** A composition with nothing to draw is H002 at creation; an image whose pixels cannot be had is H003 when `ready` settles.
 - **The run is kit/run's.** The page logs page inputs and frames through the run's own API, so `run.record()` replays (kit/run's `replay`) like any display run.
 - **The stage box.** The list is in the shown frame, one unit a pixel. The page clears `0, 0, width, height` and, when the frame's extent does not start at the origin, translates by minus its corner, so the extent's corner is the canvas's.
 
@@ -70,11 +70,11 @@ addEventListener("keyup", (e) => { if (page.key(e)) e.preventDefault(); });
 
 | Code | When |
 |---|---|
-| W001 | the composition's renderer profile refuses the shown list at draw time (kit/draw's `checkDraw`, J040–J044); an error, since the target cannot draw it, though Canvas does |
-| W002 | the composition shows no part, or the shown part has no Draw output (a custom element stage or the text view); a warning |
-| W003 | an image names a file that no loaded package holds, or the host's decoder threw or rejected on it; a warning, and the image draws as its box |
+| H001 | the composition's renderer profile refuses the shown list at draw time (kit/draw's `checkDraw`, J040–J044); an error, since the target cannot draw it, though Canvas does |
+| H002 | the composition shows no part, or the shown part has no Draw output (a custom element stage or the text view); a warning |
+| H003 | an image names a file that no loaded package holds, or the host's decoder threw or rejected on it; a warning, and the image draws as its box |
 
-W is reserved for the kit (kit/define's `RESERVED_LETTERS`).
+H is reserved for the kit (kit/define's `RESERVED_LETTERS`).
 
 ## Not here
 

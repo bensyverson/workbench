@@ -109,7 +109,7 @@ function gameBoy(profile, gb, list, images, frame) {
         [...String(op.str)].forEach((ch, k) => { if (!/\s/.test(ch)) objects.push({ i, x: op.at[0] + k * gb.tile, y: op.at[1] }); });
         return;
       }
-      default: say("J042", `op ${i} is a ${op.op}; the ${profile.label} draws ${profile.kinds.join(", ")}`);
+      default: say("J042", `op ${i} is ${/^[aeiou]/.test(op.op) ? "an" : "a"} ${op.op}; the ${profile.label} draws ${profile.kinds.join(", ")}`);
     }
   });
   if (layers.length > gb.layers) say("J040", `${layers.length} tiles layers; its limit is ${gb.layers} (a background and a window)`);

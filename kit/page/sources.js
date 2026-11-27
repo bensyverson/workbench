@@ -5,7 +5,7 @@
 /** @typedef {(bytes: Uint8Array, info: { name: string, path: string, width: number, height: number }) => unknown} Decode */
 
 /**
- * Decodes every image with a file. Resolves to the sources and the W003 problems (a file no loaded package holds,
+ * Decodes every image with a file. Resolves to the sources and the H003 problems (a file no loaded package holds,
  * a decoder that threw or rejected); without a decoder there are no sources and no problems: every image draws as its box.
  * @param {Array<{ name: string, dialect: string }>} parts @param {any[]} runtimes @param {any[]} packages @param {Decode | undefined} decode
  * @returns {Promise<{ sources: Record<string, unknown>, problems: Array<{ part: string, message: string }> }>}
