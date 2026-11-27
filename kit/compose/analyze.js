@@ -301,7 +301,7 @@ export function analyze(name, start, given, options) {
       if (!w.overflow && isPageHandle(w.from)) { add(w.at, "S116", `${pr.message}; a page wire past its size ${pr.max === 1 ? "folds what is waiting into the latest at each step" : `keeps the first ${pr.max - 1} in order at each step and folds the rest into the latest`} (the control's held state), counted in the run's stats().overflow`, `if every press and release matters, ${pr.fix}; if only the held state matters, ignore this`, { from: side(w.from), to: side(w.to) }, "warning"); continue; }
       if (!w.overflow) { add(w.at, "S116", pr.message, `${pr.fix}; or, on this wire, { overflow: "keepLast" } (the newest ${pr.max} at each step) or { overflow: "keepFirst" } (the first ${pr.max})`, { from: side(w.from), to: side(w.to) }); continue; }
       const kept = w.overflow === "keepLast" ? `the newest ${pr.max}` : `the first ${pr.max}`;
-      add(w.at, "S116", `${pr.message}; the wire's { overflow: "${w.overflow}" } keeps ${kept} at each step and drops the rest, counted in the run's stats().overflow`, `if every record matters, ${pr.fix}, and remove overflow; if dropping is intended, ignore this`, { from: side(w.from), to: side(w.to) }, "warning");
+      add(w.at, "S116", `${pr.message}; the wire's { overflow: "${w.overflow}" } keeps ${kept} at each step and drops the rest, counted in the run's stats().overflow${isPageHandle(w.from) ? "; on a page wire it replaces the page wire's fold, so the latest held state may not arrive (a button can stay down)" : ""}`, `if every record matters, ${pr.fix}, and remove overflow; if dropping is intended, ignore this`, { from: side(w.from), to: side(w.to) }, "warning");
     }
   }
 
