@@ -117,3 +117,92 @@ workbench.js:14: S251 level.out.picked cannot feed fx.in.burst: the field 'at' i
 | S403 | `profile` names no renderer profile |
 
 The codes are the relay trial checker's ([scripts/seams-trial](../../scripts/seams-trial/README.md)), kept where the meaning is unchanged, so its records still read; S115, S116 and S205 are new with the 2026-11-26 rulings, and S117, S118, S207 and S208 with the rulings on a wire constant and a param wire (the same day).
+
+## Layers (draft, 2026-11-27, leaf LiOmY9)
+
+> **Draft: not built.** This section is the API the layer part will have, written so an agent can build against it and so blind agents can try it before it is frozen (the dogfood ruling, AGENTS.md). Nothing below runs yet: `layer` is not exported and `.show` takes one part. Ruling: Ben, 2026-11-27, [the layer and package tests plan](../../project/2026-11-27-layer-and-package-tests-plan.md), "Rulings" 1. Each decision below that the ruling leaves open gives its reason.
+
+A **layer** is a built-in part, like the page, that draws several Draw outputs as one picture, each over the one before. The kit knows the producers wired into it, so it derives what a composer would otherwise copy by hand: its output's max is the sum of the producers' built maxes (kit/define's `seams.draws`), each input takes its ceiling from its producer, and its frame is the bottom layer's, so no extent is typed twice. Because it is a part, a layered picture can be shown, wired into another part's Draw input, or layered again.
+
+```js
+import { compose, layer } from "kit/compose";
+
+// a layer made by name: its arguments are Draw outputs, bottom first
+const <layer> = layer("<layer>", <part>.out.<output>, <part>.out.<output>);
+return compose("<name>")
+  .part(<part>).part(<part>)
+  .frame(<part>.frame.<frame>, <part>.frame.<frame>, { scale: <n>, offset: [<x>, <y>] })
+  .show(<layer>);                                        // or .wire(<layer>.out.view, <part>.in.<input>), or layer it again
+
+// the shorthand: two or more Draw outputs, bottom first, add a layer named `layers` and show it
+return compose("<name>").part(<part>).part(<part>).show(<part>.out.<output>, <part>.out.<output>);
+```
+
+### API
+
+| Export or call | Does |
+|---|---|
+| `layer(<name>, <output>, <output>, ...)` | a layer part named `<name>` (lowercase letters, digits and `-`, as `compose`'s; S102 otherwise), over two or more Draw output handles, in painter's order: the first argument is drawn first, at the bottom. Fewer than two, an argument that is not an output handle, or one output given twice is S102; an output whose seam is not a Draw list is S404 |
+| `.part(<layer>)` | allowed, never needed: a layer joins the composition at the first call that names it (`.part`, `.show`, a `.wire` from its output, or another layer's argument), as a wire from the page adds the page |
+| `.show(<layer>)` | shows the layer: the page draws its output, `view` |
+| `.show(<output>, <output>, ...)` | shorthand for `.show(layer("layers", <output>, <output>, ...))`: two or more Draw output handles, bottom first. A part named `layers` beside it is S101, whose fix says to name the layer with `layer(<name>, ...)` |
+| `<layer>.out.view` | the layer's one output: `Draw<sum>@<frame>`, where `sum` is the sum of its producers' built maxes and `<frame>` is the bottom producer's frame. Wire it like any Draw output (S204 against a consumer's smaller max), show it, or pass it to another layer |
+| `<layer>.in.<...>`, `<layer>.frame.<...>`, `<layer>.param.<...>` | none: S111, with a fix that names what to do instead (pass the output to `layer`, relate the bottom producer's frame) |
+
+### Decisions
+
+- **How a glue makes one: both a `layer(<name>, ...)` builder and the `.show` shorthand.** The ruling asks for both: a part, so a layered picture can be wired or layered again, which needs a handle the glue can name (`<layer>.out.view`); and the shorthand, because showing two pictures as one is the common case and needs no name. `layer` is exported by kit/compose beside `page`, so a glue imports nothing new (`GLUE_SPECIFIERS` already allows `"kit/compose"`). The shorthand's layer is named `layers`, a fixed name, so the plan, diagnostics and addresses (`lab:<name>#layers.out.view`) can name it; a glue that wants another name writes `layer`.
+- **Inputs: given as arguments, in painter's order by position; not named ports wired with `.wire`.** Order is the only thing that tells a layer's inputs apart, and an argument list shows it on one line; named ports would make the composer invent a name per input and then keep a second order (the wires' or the names') in step with the drawing. So a layer's inputs are fixed when it is made: no `.wire(<output>, <layer>.in.<...>)` (S111), no wire options on them (no rename, set, delay or overflow means anything for a picture). In the composed record each argument is still a wire, `<part>.out.<output> → <layer>.in.<i>`, `<i>` counting from 0 at the bottom, so the plan, the cycle check and kit/run treat it as they treat every Draw wire. One output given twice in one layer is S102: drawing the same list twice doubles its count for nothing a composer would want, and is almost always a slip. The same output may feed several layers, as an output may feed several wires.
+- **Ceilings come from the producers.** Each input's seam is its producer's output seam at that Program's built max (`withDrawMaxes`, as for every Draw wire), so no input is ever too small and a layer input is never S204. The output's max is the sum of those maxes: the most ops the concatenation can hold. A producer that does not build stops with its own diagnostics, and the layer, like any consumer of an unbuilt part, is not judged; nor are wires from it.
+- **Differing frames: each input converts to the bottom input's frame through the frame graph.** The bottom input's frame is the layer's frame; every other input plans a `draw` conversion from its producer's frame to that one, by the same path search as any wire, so the composer relates frames with `.frame` exactly as for a wire, and no extent is typed twice. No path is S251 (its fix suggests the `.frame` call between the two parts' frames), two disagreeing paths S253. Draw frames are always 2-D, so S257's dims case cannot arise. The layer has no frame of its own in the graph: a second name for the bottom producer's frame would be a node with nothing to say, and `.frame` on it would be a second way to say the same edge. When the bottom input is itself a layer's output, the frame is that layer's bottom frame, and so on down.
+- **What the page draws, and its box.** A shown layer's list is its inputs' converted lists concatenated bottom first; the box kit/run's `pageView` gives the renderer is the bottom producer's frame extent for that producer's built record (followed down through a layer at the bottom), exactly as if the bottom producer were shown. A bottom frame with no extent gives no box, as a shown part's does today.
+- **S401 follows through a layer.** The kinds a layer's output can hold are the union of its inputs' kinds, each followed to its producer as a Draw input is today (`kindsReaching` visits every input of a layer, and through a layer wired into a part's Draw input). S401 names the output whose builder writes the refused kind, never the layer, and the shown output (`<layer>.out.view`). An input whose kinds the kit cannot see is left to draw time and does not hide the other inputs' kinds. Counts stay the profile's at draw time: the summed max is a ceiling, not a budget.
+- **kit/run never steps a layer.** It has no state, no clock, no runtime and no params, so a composition needs no runtime for it (as for the page), it adds nothing to the log, the state hashes or `stats()`, and S116 never concerns it (Draw wires are value wires). Its output, whenever a wire or `pageView` reads it, is each input wire's list carried as any Draw wire's is (`carry`, so `convertOp` by the planned edge) and concatenated in order. A read through a delayed wire reads every producer under the layer as the instant began, since the delay is the reading wire's; `snapshot(<layer>)` answers `{ state: null, draws: { view } }` computed the same way. The scheduler orders a layer's consumers after all its producers, through its input wires.
+- **Cycles.** A layer's input wires count in the cycle check like any wire (S115), but they take no options, so the fix never names one: it names the delayable wires of the next hop in the loop (typically the wire from the layer into the part whose output the layer holds).
+- **How kit/run tells a layer from a user part.** A part entry in the composed record carries `layer` (below). A name or Dialect name alone cannot tell a built-in from a user package that happens to be named `layer`, and several layers can exist, so the page's check (`dialect === "page" && name === "page"`) does not carry over.
+
+### The composed record
+
+A layer is a part entry `{ name: "<layer>", dialect: "layer", record: {}, layer: { inputs: ["<part>.out.<output>", ...], max: <sum>, frame: "<part>.<frame>" } }`, with no `version`, after the parts in glue order of first mention. Each input is a wire entry `{ from: "<part>.out.<output>", to: "<layer>.in.<i>", convert, rename: {}, delay: false, dropped: [] }`, whose `convert` is empty for the bottom input (already in the layer's frame) and one `draw` conversion for any other input in another frame. When the layer is shown, `show` is `"<layer>"` and `view` is `"view"`; a layer's one Draw output is named `view`, so S402 never concerns it.
+
+### Codes
+
+| Code | When |
+|---|---|
+| S404 | **new:** a layer argument (`layer(<name>, ...)` or `.show(<output>, ...)`) whose output is not a Draw list: a value, an Event or a record (names the output and its seam; the fix says a layer takes only `Draw` outputs) |
+
+Kept with a layer's meaning: S101 (a layer named like another part, `layers` included), S102 (`layer` given fewer than two outputs, a name that is not lowercase letters, digits and `-`, something that is not an output handle, an output twice, a handle of a part not added; `.show` given a mix of a part and outputs, or one output alone), S111 (a layer's `in`, `frame` or `param` handle), S115 (a loop through a layer), S204 (a layer's output into a smaller Draw input), S251 and S253 (an input's frame and the bottom frame), S401 (followed through). `.show(<part>.out.<output>)` with one output is S102 in this draft: showing one output of a part with several is a different question (S402's), not a layer's.
+
+### The M4 trial's glue, rewritten against this draft
+
+The trial's composer wrote a 70-line `overlay` package (`scripts/m4-trial/runs/2026-11-26/compose/overlay/`) and a glue that copied `Draw<302>` and `Draw<8>` from the producers and repeated the level's 192 by 128 pixels as the canvas size. Against this draft, that trial's glue (real names, from [that run](../../scripts/m4-trial/runs/2026-11-26/compose/workbench.js)) reads:
+
+```js
+import { compose, page } from "kit/compose";
+import { gemgrid } from "gemgrid";
+import { scoretimer } from "scoretimer";
+
+export default () => {
+  // 12 by 8 cells of 16 pixels. Two rows of wall on top sit under the score panel.
+  const level = gemgrid("level").map([
+    "############",
+    "############",
+    "#P..*....*.#",
+    "#.##.##.##.#",
+    "#.*......*.#",
+    "#.##.##.##.#",
+    "#.*..*...*.#",
+    "############",
+  ]);
+  const round = scoretimer("round").label("GEM RUSH").lasts(30);
+
+  return compose("timed-gems")
+    .part(level).part(round)
+    .frame(round.frame.panel, level.frame.px, { scale: 1, offset: [16, 4] })
+    .wire(page.out.pad, level.in.pad)
+    .wire(level.out.picked, round.in.scored, { set: { points: 1 } })
+    .show(level.out.view, round.out.view);
+};
+```
+
+No overlay package, no `.size`, no copied ceiling: the layer `layers` is `Draw<310>@px` in gemgrid's `px` (302 + 8, from the two built Programs), its page box is gemgrid's `px` extent for this map (192 by 128), and the one `.frame` call relates the panel to the level directly instead of both to a third canvas. Its plan's two layer lines read `level.out.view → layers.in.0: unchanged` and `round.out.view → layers.in.1: (value): scoretimer.panel → gemgrid.px, draw, ×1 +[16, 4]`. Naming the layer instead, for a glue that wires or layers it again, is `const screen = layer("screen", level.out.view, round.out.view)` with `layer` imported beside `page` and `.show(screen)`.
