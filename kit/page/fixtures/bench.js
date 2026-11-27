@@ -33,7 +33,8 @@ function walker() {
 /**
  * The bench: the composed record, its runtimes and the loaded maze package. `profile` builds it for a renderer
  * profile; `maze` changes the maze's declaration (its sheet has a file unless the change removes it).
- * @param {{ profile?: string, maze?: (d: any) => void, png?: Uint8Array, still?: boolean }} [o]  `still`: the player stands still, so the coin is never picked
+ * @param {{ profile?: string, maze?: (d: any) => void, png?: Uint8Array, still?: boolean, layered?: boolean }} [o]  `still`: the player stands still, so the coin is never picked;
+ *   `layered`: the screen does not take the maze's picture, and the page shows a layer of the screen under the maze
  */
 export async function bench(o = {}) {
   const mg = drawnMaze((d) => { d.images.sheet.file = "art/sheet.png"; o.maze?.(d); });
@@ -53,11 +54,12 @@ export async function bench(o = {}) {
   const level = /** @type {any} */ (mg("level")).grid(GRID).control(o.still ? "(pl, pad) => { pl.dx = 0; }" : right);
   const scr = /** @type {any} */ (sg("scr")).size({ width: 40, height: 32 });
   const hero = /** @type {any} */ (W.grammar("hero"));
-  const composed = compose("page-bench").part(level).part(scr).part(hero)
+  const c = compose("page-bench").part(level).part(scr).part(hero)
     .frame(level.frame.cell, scr.frame.px, { scale: 8, offset: 4 })
-    .wire(level.out.view, scr.in.board).wire(level.out.score, scr.in.score)
-    .wire(page.out.pad, hero.in.pad).wire(page.out.a, hero.in.fire)
-    .show(scr).build({ runtimes, ...(o.profile ? { profile: o.profile } : {}) });
+    .wire(level.out.score, scr.in.score)
+    .wire(page.out.pad, hero.in.pad).wire(page.out.a, hero.in.fire);
+  if (o.layered) c.show(scr.out.view, level.out.view); else c.wire(level.out.view, scr.in.board).show(scr);
+  const composed = c.build({ runtimes, ...(o.profile ? { profile: o.profile } : {}) });
   return { composed, runtimes, packages: [await mazePackage(mg, o.png ?? pngHeader(16, 8))] };
 }
 

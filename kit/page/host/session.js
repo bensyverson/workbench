@@ -68,7 +68,8 @@ export function createSession(loaded, options) {
   function snapshot() {
     const status = page.status();
     head = Math.max(head, status.seconds);
-    const parts = composed.parts.filter((/** @type {any} */ p) => p.name !== "page").map((/** @type {any} */ p) => {
+    // the page and a layer have no state, params or UI of their own: a layer's picture is its producers'
+    const parts = composed.parts.filter((/** @type {any} */ p) => p.name !== "page" && p.layer === undefined).map((/** @type {any} */ p) => {
       const state = page.run.state(p.name);
       // the run's params, which follow a rewind, not a copy of what the person set
       const params = page.run.params(p.name);

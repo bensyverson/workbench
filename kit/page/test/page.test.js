@@ -76,6 +76,19 @@ test("the page asks for frames once started, advances the run by each frame's wa
   assert.equal(p.status().T, "19/60", "and the run does not move");
 });
 
+test("a shown layer draws on the page: the bottom producer's box sizes the canvas, its ops first, then the top's", async () => {
+  const { page: p, ctx, f, composed } = await mount({ layered: true });
+  assert.equal(composed.show, "layers");
+  assert.deepEqual(p.size, { width: 40, height: 32 }, "the screen's extent, the bottom producer's");
+  assert.deepEqual(p.diagnostics, []);
+  p.start();
+  f.tick(1000);
+  const order = ctx.calls.filter((/** @type {unknown[]} */ c) => c[0] === "fillText" || c[0] === "drawImage").map((/** @type {unknown[]} */ c) => c[0]);
+  assert.equal(order[0], "fillText", "the HUD's text, at the bottom, first");
+  assert.ok(order.slice(1).includes("drawImage"), "then the maze's tiles over it");
+  assert.deepEqual(p.status().view, { part: "layers", port: "view", ops: 3, check: null });
+});
+
 test("keys are page inputs: a held direction is one pad record per change, a button one per press and release", async () => {
   const { page: p, f } = await mount();
   p.start();

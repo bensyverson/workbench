@@ -22,14 +22,15 @@ export const ends = (h) => { const [part, side, port] = h.split("."); return { p
 /**
  * The composed wires into inputs, each with an empty queue; a wire into a param is param-wires.js's.
  * @param {Composed} composed @param {Map<string, Part>} byName @param {string | null} page  the built-in page part's name, or null when the composition has none
+ * @param {Set<string>} [layers]  the layers' names: a wire into a layer is the layer's to carry (layers.js), not a queue
  * @returns {Wire[]}
  */
-export function makeWires(composed, byName, page) {
+export function makeWires(composed, byName, page, layers = new Set()) {
   // an op keeps the name of the part whose image it draws however far it came, so a wire sizes it from every part's
   /** @type {Record<string, any>} */
   const images = {};
   for (const p of byName.values()) Object.assign(images, imagesOf(p.name, p.runtime));
-  return composed.wires.filter((w) => ends(w.to).side !== "param").map((w, index) => {
+  return composed.wires.filter((w) => ends(w.to).side !== "param" && !layers.has(ends(w.to).part)).map((w, index) => {
     const from = ends(w.from), to = ends(w.to);
     const consumer = /** @type {Part} */ (byName.get(to.part));
     const event = consumer.runtime.dialect.seams.in[to.port].seam.kind === "event";
@@ -40,13 +41,14 @@ export function makeWires(composed, byName, page) {
 
 /**
  * The order parts step in within an instant: each producer before its consumers along undelayed wires (a delayed
- * wire reads the previous instant, so it orders nothing, and the page never steps); ties go by the order the glue
- * added the parts.
- * @param {Part[]} parts @param {Wire[]} wires @returns {Part[]}
+ * wire reads the previous instant, so it orders nothing, and the page never steps); a wire from a layer orders its
+ * consumer after every producer under the layer (`sources`); ties go by the order the glue added the parts.
+ * @param {Part[]} parts @param {Wire[]} wires @param {(part: string) => string[]} [sources]  the stepping parts a producer's output comes from
+ * @returns {Part[]}
  */
-export function wireOrder(parts, wires) {
+export function wireOrder(parts, wires, sources = (part) => [part]) {
   const stepping = new Set(parts.map((p) => p.name));
-  const live = wires.filter((w) => !w.delay && w.from.part !== w.to.part && stepping.has(w.from.part));
+  const live = wires.filter((w) => !w.delay).flatMap((w) => sources(w.from.part).map((from) => ({ from: { part: from }, to: w.to }))).filter((w) => w.from.part !== w.to.part && stepping.has(w.from.part));
   const indeg = new Map(parts.map((p) => [p.name, 0]));
   for (const w of live) indeg.set(w.to.part, (indeg.get(w.to.part) ?? 0) + 1);
   /** @type {Part[]} */
@@ -95,7 +97,8 @@ export function readInputs(p, T, wireTo, viewOf) {
     const v = viewOf(w);
     rev[i.name] = v.revision;
     if (w.event) { pending += ready(w, T); continue; }
-    const read = v.state === null || !v.part ? undefined : v.part.compiled.outputs[w.from.port]?.(v.state, v.part.params, v);
+    // a view with no part (a layer's) holds its list in draws; the page's holds nothing
+    const read = !v.part ? v.draws?.[w.from.port] : v.state === null ? undefined : v.part.compiled.outputs[w.from.port]?.(v.state, v.part.params, v);
     if (read !== undefined) values[i.name] = deepFreeze(carry(read, w));
   }
   return { values, rev, pending };

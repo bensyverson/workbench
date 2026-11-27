@@ -7,5 +7,6 @@ export { COMPOSE_CODES } from "./codes.js";
 export { formatDiagnostic } from "./format.js";
 export { scanGlue, GLUE_SPECIFIERS } from "./glue.js";
 export { rewriteGlue, callGlue } from "./glue-load.js";
+export { layer } from "./layer.js";
 export { page, PAGE, PAGE_CONTROLS, PAGE_CHANGES_PER_FRAME, pageRuntime, pageInputProblem } from "./page.js";
 export { queueProblems, stepsIn, catchUpOf, CATCH_UP, NOMINAL_FRAME, MIN_FRAME } from "./queues.js";

@@ -171,11 +171,15 @@ export function start({ importModule }) {
   /** A runs component needs its part for the sweep. @param {any} x @param {string} part */
   function withPart(x, part) { x.part = part; if (x.items) x.items.forEach((/** @type {any} */ i) => withPart(i, part)); return x; }
 
-  /** The stage when nothing draws on the canvas: the UI's custom element when its module loaded, else the text view. @param {Current} c @param {import("./session.js").Snapshot} snap */
+  /**
+   * The stage when nothing draws on the canvas: the UI's custom element when its module loaded, else the text view.
+   * Never for a layer, which always draws and has no package to look up by its name.
+   * @param {Current} c @param {import("./session.js").Snapshot} snap
+   */
   function textStage(c, snap) {
     const box = $("textstage");
     const name = c.loaded.composed.show;
-    box.hidden = !!c.session?.page.size;
+    box.hidden = !!c.session?.page.size || c.loaded.composed.parts.some((/** @type {any} */ q) => q.name === name && q.layer !== undefined);
     if (box.hidden) return;
     const part = snap.parts.find((p) => p.part === name);
     const dialect = c.loaded.composed.parts.find((/** @type {any} */ q) => q.name === name)?.dialect;

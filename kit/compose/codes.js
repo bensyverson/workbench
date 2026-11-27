@@ -1,15 +1,15 @@
 // A composition's codes: S… is a glue program's mistake, found when it is checked. Each about a wire or an edge
 // names both sides. The numbers are the seams draft's table (S102, S257 added by the relay trial's checker; S115
 // and S205 by the 2026-11-26 rulings on cycles and renames; S116 by the queue-bound ruling; S117, S118, S207 and S208
-// by the rulings on a wire constant and a wire into a param).
+// by the rulings on a wire constant and a wire into a param; S404 by the layer ruling of 2026-11-27).
 
 /** Each code and what it means; the tests check that every one has a failing case. */
 export const COMPOSE_CODES = Object.freeze({
-  S101: "Two parts with one name",
-  S102: "A composition call given the wrong thing: .part of something that is not a builder or twice, a handle of a part not passed to .part, .wire of anything but an output then an input, wire options other than { rename, set, delay, overflow } (or an overflow that is not keepLast or keepFirst, or one on a value wire, or a set that is not an object of literal data), a param wire with any option, a param as a wire's producer, .frame of anything but two frames, .show of a part not in the composition or a second .show, a composition name that is not lowercase letters, digits and -",
+  S101: "Two parts with one name (a layer's included, the shorthand's `layers` too)",
+  S102: "A composition call given the wrong thing: .part of something that is not a builder or twice, a handle of a part not passed to .part, .wire of anything but an output then an input, wire options other than { rename, set, delay, overflow } (or an overflow that is not keepLast or keepFirst, or one on a value wire, or a set that is not an object of literal data), a param wire with any option, a param as a wire's producer, .frame of anything but two frames, .show of a part not in the composition, of one output alone, or a second .show, a composition name that is not lowercase letters, digits and -; layer(<name>, ...) or .show's shorthand given fewer than two outputs, something that is not an output handle, an output twice, an output of a part not added, or a bad name, or .part of one layer twice",
   S103: "A glue's default export is not a function ($) => composition, throws (a thrown kit code or kit diagnostics are kept instead), or returns something that is not a composition (callGlue)",
   S104: "A glue's build-time code reads its $ (a param by name, a spread, `in`): a glue has no params, each part keeps its own, so the read is refused rather than undefined (callGlue)",
-  S111: "An output, input, frame or param the part does not have (lists what it has, with a did-you-mean)",
+  S111: "An output, input, frame or param the part does not have (lists what it has, with a did-you-mean); any handle of a layer but .out.view (the fix says what to do instead)",
   S112: "An input wired twice",
   S113: "A required input with no wire",
   S114: "A part wired to itself",
@@ -22,7 +22,7 @@ export const COMPOSE_CODES = Object.freeze({
   S203: "An enum the consumer does not accept",
   S204: "A list longer than the consumer's max",
   S205: "A rename that names a field the producer's record lacks or the consumer's does not take (with a did-you-mean), maps two fields to one, or renames into a field the producer already has; or a rename on a wire that carries no record",
-  S206: "A warning, not an error: a wire drops a producer field the consumer does not take and fills a consumer field with its default, and the two fields' seams are compatible and any frames they are measured in are joined by a frame path (so the rename would plan), so a rename was probably meant (the fix names it)",
+  S206: "A warning, not an error: a wire that builds drops a producer field the consumer does not take and gives a consumer field its default, and the two fields' seams are compatible and any frames they are measured in are joined by a frame path; says what the wire will do, and offers a constant (set) and a rename alike, since a field of the same kind may not mean the same",
   S207: "A wire constant (set) that names a field the consumer's record does not take (with a did-you-mean), gives a value that does not fit the field's seam, or sits on a wire with no record into its input or with a list's items",
   S208: "A wire constant (set) on a field the producer's record also sends: a set never overrides",
   S251: "Tagged on both sides, no frame path",
@@ -36,4 +36,5 @@ export const COMPOSE_CODES = Object.freeze({
   S401: "The shown draw list can hold an op kind the renderer profile does not draw (check({ profile })), read from the builders and followed through the Draw inputs they spread; names the output whose builder writes it",
   S402: "The shown part has several Draw outputs and none is named view, so the page cannot tell which to show",
   S403: "check({ profile }) names no renderer profile",
+  S404: "A layer argument (layer(<name>, ...) or .show(<output>, <output>, ...)) whose output is not a Draw list: a value, an Event or a record (names the output and its seam)",
 });

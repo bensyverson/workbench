@@ -18,7 +18,7 @@ Read this page, then [API.md](API.md). The pages in [docs/](docs/) cover one top
 
 Declare each vector or scalar once, in the Dialect's `types: { <vec>: vector(<dims>, "f64") }`, and name it by its key (`"<vec>"`) in `state` and on ports: `vector(…)` written inline there is refused (D023, D027). API.md ▸ `defineDialect`.
 
-Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. If your Dialect offers a picture (a `Draw` output), your UI's stage can show it: `stage: { draw: "<Draw output>" }` (API.md ▸ `defineUI`). To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md).
+Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. If your Dialect offers a picture (a `Draw` output), your UI's stage can show it: `stage: { draw: "<Draw output>" }` (API.md ▸ `defineUI`). To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md). To draw one package's picture over another's, the glue layers them with no package of its own: `.show(<part>.out.<output>, <part>.out.<output>)`, bottom first, or `layer("<name>", <output>, <output>)` to wire or layer the result again (compose/README.md ▸ Layers).
 
 ## The loop
 

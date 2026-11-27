@@ -3,7 +3,8 @@
 // producers' latest snapshots (a delayed wire, the previous instant's) and taking its Events exactly once, in order.
 // Outside inputs come from the input log, stamped with T; rebuilds land between instants (kit/build keys them and
 // writes their events). A run is a pure function of the composed record, the params and the log. Instant selection
-// is instants.js; frame stamps and the slowdown N001 frames.js; wires, queues and wire order wires.js.
+// is instants.js; frame stamps and the slowdown N001 frames.js; wires, queues and wire order wires.js; a layer's
+// list (never stepped) layers.js.
 
 import { q, cmp, sub, toNumber, qText, parseQ, fromNumber } from "../define/rational.js";
 import { needsRebuild, misfit } from "../define/params.js";
@@ -20,6 +21,7 @@ import { running, nextInstant as instantAfter, awaitingFrame as waitsOnFrame, du
 import { ends, makeWires, wireOrder, readInputs, intake } from "./wires.js";
 import { createDelivery } from "./delivery.js";
 import { createParamFeed, intoParam } from "./param-wires.js";
+import { isLayerEntry, makeLayers, layerList, producersUnder } from "./layers.js";
 
 /** @import { Q } from "../define/rational.js" */
 /** @import { Runtime } from "../define/runtime.js" */
@@ -92,6 +94,7 @@ export function createRun(composed, options) {
   const parts = [];
   composed.parts.forEach((cp, index) => {
     if (cp.dialect === PAGE && cp.name === PAGE) return; // the page never steps: its records are the log's page inputs
+    if (isLayerEntry(cp)) return; // nor does a layer: its list is its inputs' (layers.js)
     const runtime = options.runtimes.find((r) => r.dialect.name === cp.dialect);
     if (!runtime) throw new Error(`part '${cp.name}' (${cp.dialect}) has no runtime: pass the ${cp.dialect} package's defineRuntime result in runtimes`);
     const compiled = compilePart(runtime, cp.record);
@@ -107,13 +110,15 @@ export function createRun(composed, options) {
   for (const pr of queueProblems(sized, sizedWires.map((w) => ({ from: { part: ends(w.from).part, name: ends(w.from).port }, to: { part: ends(w.to).part, name: ends(w.to).port }, delivery: w.delivery })), [...options.runtimes, pageRuntime], { catchUp })) {
     refused.push({ code: "S116", message: `${pr.message}\n  fix: ${pr.fix}` });
   }
-  if (refused.length) throw new RunError(refused);
   const byName = new Map(parts.map((p) => [p.name, p]));
+  const { layers, problems: layerProblems } = makeLayers(composed, byName);
+  refused.push(...layerProblems);
+  if (refused.length) throw new RunError(refused);
 
-  const wires = makeWires(composed, byName, hasPage ? PAGE : null);
+  const wires = makeWires(composed, byName, hasPage ? PAGE : null, new Set(layers.keys()));
   /** @type {Map<string, Wire>} */
   const wireTo = new Map(wires.map((w) => [`${w.to.part}.${w.to.port}`, w]));
-  const order = wireOrder(parts, wires);
+  const order = wireOrder(parts, wires, (name) => producersUnder(name, layers));
 
   let revision = 1;
   /** @type {Q} */
@@ -307,8 +312,14 @@ export function createRun(composed, options) {
     commitState(p, r.state, r.draws, defaults(p.runtime));
   }
 
+  /** A stepping part's lists now. @param {string} name */
+  const drawsNow = (name) => byName.get(name)?.draws;
+  /** A layer's list now, or (`delay`) from every producer under it as the instant began. @param {string} name @param {boolean} delay */
+  const layerNow = (name, delay) => layerList(name, layers, delay ? (n) => startView.get(n)?.draws ?? drawsNow(n) : drawsNow);
   /** What a wire's consumer reads of its producer: now, or as the instant began. @param {Wire} w @returns {View} */
   const viewOf = (w) => {
+    // a layer has no snapshot of its own: its consumers read its list, and $rev 1 as for the page
+    if (layers.has(w.from.part)) return { state: null, revision: 1, part: null, draws: { [w.from.port]: layerNow(w.from.part, w.delay) } };
     const p = byName.get(w.from.part);
     if (!p) return PAGE_VIEW;
     return w.delay ? startView.get(p.name) ?? { state: p.state, revision: p.revision, part: p, draws: p.draws } : { state: p.state, revision: p.revision, part: p, draws: p.draws };
@@ -466,10 +477,19 @@ export function createRun(composed, options) {
       if (cmp(entry.T, now) <= 0) advance(now);
       return entry;
     },
-    /** A part's state now; null when its init failed. @param {string} part */
-    state(part) { return mustPart(part).state; },
-    /** A part's snapshot: its state, revision and the instant it was committed at (null: init's). @param {string} part */
+    /** A part's state now; null when its init failed, and for a layer, which has none. @param {string} part */
+    state(part) { return layers.has(part) ? null : mustPart(part).state; },
+    /**
+     * A part's snapshot: its state, revision and the instant it was committed at (null: init's). A layer's is its list
+     * now, with no state, revision 1, and the latest instant any producer under it committed at.
+     * @param {string} part
+     */
     snapshot(part) {
+      if (layers.has(part)) {
+        const Ts = producersUnder(part, layers).map((n) => byName.get(n)?.snapT).filter((x) => !!x);
+        const T = Ts.reduce((a, b) => (a && b && cmp(a, b) >= 0 ? a : b), /** @type {Q | null} */ (null));
+        return { state: null, revision: 1, T: T ? qText(T) : null, draws: { view: layerNow(part, false) } };
+      }
       const p = mustPart(part);
       // its Draw lists, for a part that has them (pageView reads them)
       return { state: p.state, revision: p.revision, T: p.snapT ? qText(p.snapT) : null, ...(Object.keys(p.draws).length ? { draws: p.draws } : {}) };

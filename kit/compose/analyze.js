@@ -15,6 +15,7 @@ import { applyRename, applySet, undelayedLoops } from "./wires.js";
 import { paramWireProblems, paramLoops, rateOf } from "./param-wires.js";
 import { queueProblems } from "./queues.js";
 import { withPage, pageRuntime, isPageHandle } from "./page.js";
+import { layerOf, registerLayers, planLayers, layerHandleProblem, LAYER } from "./layer.js";
 
 /** @import { Loc } from "../parse/ast.js" */
 /** @import { Handle } from "../define/handles.js" */
@@ -23,8 +24,8 @@ import { withPage, pageRuntime, isPageHandle } from "./page.js";
 /** @import { Side, ComposeDiagnostic, Conversion, Composed, ComposeOptions, GlueCall } from "./compose.js" */
 
 /** @typedef {{ file: string, loc: Loc }} At */
-/** @typedef {{ name: string, program: any, dialect: any, seams: Seams, dialectName: string, version?: string, record: Record<string, any> | null, extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, at: At }} Part */
-/** `into` is "param" for a wire into a param (param-wires.js), which kit/run applies between instants. @typedef {{ from: Handle, to: Handle, into: "in" | "param", at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, set: Record<string, unknown>, delay: boolean, overflow: Overflow | null, dropped: string[], fill: Record<string, unknown>, ok: boolean }} Wire */
+/** A layer's Part (layer.js) has `layer` once judged, else null; a user part has none. @typedef {{ name: string, program: any, dialect: any, seams: Seams, dialectName: string, version?: string, record: Record<string, any> | null, extents: Record<string, Box>, edges: Array<{ from: string, to: string, edge: Edge }>, at: At, layer?: import("./layer.js").Judged | null }} Part */
+/** `into` is "param" for a wire into a param (param-wires.js), which kit/run applies between instants; `fixed` for a layer's input, which takes no options. @typedef {{ from: Handle, to: Handle, into: "in" | "param", at: At, convert: Array<Conversion & { text: string }>, rename: Record<string, string>, set: Record<string, unknown>, delay: boolean, overflow: Overflow | null, dropped: string[], fill: Record<string, unknown>, ok: boolean, fixed?: true }} Wire */
 /** What a wire drops when its records outrun the consumer's max (ruling 7, 2026-11-26). @typedef {"keepLast" | "keepFirst"} Overflow */
 
 const WIRE_OPTIONS = ["rename", "set", "delay", "overflow"];
@@ -50,7 +51,7 @@ export function analyze(name, start, given, options) {
   /** @type {Set<Part>} */
   const broken = new Set();
   for (const c of calls) {
-    if (c.kind !== "part") continue;
+    if (c.kind !== "part" || layerOf(c.value)) continue; // a layer is judged once the parts are built (layer.js)
     const program = programOf(c.value);
     if (!program) { add(c.at, "S102", `.part(${describe(c.value)}): a part is a Program built with a package's Grammar, such as maze("level").grid(…)…`, "pass the builder chain a package's Grammar returned"); continue; }
     const pn = instanceName(/** @type {any} */ (program.root));
@@ -109,6 +110,7 @@ export function analyze(name, start, given, options) {
     const p = parts.get(h.program);
     if (!p) { add(at, "S102", `${call}: ${handleText(h)} is a handle of a part not in the composition`, `add it first: .part(${h.part})`, sides); return null; }
     if (h.side !== want) { add(at, "S102", `${call}: ${handleText(h)} is ${h.side === "frame" ? "a frame" : h.side === "param" ? "a param" : h.side === "out" ? "an output" : "an input"}, and this place takes ${want === "frame" ? "a frame" : want === "in" ? "an input or a param" : `an ${what}`}`, want === "frame" ? ".frame(a.frame.x, b.frame.y, edge)" : ".wire(producer.out.x, consumer.in.y)", sides); return null; }
+    if (!h.known && p.layer !== undefined) { const lp = layerHandleProblem(p, h); add(at, "S111", `${call}: ${lp.message}`, lp.fix, sides); return null; }
     if (!h.known) {
       const has = names(p, want);
       add(at, "S111", `${call}: part '${p.name}' (${p.dialectName}${p.version ? ` ${p.version}` : ""}) has no ${what} '${h.name}'.${didYouMean(h.name, has)} Its ${what}s: ${has.length ? has.join(", ") : "none"}`, has.length ? `use one of: ${has.map((n) => `${p.name}.${want}.${n}`).join(", ")}` : want === "param" ? `the ${p.name} Program declares no params` : `the ${p.dialectName} package declares no ${what}s`, sides);
@@ -117,10 +119,13 @@ export function analyze(name, start, given, options) {
     return broken.has(p) ? null : p;
   };
 
+  // a frame node: a part's frame, the kit's s, or for a layer its bottom producer's frame (it has none of its own)
+  const node = (/** @type {Part} */ p, /** @type {string} */ f) => (f === SECONDS ? SECONDS : p.layer ? p.layer.frameNode : `${p.name}.${f}`);
+  registerLayers(calls, { parts, byName, broken, add, resolve, side, partSide, anySide, node });
+
   // the frame graph: every part's frames, the kit's s once, each Dialect's own edges, then the glue's in order
   const graph = new FrameGraph();
   graph.addNode(SECONDS, 1);
-  const node = (/** @type {Part} */ p, /** @type {string} */ f) => (f === SECONDS ? SECONDS : `${p.name}.${f}`);
   /** A frame as messages write it: maze.cell, or the kit's s. @param {string} id */
   const frameName = (id) => { if (id === SECONDS) return SECONDS; const [pn, f] = id.split("."); return `${byName.get(pn)?.dialectName ?? pn}.${f}`; };
   /** @param {Path} path */
@@ -169,8 +174,12 @@ export function analyze(name, start, given, options) {
     if (clash) add(at, "S253", `.frame(${text}) gives ${edgeText(edge)}, and a path already joins the two frames with ${edgeText(clash.existing.edge)}: ${pathText(clash.existing)}`, "remove one of the two, or make them agree", sides);
   }
 
-  /** @type {Wire[]} */
-  const wires = [];
+  /** A layer's inputs are wires too, fixed when the layer was made. @type {Wire[]} */
+  const wires = planLayers({
+    parts, byName, broken, add, resolve, side, partSide, anySide, node, graph, refusedPairs, frameName,
+    extentOf: (id) => { const [pn, f] = id.split("."); return byName.get(pn)?.extents[f]; },
+    conversion: (fromId, toId, path) => { const conv = { field: "", kind: /** @type {const} */ ("draw"), from: frameName(fromId), to: frameName(toId), ...planOf("draw", path.edge) }; return { ...conv, text: convertText({ ...conv, edge: path.edge }) }; },
+  });
   /** Each wired input or param, by its handle's text. @type {Map<string, At>} */
   const wired = new Map();
   /** The inputs the glue wired, however the wire fared: a wire refused for its producer or its output is that wire's problem, not a missing one. @type {Set<string>} */
@@ -223,8 +232,11 @@ export function analyze(name, start, given, options) {
     for (const p of cmp.problems) add(at, p.code, `${text}: ${p.message}`, fixFor(p.code, po.seamText, pi.seamText), sides);
     /** A tagged leaf plans when a frame path joins its frames (and a quantity's path scales its axes alike): the test S251 and S254 apply below. @param {{ from: string, to: string, kind: string }} leaf */
     const plans = (leaf) => { const path = graph.path(node(pa, leaf.from), node(pb, leaf.to)); return !!path && (leaf.kind !== "quantity" || uniform(path.edge)); };
+    // the wire builds, so say what it will do; a field of the same kind is no evidence of the same meaning (a running
+    // total is not a per-event amount, r2GURg), so a constant and a rename are offered alike
     for (const m of maskedRenames(renamed.seam, fixed.seam, cmp, plans)) {
-      add(at, "S206", `${text}: the wire drops ${m.from}, which the input does not take, and fills ${m.to} (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) with its default; ${m.from} is the same kind of field`, `if ${m.from} was meant to feed ${m.to}, rename it: .wire(${handleText(ho)}, ${handleText(hi)}, { rename: { ${m.from}: "${m.to}" } }); if the default is intended, ignore this`, sides, "warning");
+      const wire = `.wire(${handleText(ho)}, ${handleText(hi)}, `;
+      add(at, "S206", `${handleText(ho)} → ${handleText(hi)}: the wire drops ${m.from}, which ${handleText(hi)} does not take, and gives ${m.to} its default (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) in every record; ${m.from} is a field of the same kind, which may or may not mean the same`, `if ${m.to} should be a fixed value, set it: ${wire}{ set: { ${m.to}: <value> } }); only if ${m.from} means what ${m.to} does, rename it: ${wire}{ rename: { ${m.from}: "${m.to}" } }); if the default is intended, ignore this`, sides, "warning");
     }
     for (const leaf of cmp.tagged) {
       const fromId = node(pa, leaf.from), toId = node(pb, leaf.to);
@@ -269,8 +281,10 @@ export function analyze(name, start, given, options) {
     const first = hops[0][0];
     /** @param {Wire[]} hop */
     const calls = (hop) => hop.map((w) => `.wire(${handleText(w.from)}, ${handleText(w.to)}, { delay: true })`).join(" and ");
-    // delaying one of several parallel wires leaves the loop, so a fix delays all the wires of one hop
-    add(first.at, "S115", `the wires make a loop with no delay: ${loop.join(" → ")} (${hops.flat().map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")}); each part would wait on the other within one instant`, `mark every wire of one hop of the loop delayed, so its consumer reads the previous instant's snapshot: ${hops.map((hop, i) => `${loop[i]} → ${loop[i + 1]}: ${calls(hop)}`).join("; or ")}`, { from: side(first.from), to: side(first.to) });
+    // delaying one of several parallel wires leaves the loop, so a fix delays all the wires of one hop; a layer's
+    // inputs take no options, so a hop into a layer is never offered
+    const delayable = hops.map((hop, i) => ({ hop, i })).filter(({ hop }) => !hop.some((w) => w.fixed));
+    add(first.at, "S115", `the wires make a loop with no delay: ${loop.join(" → ")} (${hops.flat().map((w) => `${handleText(w.from)} → ${handleText(w.to)}`).join(", ")}); each part would wait on the other within one instant`, `mark every wire of one hop of the loop delayed, so its consumer reads the previous instant's snapshot: ${delayable.map(({ hop, i }) => `${loop[i]} → ${loop[i + 1]}: ${calls(hop)}`).join("; or ")}`, { from: side(first.from), to: side(first.to) });
   }
 
   // a param wire applies between instants, so a loop through a stepping part is no cycle; one of param wires alone is
@@ -294,7 +308,7 @@ export function analyze(name, start, given, options) {
   if (options.runtimes?.length) {
     const live = wires.filter((w) => w.ok && w.into === "in");
     const sized = [...parts.values()].filter((p) => !broken.has(p) && p.record).map((p) => ({ name: p.name, dialect: p.dialectName, record: /** @type {Record<string, any>} */ (p.record) }));
-    const ends = live.map((w) => ({ from: { part: w.from.part, name: w.from.name }, to: { part: w.to.part, name: w.to.name }, delivery: /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name].delivery }));
+    const ends = live.map((w) => ({ from: { part: w.from.part, name: w.from.name }, to: { part: w.to.part, name: w.to.name }, delivery: /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name]?.delivery }));
     for (const pr of queueProblems(sized, ends, [...options.runtimes, pageRuntime], { catchUp: options.catchUp })) {
       const w = live[pr.wire];
       // a person is the one sender no party controls, so a page wire past its size folds rather than stops its consumer
@@ -310,8 +324,9 @@ export function analyze(name, start, given, options) {
   let shown = null;
   for (const c of calls) {
     if (c.kind !== "show") continue;
-    const program = programOf(c.value);
+    const program = layerOf(c.value)?.program ?? programOf(c.value);
     const p = program ? parts.get(program) : undefined;
+    if (!p && isHandle(c.value) && c.value.side === "out") { add(c.at, "S102", `.show(${describe(c.value)}): one output alone is not a layer; show takes a part, a layer, or two or more Draw outputs to layer`, `show the part: .show(${c.value.part}), or layer two or more outputs: .show(<part>.out.<output>, <part>.out.<output>)`); continue; }
     if (!p) { add(c.at, "S102", `.show(${describe(c.value)}): show takes a part of the composition`, "pass a builder you passed to .part"); continue; }
     if (shown) { add(c.at, "S102", `.show(${p.name}) after .show(${shown.name}); the page shows one part's stage`, "call .show once"); continue; }
     shown = p;
@@ -330,7 +345,9 @@ export function analyze(name, start, given, options) {
   /** @type {Composed} */
   const record = {
     name,
-    parts: [...parts.values()].filter((p) => !broken.has(p)).map((p) => ({ name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record) })),
+    parts: [...parts.values()].filter((p) => !broken.has(p)).map((p) => (p.layer
+      ? { name: p.name, dialect: LAYER, record: {}, layer: { inputs: p.layer.inputs.map(handleText), max: p.layer.max, frame: p.layer.frameNode } }
+      : { name: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), record: /** @type {Record<string, any>} */ (p.record) })),
     wires: wires.filter((w) => w.ok).map((w) => {
       // a param wire's `to` is `<part>.param.<name>`: kit/run applies it between instants
       const consumer = w.into === "in" ? /** @type {Part} */ (parts.get(w.to.program)).seams.in[w.to.name] : null;
@@ -415,6 +432,8 @@ function describe(v) {
   if (typeof v === "string") return JSON.stringify(v);
   if (typeof v === "function") return "a function";
   if (typeof v !== "object") return String(v);
+  const l = layerOf(v);
+  if (l) return String(l.name);
   const p = programOf(v);
   if (p) return instanceName(/** @type {any} */ (p).root);
   return showValue(v);

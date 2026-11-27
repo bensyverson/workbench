@@ -1,5 +1,6 @@
 // compose(name): a glue program's composition. `.part(builder)`, `.frame(a, b, edge | "fit")`,
-// `.wire(out, in, { rename?, set?, delay?, overflow? })`, `.wire(out, <part>.param.<name>)` and `.show(part)` record
+// `.wire(out, in, { rename?, set?, delay?, overflow? })`, `.wire(out, <part>.param.<name>)` and `.show(part)` (or
+// `.show(<output>, <output>, ...)`, a layer named `layers`: layer.js) record
 // calls with the glue's line; `.check(options)` gives every S diagnostic at once, `.build(options)` the composed
 // record (or throws ComposeError), `.plan()` each wire's conversions as text. Each part is a whole Program, built
 // and lowered by its own Grammar; nothing runs here.
@@ -7,6 +8,7 @@
 import { analyze } from "./analyze.js";
 import { glueSite } from "./site.js";
 import { formatDiagnostic } from "./format.js";
+import { makeLayer, SHORTHAND } from "./layer.js";
 
 /** @import { Loc } from "../parse/ast.js" */
 
@@ -24,7 +26,7 @@ import { formatDiagnostic } from "./format.js";
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
  * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants
  * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`. The renderer profile `check`/`build` was given (resolved from its name) is `profile`.
- * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
+ * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any>, layer?: { inputs: string[], max: number, frame: string } }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
  */
 /**
  * What `.check` and `.build` take: the loaded packages (for each part's version: kit/package's loadPackage results,
@@ -68,8 +70,8 @@ export function compose(name) {
     frame: (a, b, edge) => push({ kind: "frame", a, b, edge }),
     /** @param {unknown} from @param {unknown} to @param {unknown} [options] */
     wire: (from, to, options) => push({ kind: "wire", from, to, options }),
-    /** @param {unknown} part */
-    show: (part) => push({ kind: "show", value: part }),
+    /** A part or a layer; or two or more Draw outputs, bottom first, which make a layer named `layers`. @param {...unknown} shown */
+    show: (...shown) => push({ kind: "show", value: shown.length === 1 ? shown[0] : makeLayer(SHORTHAND, shown, glueSite(), `.show(${shown.length} outputs)`) }),
     /** Every S diagnostic, and the parts' own. @param {ComposeOptions} [o] @returns {ComposeDiagnostic[]} */
     check: (o) => run(o).diagnostics,
     /** The composed record; throws ComposeError with every diagnostic (warnings included) when any is an error. @param {ComposeOptions} [o] @returns {Composed} */

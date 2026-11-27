@@ -2,7 +2,8 @@
 // built Program gives (ruling 1), so every wire is judged on what this Program can draw. The shown part's Draw
 // output is the page's: its only one, or the one named `view` (S402). Given a renderer profile, the op kinds the
 // shown list can hold are judged (S401, ruling 2), read from the builders and followed through each Draw input a
-// builder spreads, even when another builder on the way is open; a kind the kit cannot see (a builder whose kinds are open) is left to draw time.
+// builder spreads, even when another builder on the way is open, and through every input of a layer; a kind the kit
+// cannot see (a builder whose kinds are open) is left to draw time.
 
 import { PROFILES, kindProblems } from "../draw/index.js";
 import { printSeam } from "../seam/index.js";
@@ -10,7 +11,7 @@ import { printSeam } from "../seam/index.js";
 /** @import { Seams } from "../define/define.js" */
 /** @import { Side } from "./compose.js" */
 /** @typedef {import("../draw/profiles.js").Profile} Profile */
-/** @typedef {{ name: string, program: any, seams: Seams, dialectName: string, version?: string }} DrawPart */
+/** A layer's part (layer.js) carries `layer`: its kinds are its inputs'. @typedef {{ name: string, program: any, seams: Seams, dialectName: string, version?: string, layer?: unknown }} DrawPart */
 /** @typedef {{ from: { program: any, name: string }, to: { program: any, name: string }, ok: boolean }} DrawWire */
 /** @typedef {{ code: string, message: string, fix: string, sides: { from?: Side, to?: Side } }} DrawProblem */
 
@@ -80,8 +81,8 @@ export function shownDraw(shown, wires, parts, options) {
 
 /**
  * The op kinds a part's Draw output can hold, each with the outputs whose builders write it, followed through the
- * Draw inputs its builders spread to the outputs wired to them. `open` when any builder on the way hides a kind
- * too: the kinds it names are still true.
+ * Draw inputs its builders spread to the outputs wired to them, and through each input of a layer to its producer.
+ * `open` when any builder on the way hides a kind too: the kinds it names are still true.
  * @param {DrawPart} part @param {string} port @param {DrawWire[]} wires @param {Map<any, DrawPart>} parts
  */
 function kindsReaching(part, port, wires, parts) {
@@ -94,6 +95,10 @@ function kindsReaching(part, port, wires, parts) {
     const key = `${p.name}.${out}`;
     if (seen.has(key)) return;
     seen.add(key);
+    if (p.layer) {
+      for (const w of wires) if (w.ok && w.to.program === p.program) { const producer = parts.get(w.from.program); if (producer) visit(producer, w.from.name); }
+      return;
+    }
     const draw = /** @type {any} */ (p.seams.out[out])?.draw;
     if (!draw) { open = true; return; }
     if (draw.kinds.open) open = true;

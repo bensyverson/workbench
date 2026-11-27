@@ -87,7 +87,7 @@ test("a shown part with several Draw outputs shows the one named view, and none 
   assert.match(ds[0].message, /scr has two Draw outputs, big and mini, and none is named view/);
 });
 
-test("every S4 code has a case above", () => {
-  const covered = ["S401", "S402", "S403"];
+test("every S4 code has a case above, or in layer.test.js (S404)", () => {
+  const covered = ["S401", "S402", "S403", "S404"];
   assert.deepEqual(Object.keys(COMPOSE_CODES).filter((c) => c.startsWith("S4")), covered);
 });

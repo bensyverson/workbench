@@ -188,3 +188,19 @@ test("a session on a workbench that did not build refuses", async () => {
   const w = await loadWorkbench({ packages: {}, glue: { path: "g.js", text: "export default () => 1;" } }, env);
   assert.throws(() => mount(w), /did not build/);
 });
+
+test("a shown layer draws, and the panels list each part but not the layer, which has no state, params or UI", async () => {
+  const M4 = "scripts/m4-trial/runs/2026-11-27-layer/leg1";
+  const w = await loadWorkbench({ packages: { gemgrid: readPackageDir(`${ROOT}${M4}/gemgrid`), scoretimer: readPackageDir(`${ROOT}${M4}/scoretimer`) }, glue: { path: "workbench.js", text: readFileSync(`${ROOT}${M4}/workbench.js`, "utf8") } }, env);
+  assert.deepEqual(w.diagnostics.filter((d) => d.severity === "error"), []);
+  assert.equal(w.composed.show, "layers");
+  const { s, ctx, f, seen } = mount(w);
+  await s.page.ready;
+  assert.deepEqual(s.page.size, { width: 192, height: 128 }, "the level's box, the bottom producer's");
+  s.start();
+  play(f, 200);
+  assert.ok(ctx.calls.some((/** @type {unknown[]} */ c) => c[0] === "drawImage"), "the level's sprites");
+  assert.ok(ctx.calls.some((/** @type {unknown[]} */ c) => c[0] === "fillText"), "the panel's text over them");
+  assert.deepEqual(seen.at(-1).parts.map((/** @type {any} */ p) => p.part), ["level", "round"]);
+  assert.equal(seen.at(-1).status.view.part, "layers");
+});

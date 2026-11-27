@@ -9,7 +9,7 @@
 #   pages they point an author to, and the package format draft), laid out as in the repository so relative links hold;
 #   the game leg also gets sprites.png (make-png.js); a compose leg copies the one package folder of each author leg,
 #   as that leg left it; a layer leg is a compose leg on the layer draft: task-layer.md, its docs edited by layer-docs.js,
-#   and check.sh running the draft's stand-in checker (--role layer)
+#   and check.sh running the layer leg's checker (--role layer, on the real kit since layer-build, leaf pQKgWN)
 # Writes <dir>/transcript.jsonl (the stream-json transcript), <dir>/stderr.txt and <dir>/log.jsonl (one line per
 # checker run). The brief is brief.md's text after its "---" line. Adapted from scripts/draw-trial/run.sh (same guards).
 set -eu

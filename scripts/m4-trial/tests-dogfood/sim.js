@@ -24,7 +24,7 @@ const KIT = fileURLToPath(new URL("../../../kit/", import.meta.url));
 const PATCHES = [
   ["run/log.js", `export const INPUT_KINDS = Object.freeze(["control", "param", "rebuild", "frame"]);`, `export const INPUT_KINDS = Object.freeze(["control", "param", "rebuild", "frame", "in"]);`],
   ["run/log.js", `if ((e.kind === "control" || e.kind === "param") && typeof e.name !== "string")`, `if ((e.kind === "control" || e.kind === "param" || e.kind === "in") && typeof e.name !== "string")`],
-  ["run/scheduler.js", `  const wires = makeWires(composed, byName, hasPage ? PAGE : null);\n`, `  const wires = makeWires(composed, byName, hasPage ? PAGE : null);
+  ["run/scheduler.js", `  const wires = makeWires(composed, byName, hasPage ? PAGE : null, new Set(layers.keys()));\n`, `  const wires = makeWires(composed, byName, hasPage ? PAGE : null, new Set(layers.keys()));
   // SIM (leaf mxxKTa): the draft's \`in\` input: an outside queue per unwired Event input
   for (const p of parts) for (const i of Object.values(/** @type {Record<string, any>} */ (p.runtime.dialect.seams.in))) {
     if (i.seam.kind !== "event" || wires.some((w) => w.to.part === p.name && w.to.port === i.name)) continue;

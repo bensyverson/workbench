@@ -1,7 +1,7 @@
 // The M4 trial's checker, as a command:
 //   node scripts/m4-trial/check.js --role game|score <package dir>
 //   node scripts/m4-trial/check.js <leg dir> --role compose --given <game package> --given <score package>
-//   node scripts/m4-trial/check.js <leg dir> --role layer --given <game package> --given <score package>  (the layer dogfood)
+//   node scripts/m4-trial/check.js <leg dir> --role layer --given <game package> --given <score package>  (the layer leg)
 // The logic is in checker/; this file parses the arguments, prints, logs and sets the exit code. Every invocation is
 // appended as one JSON line to the file named by M4_TRIAL_LOG, if set. The stack of a checker failure goes only to the
 // log, so a blind leg sees no repository paths.
@@ -23,8 +23,7 @@ Loads the hand-in as the workbench page does, builds it and plays it on the page
 problem as
   <file>:<line>: <code> <message>
     fix: <what to do>
-The layer dogfood's S codes marked (draft) are the layer draft's (docs/kit/compose/README.md, Layers); its notes
-show each layer as the draft would make it.
+The layer leg's notes show each layer as the kit made it: its seam, its page box and each input's conversion.
 K… are kit/package's, S… kit/compose's, H… kit/page's, N… kit/run's, LOAD the page host's, T… this trial's.
 Exit 0: no violations. 1: violations. 2: bad invocation. 3: the checker itself failed. 4: the folder is missing.`;
 

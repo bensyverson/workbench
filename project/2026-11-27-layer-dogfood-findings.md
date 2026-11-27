@@ -92,6 +92,8 @@ Leg 3 also said the task's "fails on any diagnostic" was wrong, since an S206 wa
 
 ## The checker: what a program could check
 
+> **Superseded 2026-11-27, layer-build (leaf `pQKgWN`).** The stand-in below (`checker/layer-draft.js`) is gone: `--role layer` now loads, builds, draws and plays a leg on the real kit. On it, the three legs build and play clean, and their layers are `Draw<72>`, `Draw<72>` and `Draw<82>` with the page boxes given here (`scripts/m4-trial/test/layer.test.js`). The S206 regression test is now "a kit diagnostic names the glue's line".
+
 `node scripts/m4-trial/check.js <leg> --role layer --given <game package> --given <score package>`, documented in [scripts/m4-trial/README.md](../scripts/m4-trial/README.md).
 
 How it loads a glue:

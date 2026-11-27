@@ -187,6 +187,19 @@ test("S206: a wire that drops a producer field and fills a compatible consumer f
   assert.deepEqual(codes(check(pair(ev("Event<{ velocity: f64 }>"), ev("Event<{ n: f64, vel: f64 = 0 }>")))), ["S202", "S206"]);
 });
 
+test("S206 says what a wire that builds will do, and offers set beside the rename, never a rename alone as the fix (leaf r2GURg)", () => {
+  // the M4 pickup wire: a running total the consumer does not take, and a per-event field it fills with its default
+  const o = ev("Event<{ n: f64, collected: f64 }>"), i = ev("Event<{ n: f64, points: f64 = 0 }>");
+  const ds = check(pair(o, i));
+  assert.deepEqual(codes(ds), ["S206"]);
+  assert.doesNotMatch(ds[0].message, /cannot feed/, "the wire builds and works: it is a warning");
+  assert.match(ds[0].message, /^a\.out\.o → b\.in\.i: the wire drops collected, which b\.in\.i does not take, and gives points its default \(points: f64 = 0\)/);
+  assert.match(ds[0].fix, /set: \{ points: <value> \}/, "a constant is as likely as a rename");
+  assert.match(ds[0].fix, /rename: \{ collected: "points" \}/);
+  assert.match(ds[0].fix, /only if collected means what points does/);
+  assert.doesNotMatch(ds[0].fix, /^if collected was meant to feed points, rename it/);
+});
+
 test("S206 still warns when the two fields' frames are joined, and the suggested rename plans cleanly", () => {
   const o = ev("Event<{ n: f64, radius: f64@px }>"), i = ev("Event<{ n: f64, size: f64@px = 1 }>");
   const ds = check(pair(o, i, { rel: { scale: 1 } }));

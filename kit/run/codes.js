@@ -10,7 +10,7 @@ export const RUN_CODES = Object.freeze({
   N004: "A step or init threw: the part stops, and the others run on with its last snapshot",
   N005: "A replay diverged from its record: a state hash differs at an instant, so something is not deterministic",
   N006: "A runtime's clock(record) is not { tick: seconds }, { frame: true } or { demand: true }",
-  N007: "A composed record's wire has an overflow that is neither \"keepLast\" nor \"keepFirst\" (a hand-edited record: compose's S102 refuses it at the glue)",
+  N007: "A composed record kit/compose would not have built (a hand-edited record): a wire's overflow is neither \"keepLast\" nor \"keepFirst\" (compose's S102 refuses it at the glue), or a layer has fewer than two inputs, an input with no wire or several, an input from anything but a Draw output of a part in the run, or layers that feed each other; refused at createRun, never drawn empty",
   N008: "A param's value does not fit the param's declaration (its type, finite, min..max, options): a param wire's is not set and the part keeps its build, noted once per value; a param input's is refused when it is logged if it fits no record that can be in force at its stamp (run.input throws a RunError, and the run is unchanged), and otherwise is not applied when the record in force as it applies refuses it (noted)",
   N009: "An input names a part the composition does not have: refused when it is logged (run.input throws a RunError, and the run is unchanged)",
   N010: "A param input changes a param that build-time code reads, and the run was given no build(part, params) to rebuild the part with: refused when it is logged (a RunError), or, when only a rebuild logged before it made the param build-time, not applied (noted)",

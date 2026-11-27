@@ -1,6 +1,6 @@
-// The layer dogfood's checker (leaf teBNYM): a glue written against kit/compose's layer draft, judged by the draft's
-// rules and played with the shown layer's bottom producer, on the M4 trial's recorded game and score hand-ins. The
-// draft's own rewrite of the M4 glue (kit/compose/README.md, "Layers (draft)") is the clean case.
+// The layer leg's checker (leaf teBNYM; on the real kit since layer-build, leaf pQKgWN): a glue that layers the M4
+// trial's recorded game and score hand-ins with kit/compose's built-in layer, loaded, built and played on the page as
+// the host does it. kit/compose/README.md's own rewrite of the M4 glue ("Layers") is the clean case.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkLayerCompose } from "../checker/layer-leg.js";
+import { readPackageDir } from "../../pkg/dir.js";
+import { loadWorkbench } from "../../../kit/page/host/load.js";
+import { createRun, pageView } from "../../../kit/run/index.js";
+import { ENV } from "../checker/env.js";
 
 const here = (/** @type {string} */ p) => fileURLToPath(new URL(p, import.meta.url));
 const RUNS = here("../runs/2026-11-26");
@@ -40,12 +44,27 @@ const check = (text, extra) => checkLayerCompose(leg(text, extra), GIVEN);
 /** @param {Awaited<ReturnType<typeof checkLayerCompose>>} r */
 const codes = (r) => r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code);
 
-test("the draft's rewrite of the M4 glue checks clean: the shorthand's layer is Draw<72> (67 + 5, the built maxes) in the level's px, its box the level's 192 by 128", async () => {
+test("the README's rewrite of the M4 glue checks clean and plays: the shorthand's layer is Draw<72> (67 + 5, the built maxes) in the level's px, its box the level's 192 by 128", async () => {
   const r = await check(glue("    .show(level.out.view, round.out.view)"));
   assert.deepEqual(codes(r), [], JSON.stringify(r.diagnostics, null, 1));
   assert.ok(r.notes.includes("layer layers: Draw<72>@level.px, page box 192 by 128"), r.notes.join("\n"));
-  assert.ok(r.notes.some((n) => /round\.out\.view → layers\.in\.1: round\.panel → level\.px, draw, \{ scale: 1, offset: \[16, 4\] \}/.test(n)), r.notes.join("\n"));
-  assert.ok(r.notes.some((n) => /level\.out\.view → layers\.in\.0: unchanged/.test(n)));
+  assert.ok(r.notes.includes("  round.out.view → layers.in.1: (value): scoretimer.panel → gemgrid.px, draw, ×1 +[16, 4]"), r.notes.join("\n"));
+  assert.ok(r.notes.includes("  level.out.view → layers.in.0: unchanged"), r.notes.join("\n"));
+});
+
+test("the layer draws on the real kit: the level's ops, then the panel's, converted into the level's px", async () => {
+  const d = leg(glue("    .show(level.out.view, round.out.view)"));
+  const w = await loadWorkbench({ packages: { gemgrid: readPackageDir(join(d, "gemgrid")), scoretimer: readPackageDir(join(d, "scoretimer")) }, glue: { path: "workbench.js", text: glue("    .show(level.out.view, round.out.view)") } }, ENV);
+  assert.ok(w.composed, JSON.stringify(w.diagnostics));
+  const run = createRun(w.composed, { runtimes: w.runtimes });
+  const v = pageView(run, w.composed, w.runtimes);
+  const under = /** @type {any[]} */ (run.snapshot("level").draws?.view), over = /** @type {any[]} */ (run.snapshot("round").draws?.view);
+  assert.equal(v.part, "layers");
+  assert.deepEqual(v.box, { min: [0, 0], max: [192, 128] });
+  assert.equal(v.list.length, under.length + over.length);
+  assert.deepEqual(v.list.slice(0, under.length), under, "the level, unchanged, at the bottom");
+  const text = /** @type {any} */ (v.list.slice(under.length).find((op) => op.op === "text")), own = over.find((op) => op.op === "text");
+  assert.deepEqual(text.at, [own.at[0] + 16, own.at[1] + 4], "the panel's text moved by the .frame edge, never scaled");
 });
 
 test("a named layer, shown, checks clean", async () => {
@@ -59,7 +78,7 @@ test("a package of the composer's own beside the two is T030 (layering is built 
   assert.deepEqual(codes(r), ["T030"]);
 });
 
-test("one output shown alone, a one-input layer, an output twice and a non-Draw output are refused (S102, S404)", async () => {
+test("the kit's refusals reach the leg: one output shown alone, a one-input layer, an output twice, a non-Draw output (S102, S404)", async () => {
   assert.deepEqual(codes(await check(glue("    .show(level.out.view)"))), ["S102"]);
   assert.ok(codes(await check(glue("    .show(screen)", { before: `  const screen = layer("screen", level.out.view);\n` }))).includes("S102"));
   assert.ok(codes(await check(glue("    .show(level.out.view, level.out.view)"))).includes("S102"));
@@ -69,7 +88,7 @@ test("one output shown alone, a one-input layer, an output twice and a non-Draw 
 test("a layer whose top input's frame has no path to the bottom's is S251", async () => {
   const r = await check(glue("    .show(level.out.view, round.out.view)", { frame: false }));
   assert.deepEqual(codes(r), ["S251"]);
-  assert.match(r.diagnostics[0].fix, /\.frame\(<round\.frame\.panel>, <level\.frame\.px>/);
+  assert.match(r.diagnostics[0].fix, /\.frame\(round\.frame\.panel, level\.frame\.px/);
 });
 
 test("the score under the game is T033 (painter's order), and a handle a layer lacks is S111", async () => {
@@ -88,11 +107,11 @@ test("check.js takes --role layer, and run.sh layer needs the two leg folders", 
   const d = leg(glue("    .show(level.out.view)"));
   const r = spawnSync(process.execPath, [here("../check.js"), d, "--role", "layer", "--given", GIVEN[0], "--given", GIVEN[1]], { encoding: "utf8" });
   assert.equal(r.status, 1, r.stdout + r.stderr);
-  assert.match(r.stdout, /S102 \(draft\)/);
+  assert.match(r.stdout, /S102 \.show\(level\.out\.view\)/);
   assert.equal(spawnSync("sh", [here("../run.sh"), "layer", "/private/tmp/teBNYM-x", "sonnet"], { encoding: "utf8" }).status, 2);
 });
 
-test("a real kit diagnostic about a forwarded call names the glue's line, not the stand-in's (layer legs 2 and 3 saw S206 at layer-draft.js:117)", async () => {
+test("a kit diagnostic names the glue's line (layer legs 2 and 3 saw S206 at the stand-in's own line, layer-draft.js:117)", async () => {
   const text = glue("    .show(level.out.view, round.out.view)").replace(", { set: { points: 1 } }", "");
   const r = await check(text);
   const d = r.diagnostics.find((x) => x.code === "S206");
@@ -101,9 +120,10 @@ test("a real kit diagnostic about a forwarded call names the glue's line, not th
   assert.equal(d.line, text.split("\n").findIndex((l) => l.includes(".wire(level.out.picked")) + 1);
 });
 
-test("the three recorded layer legs (2026-11-27) check clean on the two author hand-ins they were given", async () => {
-  for (const n of [1, 2, 3]) {
+test("the three recorded layer legs (2026-11-27) build and play on the real kit: Draw<72>, Draw<72> and Draw<82>, as the findings say", async () => {
+  for (const [n, max, box] of /** @type {const} */ ([[1, 72, "192 by 128"], [2, 72, "192 by 128"], [3, 82, "192 by 144"]])) {
     const r = await checkLayerCompose(here(`../runs/2026-11-27-layer/leg${n}`), GIVEN);
     assert.deepEqual(codes(r), [], `leg ${n}: ${JSON.stringify(r.diagnostics)}`);
+    assert.ok(r.notes.some((x) => x.startsWith(`layer layers: Draw<${max}>@`) && x.endsWith(`page box ${box}`)), `leg ${n}: ${r.notes.join("\n")}`);
   }
 });
