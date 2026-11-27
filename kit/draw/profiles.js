@@ -3,7 +3,7 @@
 // on the list in the shown frame, one unit a pixel. An op over a limit is a diagnostic naming the profile and the
 // limit; nothing is dropped silently.
 
-import { OP_KINDS, nativeSize, gridCells } from "./ops.js";
+import { OP_KINDS, nativeSize, gridCells, ringed } from "./ops.js";
 import { orderProblems } from "./order.js";
 
 /** @typedef {import("./ops.js").Op} Op */
@@ -94,7 +94,9 @@ function gameBoy(profile, gb, list, images, frame) {
         } else if (op.size) { say("J041", `op ${i}: tiles of ${op.image} with cells drawn at ${by(op.size)}, not ${by(c)}: background cells don't scale (a scaling wire, or a size)`); return; }
         layers.push({ op, i });
         const cells = gridCells(op);
-        grids.push({ i, cells: cells.flatMap((row, r) => row.flatMap((n, k) => (n < 0 ? [] : [[op.at[0] + k * c[0], op.at[1] + r * c[1]]]))) });
+        // a wrapped ring is judged where its cells are drawn, as kit/draw/canvas.js draws them
+        const ring = op.wrapAt ?? [0, 0];
+        grids.push({ i, cells: cells.flatMap((row, r) => row.flatMap((n, k) => (n < 0 ? [] : ringed(op.at[0] + k * c[0], op.wrap?.[0], c[0], ring[0]).flatMap((x) => ringed(op.at[1] + r * c[1], op.wrap?.[1], c[1], ring[1]).map((y) => [x, y]))))) });
         for (const n of cells.flat()) if (n >= 0) bgTiles.add(`${op.image}:${n}`);
         return;
       }

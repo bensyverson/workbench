@@ -231,3 +231,19 @@ export function opBox(op, images) {
  * @param {Op} op @returns {number[][]}
  */
 export const gridCells = (op) => op.grid.map((/** @type {string | number[]} */ r) => (typeof r === "string" ? [...r].map((ch) => op.key[ch]) : r));
+
+/**
+ * Where a cell at `v` is drawn on one axis: as it is with no ring; in a ring of `count` cells of `size` (signed: a
+ * mirrored ring spans backwards from its origin), its position wrapped into the ring, and also one ring back when
+ * the cell straddles the ring's far edge, so a scrolled ring has no gap.
+ * @param {number} v @param {number | undefined} count @param {number} size @param {number} origin @returns {number[]}
+ */
+export function ringed(v, count, size, origin) {
+  if (!count) return [v];
+  const span = count * Math.abs(size), wide = Math.abs(size);
+  const low = size < 0 ? origin - span : origin;
+  const edge = size < 0 ? v + size : v;
+  const at = low + (((edge - low) % span) + span) % span;
+  const place = (/** @type {number} */ lo) => (size < 0 ? lo - size : lo);
+  return at + wide > low + span ? [place(at), place(at - span)] : [place(at)];
+}

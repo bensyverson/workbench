@@ -82,7 +82,7 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 
 **Game Boy painter's order.** A list means later covers earlier, but the DMG draws every sprite (and text) above the background and window, and among overlapping sprites the one with the **smaller x** on top, a tie going to the earlier OAM entry (the earlier op in the list). The profile checks both, per 8-by-8 object (a wide image's cells are objects with their own x; text is one object per non-space character), counting only overlap that is on the stage:
 
-- **J043**: a `tiles` op listed after a sprite or text op it overlaps (any drawn cell, so a `-1` cell does not count). List the tiles first.
+- **J043**: a `tiles` op listed after a sprite or text op it overlaps (any drawn cell, so a `-1` cell does not count; a wrapped ring's cells where the ring draws them, wrapped and repeated as Canvas draws them). List the tiles first. A ring of any size passes: the renderer gets a whole list each frame, so it can write any ring's visible cells into the 32-by-32 map.
 - **J044**: a sprite listed after one it overlaps, unless its x is strictly smaller than the earlier object's. A tie is refused too: painter's order shows the later one, the hardware the earlier. One diagnostic per pair of ops.
 - Overlap is of the 8-by-8 boxes, not of visible pixels: a sprite's transparent pixels are not known to the profile, so a list that happens to draw the same pixels is still refused. The sprite's BG-priority bit is not modeled (the op set cannot express it): sprites are always above.
 - Not checked: tiles over tiles (the window over the background is the hardware's own order), and a sprite hidden by the 10-a-row limit (J040 already refuses).

@@ -2,7 +2,7 @@
 // painter's order, one or a few calls per op. Images are declared without pixel data; a host that has a picture
 // for one passes it in `sources` by its carried name (`<part>.<image>`), and an image without one draws its box.
 
-import { GLYPH, nativeSize, gridCells } from "./ops.js";
+import { GLYPH, nativeSize, gridCells, ringed } from "./ops.js";
 
 /** @typedef {import("./ops.js").Op} Op */
 /** @typedef {import("./ops.js").Image} Image */
@@ -83,22 +83,6 @@ function cellAt(img, n) {
   const c = /** @type {number[]} */ (img.cell);
   const across = img.size[0] / c[0];
   return [(n % across) * c[0], Math.floor(n / across) * c[1]];
-}
-
-/**
- * Where a cell at `v` is drawn on one axis: as it is with no ring; in a ring of `count` cells of `size` (signed: a
- * mirrored ring spans backwards from its origin), its position wrapped into the ring, and also one ring back when
- * the cell straddles the ring's far edge, so a scrolled ring has no gap.
- * @param {number} v @param {number | undefined} count @param {number} size @param {number} origin @returns {number[]}
- */
-function ringed(v, count, size, origin) {
-  if (!count) return [v];
-  const span = count * Math.abs(size), wide = Math.abs(size);
-  const low = size < 0 ? origin - span : origin;
-  const edge = size < 0 ? v + size : v;
-  const at = low + (((edge - low) % span) + span) % span;
-  const place = (/** @type {number} */ lo) => (size < 0 ? lo - size : lo);
-  return at + wide > low + span ? [place(at), place(at - span)] : [place(at)];
 }
 
 /**

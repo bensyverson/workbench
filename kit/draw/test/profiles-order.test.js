@@ -105,3 +105,11 @@ test("VRAM: the 384-tile total cannot bind, since 40 sprites add at most 40 tile
   const sprites = Array.from({ length: 40 }, (_, i) => ({ op: "image", at: [(i % 10) * 12, 100 + Math.floor(i / 10) * 9], image: "p.huge", cell: 256 + i }));
   assert.deepEqual(check([bg, ...sprites]).diagnostics, []);
 });
+
+test("a wrapped tiles ring is judged where its cells are drawn: a scrolled ring over an earlier sprite is J043", () => {
+  const ring = { ...full([-8, 0]), wrap: [20, 18] };
+  // cell 0 wraps to x 152, over the sprite listed before the ring
+  assert.deepEqual(codes(check([sprite(152, 0), ring])), ["J043"]);
+  // a ring listed first is fine, wherever it wraps
+  assert.deepEqual(codes(check([ring, sprite(152, 0)])), []);
+});
