@@ -236,7 +236,7 @@ export function analyze(name, start, given, options) {
     // total is not a per-event amount, r2GURg), so a constant and a rename are offered alike
     for (const m of maskedRenames(renamed.seam, fixed.seam, cmp, plans)) {
       const wire = `.wire(${handleText(ho)}, ${handleText(hi)}, `;
-      add(at, "S206", `${handleText(ho)} → ${handleText(hi)}: the wire drops ${m.from}, which ${handleText(hi)} does not take, and gives ${m.to} its default (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) in every record; ${m.from} is a field of the same kind, which may or may not mean the same`, `if ${m.to} should be a fixed value, set it: ${wire}{ set: { ${m.to}: <value> } }); only if ${m.from} means what ${m.to} does, rename it: ${wire}{ rename: { ${m.from}: "${m.to}" } }); if the default is intended, ignore this`, sides, "warning");
+      add(at, "S206", `${handleText(ho)} → ${handleText(hi)}: the wire drops ${m.from}, which ${handleText(hi)} does not take, and gives ${m.to} its default (${m.to}: ${m.type} = ${printValue(/** @type {any} */ (cmp.filled[m.to]))}) in every record; ${m.from} is a field of the same kind, which may or may not mean the same`, `if ${m.to} should be a fixed value, set it: ${wire}{ set: { ${m.to}: <value> } }); only if ${m.from} means what ${m.to} does, rename it: ${wire}{ rename: { ${m.from}: "${m.to}" } }); if the default is intended, say so: ${wire}{ set: { ${m.to}: ${printValue(/** @type {any} */ (cmp.filled[m.to]))} } })`, sides, "warning");
     }
     for (const leaf of cmp.tagged) {
       const fromId = node(pa, leaf.from), toId = node(pb, leaf.to);

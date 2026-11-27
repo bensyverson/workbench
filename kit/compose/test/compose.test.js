@@ -200,6 +200,14 @@ test("S206 says what a wire that builds will do, and offers set beside the renam
   assert.doesNotMatch(ds[0].fix, /^if collected was meant to feed points, rename it/);
 });
 
+test("S206's fix says how to state an intended default: set it to the default, which silences the warning (leaf twGnKT)", () => {
+  const o = ev("Event<{ n: f64, collected: f64 }>"), i = ev("Event<{ n: f64, points: f64 = 1 }>");
+  const [d] = check(pair(o, i));
+  assert.match(d.fix, /if the default is intended, say so: .*set: \{ points: 1 \}/);
+  assert.doesNotMatch(d.fix, /ignore this/);
+  assert.deepEqual(check(pair(o, i, { opts: { set: { points: 1 } } })), [], "the stated default no longer warns");
+});
+
 test("S206 still warns when the two fields' frames are joined, and the suggested rename plans cleanly", () => {
   const o = ev("Event<{ n: f64, radius: f64@px }>"), i = ev("Event<{ n: f64, size: f64@px = 1 }>");
   const ds = check(pair(o, i, { rel: { scale: 1 } }));
