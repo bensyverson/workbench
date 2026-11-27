@@ -1,6 +1,7 @@
 // The manifest, `wb-package.json`: data a host reads before it runs any of the package's code.
 
 import { diag } from "./codes.js";
+import { withoutBom } from "./content.js";
 import { isDotPath, isModulePath, isPackagePath } from "./paths.js";
 
 export const MANIFEST_PATH = "wb-package.json";
@@ -23,7 +24,7 @@ const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
 export function checkManifest(text) {
   /** @type {unknown} */
   let m;
-  try { m = JSON.parse(text); } catch (e) {
+  try { m = JSON.parse(withoutBom(text)); } catch (e) {
     return { manifest: null, diagnostics: [diag("K001", `${MANIFEST_PATH} is not JSON (${/** @type {Error} */ (e).message})`, `write ${MANIFEST_PATH} as a JSON object: { "name", "version", "kit", "entry", "files" }`, MANIFEST_PATH)] };
   }
   if (!isObject(m)) return { manifest: null, diagnostics: [diag("K001", `${MANIFEST_PATH} is not a JSON object`, `write ${MANIFEST_PATH} as a JSON object: { "name", "version", "kit", "entry", "files" }`, MANIFEST_PATH)] };

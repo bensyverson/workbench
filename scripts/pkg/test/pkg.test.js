@@ -105,4 +105,17 @@ test("bundle.js: no directory is exit 4, a bad invocation exit 2", () => {
   assert.match(r.stderr, /nope/);
 });
 
-test("cleanup", () => { rmSync(scratch, { recursive: true, force: true }); });
+test("a file with a UTF-8 BOM keeps its three bytes from folder to bundle, and hashes as its bytes", async () => {
+  const dir = folder("bom");
+  const raw = new Uint8Array([0xef, 0xbb, 0xbf, 0x61, 0x62, 0x63]);
+  writeFileSync(join(dir, "lib/words.txt"), raw);
+  assert.equal(run(HASH, [dir]).status, 0);
+  const m = JSON.parse(readFileSync(join(dir, "wb-package.json"), "utf8"));
+  assert.equal(m.files["lib/words.txt"], await hashText(raw));
+  const r = run(BUNDLE, [dir]);
+  assert.equal(r.status, 0, r.stderr);
+  const back = readBundle(r.stdout).files?.["lib/words.txt"] ?? "";
+  assert.deepEqual([...(typeof back === "string" ? new TextEncoder().encode(back) : back)], [...raw]);
+});
+
+test("cleanup",() => { rmSync(scratch, { recursive: true, force: true }); });

@@ -9,6 +9,7 @@ import { createRun, createDriver, pageView } from "../run/index.js";
 import { drawCanvas } from "../draw/index.js";
 import { qText } from "../define/rational.js";
 import { PAGE } from "../compose/page.js";
+import { MAX_PAGE_DIAGNOSTICS } from "./codes.js";
 import { DEFAULT_KEYS, checkKeys, keyState } from "./keys.js";
 import { decodeSources } from "./sources.js";
 
@@ -34,9 +35,15 @@ export function createPage(options) {
   const run = createRun(composed, { ...(options.run ?? {}), runtimes, packages, frames: "display" });
   const driver = createDriver(run);
   const held = keyState(keys);
-  const wired = composed.parts.some((/** @type {{ name: string }} */ p) => p.name === PAGE);
+  /** The page controls some wire takes from the page part: a key for any other is not the page's. */
+  const wiredControls = new Set(composed.wires.flatMap((/** @type {{ from: string }} */ w) => (w.from.startsWith(`${PAGE}.out.`) ? [w.from.slice(PAGE.length + 5)] : [])));
   /** @type {PageDiagnostic[]} */
   const diagnostics = [];
+  /** Adds a diagnostic, keeping the list to MAX_PAGE_DIAGNOSTICS (the oldest go, in place: hosts hold the array). @param {PageDiagnostic} d */
+  const report = (d) => {
+    diagnostics.push(d);
+    if (diagnostics.length > MAX_PAGE_DIAGNOSTICS) diagnostics.splice(0, diagnostics.length - MAX_PAGE_DIAGNOSTICS);
+  };
   /** @type {Record<string, unknown>} */
   let sources = {};
   const now = () => qText(run.T);
@@ -50,17 +57,21 @@ export function createPage(options) {
   const first = view();
   if (!first) {
     const message = composed.show ? `the page shows ${composed.show}, which has no Draw output (a custom element stage or the text view draws it), so the canvas stays empty` : "the composition shows no part (.show(<part>) in the glue), so the canvas stays empty";
-    diagnostics.push({ code: "H002", severity: "warning", message, T: now(), ...(composed.show ? { part: composed.show } : {}) });
+    report({ code: "H002", severity: "warning", message, T: now(), ...(composed.show ? { part: composed.show } : {}) });
   }
   const box = first?.box ?? null;
   const size = box ? { width: box.max[0] - box.min[0], height: box.max[1] - box.min[1] } : null;
 
   const ready = decodeSources(composed.parts, runtimes, packages, options.decode).then((r) => {
     sources = r.sources;
-    for (const p of r.problems) diagnostics.push({ code: "H003", severity: "warning", message: p.message, T: now(), part: p.part });
+    for (const p of r.problems) report({ code: "H003", severity: "warning", message: p.message, T: now(), part: p.part });
   });
 
-  /** The refusal last reported, so one refusal is one diagnostic while it lasts. @type {string | null} */
+  /**
+   * The refusal last reported, so one refusal is one diagnostic while it lasts. Its key is what stays the same
+   * while the picture moves: the output and the J codes the check found. The messages carry live values (an x, a
+   * count, a row, an op's index), so they cannot be the key. @type {string | null}
+   */
   let refused = null;
   /** Draws the shown list now, and reports a draw-time refusal once. */
   function draw() {
@@ -75,17 +86,20 @@ export function createPage(options) {
     if (check && !check.ok) {
       const label = composed.profile.label;
       const why = check.diagnostics.map((d) => d.message.startsWith(`${label}: `) ? d.message.slice(label.length + 2) : d.message).join("; ");
-      if (why !== refused) {
+      const key = `${v.part}.${v.port}: ${[...new Set(check.diagnostics.map((d) => d.code))].sort().join(" ")}`;
+      if (key !== refused) {
         // the instant the shown list was committed at (null: its init's, at 0), not the frame's time
         const T = run.snapshot(v.part).T ?? "0";
-        diagnostics.push({ code: "H001", severity: "error", message: `the ${label} refuses ${v.part}.out.${v.port} at T = ${T}: ${why}. The page draws it anyway, on Canvas`, T, part: v.part, check: check.diagnostics });
-        refused = why;
+        report({ code: "H001", severity: "error", message: `the ${label} refuses ${v.part}.out.${v.port} at T = ${T}: ${why}. The page draws it anyway, on Canvas`, T, part: v.part, check: check.diagnostics });
+        refused = key;
       }
     } else refused = null;
     return v;
   }
 
   let generation = 0;
+  /** The H004 that stopped the frame loop, or null. @type {PageDiagnostic | null} */
+  let halted = null;
   /** @type {number | null} */
   let last = null;
   /** @param {number} gen @returns {(ms: number) => void} */
@@ -93,8 +107,17 @@ export function createPage(options) {
     if (gen !== generation) return;
     const wall = last === null ? 0 : (ms - last) / 1000;
     last = ms;
-    if (wall > 0) driver.frame(wall);
-    draw();
+    try {
+      if (wall > 0) driver.frame(wall);
+      draw();
+    } catch (e) {
+      // a frame that throws would throw again on the next, so the loop stops and the host sees why
+      const what = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      halted = { code: "H004", severity: "error", message: `a frame threw ${what}; the page stopped its frame loop (page.start() runs it again)`, T: now() };
+      report(halted);
+      generation += 1;
+      return;
+    }
     requestFrame(tick(gen));
   };
 
@@ -105,7 +128,7 @@ export function createPage(options) {
     /** The decoded image sources, by carried name (`<part>.<image>`). */
     get sources() { return sources; },
     /** Asks for frames: each one advances the run by its wall time (the driver caps it) and draws. */
-    start() { generation += 1; last = null; requestFrame(tick(generation)); },
+    start() { generation += 1; halted = null; last = null; requestFrame(tick(generation)); },
     /** Asks for no more frames; the run stays where it is. */
     stop() { generation += 1; },
     draw,
@@ -116,7 +139,8 @@ export function createPage(options) {
      * @param {{ type: string, code: string }} event
      */
     key(event) {
-      if (!wired || (event.type !== "keydown" && event.type !== "keyup")) return false;
+      if (event.type !== "keydown" && event.type !== "keyup") return false;
+      if (!Object.hasOwn(keys, event.code) || !wiredControls.has(keys[event.code].split(".")[0])) return false;
       const change = held.press(event.code, event.type === "keydown");
       if (change === undefined) return false;
       if (change) run.input({ kind: "control", part: PAGE, name: change.name, value: change.value });
@@ -126,7 +150,7 @@ export function createPage(options) {
     status() {
       const v = view();
       return {
-        T: now(), seconds: run.seconds, paused: driver.paused, size,
+        T: now(), seconds: run.seconds, paused: driver.paused, halted, size,
         view: v ? { part: v.part, port: v.port, ops: v.list.length, check: v.check } : null,
         diagnostics: run.diagnostics, page: diagnostics,
       };

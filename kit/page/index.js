@@ -3,4 +3,4 @@
 
 export { createPage } from "./page.js";
 export { DEFAULT_KEYS, KEY_TARGETS } from "./keys.js";
-export { PAGE_CODES } from "./codes.js";
+export { PAGE_CODES, MAX_PAGE_DIAGNOSTICS } from "./codes.js";

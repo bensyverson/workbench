@@ -7,11 +7,25 @@
 /** A file's bytes: text as UTF-8. @param {FileContent} c @returns {Uint8Array} */
 export const bytesOf = (c) => (typeof c === "string" ? new TextEncoder().encode(c) : c);
 
-/** A file's text, or null when its bytes are not valid UTF-8. @param {FileContent} c @returns {string | null} */
+/**
+ * Whether a value is a Uint8Array, tested without `instanceof` so bytes made in another realm (an iframe, a vm
+ * context) count: a typed-array view tagged Uint8Array (a Node Buffer is one).
+ * @param {unknown} v @returns {v is Uint8Array}
+ */
+export const isBytes = (v) => ArrayBuffer.isView(v) && Object.prototype.toString.call(v) === "[object Uint8Array]";
+
+/**
+ * A file's text, or null when its bytes are not valid UTF-8. A byte order mark stays as U+FEFF (ignoreBOM), so the
+ * text encodes back to the file's own bytes and hashes as they do.
+ * @param {FileContent} c @returns {string | null}
+ */
 export function textOf(c) {
   if (typeof c === "string") return c;
-  try { return new TextDecoder("utf-8", { fatal: true }).decode(c); } catch { return null; }
+  try { return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(c); } catch { return null; }
 }
+
+/** Text without a leading byte order mark, for a reader (JSON.parse) that rejects one. @param {string} t */
+export const withoutBom = (t) => (t.charCodeAt(0) === 0xfeff ? t.slice(1) : t);
 
 /** Bytes as base64. @param {Uint8Array} b */
 export function toBase64(b) {

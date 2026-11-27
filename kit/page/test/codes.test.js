@@ -12,6 +12,6 @@ test("kit/page's codes are H codes, apart from kit/lir's W codes", () => {
   for (const code of Object.keys(LIR_CODES)) assert.ok(!Object.hasOwn(PAGE_CODES, code), code);
 });
 
-test("the kit's own letters are reserved from Dialects: H (page), K (package), R (lir), W (lir verify)", () => {
+test("the kit's own letters are reserved from Dialects: H (page), K (package), W (lir verify); R is not reserved (kit/define's README says why)",() => {
   for (const letter of ["H", "K", "W"]) assert.ok(RESERVED_LETTERS.includes(letter), letter);
 });

@@ -5,6 +5,7 @@
 // width and height from its IHDR chunk.
 
 import { test } from "node:test";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { defineDialect } from "../../define/index.js";
 import { mazeGrammar } from "../../define/fixtures/seams-dialects.js";
@@ -136,4 +137,15 @@ test("K019: a PNG whose pixel size is not the image's declared size", async () =
 
 test("the data codes are documented", () => {
   for (const c of ["K017", "K018", "K019"]) assert.ok(PACKAGE_CODES[c]?.length > 0, c);
+});
+
+test("a PNG held as bytes from another realm loads, and a json file with a BOM parses (the BOM stays in its text)", async () => {
+  const foreign = runInNewContext("new Uint8Array(33)");
+  foreign.set(pngHeader(16, 8));
+  const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(`{ "speed": 2 }`)]);
+  const r = await load(await files({ data: { ...DATA, "art/sheet.png": foreign, "data/cfg.json": bom } }));
+  assert.deepEqual(r.diagnostics, []);
+  assert.equal(r.data["art/sheet.png"].width, 16);
+  assert.deepEqual(r.data["data/cfg.json"].value, { speed: 2 });
+  assert.equal(r.data["data/cfg.json"].text, `\uFEFF{ "speed": 2 }`);
 });

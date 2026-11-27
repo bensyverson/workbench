@@ -5,7 +5,7 @@
 
 import { dataFiles } from "../define/data-files.js";
 import { diag } from "./codes.js";
-import { textOf } from "./content.js";
+import { textOf, isBytes, withoutBom } from "./content.js";
 import { readPngSize } from "./png.js";
 import { isDotPath, isModulePath, isPackagePath } from "./paths.js";
 
@@ -36,9 +36,9 @@ export function checkData(dialect, manifest, files) {
     const content = files[f.path];
     const kind = /** @type {DataFile["kind"]} */ (f.kind);
     if (kind === "image") {
-      const size = content instanceof Uint8Array ? readPngSize(content) : null;
+      const size = isBytes(content) ? readPngSize(content) : null;
       const name = f.from.slice("images.".length);
-      if (!size || !(content instanceof Uint8Array)) { ds.push(diag("K018", `${f.from}'s file ${f.path} is not a PNG${typeof content === "string" ? " (it is held as text; a picture travels as bytes)" : " (no PNG signature and IHDR chunk)"}`, `save the picture as a PNG, and pass it as bytes (a Uint8Array) in the file map or as { "base64": … } in a bundle`, f.path)); continue; }
+      if (!size || !isBytes(content)) { ds.push(diag("K018", `${f.from}'s file ${f.path} is not a PNG${typeof content === "string" ? " (it is held as text; a picture travels as bytes)" : " (no PNG signature and IHDR chunk)"}`, `save the picture as a PNG, and pass it as bytes (a Uint8Array) in the file map or as { "base64": … } in a bundle`, f.path)); continue; }
       const img = images[name];
       if (size.width !== img.size[0] || size.height !== img.size[1]) {
         ds.push(diag("K019", `${f.path} is ${size.width} by ${size.height} pixels; ${f.from} declares size [${img.size.join(", ")}]${img.cell ? ` (cells of ${img.cell[0]} by ${img.cell[1]})` : ""}`, `make the picture ${img.size[0]} by ${img.size[1]} pixels, or declare ${f.from}.size: [${size.width}, ${size.height}]${img.cell ? " with a cell that divides it" : ""}`, f.path));
@@ -52,7 +52,7 @@ export function checkData(dialect, manifest, files) {
     if (kind === "json") {
       /** @type {unknown} */
       let value;
-      try { value = JSON.parse(text); } catch (e) { ds.push(diag("K018", `${f.from}'s file ${f.path} is not JSON (${/** @type {Error} */ (e).message})`, `fix the JSON in ${f.path}`, f.path)); continue; }
+      try { value = JSON.parse(withoutBom(text)); } catch (e) { ds.push(diag("K018", `${f.from}'s file ${f.path} is not JSON (${/** @type {Error} */ (e).message})`, `fix the JSON in ${f.path}`, f.path)); continue; }
       data[f.path] = { path: f.path, kind, from: f.from, text, value };
     } else data[f.path] = { path: f.path, kind, from: f.from, text };
   }

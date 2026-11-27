@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPage, DEFAULT_KEYS, PAGE_CODES } from "../index.js";
+import { createPage, DEFAULT_KEYS, PAGE_CODES, MAX_PAGE_DIAGNOSTICS } from "../index.js";
 import { PAGE_CONTROLS } from "../../compose/index.js";
 import { RESERVED_LETTERS } from "../../define/codes.js";
 import { bench, fakeContext, frames } from "../fixtures/bench.js";
@@ -34,8 +34,8 @@ test("the default key map is the DMG host's: arrows and WASD for the pad, X and 
   });
   // every value is a page control, or one of the pad's directions
   for (const v of Object.values(DEFAULT_KEYS)) assert.ok(Object.hasOwn(PAGE_CONTROLS, v.split(".")[0]), v);
-  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003"]);
-  assert.ok(RESERVED_LETTERS.includes("W"), "W is the kit's, so a Dialect's own codes cannot take it");
+  assert.deepEqual(Object.keys(PAGE_CODES), ["H001", "H002", "H003", "H004"]);
+  assert.ok(RESERVED_LETTERS.includes("H"), "H is the kit's, so a Dialect's own codes cannot take it");
 });
 
 test("each image with a file is decoded once, through the host's decoder, into a source by its carried name", async () => {
@@ -146,6 +146,99 @@ test("a refusal that changes is reported again", async () => {
   play(f, 0, 100);
   assert.equal(p.diagnostics.length, 2, "the disc is gone, and the tiles are still refused: a different refusal");
   assert.doesNotMatch(p.diagnostics[1].message, /ellipse/);
+});
+
+/** A bench whose second layer's text sits at a moving x, so the Game Boy refuses it (J044) with a message that changes every instant. */
+const bob = (/** @type {any} */ d) => {
+  d.ports.out.view.layers[1] = ({ from: () => ({ op: "text", at: [2, 1], str: "A", font: "mono", fill: "coin" }) });
+  d.ports.out.view.layers.push({ from: (/** @type {any} */ s) => ({ op: "text", at: [2.1 + (s.t % 0.5), 1], str: "B", font: "mono", fill: "coin" }) });
+};
+
+test("a refusal whose text carries moving values is still one diagnostic while it lasts", async () => {
+  const { composed, runtimes, packages } = await bench({ profile: "gameboy", maze: bob, still: true });
+  const f = frames();
+  const p = createPage({ composed: { ...composed, show: "level", view: "view" }, runtimes, packages, context: fakeContext(), requestFrame: f.requestFrame });
+  await p.ready;
+  p.start();
+  let ms = 0;
+  f.tick(ms);
+  while (ms < 8000) { ms += 16; f.tick(ms); }
+  assert.ok(p.run.state("level") !== undefined);
+  assert.deepEqual(p.diagnostics.map((d) => d.code), ["H001"], "J044's message names the sprite's x, which moves; the refusal is the same");
+});
+
+test("a refusal that comes and goes is bounded: the list keeps the last MAX_PAGE_DIAGNOSTICS entries", async () => {
+  const flip = (/** @type {any} */ d) => {
+    d.ports.out.view.layers[1] = ({ from: () => ({ op: "text", at: [2, 1], str: "A", font: "mono", fill: "coin" }) });
+    // listed later at a larger x (J044) half the time, at a smaller one (drawn clean) the other half
+    d.ports.out.view.layers.push({ from: (/** @type {any} */ s) => ({ op: "text", at: [s.t % 0.25 < 0.125 ? 2.5 : 1.5, 1], str: "B", font: "mono", fill: "coin" }) });
+  };
+  const { composed, runtimes, packages } = await bench({ profile: "gameboy", maze: flip, still: true });
+  const f = frames();
+  const p = createPage({ composed: { ...composed, show: "level", view: "view" }, runtimes, packages, context: fakeContext(), requestFrame: f.requestFrame });
+  await p.ready;
+  const list = p.diagnostics;
+  p.start();
+  let ms = 0;
+  f.tick(ms);
+  while (ms < 60000) { ms += 16; f.tick(ms); }
+  assert.ok(MAX_PAGE_DIAGNOSTICS >= 1);
+  assert.equal(p.diagnostics.length, MAX_PAGE_DIAGNOSTICS, "the refusal came and went more often than the bound");
+  assert.equal(p.diagnostics, list, "the same array, trimmed in place");
+});
+
+test("a throw inside a frame is H004, stops the loop, and status says so", async () => {
+  const { composed, runtimes, packages } = await bench();
+  const f = frames();
+  const real = fakeContext();
+  const ctx = new Proxy({}, { get: (_, k) => (k === "drawImage" ? () => { throw new TypeError("The provided value is not of type CanvasImageSource"); } : real[k]), set: (_, k, v) => { real[k] = v; return true; } });
+  const p = createPage({ composed, runtimes, packages, context: /** @type {any} */ (ctx), requestFrame: f.requestFrame, decode: async () => ({ notABitmap: true }) });
+  await p.ready;
+  p.start();
+  f.tick(0);
+  assert.equal(p.status().halted, null);
+  for (let ms = 16; ms <= 500 && f.waiting; ms += 16) f.tick(ms);
+  assert.equal(f.waiting, 0, "no further frame is asked for: a loop that throws every frame would be worse");
+  assert.deepEqual(p.diagnostics.map((d) => d.code), ["H004"]);
+  const d = p.diagnostics[0];
+  assert.equal(d.severity, "error");
+  assert.match(d.message, /TypeError: The provided value is not of type CanvasImageSource/);
+  assert.match(d.message, /stopped/);
+  assert.equal(p.status().halted, d);
+  // the host may start it again: the failure is cleared, and a frame that throws again is reported again
+  p.start();
+  assert.equal(p.status().halted, null);
+  assert.equal(f.waiting, 1);
+});
+
+test("a throw in the driver's frame is H004 too, and a stop leaves it unhalted", async () => {
+  const { page: p, f } = await mount();
+  p.driver.frame = () => { throw new RangeError("boom"); };
+  p.start();
+  f.tick(0);
+  f.tick(16);
+  assert.deepEqual(p.diagnostics.map((d) => d.code), ["H004"]);
+  assert.match(p.diagnostics[0].message, /RangeError: boom/);
+  assert.equal(f.waiting, 0);
+  const clean = await mount();
+  clean.page.start();
+  clean.f.tick(0);
+  clean.page.stop();
+  assert.equal(clean.page.status().halted, null, "stop is the host's, not a failure");
+});
+
+test("a key is the page's only when the composition wires that control from the page", async () => {
+  const { page: p, f } = await mount();   // the bench wires pad and a
+  p.start();
+  f.tick(0);
+  const n = p.run.log.inputs.length;
+  assert.equal(p.key({ type: "keydown", code: "KeyZ" }), false, "b is not wired");
+  assert.equal(p.key({ type: "keydown", code: "Enter" }), false, "start is not wired");
+  assert.equal(p.key({ type: "keydown", code: "ShiftLeft" }), false, "select is not wired");
+  assert.equal(p.run.log.inputs.length, n, "and sends no input");
+  assert.equal(p.key({ type: "keydown", code: "KeyX" }), true);
+  assert.equal(p.key({ type: "keydown", code: "ArrowUp" }), true);
+  assert.equal(p.key({ type: "keyup", code: "KeyX" }), true);
 });
 
 test("a shown part with no Draw output is H002, and the page draws nothing", async () => {
