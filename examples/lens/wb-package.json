@@ -1,0 +1,22 @@
+{
+  "name": "lens",
+  "version": "0.1.0",
+  "kit": "0.5",
+  "description": "Lenses on a bench: drag a lens's rim or center, and the Program's text follows.",
+  "entry": {
+    "dialect": "lens.dialect.js",
+    "grammar": "lens.grammar.js",
+    "ui": "lens.ui.js",
+    "runtime": "lens.runtime.js"
+  },
+  "examples": [
+    "examples/bench.js"
+  ],
+  "files": {
+    "examples/bench.js": "sha256-KJ4qGWZxNlyfzEJ+TVVs9XezqE4gQUFHD0MbGFaIxaY=",
+    "lens.dialect.js": "sha256-X76w/qPaeI3B3lsMqZ2BCUaSu605V6luUe5iIycn91k=",
+    "lens.grammar.js": "sha256-O1cVsOdHGc2TNYd+GhXbNm95MeziyyZLMJ0kCF2/BII=",
+    "lens.runtime.js": "sha256-RQXWaVLH94qtZM+UtAyelRY66yOoctk/O7qCasQ884Y=",
+    "lens.ui.js": "sha256-ly8sv98T8dQaJ04i0nP4W8zN4QQ67QkzKmB4DiXq6Ak="
+  }
+}

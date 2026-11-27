@@ -2,15 +2,20 @@
 // decision is the kit's (kit/package, kit/compose, kit/run, kit/page) or in the modules beside this one.
 
 import { h, fill } from "./dom.js";
-import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic, elementModuleUrl, runLoadedTests, packagesWithTests } from "./load.js";
+import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic, elementModuleUrl, runLoadedTests, packagesWithTests, reloadText } from "./load.js";
 import { createSession } from "./session.js";
+import { createEditor, rebuildWith } from "./editor.js";
+import { createNavigator } from "./viewport.js";
+import { ELEMENT_EVENTS } from "./element-events.js";
+import { createInputDevices } from "./input-devices.js";
+import { dataFileOf } from "./pick-data.js";
 import { parseQuery, importedPackages, fetchPackage, fetchGlue, groupUpload, packageFromBundle, contentOf, glueOf } from "./sources.js";
 import { diagnosticsView, componentView, paramEditor, codeView, chart, controlForm } from "./views.js";
 
 const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
 const PANEL_MS = 100;
 
-/** @typedef {{ loaded: import("./load.js").Loaded, session: ReturnType<typeof createSession> | null, elements: Map<string, any> }} Current */
+/** @typedef {{ loaded: import("./load.js").Loaded, session: ReturnType<typeof createSession> | null, elements: Map<string, any>, editor: ReturnType<typeof createEditor> | null, devices: ReturnType<typeof createInputDevices> | null }} Current */
 
 /**
  * @param {{ importModule: (url: string) => Promise<any> }} host  `import(url)`, which the kit's modules may not hold
@@ -38,6 +43,10 @@ export function start({ importModule }) {
   const problem = (message) => { hostProblems.push(hostDiagnostic("host", { code: "LOAD", severity: "error", message })); showDiagnostics(); };
   /** An input the run refused (a param edit outside its declaration: N008), listed with the others; the editors go back to the run's values. @param {Array<{ code: string, message: string }>} ds */
   const refused = (ds) => { if (!ds.length) return; hostProblems.push(...ds.map((d) => hostDiagnostic("run", { ...d, severity: "error" }))); showDiagnostics(); if (current?.session) refreshParams(current.session); };
+  /** Refusals that keep their own severity (an H011 is a warning): the editor's and a custom element's. @param {string} source @param {Array<{ code: string, message: string, severity?: string, fix?: string }>} ds */
+  const listed = (source, ds) => { if (!ds.length) return; hostProblems.push(...ds.map((d) => hostDiagnostic(source, d))); showDiagnostics(); };
+  /** The stage's zoom and pan (viewport.js): not logged. */
+  const nav = createNavigator();
   addEventListener("error", (e) => problem(`${e.message} (${e.filename}:${e.lineno})`));
   addEventListener("unhandledrejection", (e) => problem(`unhandled: ${e.reason instanceof Error ? e.reason.message : e.reason}`));
 
@@ -49,9 +58,11 @@ export function start({ importModule }) {
     let loaded;
     try { loaded = await make(); } catch (e) { loaded = null; problem(`loading threw: ${e instanceof Error ? e.stack ?? e.message : e}`); }
     if (!loaded) return;
-    current = { loaded, session: null, elements: new Map() };
+    current?.devices?.stop();
+    current = { loaded, session: null, elements: new Map(), editor: null, devices: null };
+    nav.fit();
     $("code-name").textContent = loaded.sourceName || "no glue";
-    fill($("code"), codeView(loaded.source, loaded.sourceName));
+    buildEditor(current);
     fillPresets(loaded);
     if (!opening) tests = { running: false, progress: 0, abort: null, packages: [] };
     fillTests(loaded);
@@ -111,15 +122,19 @@ export function start({ importModule }) {
   async function mount(loaded) {
     const canvas = $("stage");
     const c = /** @type {Current} */ (current);
+    c.devices?.stop();
     const session = createSession(loaded, {
+      // a release (a Grip, a Control with to, a custom element's commit) is written back into the text: one undo step
+      onCommit: (commit) => { c.editor?.write(commit).then((r) => { if (!r.ok) listed("editor", r.diagnostics); showEditor(c); }); },
       context: canvas.getContext("2d"),
       requestFrame: (cb) => requestAnimationFrame(cb),
       decode: (bytes) => createImageBitmap(new Blob([/** @type {BlobPart} */ (bytes)], { type: "image/png" })),
-      onFrame: (snap) => { fit(); const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
+      onFrame: (snap) => { fit(); showGrips(session); const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
       onProblem: problem,
       ...(opening ? { run: { inputs: opening.inputs, seed: opening.seed } } : {}),
     });
     c.session = session;
+    session.setView(nav.view);
     // the page's size follows the box in force, which a rebuild can change, so the canvas is fitted on every frame
     function fit() {
       const size = session.page.size;
@@ -132,7 +147,112 @@ export function start({ importModule }) {
     await session.page.ready;
     // Open on a failed test: paused at the instant the expectation read, not running on
     if (opening) { session.seek(opening.at); opening = null; } else session.start();
+    // gamepad and MIDI Controls (forms-74's input-devices.js): they listen once the page is unlocked
+    const devices = createInputDevices({ forms: () => session.forms(), control: (n, r, e) => session.control(n, r, e), navigator, requestFrame: (cb) => requestAnimationFrame(cb), report: (d) => refused([d]), locked: () => session.page.locked });
+    c.devices = devices;
+    devices.start();
+    if (session.page.locked) session.page.onUnlock(() => { devices.listen(); }); else devices.listen();
     panels(session.snapshot());
+  }
+
+  // ---- the editor stage (the generated view `editor`): the Program's text in a textarea over a <pre> ----
+  /**
+   * The editor for a load: its text, Apply, Undo and Redo. A text that changes the composition's parts or wires runs
+   * as a new run, and the editor and its history stay.
+   * @param {Current} c
+   */
+  function buildEditor(c) {
+    const loaded = c.loaded;
+    if (!loaded.program || !loaded.source) { fill($("code"), codeView(loaded.source, loaded.sourceName)); return; }
+    c.editor = createEditor({
+      text: loaded.source,
+      recordOf: (part) => c.session?.recordOf(part) ?? {},
+      rebuild: rebuildWith({
+        reload: (text) => reloadText(c.loaded, text, env),
+        current: () => c,
+        remount: async (next, why) => {
+          listed("editor", [{ code: "LOAD", severity: "warning", message: `${why}: the page started a new run on the edited text` }]);
+          c.session?.stop();
+          c.loaded = next;
+          c.elements = new Map();
+          await mount(next);
+        },
+      }),
+    });
+    const area = h("textarea", { class: "editor-text", spellcheck: "false", "aria-label": "the Program's text", oninput: () => { mirror.textContent = area.value + "\n"; mark(); } });
+    const mirror = h("pre", { class: "editor-pre", "aria-hidden": "true" });
+    const note = h("span", { class: "dim" });
+    /** @param {Promise<import("./editor.js").Outcome>} p */
+    const after = (p) => p.then((r) => { if (!r.ok) listed("editor", r.diagnostics); showEditor(c, true); });
+    const edit = /** @type {ReturnType<typeof createEditor>} */ (c.editor);
+    const buttons = {
+      apply: h("button", { class: "btn sm", title: "build the text and run it (one undo step)", onclick: () => after(edit.apply(area.value)) }, "Apply"),
+      undo: h("button", { class: "btn sm", onclick: () => after(edit.undo()) }, "Undo"),
+      redo: h("button", { class: "btn sm", onclick: () => after(edit.redo()) }, "Redo"),
+    };
+    const mark = () => { note.textContent = area.value === edit.text ? "" : "edited: Apply builds it"; buttons.undo.disabled = !edit.canUndo; buttons.redo.disabled = !edit.canRedo; };
+    editorView = { area, mirror, mark, shown: edit.text };
+    fill($("code"), h("div", { class: "editor-bar" }, buttons.apply, buttons.undo, buttons.redo, note), h("div", { class: "editor" }, mirror, area));
+    showEditor(c, true);
+  }
+  /** @type {{ area: any, mirror: any, mark: () => void, shown: string } | null} */
+  let editorView = null;
+  /**
+   * The editor's text after a write: an unedited textarea follows it, and an edited one keeps the person's draft.
+   * @param {Current} c @param {boolean} [force]  the person's own Apply, Undo or Redo: the textarea shows the text
+   */
+  function showEditor(c, force = false) {
+    const e = editorView, edit = c.editor;
+    if (!e || !edit) return;
+    if (force || e.area.value === e.shown) { e.area.value = edit.text; e.mirror.textContent = edit.text + "\n"; }
+    e.shown = edit.text;
+    e.mark();
+  }
+
+  // ---- Grips over the stage canvas: one handle each, kept by part, Grip and index, so a drag keeps its element ----
+  /** @type {Map<string, any>} */
+  const gripEls = new Map();
+  /** @param {ReturnType<typeof createSession>} session */
+  function showGrips(session) {
+    const layer = $("grips"), canvas = $("stage");
+    if (canvas.hidden) { fill(layer); gripEls.clear(); return; }
+    const r = canvas.getBoundingClientRect(), outer = layer.getBoundingClientRect();
+    const seen = new Set();
+    for (const g of session.grips()) {
+      const key = `${g.part}.${g.grip}.${g.index}`;
+      seen.add(key);
+      let el = gripEls.get(key);
+      if (!el) { el = gripHandle(g); gripEls.set(key, el); layer.append(el); }
+      el.style.left = `${r.left - outer.left + (g.x * r.width) / canvas.width}px`;
+      el.style.top = `${r.top - outer.top + (g.y * r.height) / canvas.height}px`;
+      el.classList.toggle("off", !!g.disabled);
+      el.title = g.disabled ? `${g.disabled.code} ${g.disabled.message}` : `${g.label ?? g.grip} (${g.to})`;
+    }
+    for (const [key, el] of gripEls) if (!seen.has(key)) { el.remove(); gripEls.delete(key); }
+  }
+  /** A Grip's handle: a drag previews through the page, and the release writes back. @param {any} g */
+  function gripHandle(g) {
+    const el = h("span", { class: `grip ${g.kind}`, role: "slider", "aria-label": g.label ?? g.grip });
+    /** @type {ReturnType<ReturnType<typeof createSession>["grab"]> | null} */
+    let drag = null;
+    el.addEventListener("pointerdown", (/** @type {PointerEvent} */ e) => {
+      const s = current?.session;
+      if (!s || el.classList.contains("off")) return;
+      e.preventDefault(); e.stopPropagation();
+      if (s.page.locked) s.page.unlock();
+      const [x, y] = canvasPoint(e);
+      try { drag = s.grab({ part: g.part, grip: g.grip, index: g.index }, x, y); el.setPointerCapture(e.pointerId); } catch (err) { problem(err instanceof Error ? err.message : String(err)); }
+    });
+    el.addEventListener("pointermove", (/** @type {PointerEvent} */ e) => { if (drag) { const [x, y] = canvasPoint(e); drag.move(x, y, { alt: e.altKey }); } });
+    const end = () => { if (drag) { drag.release(); drag = null; } };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+    return el;
+  }
+  /** A client point in canvas pixels. @param {{ clientX: number, clientY: number }} e */
+  function canvasPoint(e) {
+    const canvas = $("stage"), r = canvas.getBoundingClientRect();
+    return [((e.clientX - r.left) * canvas.width) / r.width, ((e.clientY - r.top) * canvas.height) / r.height];
   }
 
   /** The per-part panels, built once: inputs and param editors keep their focus while the tiles refresh. @param {import("./load.js").Loaded} loaded @param {ReturnType<typeof createSession>} session */
@@ -172,7 +292,8 @@ export function start({ importModule }) {
   /** The generated controls view: an on-screen form per wired Control, in declaration order. @param {ReturnType<typeof createSession>} session */
   function buildControls(session) {
     const forms = session.forms();
-    fill($("controls"), forms.map((f) => controlForm(f, (record, phase) => refused(session.control(f.name, record, phase ? { phase } : {})), (on) => session.page.focus(on ? f.name : null))));
+    const data = current ? dataFileOf(current.loaded) : () => null;
+    fill($("controls"), forms.map((f) => controlForm(f, (record, phase) => refused(session.control(f.name, record, phase ? { phase } : {})), (on) => session.page.focus(on ? f.name : null), data)));
     $("keys").textContent = forms.map((f) => Object.keys(f.keys ?? {}).length || Array.isArray(f.keys) ? `${f.label ?? f.name}: ${JSON.stringify(f.keys)}` : null).filter(Boolean).join(" · ");
     showLock(session);
   }
@@ -234,7 +355,13 @@ export function start({ importModule }) {
         c.elements.set(stage.element, null);
         const { url, diagnostics } = pkg ? elementModuleUrl(pkg, String(stage.module)) : { url: null, diagnostics: [] };
         for (const d of diagnostics) problem(`${d.code}: ${d.message}`);
-        (url ? importModule(url).then(() => { if (customElements.get(stage.element)) c.elements.set(stage.element, document.createElement(stage.element)); else problem(`${stage.module} did not define <${stage.element}>`); }).catch((e) => problem(`${stage.module} did not load: ${e.message}`)) : Promise.resolve(problem(`no module ${stage.module} in package ${dialect}`)));
+        (url ? importModule(url).then(() => {
+          if (customElements.get(stage.element)) {
+            const made = document.createElement(stage.element);
+            // its wb-control, wb-param and wb-edit, checked against the declarations: logged, or listed with the kit's code
+            for (const type of ELEMENT_EVENTS) made.addEventListener(type, (/** @type {CustomEvent} */ ev) => listed("stage", c.session?.element(type, ev.detail) ?? []));
+            c.elements.set(stage.element, made);
+          } else problem(`${stage.module} did not define <${stage.element}>`); }).catch((e) => problem(`${stage.module} did not load: ${e.message}`)) : Promise.resolve(problem(`no module ${stage.module} in package ${dialect}`)));
       }
       el = c.elements.get(stage.element);
       if (el) {
@@ -273,25 +400,38 @@ export function start({ importModule }) {
   const onKey = (e) => {
     const t = /** @type {HTMLElement} */ (e.target);
     if (["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName) && t.getAttribute("type") !== "range") return;
-    if (current?.session?.key(e)) e.preventDefault();
+    if (current?.session?.key(e)) { e.preventDefault(); return; }
+    // a Space no page Control takes holds the stage's pan (Space with a drag)
+    if (e.code === "Space") { nav.space(e.type === "keydown"); if (t === $("stage")) e.preventDefault(); }
   };
   addEventListener("keydown", onKey);
   addEventListener("keyup", onKey);
   // focus leaves the page: every held Control is let go, so nothing sticks down (requirement 13)
-  addEventListener("blur", () => current?.session?.page.blur());
+  addEventListener("blur", () => { nav.space(false); current?.session?.page.blur(); });
   // the pointer on the stage, in canvas pixels, to the part under it (kit/page routes it)
   const canvas = $("stage");
   /** @param {PointerEvent | WheelEvent} e */
   const onPointer = (e) => {
     const s = current?.session;
     if (!s) return;
-    const r = canvas.getBoundingClientRect();
-    const x = ((e.clientX - r.left) * canvas.width) / r.width, y = ((e.clientY - r.top) * canvas.height) / r.height;
+    const [x, y] = canvasPoint(e);
+    // the stage's zoom and pan take Ctrl or ⌘ with the wheel, a pinch, Space with a drag and a two-finger drag
+    const route = nav.pointer({ type: e.type, x, y, pointerId: /** @type {any} */ (e).pointerId ?? 0, pointerType: /** @type {any} */ (e).pointerType, ctrlKey: e.ctrlKey, metaKey: e.metaKey, deltaY: /** @type {any} */ (e).deltaY ?? 0 });
+    if (route.to === "view") {
+      e.preventDefault();
+      for (const id of route.cancel ?? []) s.page.pointer({ type: "pointercancel", x, y, pointerId: id });
+      s.setView(nav.view);
+      showGrips(s);
+      return;
+    }
     const taken = s.page.pointer({ type: e.type, x, y, pointerId: /** @type {any} */ (e).pointerId ?? 0, buttons: e.buttons, detail: e.detail, deltaX: /** @type {any} */ (e).deltaX ?? 0, deltaY: /** @type {any} */ (e).deltaY ?? 0, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, timeStamp: e.timeStamp });
     if (taken) e.preventDefault();
     showLock(s);
   };
-  for (const t of ["pointerdown", "pointermove", "pointerup", "pointercancel", "pointerleave", "wheel"]) canvas.addEventListener(t, onPointer);
+  for (const t of ["pointerdown", "pointermove", "pointerup", "pointercancel", "pointerleave"]) canvas.addEventListener(t, onPointer);
+  // not passive, so a Ctrl+wheel zoom can keep the browser from zooming the whole page
+  canvas.addEventListener("wheel", onPointer, { passive: false });
+  $("fit").onclick = () => { nav.fit(); const s = current?.session; if (s) { s.setView(nav.view); showGrips(s); } };
   // one gesture unlocks everything: focus, the hooks a Control needs (MIDI), and the run (requirement 13)
   $("lock").onclick = () => { const s = current?.session; if (!s) return; s.page.unlock(); canvas.focus?.(); showLock(s); };
 

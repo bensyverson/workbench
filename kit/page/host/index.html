@@ -20,12 +20,14 @@
     <section class="pane stagecol">
       <div class="bezel">
         <canvas id="stage" width="160" height="144" aria-label="stage" tabindex="0" hidden></canvas>
+        <div id="grips" class="grips" aria-label="Grips"></div>
         <button id="lock" class="lock" hidden>Click to start</button>
         <div id="textstage" class="textstage" hidden></div>
       </div>
       <div class="transport">
         <button id="pause" class="btn sm">Pause</button>
         <button id="step" class="btn sm">Step</button>
+        <button id="fit" class="btn sm" title="reset the stage's zoom and pan (Ctrl or ⌘ with the wheel zooms; Space with a drag pans)">Fit</button>
         <input id="scrub" type="range" min="0" max="0" step="any" value="0" aria-label="time">
       </div>
       <div id="controls" class="controls" aria-label="on-screen controls"></div>
@@ -42,7 +44,7 @@
     <section class="pane rightcol">
       <h4>Diagnostics <span id="diag-count" class="tag">0</span></h4>
       <div id="diag"></div>
-      <h4>Source <span id="code-name" class="dim"></span></h4>
+      <h4>Editor <span id="code-name" class="dim"></span></h4>
       <div id="code" class="codebox"></div>
     </section>
   </main>

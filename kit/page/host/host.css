@@ -73,3 +73,15 @@ th, td { text-align: left; border-bottom: 1px solid var(--hair); padding: 1px 6p
 .control .grid button { height: 44px; justify-content: center; }
 .bezel { position: relative; }
 .lock { position: absolute; inset: 0; margin: auto; width: max-content; height: max-content; }
+/* Grips: drawn by the host in a layer above the stage canvas, never in the Draw list */
+.grips { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.grip { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid var(--accent); background: rgba(255, 255, 255, .85); pointer-events: auto; cursor: grab; touch-action: none; }
+.grip.translate { border-radius: 2px; }
+.grip.off { border-color: var(--ink-2); background: transparent; cursor: not-allowed; }
+.bezel canvas { touch-action: none; }
+/* the editor stage: a textarea over a <pre>, which a later lexer can color */
+.editor-bar { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+.editor { position: relative; background: var(--code-bg); border: 1px solid var(--hair); max-height: 70vh; overflow: auto; }
+.editor-pre, .editor-text { font: 400 11px/1.4 var(--code); padding: 6px; margin: 0; white-space: pre; tab-size: 2; }
+.editor-pre { visibility: hidden; min-height: 8em; }
+.editor-text { position: absolute; inset: 0; width: 100%; height: 100%; resize: none; border: 0; background: transparent; color: var(--ink); overflow: hidden; outline: none; }

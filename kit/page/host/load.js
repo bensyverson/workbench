@@ -85,11 +85,12 @@ export async function loadOnePackage(label, given, env) {
  * @property {string} source  the glue's text, or the preset's example's
  * @property {string} sourceName
  * @property {Record<string, any>} options  compose's options (packages, build scope, runtimes, profile)
+ * @property {{ kind: "glue", path: string } | { kind: "preset", package: string, example: string, wirePage: boolean } | null} program  what the text is, so `reloadText` can build a new one
  * @property {((part: string, params: Record<string, unknown>, more?: { args?: Record<string, unknown> }) => Record<string, any>) | null} rebuild  a preset's rebuild for a build-time param edit (kit/page's examplePreset), which createRun takes as `build`; for a glue, its part built again with argument overrides (callGlue's `args`), a Grip's or a Control's preview; null when nothing built
  */
 
 /** @returns {Loaded} */
-const nothing = () => ({ packages: [], diagnostics: [], plan: [], composition: null, composed: null, runtimes: [], source: "", sourceName: "", options: {}, rebuild: null });
+const nothing = () => ({ packages: [], diagnostics: [], plan: [], composition: null, composed: null, runtimes: [], source: "", sourceName: "", options: {}, program: null, rebuild: null });
 
 /**
  * The packages of a workbench, loaded; `all` is false when one did not load.
@@ -139,8 +140,18 @@ export async function loadWorkbench(input, env) {
   const { out, all } = await loadPackages(input.packages, env);
   out.source = input.glue.text;
   out.sourceName = input.glue.path;
+  out.program = { kind: "glue", path: input.glue.path };
   if (!all) return out;
-  const { path, text } = input.glue;
+  return glueFrom(out, input.glue, env, input.profile);
+}
+
+/**
+ * The glue's text built on packages already loaded, into `out`.
+ * @param {Loaded} out @param {{ path: string, text: string }} glue @param {LoadEnv} env @param {string | undefined} profile
+ * @returns {Promise<Loaded>}
+ */
+async function glueFrom(out, glue, env, profile) {
+  const { path, text } = glue;
   /** @type {Record<string, string>} */
   const urls = { "kit/compose": env.urls.compose, "kit/define": env.urls.define };
   for (const p of out.packages) { const url = p.urls.get(entryGrammar(p)); if (url !== undefined) urls[p.name] = url; }
@@ -155,7 +166,7 @@ export async function loadWorkbench(input, env) {
   if (!called.composition) { out.diagnostics.push(...called.diagnostics.map((d) => hostDiagnostic("glue", d))); return out; }
   const composition = called.composition;
   const build = scopeOf(out, "glue", text, mod, path);
-  if (build) finish(out, composition, build, path, input.profile);
+  if (build) finish(out, composition, build, path, profile);
   // a Grip's or a Control's preview of a glue part's argument: the glue called again with the override
   if (out.composed) out.rebuild = (part, _params, more = {}) => glueRebuild(mod.default, path, out.options, part, more.args);
   return out;
@@ -221,11 +232,22 @@ function finish(out, composition, build, path, profile) {
 export async function loadPreset(input, env) {
   const { out, all } = await loadPackages(input.packages, env);
   out.sourceName = input.example;
+  out.program = { kind: "preset", package: input.package, example: input.example, wirePage: input.wirePage ?? true };
   if (!all) return out;
   const pkg = out.packages.find((p) => p.name === input.package);
   const url = pkg?.urls.get(input.example);
   if (!pkg || url === undefined) { out.diagnostics.push(loadError("preset", `package ${input.package} has no example ${input.example}`)); return out; }
   out.source = textOf(pkg.files[input.example]) ?? "";
+  return presetFrom(out, pkg, url, input.example, input.wirePage ?? true, input.profile, env);
+}
+
+/**
+ * A preset's example built from its module's URL on packages already loaded, into `out` (whose `source` is its text).
+ * @param {Loaded} out @param {HostPackage} pkg @param {string} url @param {string} example @param {boolean} wirePage @param {string | undefined} profile @param {LoadEnv} env
+ * @returns {Promise<Loaded>}
+ */
+async function presetFrom(out, pkg, url, example, wirePage, profile, env) {
+  const input = { example, wirePage, profile };
   /** @type {any} */
   let mod;
   try { mod = await env.importUrl(url); } catch (e) { out.diagnostics.push(loadError("preset", `${input.example} did not load: ${message(e)}`)); return out; }
@@ -233,11 +255,34 @@ export async function loadPreset(input, env) {
   if (!build) return out;
   // kit/page composes it alone: built through kit/define's run, so a build-time read of $ is answered and recorded
   // its declared Controls wired by name to the inputs they play (declared Controls, 2026-11-27)
-  const preset = examplePreset(pkg.name, mod.default, build, { ui: pkg.loaded.ui ?? null, wirePage: input.wirePage ?? true });
+  const preset = examplePreset(pkg.name, mod.default, build, { ui: pkg.loaded.ui ?? null, wirePage: input.wirePage });
   if (!preset.composition) { out.diagnostics.push(...preset.diagnostics.map((d) => hostDiagnostic("preset", { ...d, file: input.example }))); return out; }
   out.rebuild = preset.build;
   finish(out, preset.composition, build, input.example, input.profile);
   return out;
+}
+
+/**
+ * A new text of a loaded Program (the editor's Apply, a write-back, an undo) built on the packages already loaded,
+ * which are not fetched or imported again: a glue's text through kit/compose's `rewriteGlue` and `callGlue`, a preset's
+ * example with its package's specifiers rewritten (kit/package's `rewriteSpecifiers`, to the modules already loaded)
+ * and its module scope. The result is a Loaded whose `composed` is null when the text does not build, with why.
+ * @param {Loaded} loaded @param {string} text @param {LoadEnv} env
+ * @returns {Promise<Loaded>}
+ */
+export async function reloadText(loaded, text, env) {
+  const out = { ...nothing(), packages: loaded.packages, source: text, sourceName: loaded.sourceName, program: loaded.program };
+  const profile = loaded.options.profile;
+  const program = loaded.program;
+  if (!program) { out.diagnostics.push(loadError("editor", "nothing is loaded, so there is no Program to build the text of")); return out; }
+  if (program.kind === "glue") return glueFrom(out, { path: program.path, text }, env, profile);
+  const pkg = loaded.packages.find((p) => p.name === program.package);
+  if (!pkg) { out.diagnostics.push(loadError("editor", `package ${program.package} is not loaded`)); return out; }
+  const rewritten = rewriteSpecifiers({ ...pkg.files, [program.example]: text }, (p) => /** @type {string} */ (pkg.urls.get(p)), env.urls.define);
+  if (rewritten.diagnostics.length) { out.diagnostics.push(...rewritten.diagnostics.map((d) => hostDiagnostic(`package ${pkg.label}`, d))); return out; }
+  const mine = [...rewritten.modules].find((m) => m.path === program.example);
+  if (!mine) { out.diagnostics.push(loadError("editor", `${program.example} is not a module of package ${pkg.name}`)); return out; }
+  return presetFrom(out, pkg, env.makeUrl(withScope(mine.text)), program.example, program.wirePage, profile, env);
 }
 
 /**

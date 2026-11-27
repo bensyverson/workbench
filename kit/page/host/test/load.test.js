@@ -135,3 +135,28 @@ test("a package's example loads as a one-part preset", async () => {
   const missing = await loadPreset({ packages, package: "particles", example: "examples/99.js" }, env);
   assert.equal(missing.diagnostics[0]?.code, "LOAD");
 });
+
+test("reloadText builds a new text of the loaded Program on the packages already loaded: a glue, and a preset's example", async () => {
+  const w = await workbench(SEAMS, ["bounce", "swarm"]);
+  const { reloadText } = await import("../load.js");
+  assert.equal(w.program?.kind, "glue");
+  const edited = w.source.replace(/x: 40\b/, "x: 44");
+  assert.notEqual(edited, w.source, "the glue holds the literal");
+  const again = await reloadText(w, edited, env);
+  assert.deepEqual(again.diagnostics.filter((d) => d.severity === "error"), []);
+  assert.equal(again.composed.parts.find((/** @type {any} */ p) => p.name === "table").record.balls.cue.x, 44);
+  assert.equal(again.source, edited);
+  assert.equal(again.packages, w.packages, "the packages are not loaded again");
+  assert.equal(/** @type {any} */ (again.rebuild)("table", {}).balls.cue.x, 44, "its rebuild builds the new text");
+  const broken = await reloadText(w, edited.replace("export default", "export defaul"), env);
+  assert.equal(broken.composed, null);
+  assert.ok(broken.diagnostics.some((d) => d.severity === "error"));
+
+  const packages = { particles: readPackageDir(root(`${DRAW}/particles`)) };
+  const p = await loadPreset({ packages, package: "particles", example: "examples/01.js" }, env);
+  assert.deepEqual(p.program, { kind: "preset", package: "particles", example: "examples/01.js", wirePage: true });
+  const q = await reloadText(p, `${p.source}\n// edited\n`, env);
+  assert.deepEqual(q.diagnostics.filter((d) => d.severity === "error"), []);
+  assert.equal(q.source, `${p.source}\n// edited\n`);
+  assert.ok(q.composed);
+});
