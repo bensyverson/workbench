@@ -174,6 +174,6 @@ test("a lambda's free name that build-time code also declares is one B013, namin
   assert.deepEqual(b().check({ scope: { K }, sources: { K: "3" }, buildTime: [], shadowed: [] }), []);
   const d = b().check({ scope: { K }, sources: { K: "3" }, shadowed: ["K"] });
   assert.deepEqual(d.map((x) => x.code), ["B013"]);
-  assert.match(d[0].message, /top level and again inside build-time code/);
+  assert.match(d[0].message, /top level and again below it, in build-time code or a helper:/);
   assert.deepEqual(h.g("x").k("(p) => { p.n = 1; }").check({ scope: { K }, sources: { K: "3" }, shadowed: ["K"] }), []);
 });

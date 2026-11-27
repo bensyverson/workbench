@@ -52,7 +52,10 @@ function parse(text) {
  * @property {boolean} build  inside build code (see `buildTimeShadows`)
  */
 
-/** @typedef {{ program: N, records: Binding_[], holds: Set<N> }} Analysis */
+/**
+ * `outer` maps each function to the innermost function around it (null at the top level); `fns` lists them all.
+ * @typedef {{ program: N, records: Binding_[], holds: Set<N>, outer: Map<N, N | null>, fns: N[] }} Analysis
+ */
 
 /** @type {{ text: string, analysis: Analysis } | null} */
 let last = null;
@@ -69,6 +72,8 @@ function analyze(text) {
   const records = [];
   /** @type {Set<N>} */
   const holds = new Set();
+  /** @type {Map<N, N | null>} */
+  const outer = new Map();
   /** @type {N[]} */
   const stack = [];
   /** @typedef {{ owner: N | null, build: boolean }} Ctx */
@@ -85,6 +90,7 @@ function analyze(text) {
    */
   function fn(f, c, role) {
     for (const g of stack) holds.add(g);
+    outer.set(f, stack.at(-1) ?? null);
     const block = f.type !== "ArrowFunctionExpression" && role === "inner";
     const params = { owner: f, build: c.build || block };
     if (block && f.id) add([f.id.name], "fn", false, params);
@@ -132,7 +138,7 @@ function analyze(text) {
   }
 
   try { for (const s of program.body) top(s); } catch (e) { throw scanError(e); }
-  last = { text, analysis: { program, records, holds } };
+  last = { text, analysis: { program, records, holds, outer, fns: [...outer.keys()] } };
   return last.analysis;
 }
 
@@ -250,17 +256,44 @@ export function buildTimeNames(code) {
  * which nested function is a Runtime Lambda handed to the builder and which is a helper's callback, so any nested
  * function counts; this fails closed, so a top-level helper whose parameter shares a top-level name and holds a
  * callback is listed too, and so is a Runtime Lambda's own parameter when the lambda holds a query callback
- * (`(p, dt) => p.items.some((q) => q.x > dt)` lists `dt`; issue `JYmuWM`: telling the two apart takes the builder's
- * knowledge of which arrows it was handed). A function that holds no function (a lambda's or a helper's own
- * parameter) never counts. The export's own parameter counts when the export holds a function (it may then hold a
- * lambda that reads the name) and never otherwise (no lambda can read it).
+ * (`(p, dt) => p.items.some((q) => q.x > dt)` lists `dt`), unless the caller names that lambda in `compiled`. A
+ * function that holds no function (a lambda's or a helper's own parameter) never counts. The export's own parameter
+ * counts when the export holds a function (it may then hold a lambda that reads the name) and never otherwise (no
+ * lambda can read it).
+ *
+ * `compiled` is the source text of functions the caller knows are compiled rather than run (kit/define passes the
+ * Runtime Lambdas it was handed, issue `JYmuWM`). A function whose text, from its first character to its last (what
+ * `String(fn)` gives), is one of them binds nothing here, nor does any function or block inside it: its names belong
+ * to its own text. Only a text the file writes as exactly one function excludes it; a text written twice, or written
+ * only as something else (a string, part of an expression), excludes nothing, so the scan stays fail closed.
  * @param {string} code
+ * @param {string[]} [compiled]
  * @returns {string[]}
  */
-export function buildTimeShadows(code) {
+export function buildTimeShadows(code, compiled = []) {
   const a = analyze(code);
   const top = new Set(a.records.filter((r) => r.top).map((r) => r.name));
-  return [...new Set(a.records.filter((r) => countsAsBuild(a, r) && top.has(r.name)).map((r) => r.name))];
+  const skip = compiledFunctions(a, code, compiled);
+  return [...new Set(a.records.filter((r) => countsAsBuild(a, r) && top.has(r.name) && !within(a, r.owner, skip)).map((r) => r.name))];
+}
+
+/** The functions the file writes exactly once with a text in `compiled`. @param {Analysis} a @param {string} code @param {string[]} compiled */
+function compiledFunctions(a, code, compiled) {
+  if (compiled.length === 0) return new Set();
+  const wanted = new Set(compiled);
+  /** @type {Map<string, N[]>} */
+  const byText = new Map();
+  for (const f of a.fns) {
+    const t = code.slice(f.start, f.end);
+    if (wanted.has(t)) byText.set(t, [...(byText.get(t) ?? []), f]);
+  }
+  return new Set([...byText.values()].filter((fs) => fs.length === 1).map((fs) => fs[0]));
+}
+
+/** Whether function `f` is one of `skip` or inside one. @param {Analysis} a @param {N | null} f @param {Set<N>} skip */
+function within(a, f, skip) {
+  for (let g = f; g; g = a.outer.get(g) ?? null) if (skip.has(g)) return true;
+  return false;
 }
 
 /**

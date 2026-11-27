@@ -56,10 +56,12 @@ test("ocy5OI C: the scan stays linear in sibling blocks and ternary objects in o
   }
 });
 
-test("JYmuWM stays open and fails closed: a Runtime Lambda holding a query callback lists its own parameter", () => {
-  // No syntax tells it from a build-time callback holding a lambda (`$.each((x) => b.update((p) => x + p))`), so it
-  // needs the builder's knowledge of which arrows it was handed.
-  assert.deepEqual(buildTimeShadows("const dt = 0.1;\nexport default () => b().update((p, dt) => p.items.some((q) => q.x > dt)).spawn((p) => p.x * dt);"), ["dt"]);
+test("JYmuWM: a Runtime Lambda holding a query callback lists its own parameter unless the host names it compiled", () => {
+  // No syntax tells it from a build-time callback holding a lambda (`$.each((x) => b.update((p) => x + p))`), so the
+  // scan alone fails closed; kit/define passes the texts of the lambdas it was handed.
+  const code = "const dt = 0.1;\nexport default () => b().update((p, dt) => p.items.some((q) => q.x > dt)).spawn((p) => p.x * dt);";
+  assert.deepEqual(buildTimeShadows(code), ["dt"]);
+  assert.deepEqual(buildTimeShadows(code, ["(p, dt) => p.items.some((q) => q.x > dt)", "(p) => p.x * dt"]), []);
 });
 
 test("a file that does not parse is refused with a ScanError that says where, by every function that reads one", () => {

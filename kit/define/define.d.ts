@@ -250,8 +250,10 @@ export interface BuildOptions {
   buildTimeBindings?: string[];
   /** The keyword each top-level binding is declared with (`topLevelBindings` gives `const` and `let`, `topLevelFunctions` `function`), copied onto the units as `keyword`, so a Dialect's root `check` can refuse a top-level `let`. Absent, a unit has no `keyword`. */
   keywords?: Record<string, "const" | "let" | "function">;
-  /** The names the file declares at its top level and again below it (`buildTimeShadows(text)`); a lambda that reads one is B013, since its text cannot say which it means. */
+  /** Names to treat as declared at the top level and again below it; a lambda that reads one is B013, since its text cannot say which it means. A host that has the file's text passes `file` instead, which is exact for a Runtime Lambda's own parameters; given both, either refuses. */
   shadowed?: string[];
+  /** The Program file's source text (`moduleScope` passes it). The builder runs the shadow scan on it (`buildTimeShadows(file, handed)`), leaving out the Runtime Lambdas it was handed as functions, so a lambda's own parameter beside a query callback shadows nothing; a name another function or build code declares again is B013 when a lambda reads it. Throws a ScanError when the text does not parse. */
+  file?: string;
 }
 
 /** What a slot's or construct's `check` receives besides the call or record. */

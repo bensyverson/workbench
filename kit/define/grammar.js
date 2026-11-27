@@ -15,6 +15,7 @@ import { unitOf, PLAIN } from "./scope.js";
 import { noteRoot, noteCall, noteConvention, misfit } from "./params.js";
 import { sideOf, paramSideOf } from "./handles.js";
 import { INPUTS_NS } from "./validate-grammar.js";
+import { buildTimeShadows } from "../parse/toplevel.js";
 
 /** @import * as T from "./define.js" */
 /** @import { Found } from "./shapes.js" */
@@ -96,11 +97,12 @@ export function defineGrammar(dialect, def) {
  */
 function checkOptions(o) {
   const x = /** @type {Record<string, unknown>} */ (o);
-  const keys = "{ scope?, sources?, buildTime?, buildTimeBindings?, keywords?, shadowed? }";
+  const keys = "{ scope?, sources?, buildTime?, buildTimeBindings?, keywords?, shadowed?, file? }";
   if (x === null || typeof x !== "object" || Array.isArray(x)) throw new TypeError(`build(options) and check(options) take ${keys}`);
-  for (const k of Object.keys(x)) if (!["scope", "sources", "buildTime", "buildTimeBindings", "keywords", "shadowed"].includes(k)) throw new TypeError(`build(options): unknown key '${k}'; it takes ${keys}`);
+  for (const k of Object.keys(x)) if (!["scope", "sources", "buildTime", "buildTimeBindings", "keywords", "shadowed", "file"].includes(k)) throw new TypeError(`build(options): unknown key '${k}'; it takes ${keys}`);
   if (x.keywords !== undefined && (x.keywords === null || typeof x.keywords !== "object" || Array.isArray(x.keywords) || !Object.values(x.keywords).every((w) => w === "const" || w === "let" || w === "function"))) throw new TypeError("build({ keywords }): keywords is an object of each top-level binding's keyword, \"const\", \"let\" or \"function\", by name");
   if (x.shadowed !== undefined && !(Array.isArray(x.shadowed) && x.shadowed.every((n) => typeof n === "string"))) throw new TypeError("build({ shadowed }): shadowed is a list of names");
+  if (x.file !== undefined && typeof x.file !== "string") throw new TypeError("build({ file }): file is the module's source text, the text moduleScope was given");
   if (x.scope !== undefined && (x.scope === null || typeof x.scope !== "object" || Array.isArray(x.scope))) throw new TypeError("build({ scope }): scope is an object of the file's top-level bindings, by name");
   if (x.sources !== undefined && (x.sources === null || typeof x.sources !== "object" || Array.isArray(x.sources) || !Object.values(x.sources).every((s) => typeof s === "string"))) throw new TypeError("build({ sources }): sources is an object of each top-level declaration's initializer text, by name");
   if (x.buildTime !== undefined && !(Array.isArray(x.buildTime) && x.buildTime.every((n) => typeof n === "string"))) throw new TypeError("build({ buildTime }): buildTime is a list of names");
@@ -145,6 +147,8 @@ class Program {
     this.root = null;
     /** @type {Array<{ ast: ArrowFunctionExpression, src: string, what: string, at: { file: string, loc: Loc } }>} */
     this.sources = [];
+    /** The text of each Runtime Lambda handed to a slot as a function (not as text), for the shadow scan. @type {string[]} */
+    this.handed = [];
   }
 
   /**
@@ -285,6 +289,7 @@ class Program {
   /** Remembers a call's lambdas for the free-name rule. @param {Call} call @param {{ file: string, loc: Loc }} at */
   track(call, at) {
     for (const l of call.found.lambdas) this.sources.push({ ast: l.ast, src: l.src, what: `the ${l.convention} lambda${l.key ? ` '${l.key}'` : ""}`, at });
+    for (const l of call.found.lambdas) if (l.given === "function") this.handed.push(l.src);
   }
 
   /**
@@ -315,6 +320,7 @@ class Program {
       if ("error" in r) { this.diagnostics.push(diag("B007", `${what}: .${slot}('${n}'): ${r.error}`, s.unit === "fn" ? `.${slot}("${n}", (x) => …)` : `.${slot}("${n}", "0.5")`, at, /** @type {{ src?: string, loc?: Loc }} */ (r).src !== undefined ? { lambda: { src: /** @type {string} */ (/** @type {any} */ (r).src), ...(/** @type {any} */ (r).loc ? { loc: /** @type {any} */ (r).loc } : {}) } } : {})); return; }
       call = { slot, args: [n, r.src], loc: at.loc, file: at.file, found: found() };
       this.sources.push({ ast: r.ast, src: r.src, what: `the ${s.unit === "fn" ? "helper" : "constant"} '${n}'`, at });
+      if (s.unit === "fn" && typeof src === "function") this.handed.push(r.src);
     } else {
       const specs = /** @type {T.Tagged[]} */ (s.args);
       const m = matchArgs(specs, args);
@@ -468,6 +474,8 @@ class Program {
     const scope = options.scope;
     const buildTime = new Set(options.buildTime ?? []);
     const bindings = new Set(options.buildTimeBindings ?? []);
+    // With the file's text, the scan leaves out the lambdas this Program was handed: their names are their own text's.
+    const shadowed = new Set([...(options.shadowed ?? []), ...(options.file === undefined ? [] : buildTimeShadows(options.file, this.handed))]);
     const root = /** @type {Instance} */ (this.root);
     const own = this.ownNames();
     if (scope) for (const n of Object.keys(scope)) {
@@ -512,9 +520,9 @@ class Program {
             continue;
           }
           // Refused only once the binding itself is usable, so a mistake the binding has gets its own code alone.
-          if (options.shadowed?.includes(name)) {
+          if (shadowed.has(name)) {
             resolved.set(name, null);
-            this.diagnostics.push(diag("B013", `${src.what} reads "${name}", but the file declares "${name}" at its top level and again inside build-time code: a lambda's text cannot say which one it means, and the kit would read the top-level one.`, `rename one of the two "${name}"s`, src.at, lambdaAt));
+            this.diagnostics.push(diag("B013", `${src.what} reads "${name}", but the file declares "${name}" at its top level and again below it, in build-time code or a helper: a lambda's text cannot say which one it means, and the kit would read the top-level one.`, `rename one of the two "${name}"s`, src.at, lambdaAt));
             continue;
           }
           resolved.set(name, keyed(r.unit, options.keywords));

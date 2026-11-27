@@ -12,7 +12,7 @@ import { an } from "./codes.js";
  * @typedef {object} Found
  * @property {Array<{ code: string, path: Array<string | number>, message: string, lambda?: LambdaAt, severity?: "warning", tip?: string, finite?: true, value?: number }>} errors  errors, and warnings that do not refuse the call; `finite` marks a number that is not finite (`value`), which still fits its shape's type
  * @property {Array<{ ns: string, value: string, path: Array<string | number>, kind?: string }>} refs  `kind`: what ref("in", { kind }) asks for
- * @property {Array<{ convention: string, src: string, ast: ArrowFunctionExpression, path: Array<string | number>, key?: string }>} lambdas
+ * @property {Array<{ convention: string, src: string, ast: ArrowFunctionExpression, path: Array<string | number>, key?: string, given: "function" | "text" }>} lambdas  `given`: whether the value was a function or its source text
  */
 
 /**
@@ -187,7 +187,7 @@ export function matchShape(shape, v, path, out, key) {
     case "lambda": {
       const l = lambdaSource(v);
       if ("error" in l) { out.errors.push({ code: "B007", path, message: `${where(path)}: ${l.error}`, ...(l.src !== undefined ? { lambda: { src: l.src, ...(l.loc ? { loc: l.loc } : {}) } } : {}) }); return v; }
-      out.lambdas.push({ convention: /** @type {string} */ (s.convention), src: l.src, ast: l.ast, path, ...(key !== undefined ? { key } : {}) });
+      out.lambdas.push({ convention: /** @type {string} */ (s.convention), src: l.src, ast: l.ast, path, ...(key !== undefined ? { key } : {}), given: typeof v === "function" ? "function" : "text" });
       return l.src;
     }
   }

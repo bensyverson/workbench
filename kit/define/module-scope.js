@@ -4,7 +4,7 @@
 // `.build` takes from that export and the text (`moduleScope`). No Node built-ins: the page host and the define
 // trial's checker both use it. What the options mean is README.md's "Module scope".
 
-import { topLevelNames, topLevelBindings, topLevelFunctions, buildTimeNames, buildTimeBindings, buildTimeShadows, ScanError } from "../parse/toplevel.js";
+import { topLevelNames, topLevelBindings, topLevelFunctions, buildTimeNames, buildTimeBindings, ScanError } from "../parse/toplevel.js";
 
 /** @import { BuildOptions } from "./define.js" */
 
@@ -59,8 +59,9 @@ export function helperSources(text) {
 
 /**
  * The build options for a module imported from `withScope(text)`: its top-level bindings (from the epilogue's
- * export; none when `mod` lacks it), each helper's source, each binding's keyword, and the names its text declares
- * only inside build-time code. Throws ScanError when the file's top level cannot be read: no declaration can then
+ * export; none when `mod` lacks it), each helper's source, each binding's keyword, the names its text declares
+ * only inside build-time code, and the text itself as `file`, on which the builder runs the shadow scan (it knows
+ * which lambdas it was handed, so a lambda's own parameter shadows nothing). Throws ScanError when the file's top level cannot be read: no declaration can then
  * vouch for a helper, so a host reports it rather than build with either reading (fail closed).
  * @param {string} text  the module's original text
  * @param {Record<string, any>} mod  the imported module
@@ -73,5 +74,5 @@ export function moduleScope(text, mod) {
   // A function declaration's text vouches only while the binding still holds the function the declaration made.
   for (const f of topLevelFunctions(text)) if (!Object.hasOwn(captured, f.name) || scope[f.name] !== captured[f.name]) delete sources[f.name];
   const keywords = Object.fromEntries([...topLevelBindings(text).map((b) => [b.name, b.keyword]), ...topLevelFunctions(text).map((f) => [f.name, "function"])]);
-  return { scope, sources, buildTime: buildTimeNames(text), buildTimeBindings: buildTimeBindings(text), keywords, shadowed: buildTimeShadows(text) };
+  return { scope, sources, buildTime: buildTimeNames(text), buildTimeBindings: buildTimeBindings(text), keywords, file: text };
 }

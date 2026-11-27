@@ -36,7 +36,7 @@ Rules:
 
 - **Intrinsics exist only inside lambdas.** `const START = dayOf(2026, 1, 1)` fails when the file loads.
 - A helper made by another function (`const f = make(3)`) is B012.
-- A name declared only inside build-time code, another lambda's parameter, or both at the top level and inside build-time code, is B013 when a lambda reads it.
+- A name declared only inside build-time code, another lambda's parameter, or both at the top level and again below it (in build-time code or a helper; never a lambda's own parameter), is B013 when a lambda reads it.
 - **A name may mean one thing only:** a top-level binding named like a Dialect name, a library entry or a `.fn` is B002.
 
 ## How helpers are typed

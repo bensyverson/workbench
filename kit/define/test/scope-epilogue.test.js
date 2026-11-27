@@ -30,7 +30,8 @@ test("a file the scan cannot read comes back as it is, so the engine reports its
 test("moduleScope gives the build options: scope, sources, keywords and the build-time names", async () => {
   const text = "const k = 2;\nlet m = 3;\nconst half = (x) => x / k;\nfunction g(x) { return x; }\nexport default ($) => { const local = 1; return local; };\n";
   const options = /** @type {any} */ (moduleScope(text, await load(withScope(text))));
-  assert.deepEqual(Object.keys(options).sort(), ["buildTime", "buildTimeBindings", "keywords", "scope", "shadowed", "sources"]);
+  assert.deepEqual(Object.keys(options).sort(), ["buildTime", "buildTimeBindings", "file", "keywords", "scope", "sources"]);
+  assert.equal(options.file, text);
   assert.deepEqual({ k: options.scope.k, m: options.scope.m }, { k: 2, m: 3 });
   assert.deepEqual(options.sources, { k: "2", half: "(x) => x / k", g: "function g(x) { return x; }" });
   assert.deepEqual(options.keywords, { k: "const", m: "let", half: "const", g: "function" });
