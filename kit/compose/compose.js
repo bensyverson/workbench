@@ -23,8 +23,8 @@ import { formatDiagnostic } from "./format.js";
 /**
  * The composed record: what the scheduler runs. Each wire's conversions, renames, delay, dropped fields, the
  * consumer's defaults it fills (`fill`, only when the producer's record lacks a defaulted field), its constants
- * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`.
- * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null, view?: string }} Composed
+ * (`set`) and (for an Event) the consumer's delivery are data. A param wire's `to` is `<part>.param.<name>`. The renderer profile `check`/`build` was given (resolved from its name) is `profile`.
+ * @typedef {{ name: string, parts: Array<{ name: string, dialect: string, version?: string, record: Record<string, any> }>, wires: Array<{ from: string, to: string, convert: Conversion[], rename: Record<string, string>, delay: boolean, overflow?: "keepLast" | "keepFirst", dropped: string[], fill?: Record<string, unknown>, set?: Record<string, unknown>, delivery?: import("../define/define.js").Delivery }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} Composed
  */
 /**
  * What `.check` and `.build` take: the loaded packages (for each part's version: kit/package's loadPackage results,

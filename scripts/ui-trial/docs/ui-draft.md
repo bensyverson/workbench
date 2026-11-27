@@ -226,3 +226,4 @@ export const orbitsUI = defineUI(orbits, {
 | U011 | a tile id that is not an identifier or is a generated view's id |
 | U012 | a value of the wrong form: a `label`, `title` or `note` that is not a string, a number out of its range or not whole, a `columns` entry that is neither a key nor `{ label, value }`, an empty `body` or `items` |
 | U013 | `defineUI` given something other than the package's Grammar builder, or a Dialect that declares no `state` |
+| U014 | a Draw stage, `stage: { draw: "<output>" }`, naming an output the Dialect lacks or one that is not a Draw seam, or a stage with both `draw` and a custom element (added 2026-11-26, leaf `hca0YM`, after the trials) |

@@ -12,3 +12,5 @@ export { readBundle, writeBundle, BUNDLE_FORMAT } from "./bundle.js";
 export { checkExamples } from "./examples.js";
 export { uiModules } from "./elements.js";
 export { packageReference } from "./reference.js";
+export { readPngSize } from "./png.js";
+export { textOf, bytesOf } from "./content.js";

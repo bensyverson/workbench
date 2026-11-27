@@ -5,13 +5,14 @@ import { didYouMean } from "./codes.js";
 import { checkKeys, checkType, checkMember, checkSignature, listed, BUILTIN_TYPES, SIGNATURE_KEYS } from "./types.js";
 import { validateEffects } from "./effects.js";
 import { validateState } from "./state.js";
+import { checkDataFiles } from "./data-files.js";
 import { isPlainObject, kindOf, describe } from "./tags.js";
 import { parseLambda, checkSubset } from "../parse/index.js";
 
 /** @import { Problem, TypeScope } from "./types.js" */
 /** @import * as T from "./define.js" */
 
-export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "state", "ports", "frames", "edges", "inputs", "colors", "images"]);
+export const DIALECT_KEYS = Object.freeze(["name", "numberType", "types", "spaces", "objects", "globals", "intrinsics", "library", "conversions", "list", "queries", "targets", "slots", "constants", "environment", "text", "params", "helpers", "state", "ports", "frames", "edges", "inputs", "colors", "images", "files"]);
 /** What `constants.calls` may say: a constant calls nothing, or pure helpers. */
 /** What a vector's `multiply` may say: componentwise (the default), or only a vector times a scalar. */
 export const VECTOR_MULTIPLY = Object.freeze(["componentwise", "scalar"]);
@@ -102,6 +103,7 @@ export function validateDialect(def) {
   const out = [];
   if (!isPlainObject(def)) return [{ code: "D011", path: [], message: `defineDialect takes one object, not ${describe(def)}.`, tip: "write defineDialect({ name, numberType, spaces, targets, slots, … })" }];
   checkKeys(def, DIALECT_KEYS, DIALECT_REQUIRED, [], "defineDialect", out);
+  out.push(...checkDataFiles(def));
   if ("name" in def && !(typeof def.name === "string" && def.name.length > 0)) out.push({ code: "D011", path: ["name"], message: "name must be a non-empty string.", tip: `name: "data"` });
   if ("numberType" in def && def.numberType !== "f32" && def.numberType !== "f64") out.push({ code: "D002", path: ["numberType"], message: `numberType must be "f32" or "f64", not ${describe(def.numberType)}.`, tip: `numberType: "f64"` });
 

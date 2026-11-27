@@ -12,6 +12,7 @@ import { checkPackageDir, CheckTargetError } from "../checker/index.js";
 import { hashDir } from "../../pkg/dir.js";
 import { PACKAGE_CODES } from "../../../kit/package/index.js";
 import { UI_CODES } from "../../../kit/define/codes.js";
+import { pngHeader } from "../../../kit/package/fixtures/png.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const FIXTURES = join(HERE, "../fixtures/valid");
@@ -182,6 +183,25 @@ test("K016: an elements entry no UI element names", async () => {
   const r = await check("particles", (d) => manifest(d, (m) => { m.elements.push("examples/01.js"); }));
   assert.deepEqual(codes(r), ["K016"]);
   assert.match(r.diagnostics[0].message, /examples\/01\.js/);
+});
+
+// K017–K019: the data files a Dialect names (leaf hca0YM); kit/package/test/data.test.js has the rest
+/** The maze fixture with a picture declared at `file`, of `size`, and the `png` bytes written there (none when null). @param {string} d @param {Uint8Array | null} png */
+function withSheet(d, png) {
+  sub(d, "maze.dialect.js", `  name: "maze",\n`, `  name: "maze",\n  images: { sheet: { size: [16, 8], cell: [8, 8], file: "art/sheet.png", note: "a wall, then the floor" } },\n`);
+  if (png) { mkdirSync(join(d, "art")); writeFileSync(join(d, "art/sheet.png"), png); }
+}
+test("K017: an image file the Dialect names that the folder lacks", async () => {
+  const r = await check("maze", (d) => withSheet(d, null));
+  assert.deepEqual(codes(r), ["K017"]);
+  assert.match(r.diagnostics[0].message, /images\.sheet names art\/sheet\.png/);
+});
+test("K018 and K019: a picture that is not a PNG, and one of another size", async () => {
+  assert.deepEqual(codes(await check("maze", (d) => withSheet(d, new Uint8Array([0xff, 0xfe, 0, 1])))), ["K018"]);
+  const r = await check("maze", (d) => withSheet(d, pngHeader(8, 8)));
+  assert.deepEqual(codes(r), ["K019"]);
+  assert.equal(r.diagnostics[0].file, "art/sheet.png");
+  assert.deepEqual(codes(await check("maze", (d) => withSheet(d, pngHeader(16, 8)))), [], "the right size loads clean");
 });
 
 test("a dotfile in the folder is not part of the package", async () => {

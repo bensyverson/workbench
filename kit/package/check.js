@@ -5,11 +5,13 @@ import { hashText } from "./hash.js";
 import { scanImports } from "./imports.js";
 import { checkManifest, MANIFEST_PATH } from "./manifest.js";
 import { isDotPath, isModulePath } from "./paths.js";
+import { textOf } from "./content.js";
 
 /**
- * Checks a package held as a { path: text } map: the manifest, the kit version, that the files and the manifest's
- * `files` list the same set, each file's hash, and the imports of every .js file.
- * @param {Record<string, string>} allFiles  the package files; a path with a part starting with "." is ignored
+ * Checks a package held as a { path: text | bytes } map: the manifest, the kit version, that the files and the
+ * manifest's `files` list the same set, each file's hash (over its bytes), and the imports of every .js file. The
+ * manifest and the modules are read as UTF-8 when they are given as bytes.
+ * @param {import("./package.js").PackageFiles} allFiles  the package files; a path with a part starting with "." is ignored
  * @param {{ kitVersion: string }} options  the Definition API version this kit has (KIT_VERSION)
  * @returns {Promise<{ manifest: import("./package.js").Manifest | null, diagnostics: import("./package.js").PackageDiagnostic[] }>}
  */
@@ -19,7 +21,9 @@ export async function checkPackage(allFiles, { kitVersion }) {
   if (!Object.hasOwn(files, MANIFEST_PATH)) {
     return { manifest: null, diagnostics: [diag("K001", `the package has no ${MANIFEST_PATH}`, `add ${MANIFEST_PATH} (node scripts/pkg/hash.js <dir> rewrites its "files")`)] };
   }
-  const { manifest, diagnostics } = checkManifest(files[MANIFEST_PATH]);
+  const manifestText = textOf(files[MANIFEST_PATH]);
+  if (manifestText === null) return { manifest: null, diagnostics: [diag("K001", `${MANIFEST_PATH} is not UTF-8 text`, `write ${MANIFEST_PATH} as a JSON object in UTF-8`, MANIFEST_PATH)] };
+  const { manifest, diagnostics } = checkManifest(manifestText);
   if (!manifest) return { manifest, diagnostics };
   if (manifest.kit !== kitVersion) {
     diagnostics.push(diag("K003", `package ${manifest.name} ${manifest.version} was written for kit ${manifest.kit}; this kit is ${kitVersion}, and before 1.0 a kit supports only its own version`, `port the package to kit ${kitVersion} and set "kit": "${kitVersion}", or load it with a kit that is ${manifest.kit}`, MANIFEST_PATH));
@@ -35,6 +39,11 @@ export async function checkPackage(allFiles, { kitVersion }) {
   for (const p of paths) {
     if (!Object.hasOwn(manifest.files, p)) diagnostics.push(diag("K005", `${p} is in the package but not listed in ${MANIFEST_PATH}`, `run node scripts/pkg/hash.js <dir> to list it, or remove the file`, p));
   }
-  for (const p of paths) if (isModulePath(p)) diagnostics.push(...scanImports(p, files[p], paths).diagnostics);
+  for (const p of paths) {
+    if (!isModulePath(p)) continue;
+    const text = textOf(files[p]);
+    if (text === null) diagnostics.push(diag("K007", `${p} is not UTF-8 text, so it cannot be read as a module`, `save ${p} as UTF-8`, p));
+    else diagnostics.push(...scanImports(p, text, paths).diagnostics);
+  }
   return { manifest, diagnostics };
 }

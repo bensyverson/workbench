@@ -39,6 +39,7 @@ export const DEFINE_CODES = Object.freeze({
   D031: "A Grammar whose ref(\"in\") has no ports.in to name, that declares name(\"in\") itself, with a slot or child construct named out, in or frame (the handles every builder has), or a ref kind other than \"event\" or \"value\" on ref(\"in\")",
   D032: "An Event input's record that is not { name, slots }: a name that is not an identifier or is already a global, object, intrinsic, type, the inputs' or params' name or another input's record; slots that are empty or name no slot convention; a record on a value input",
   D033: "A runtime declaration defineRuntime refuses: not on a Grammar builder, a clock, init or step that is not a function, an unknown key, or an Event port without a whole positive max per step (or a max on a value port, on a port the Dialect lacks, or below an input's keepLast n)",
+  D034: "A malformed files declaration (a Dialect's data files): not { <name>: { kind, path, note } }, a kind other than text, json or csv (an image is declared in images, with its file), a path that is missing or a .js module, no note, or a path two declarations name",
 });
 
 /** defineUI's codes: U… is a UI declaration refused when defineUI is called. U006 is retired (its job, a bad state, is D023's); its number is not reused. */
@@ -55,6 +56,7 @@ export const UI_CODES = Object.freeze({
   U011: "A tile id that is not an identifier or is a generated view's id",
   U012: "A value of the wrong form: a non-string label, title or note, a number out of range or not whole, a bad columns entry, an empty body or items",
   U013: "defineUI given something other than the package's Grammar builder, or a Dialect that declares no state",
+  U014: "A Draw stage (`stage: { draw }`) naming an output the Dialect lacks (with a did-you-mean) or one that is not a Draw seam, or a stage that is both a Draw output and a custom element",
 });
 
 /** The generated builder's codes. */
@@ -82,7 +84,7 @@ export const BUILD_CODES = Object.freeze({
 export const an = (w) => `${(/^[aeiou]/i.test(w) && !/^(uni(?![nm])|us[aeu]|uti|eu|one|once|ubiq)/i.test(w)) || /^(hour|honest|honor|heir)/i.test(w) ? "an" : "a"} ${w}`;
 
 /** Letters a Dialect's own check codes may not start with. */
-export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "J", "L", "N", "P", "S", "U", "V"]);
+export const RESERVED_LETTERS = Object.freeze(["B", "C", "D", "J", "L", "N", "P", "S", "U", "V", "W"]);
 
 /**
  * The fields of a Dialect's own refusal, as a check's or a step's `ctx.error` makes it: the message with a

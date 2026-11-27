@@ -49,7 +49,7 @@ const tile = (...body) => ({ tiles: { t: { title: "T", place: { splitBelow: "sta
 const stat = (/** @type {Record<string, unknown>} */ extra) => tile({ kind: "stat", label: "x", value: "t", ...extra });
 
 test("every U code is documented in UI_CODES, U006 is retired, and each is exercised below", () => {
-  assert.deepEqual(Object.keys(UI_CODES), ["U001", "U002", "U003", "U004", "U005", "U007", "U008", "U009", "U010", "U011", "U012", "U013"]);
+  assert.deepEqual(Object.keys(UI_CODES), ["U001", "U002", "U003", "U004", "U005", "U007", "U008", "U009", "U010", "U011", "U012", "U013", "U014"]);
 });
 
 test("a valid UI is frozen, remembers its package, and U-less", () => {
@@ -230,6 +230,13 @@ test("U012: values of the wrong form", () => {
   assert.deepEqual(codes(tile({ kind: "row", items: [] })), ["U012"]);
   assert.deepEqual(codes(stat({ value: 7 })), ["U012"], "a value is a path or a lambda");
   assert.deepEqual(codes({ annotate: { params: { mass: { tone: "loud" } } } }), ["U012"]);
+});
+
+test("U014: a Draw stage names one of the Dialect's Draw outputs (ui-draw-stage.test.js has the rest)", () => {
+  // orbits declares no outputs, so any name is unknown, and the tip says to declare one
+  const ds = refused({ stage: { draw: "view" } });
+  assert.deepEqual(ds.map((d) => d.code), ["U014"]);
+  assert.match(ds[0].tip, /declare a Draw output/);
 });
 
 test("U013: not a Grammar builder, or a Dialect that declares no state", () => {

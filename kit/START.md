@@ -12,12 +12,13 @@ Read this page, then [API.md](API.md). The pages in [docs/](docs/) cover one top
 |---|---|
 | `<lang>.dialect.js` | `export const <name> = defineDialect({...})`: types, the operations a lambda may call, how each kind of lambda is called |
 | `<lang>.grammar.js` | `export const <builder> = defineGrammar(<dialect>, {...})`: the builder methods and their arguments |
+| `<path>.<ext>` | optional data files (a PNG, a CSV): anything not `.js`, named by your Dialect where it reads them (API.md ▸ Seams, "Data files") |
 | `examples/*.js` | Programs, one per file: `export default ($) => <builder>("<name>")…;` |
 | `<lang>.runtime.js` | optional: `export const <name> = defineRuntime(<builder>, {...})`: how a run steps your state (API.md ▸ A runtime). Data a Program declares (a field per `<item>`) lives in that state too: API.md ▸ `defineDialect`, "Data a Program declares goes in the state" |
 
 Declare each vector or scalar once, in the Dialect's `types: { <vec>: vector(<dims>, "f64") }`, and name it by its key (`"<vec>"`) in `state` and on ports: `vector(…)` written inline there is refused (D023, D027). API.md ▸ `defineDialect`.
 
-Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md).
+Import only from `"kit/define"` and your own files. If other packages will be wired to yours, declare its ports and frames in the Dialect: see [API.md](API.md) ▸ Seams. If your Dialect offers a picture (a `Draw` output), your UI's stage can show it: `stage: { draw: "<Draw output>" }` (API.md ▸ `defineUI`). To wire packages together, you write a glue program with `kit/compose`: see [compose/README.md](compose/README.md).
 
 ## The loop
 

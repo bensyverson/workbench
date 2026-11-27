@@ -8,7 +8,7 @@
 // and params they were last built with (`redraw`, part.js): a list is a pure function of the state, the record, the
 // params and the inputs. A Draw wire converts its list op by op into the consumer's frame, and the page reads the shown part's list.
 
-import { runDraw, convertOp, carryList, checkDraw, PROFILES } from "../draw/index.js";
+import { runDraw, convertOp, carryList, checkDraw } from "../draw/index.js";
 
 /** @typedef {import("../draw/ops.js").Op} Op */
 /** @typedef {import("../draw/ops.js").Image} Image */
@@ -73,16 +73,15 @@ export function convertDraw(v, c) {
 
 /**
  * What the page draws: the shown part's (or `part`'s) Draw output, as it stands, with every part's images and the
- * box of its frame (its extent for the built record) for a renderer. Given the composition's renderer profile (a
- * profile or its name), `check` is that profile's draw-time check of the list (kit/draw's checkDraw: J040–J042,
- * the counts and positions composition cannot judge), else null; the list is never trimmed to pass it.
- * @param {{ snapshot: (part: string) => { state: any, draws?: Record<string, readonly Op[]> } }} run @param {{ parts: Array<{ name: string, dialect: string, record: any }>, show: string | null, view?: string }} composed
+ * box of its frame (its extent for the built record) for a renderer. When the composition was built with a renderer
+ * profile (the composed record's `profile`), `check` is that profile's draw-time check of the list (kit/draw's
+ * checkDraw: J040–J044, the counts and positions composition cannot judge), else null; the list is never trimmed to pass it.
+ * @param {{ snapshot: (part: string) => { state: any, draws?: Record<string, readonly Op[]> } }} run @param {{ parts: Array<{ name: string, dialect: string, record: any }>, show: string | null, view?: string, profile?: import("../draw/profiles.js").Profile }} composed
  * @param {any[]} runtimes  kit/define's defineRuntime results, matched by Dialect name
  * @param {string} [part]
- * @param {{ profile?: import("../draw/profiles.js").Profile | string }} [options]
  * @returns {{ part: string, port: string | null, list: readonly Op[], images: Record<string, Image>, box: { min: number[], max: number[] } | null, check: ReturnType<typeof checkDraw> | null }}
  */
-export function pageView(run, composed, runtimes, part, options = {}) {
+export function pageView(run, composed, runtimes, part) {
   const runtimeOf = (/** @type {string} */ dialect) => runtimes.find((r) => r.dialect?.name === dialect);
   /** @type {Record<string, Image>} */
   const images = {};
@@ -97,8 +96,7 @@ export function pageView(run, composed, runtimes, part, options = {}) {
   const frame = rt.dialect.seams.frames[port.seam.frame];
   const box = frame?.extent ? frame.extent(cp.record) : null;
   const list = run.snapshot(name).draws?.[port.name] ?? [];
-  const profile = typeof options.profile === "string" ? /** @type {Record<string, import("../draw/profiles.js").Profile>} */ (PROFILES)[options.profile] : options.profile;
-  if (typeof options.profile === "string" && !profile) throw new Error(`pageView: no renderer profile '${options.profile}' (the profiles: ${Object.keys(PROFILES).join(", ")})`);
+  const profile = composed.profile;
   const check = profile ? checkDraw(profile, [...list], { images, box: box ?? { min: [0, 0], max: [0, 0] } }) : null;
   return { part: name, port: port.name, list, images, box, check };
 }

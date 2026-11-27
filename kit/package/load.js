@@ -14,6 +14,8 @@ import { diag } from "./codes.js";
 import { checkElements } from "./elements.js";
 import { contentKey } from "./hash.js";
 import { MANIFEST_PATH } from "./manifest.js";
+import { checkData } from "./data.js";
+import { textOf } from "./content.js";
 
 /** @param {unknown} v */
 const isBuilder = (v) => typeof v === "function" && isDialect(/** @type {any} */ (v).dialect) && /** @type {any} */ (v).grammar !== undefined;
@@ -28,14 +30,14 @@ const KINDS = {
 
 /**
  * Loads a package: the loaded parts when it is sound, else its diagnostics.
- * @param {Record<string, string>} files
+ * @param {import("./package.js").PackageFiles} files  each path's text or bytes
  * @param {{ importModule: (path: string) => Promise<Record<string, unknown>>, kitVersion?: string }} options
  * @returns {Promise<import("./package.js").LoadedPackage>}
  */
 export async function loadPackage(files, { importModule, kitVersion = KIT_VERSION }) {
   const { manifest, diagnostics } = await checkPackage(files, { kitVersion });
   /** @type {import("./package.js").LoadedPackage} */
-  const out = { name: manifest?.name ?? null, version: manifest?.version ?? null, content: null, dialect: null, grammar: null, ui: null, runtime: null, examples: [], refusals: [], foreign: [], diagnostics };
+  const out = { name: manifest?.name ?? null, version: manifest?.version ?? null, content: null, dialect: null, grammar: null, ui: null, runtime: null, examples: [], refusals: [], foreign: [], data: {}, diagnostics };
   if (!manifest || diagnostics.length) return out;
   /** @type {Record<string, unknown>} */
   const found = {};
@@ -62,8 +64,10 @@ export async function loadPackage(files, { importModule, kitVersion = KIT_VERSIO
   if (grammar && ui && ui.builder !== grammar) diagnostics.push(diag("K008", `the UI in ${manifest.entry.ui} is not built on the Grammar in ${manifest.entry.grammar}`, `build it with defineUI(<the Grammar builder imported from ./${manifest.entry.grammar}>, …)`, manifest.entry.ui));
   if (grammar && runtime && runtime.grammar !== grammar) diagnostics.push(diag("K008", `the Runtime in ${manifest.entry.runtime} is not built on the Grammar in ${manifest.entry.grammar}`, `build it with defineRuntime(<the Grammar builder imported from ./${manifest.entry.grammar}>, …)`, manifest.entry.runtime));
   if (!diagnostics.length) diagnostics.push(...checkElements(manifest.elements ?? [], ui ?? null));
+  const read = !diagnostics.length && dialect ? checkData(dialect, manifest, files) : { data: {}, diagnostics: [] };
+  diagnostics.push(...read.diagnostics);
   if (diagnostics.length) return out;
-  return { ...out, content: await contentKey(manifest.files, files[MANIFEST_PATH]), dialect, grammar, ui: ui ?? null, runtime: runtime ?? null, examples: manifest.examples ?? [], refusals: manifest.refusals ?? [], foreign: manifest.foreign ?? [] };
+  return { ...out, content: await contentKey(manifest.files, /** @type {string} */ (textOf(files[MANIFEST_PATH]))), dialect, grammar, ui: ui ?? null, runtime: runtime ?? null, examples: manifest.examples ?? [], refusals: manifest.refusals ?? [], foreign: manifest.foreign ?? [], data: read.data };
 }
 
 export { MANIFEST_PATH };

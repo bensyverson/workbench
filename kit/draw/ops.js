@@ -2,7 +2,7 @@
 // paint (its named colors and declared images), the paint declaration itself, a color resolved to "#rrggbbaa",
 // an op converted across a frame edge, and the box an op covers. Pure data and functions: no Node built-ins.
 
-/** A declared image: its size in pixels, and the cells it is cut into. @typedef {{ size: number[], cell?: number[], note?: string }} Image */
+/** A declared image: its size in pixels, the cells it is cut into, and the package file (a PNG) that holds its pixels, if any. @typedef {{ size: number[], cell?: number[], file?: string, note?: string }} Image */
 /** A Dialect's paint. @typedef {{ colors: Record<string, string>, images: Record<string, Image> }} Paint */
 /** @typedef {{ scale: number[], offset: number[] }} Edge */
 /** @typedef {{ min: number[], max: number[] }} Box */
@@ -24,7 +24,7 @@ export const FONTS = Object.freeze(["mono"]);
 export const GLYPH = 8;
 const FLIPS = ["x", "y", "xy"];
 const HEX = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
-const IMAGE_KEYS = ["size", "cell", "note"];
+const IMAGE_KEYS = ["size", "cell", "file", "note"];
 
 const isNum = (/** @type {unknown} */ v) => typeof v === "number" && Number.isFinite(v);
 const isVec = (/** @type {unknown} */ v) => Array.isArray(v) && v.length === 2 && v.every(isNum);
@@ -128,6 +128,7 @@ export function checkPaint(paint) {
     for (const key of Object.keys(v)) if (!IMAGE_KEYS.includes(key)) out.push(`images.${k} has no key '${key}' (its keys: ${IMAGE_KEYS.join(", ")})`);
     if (!pos(v.size)) out.push(`images.${k}.size must be [<w>, <h>], whole numbers of pixels, got ${short(v.size)}`);
     else if (v.cell !== undefined && (!pos(v.cell) || v.size[0] % v.cell[0] !== 0 || v.size[1] % v.cell[1] !== 0)) out.push(`images.${k}.cell must be [<cw>, <ch>] that divides its size ${short(v.size)}, got ${short(v.cell)}`);
+    if (v.file !== undefined && (typeof v.file !== "string" || v.file === "" || v.file.endsWith(".js"))) out.push(`images.${k}.file must be the path of a PNG in the package ("<path>.png"), not a module, got ${short(v.file)}`);
   }
   return out;
 }

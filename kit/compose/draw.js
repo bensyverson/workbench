@@ -38,10 +38,10 @@ const drawOutputs = (p) => Object.values(p.seams.out).filter((o) => o.seam.kind 
 
 /**
  * The shown part's Draw output and the problems with it: which output the page shows, and, given a profile, the
- * op kinds the profile does not draw.
+ * op kinds the profile does not draw; and the profile, resolved from its name (null for none or an unknown name).
  * @param {DrawPart | null} shown @param {DrawWire[]} wires @param {Map<any, DrawPart>} parts
  * @param {{ profile?: Profile | string }} options
- * @returns {{ view: string | null, problems: DrawProblem[] }}
+ * @returns {{ view: string | null, profile: Profile | null, problems: DrawProblem[] }}
  */
 export function shownDraw(shown, wires, parts, options) {
   /** @type {DrawProblem[]} */
@@ -52,17 +52,17 @@ export function shownDraw(shown, wires, parts, options) {
     profile = Object.hasOwn(PROFILES, options.profile) ? /** @type {Record<string, Profile>} */ (PROFILES)[options.profile] : null;
     if (!profile) problems.push({ code: "S403", message: `the profile '${options.profile}' is not a renderer profile; the profiles are ${Object.keys(PROFILES).join(", ")}`, fix: `check({ profile: "${Object.keys(PROFILES)[0]}" })`, sides: {} });
   } else if (options.profile) profile = options.profile;
-  if (!shown) return { view: null, problems };
+  if (!shown) return { view: null, profile, problems };
   const outs = drawOutputs(shown);
-  if (outs.length === 0) return { view: null, problems };
+  if (outs.length === 0) return { view: null, profile, problems };
   const chosen = outs.length === 1 ? outs[0] : outs.find((o) => o.name === VIEW);
   const side = (/** @type {DrawPart} */ p, /** @type {string} */ port) => ({ part: p.name, dialect: p.dialectName, ...(p.version ? { version: p.version } : {}), port: `out.${port}`, seam: p.seams.out[port]?.seamText });
   if (!chosen) {
     const names = outs.map((o) => o.name);
     problems.push({ code: "S402", message: `the page shows ${shown.name}, and ${shown.name} has ${names.length === 2 ? "two" : names.length} Draw outputs, ${names.slice(0, -1).join(", ")} and ${names.at(-1)}, and none is named ${VIEW}`, fix: `name the one the page shows ${VIEW}`, sides: { to: side(shown, names[0]) } });
-    return { view: null, problems };
+    return { view: null, profile, problems };
   }
-  if (!profile) return { view: chosen.name, problems };
+  if (!profile) return { view: chosen.name, profile, problems };
   const found = kindsReaching(shown, chosen.name, wires, parts);
   const refused = kindProblems(profile, [...found.from.keys()]);
   if (refused.length) {
@@ -75,7 +75,7 @@ export function shownDraw(shown, wires, parts, options) {
       sides: { from: side(first.part, first.port), to: side(shown, chosen.name) },
     });
   }
-  return { view: chosen.name, problems };
+  return { view: chosen.name, profile, problems };
 }
 
 /**

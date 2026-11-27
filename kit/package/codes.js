@@ -19,6 +19,9 @@ export const PACKAGE_CODES = Object.freeze({
   K014: "A refusal that is refused with a different code than the manifest gives",
   K015: "A custom element module the UI names that the manifest's elements does not list",
   K016: "A module the manifest's elements lists that no custom element in the UI names",
+  K017: "A data file the Dialect names (in files, or an image's file) that is not a normalized path to a data file, or that the package does not hold and the manifest's files does not list",
+  K018: "A data file that does not decode as its kind: an image that is not a PNG (no signature and IHDR, or held as text), a text, csv or json file that is not UTF-8, a json file that does not parse",
+  K019: "A PNG whose width and height are not its image's declared size",
 });
 
 /**

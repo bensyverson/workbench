@@ -14,7 +14,7 @@ import { mazeStep } from "./helpers.js";
 
 const right = "(pl, pad) => { pl.dx = 1; }";
 
-/** @param {{ maze?: (d: any) => void, screen?: (d: any) => void }} [change] */
+/** @param {{ maze?: (d: any) => void, screen?: (d: any) => void, profile?: string }} [change] */
 function bench(change = {}) {
   const mg = drawnMaze(change.maze), sg = screen(change.screen);
   const coinsOf = (/** @type {string[]} */ grid) => grid.flatMap((row, y) => [...row].flatMap((ch, x) => (ch === "c" ? [{ x, y }] : [])));
@@ -31,7 +31,7 @@ function bench(change = {}) {
   const scr = /** @type {any} */ (sg("scr")).size({ width: 40, height: 32 });
   const composed = compose("draw-run").part(level).part(scr)
     .frame(level.frame.cell, scr.frame.px, { scale: 8, offset: 4 })
-    .wire(level.out.view, scr.in.board).wire(level.out.score, scr.in.score).show(scr).build();
+    .wire(level.out.view, scr.in.board).wire(level.out.score, scr.in.score).show(scr).build(change.profile ? { profile: change.profile } : undefined);
   return { composed, runtimes, run: createRun(composed, { runtimes }) };
 }
 
@@ -83,19 +83,22 @@ test("a builder runs as its emitted Kernel, compiled once per build, not as the 
   assert.deepEqual(c.draws.view.fns[1]({ x: 2, y: 1 }, {}, level.record), { op: "ellipse", at: [2, 1], r: [0.25, 0.25], fill: "coin" });
 });
 
-test("given the composition's profile, pageView checks the list it gives at draw time (review F10)", () => {
-  const { composed, runtimes, run } = bench();
-  // without a profile there is nothing to check
-  assert.equal(pageView(run, composed, runtimes).check, null);
+test("pageView checks the list it gives at draw time against the profile on the composed record (review F10)", () => {
+  // without a profile there is nothing to check, and pageView takes none of its own: the record's is the one
+  const plain = bench();
+  assert.equal(pageView(plain.run, plain.composed, plain.runtimes).check, null);
+  assert.equal(/** @type {any} */ (pageView)(plain.run, plain.composed, plain.runtimes, "level", { profile: GAMEBOY }).check, null);
+  // the disc goes through a local, so its kind is open and composition leaves it to draw time (S401 does not see it)
+  const { composed, runtimes, run } = bench({ profile: "gameboy", maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => { const o = { op: "ellipse", at: [c.x, c.y], r: [0.25, 0.25], fill: "coin" }; return o; }; } });
+  assert.equal(composed.profile, GAMEBOY);
   // the maze's own picture, in its cell frame, holds tiles one unit a cell (J041: background cells don't scale) and a
   // disc, which the Game Boy does not draw (J042), each found when the list is drawn
-  const level = pageView(run, composed, runtimes, "level", { profile: GAMEBOY });
+  const level = pageView(run, composed, runtimes, "level");
   assert.equal(level.check?.ok, false);
   assert.deepEqual(level.check?.diagnostics.map((d) => d.code), ["J041", "J042"]);
-  assert.deepEqual(pageView(run, composed, runtimes, "level", { profile: "gameboy" }).check?.diagnostics.map((d) => d.code), ["J041", "J042"]);
   // the shown list after the coin is picked is tiles and text, which it draws
   run.runUntil(0.25);
-  const shown = pageView(run, composed, runtimes, undefined, { profile: GAMEBOY });
+  const shown = pageView(run, composed, runtimes);
   assert.deepEqual(shown.check?.diagnostics, []);
   assert.equal(shown.check?.ok, true);
 });

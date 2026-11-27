@@ -83,6 +83,21 @@ test("bundle.js writes the folder, manifest included and dotfiles not, as a bund
   assert.equal(b.files?.["x.dialect.js"], "export const a = 1;\n");
 });
 
+test("a binary file (one that is not UTF-8, such as a PNG) is hashed as bytes and bundled as base64", async () => {
+  const dir = folder("b2");
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00]);
+  writeFileSync(join(dir, "sheet.png"), png);
+  assert.equal(run(HASH, [dir]).status, 0);
+  assert.equal(JSON.parse(readFileSync(join(dir, "wb-package.json"), "utf8")).files["sheet.png"], await hashText(png));
+  const r = run(BUNDLE, [dir]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(r.stdout).files["sheet.png"]), ["base64"]);
+  const b = readBundle(r.stdout);
+  assert.ok(b.files?.["sheet.png"] instanceof Uint8Array);
+  assert.deepEqual([.../** @type {Uint8Array} */ (b.files?.["sheet.png"])], [...png]);
+  assert.equal(b.files?.["x.dialect.js"], "export const a = 1;\n", "a text file is still text");
+});
+
 test("bundle.js: no directory is exit 4, a bad invocation exit 2", () => {
   assert.equal(run(BUNDLE, []).status, 2);
   const r = run(BUNDLE, [join(scratch, "nope")]);

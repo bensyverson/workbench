@@ -70,6 +70,15 @@ test("a profile judges the shown list's kinds at composition, through the inputs
   assert.deepEqual(errors(gb.check({ profile: GAMEBOY })), []);
 });
 
+test("the composed record keeps the profile build was given, resolved from its name, so the page reads it there", () => {
+  const gb = glue({ maze: (d) => { d.ports.out.view.layers[1].from = (/** @type {any} */ c) => ({ op: "image", at: [c.x, c.y], image: "sheet", cell: 0 }); } });
+  assert.equal(/** @type {any} */ (gb.build({ profile: "gameboy" })).profile, GAMEBOY);
+  assert.equal(/** @type {any} */ (gb.build({ profile: GAMEBOY })).profile, GAMEBOY);
+  assert.equal(/** @type {any} */ (glue().build({ profile: CANVAS })).profile, CANVAS);
+  // a composition given no profile has none on its record
+  assert.equal(Object.hasOwn(/** @type {any} */ (glue().build()), "profile"), false);
+});
+
 test("a shown part with several Draw outputs shows the one named view, and none named view is S402", () => {
   const two = glue({ screen: (d) => { d.ports.out.mini = { seam: "Draw<4>@px", note: "a thumbnail", from: () => null }; } });
   assert.equal(/** @type {any} */ (two.build()).view, "view");

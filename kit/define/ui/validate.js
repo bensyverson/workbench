@@ -51,6 +51,7 @@ const MODULE_RE = /^\.\/(?!.*\.\.)[\w./-]+\.js$/;
  * @property {Record<string, Record<string, string>>} aliases  the Dialect's vector component aliases, by vector name
  * @property {Set<string>} free  the free names the Dialect gives a lambda
  * @property {Record<string, any>} globalObjects  the object each of the Dialect's globals names, by global name
+ * @property {Record<string, { seam: string, draw: boolean }>} outputs  the Dialect's output ports: each one's printed seam, and whether it is a Draw seam
  * @property {((path: string) => string | null) | null} moduleText  a package file's text, or null when it is not a readable file; the option itself null when the host cannot read files (the module checks are then skipped)
  */
 
@@ -150,8 +151,22 @@ export function validate(decl, env) {
 
   // stage
   if ("stage" in decl) {
-    if (!isObj(decl.stage)) add("U012", ["stage"], "stage is not an object", 'write stage: { element: "<pkg>-<name>", module: "./<file>.js" }, or leave it out for the text view');
-    else { keys(decl.stage, ["stage"], ELEMENT_KEYS, ["element"], "stage"); element(decl.stage, ["stage"]); }
+    if (!isObj(decl.stage)) add("U012", ["stage"], "stage is not an object", 'write stage: { element: "<pkg>-<name>", module: "./<file>.js" }, or stage: { draw: "<output>" }, or leave it out for the text view');
+    else if ("draw" in decl.stage) drawStage(decl.stage);
+    else { keys(decl.stage, ["stage"], [...ELEMENT_KEYS, "draw"], ["element"], "stage"); element(decl.stage, ["stage"]); }
+  }
+  /** The third form: the Dialect's own Draw output, by name. */
+  function drawStage(/** @type {Record<string, any>} */ st) {
+    const drawn = Object.entries(env.outputs).filter(([, s]) => s.draw).map(([n]) => n);
+    const tip = drawn.length ? drawn.map((n) => `draw: "${n}"`).join(", or ") : `declare a Draw output in defineDialect's ports.out (seam: "Draw<max>@<frame>"), or use a custom element`;
+    const mixed = Object.keys(st).filter((k) => ELEMENT_KEYS.includes(k));
+    if (mixed.length) add("U014", ["stage"], `a stage is a custom element or a Draw output, not both: it has draw and ${mixed.join(", ")}`, "keep draw, or keep element and module");
+    keys(st, ["stage"], ["draw", ...ELEMENT_KEYS], ["draw"], "stage");
+    const name = st.draw;
+    if (typeof name !== "string") return add("U014", ["stage", "draw"], `draw is ${str(name)}; it names one of the ${env.pkg} Dialect's Draw outputs`, tip);
+    if (!Object.hasOwn(env.outputs, name)) return add("U014", ["stage", "draw"], `the ${env.pkg} Dialect has no output '${name}'.${didYouMean(name, Object.keys(env.outputs))}`, tip);
+    const o = env.outputs[name];
+    if (!o.draw) add("U014", ["stage", "draw"], `out.${name} is ${o.seam}, not a Draw seam: the stage draws a Draw output`, tip);
   }
 
   // inputs

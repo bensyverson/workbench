@@ -1,10 +1,14 @@
 import { MANIFEST_PATH } from "./manifest.js";
+import { bytesOf } from "./content.js";
 
 // Content hashes in the Subresource Integrity spelling, over globalThis.crypto.subtle (Node and the page).
 
-/** The hash of `text`'s UTF-8 bytes: `sha256-<base64>`. @param {string} text @returns {Promise<string>} */
-export async function hashText(text) {
-  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)));
+/**
+ * The hash of a file's bytes (text as its UTF-8 bytes, so a file hashes the same as text or as bytes): `sha256-<base64>`.
+ * @param {import("./content.js").FileContent} content @returns {Promise<string>}
+ */
+export async function hashText(content) {
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", /** @type {Uint8Array<ArrayBuffer>} */ (bytesOf(content))));
   let bin = "";
   for (const b of digest) bin += String.fromCharCode(b);
   return `sha256-${btoa(bin)}`;

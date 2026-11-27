@@ -120,3 +120,20 @@ The package's reference (API.md-style) is generated from its definitions, so it 
 6. **Dogfood:** per the AGENTS.md ruling, have three fresh agents package an existing Dialect (maze, particles) from a draft packaging reference and load it in a checker before the format is frozen.
 
 > **Ruled 2026-11-26 (Ben), leaf `hca0YM`: data files.** A package may carry data files of any kind, and images are one case of a general rule, not a special one. A file whose name does not end in `.js` is data: listed and hashed in `files` as today, never imported. A Dialect names each data file it reads, with a **kind** (`text`, `json`, `csv`, `image`) that tells the host how to decode it; kit/package checks each named file exists and is listed. The file map a host passes in holds text or bytes, so a binary file (a PNG) travels as bytes, in an upload and in a bundle alike. An `image` is a PNG, decoded by the host (`createImageBitmap` in the page), and its pixel size is checked against the declared `size` and `cell`. A new kind later is a decoder, not a format change. The data Dialect's `.source(…, { csv: "data/orders.csv" })` is the same rule. The first outside use of it is `IhJ35P` (the dogfood).
+
+### Data files, as built (2026-11-26, leaf `hca0YM`)
+
+The ruling left the declaration's shape to the build. It is two keys of `defineDialect`, one for pictures and one for everything else, so an image keeps the one declaration kit/draw already reads:
+
+```js
+files:  { <name>: { kind: "<text | json | csv>", path: "<path>", note: "<what it holds>" } },
+images: { <image>: { size: [<w>, <h>], cell: [<cw>, <ch>], file: "<path>.png", note: "<…>" } },
+```
+
+- **A data file is named where it is read, by its path in the package.** A `files` entry gives a kind; an `images` entry with a `file` is a file of kind `image`, and its `size` and `cell` are the checks on it. An image without a `file` is still a box with no pixels, as before. A `files` entry of kind `image` is refused (D034) with a tip to declare it in `images`, so a picture has one place. A new kind later is a new value of `kind` and a decoder, nothing else.
+- **kit/define** checks the shape (D034 for `files`; J003 for an image's `file`) and exposes `dataFiles(dialect)`, every data file the Dialect reads as `{ path, kind, from }` (`from` is `files.<name>` or `images.<image>`).
+- **kit/package** checks each one when the package loads, after the Dialect is imported (only then is the declaration known): the path is a normalized package path that is not a module and is listed in the manifest's `files` (K017; its hash is then K006's, as for every listed file); the content decodes as its kind (K018: UTF-8 for `text`, `csv` and `json`, which must also parse; a PNG signature and IHDR for `image`); and a PNG's width and height are the image's `size` (K019; `cell` divides `size`, which J003 already holds). The width and height come from the IHDR chunk, read in a few lines with no decoder. The loaded package gains `data`, by path: `{ path, kind, from, text? | bytes?, value?, width?, height? }` (`value` the parsed JSON).
+- **The file map holds text or bytes.** A host passes `{ path: string | Uint8Array }`. A text file's hash is the hash of its UTF-8 bytes, so the same file hashes the same either way; modules and the manifest given as bytes are decoded as UTF-8.
+- **The bundle carries bytes as base64 inside the JSON**: a binary file's entry is `{ "base64": "<…>" }` in place of its text, so a bundle stays one JSON file and a bundle with no binary file is unchanged. `scripts/pkg/dir.js` reads a file that is not valid UTF-8 as bytes.
+- **Decoding pixels is the host's.** [kit/page](../kit/page/README.md) turns each image's bytes into a `drawCanvas` source through a decode function the host passes (`createImageBitmap` in a browser), so the kit stays testable in Node.
+- **A Program-level reference** (`.source(…, { csv: "<path>" })`, the data Dialect) is not built. When it is, the key is the kind and the value the path, and kit/package checks it the same way once the Program is built.

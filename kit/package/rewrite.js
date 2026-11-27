@@ -5,12 +5,13 @@
 import { diag } from "./codes.js";
 import { scanImports, KIT_SPECIFIER } from "./imports.js";
 import { isModulePath } from "./paths.js";
+import { textOf } from "./content.js";
 
 /**
  * The package's .js files as modules in dependency order. `modules` is a generator: for each file it calls
  * `urlFor` for the file's dependencies, so the host creates each blob URL (and records it for `urlFor`) before
  * asking for the next module. A cycle or an import a package may not make is a diagnostic, and `modules` is then empty.
- * @param {Record<string, string>} files
+ * @param {import("./package.js").PackageFiles} files  a module given as bytes is read as UTF-8 (checkPackage refuses one that is not)
  * @param {(path: string) => string} urlFor  the URL of an already-yielded module
  * @param {string} kitUrl  the URL of kit/define
  * @returns {{ diagnostics: import("./package.js").PackageDiagnostic[], modules: Generator<{ path: string, text: string }> }}
@@ -21,7 +22,7 @@ export function rewriteSpecifiers(files, urlFor, kitUrl) {
   const scans = new Map();
   /** @type {import("./package.js").PackageDiagnostic[]} */
   const diagnostics = [];
-  for (const p of js) { const s = scanImports(p, files[p], Object.keys(files)); scans.set(p, s); diagnostics.push(...s.diagnostics); }
+  for (const p of js) { const s = scanImports(p, textOf(files[p]) ?? "", Object.keys(files)); scans.set(p, s); diagnostics.push(...s.diagnostics); }
   /** @type {string[]} */
   const order = [];
   const done = new Set();
@@ -48,7 +49,7 @@ export function rewriteSpecifiers(files, urlFor, kitUrl) {
     diagnostics,
     modules: (function* () {
       for (const path of order) {
-        let text = files[path];
+        let text = textOf(files[path]) ?? "";
         const imports = /** @type {NonNullable<ReturnType<typeof scans.get>>} */ (scans.get(path)).imports;
         for (const i of [...imports].sort((a, b) => b.start - a.start)) {
           const url = i.resolved === KIT_SPECIFIER ? kitUrl : urlFor(/** @type {string} */ (i.resolved));

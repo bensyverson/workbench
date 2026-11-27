@@ -38,7 +38,7 @@ A part's picture as data on the wire ([the draw-list draft](../../project/2026-1
 
 - **A tiles `grid`** is a list of rows, each a list of cell numbers (`-1` draws nothing) or a string read through `key`, `{ "<char>": <cell> }` (ruling 5: the grid a maze keeps in its state feeds a tiles op as it is). A character the key does not map is J020. `wrap` makes the grid a ring that repeats from the frame's origin, so a scrolled map is a tiles op whose `at` is minus the scroll. `wrapAt` is the ring's origin when it is not the frame's: a builder leaves it out, and a wire sets it (an op crossing an offset keeps its ring with its frame). A cell that straddles the ring's far edge is drawn at both ends, so a scrolled ring has no gap.
 - **Colors** are `"#rrggbb"` or `"#rrggbbaa"`, or a name the Dialect's `colors` declares; an op leaves its part with every color as `"#rrggbbaa"`, so a stranger's list never needs the names.
-- **Images** are declared `{ size, cell?, note }`, with no pixel data; an op leaves its part with its image named `<part>.<image>`. A host that has a picture passes it to `drawCanvas` in `sources` by that name; without one, Canvas draws the image's box.
+- **Images** are declared `{ size, cell?, file?, note }`; an op leaves its part with its image named `<part>.<image>`. `file` is the package path of a PNG holding the pixels (a data file of kind `image`; kit/package checks it is there and is `size` pixels, K017–K019); the kit never decodes it. A host that has a picture passes it to `drawCanvas` in `sources` by that name ([kit/page](../page/README.md) builds `sources` from each image's file through the host's decoder); without one, Canvas draws the image's box.
 
 ## Building a draw list
 
@@ -97,7 +97,7 @@ A Draw output takes one builder: `from` (a whole list), `each` with `from` (one 
 |---|---|
 | J001 | a malformed Draw port: no builder or several, a layer with a key it does not take, an each path that is not a state list with a max, a pen layer without its max, a bad max, a Draw input given a default, required, delivery, record or type, a frame that is not 2-D |
 | J002 | retired (leaf `vcIzt1`): a builder that called map and its kin. Builders are lowered now, so `map` is lowering's own L002 or L005; the number is not reused |
-| J003 | a malformed `colors` or `images` declaration |
+| J003 | a malformed `colors` or `images` declaration (an image's `file` that is not a path, or is a `.js` module, included) |
 | J010 | a Program's max, or a layer's, that is not a whole number of at least 0, or a max past the seam's ceiling |
 | J020 | a builder made something off the op table |
 | J021 | a list over its max, or a layer over the max it states (a pen's, a `from` layer's) |
@@ -112,4 +112,4 @@ J is reserved for the kit (kit/define's `RESERVED_LETTERS`), so a Dialect's own 
 
 ## Not built yet
 
-GLSL lowering of draw lists (parked in the draft; a builder's Kernel holds lists, which kit/lir refuses); partial redraw; `defineUI`'s third stage form ("render my Draw output"); a Game Boy renderer that makes pixels (the profile checks only).
+GLSL lowering of draw lists (parked in the draft; a builder's Kernel holds lists, which kit/lir refuses); partial redraw; a Game Boy renderer that makes pixels (the profile checks only).

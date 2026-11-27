@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { registerHooks } from "node:module";
 import { KIT_VERSION } from "../../../kit/define/index.js";
-import { loadPackage, checkExamples, MANIFEST_PATH } from "../../../kit/package/index.js";
+import { loadPackage, checkExamples, textOf, MANIFEST_PATH } from "../../../kit/package/index.js";
 import { scanGlue, isComposition, formatDiagnostic } from "../../../kit/compose/index.js";
 import { installHooks } from "../../ui-trial/checker/hooks.js";
 import { session, begin } from "../../ui-trial/checker/session.js";
@@ -71,7 +71,7 @@ async function loadOne(pkgDir, prefix) {
   const files = readPackageDir(pkgDir);
   const base = pathToFileURL(realpathSync(pkgDir)).href + "/";
   // what the defineUI stand-in reads a UI's element modules from: this package's files
-  session.moduleText = (path) => files[path.replace(/^\.\//, "")] ?? null;
+  session.moduleText = (path) => { const f = files[path.replace(/^\.\//, "")]; return f === undefined ? null : textOf(f); };
   const importModule = (/** @type {string} */ path) => import(`${base}${path}?run=${session.run}`);
   const pkg = await loadPackage(files, { kitVersion: KIT_VERSION, importModule });
   /** @type {Found[]} */
@@ -79,7 +79,7 @@ async function loadOne(pkgDir, prefix) {
   if (found.length) return { diagnostics: found, loaded: pkg, grammarUrl: "" };
   scopeModules(base, [...pkg.examples, ...pkg.refusals.map((r) => r.module)], files);
   for (const d of await checkExamples(pkg, { importModule, buildOptions })) found.push({ file: `${prefix}${d.file ?? MANIFEST_PATH}`, line: d.line ?? 1, code: d.code, message: d.message, fix: d.fix });
-  const manifest = JSON.parse(files[MANIFEST_PATH]);
+  const manifest = JSON.parse(textOf(files[MANIFEST_PATH]) ?? "");
   return { diagnostics: found, loaded: pkg, grammarUrl: `${base}${manifest.entry.grammar}?run=${session.run}` };
 }
 

@@ -62,7 +62,7 @@ export function drawInput(p, seam, frame, at, what, add) {
  */
 export function declarePaint(def, add) {
   const problems = checkPaint({ colors: def.colors, images: def.images });
-  for (const m of problems) add("J003", [m.startsWith("images") ? "images" : "colors"], m, 'colors: { <name>: "#rrggbb" }, images: { <name>: { size: [<w>, <h>], cell?: [<cw>, <ch>], note } }');
+  for (const m of problems) add("J003", [m.startsWith("images") ? "images" : "colors"], m, 'colors: { <name>: "#rrggbb" }, images: { <name>: { size: [<w>, <h>], cell?: [<cw>, <ch>], file?: "<path>.png", note } }');
   if (problems.length) return { colors: {}, images: {} };
   return { colors: { ...(def.colors ?? {}) }, images: { ...(def.images ?? {}) } };
 }

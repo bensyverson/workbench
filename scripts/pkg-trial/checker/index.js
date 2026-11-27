@@ -7,7 +7,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { KIT_VERSION } from "../../../kit/define/index.js";
-import { checkExamples, checkManifest, loadPackage, rewriteSpecifiers, MANIFEST_PATH } from "../../../kit/package/index.js";
+import { checkExamples, checkManifest, loadPackage, rewriteSpecifiers, textOf, MANIFEST_PATH } from "../../../kit/package/index.js";
 import { installHooks } from "../../ui-trial/checker/hooks.js";
 import { session, begin } from "../../ui-trial/checker/session.js";
 import { checkDir } from "../../ui-trial/checker/index.js";
@@ -41,7 +41,7 @@ function loadSite(stack, dirUrl) {
  */
 export async function checkPackageDir(dir) {
   const root = resolve(dir);
-  /** @type {Record<string, string>} */
+  /** @type {Record<string, string | Uint8Array>} */
   let files;
   try { files = readPackageDir(root); } catch (e) {
     if (e instanceof PackageDirError) throw new CheckTargetError(e.message);
@@ -51,7 +51,7 @@ export async function checkPackageDir(dir) {
   // Node resolves through symlinks (macOS tmp is /private/var), so the hooks compare against the real path.
   const dirUrl = pathToFileURL(realpathSync(root)).href + "/";
   begin(dirUrl);
-  session.moduleText = (path) => (Object.hasOwn(files, path.replace(/^\.\//, "")) ? files[path.replace(/^\.\//, "")] : null);
+  session.moduleText = (path) => (Object.hasOwn(files, path.replace(/^\.\//, "")) ? textOf(files[path.replace(/^\.\//, "")]) : null);
   /** The site of the last import failure, by path, so a K011 can say where it threw. @type {Map<string, { file: string, line: number }>} */
   const sites = new Map();
   /** @param {string} path */
@@ -75,7 +75,7 @@ export async function checkPackageDir(dir) {
     const site = d.code === "K011" && d.line === undefined && d.file !== undefined ? sites.get(d.file) : undefined;
     return { file: site?.file ?? d.file ?? MANIFEST_PATH, line: site?.line ?? d.line ?? 1, code: d.code, severity: "error", message: d.message, fix: d.fix };
   });
-  const manifest = checkManifest(files[MANIFEST_PATH] ?? "").manifest;
+  const manifest = checkManifest(textOf(files[MANIFEST_PATH] ?? "") ?? "").manifest;
   // The package is sound (it loaded, or only its parts did not fit, or its examples were refused): run the UI checks and the upload check.
   const sound = manifest !== null && diagnostics.every((d) => SOUND.has(d.code));
   if (sound) {

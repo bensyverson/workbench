@@ -56,5 +56,23 @@ export interface LoadedPackage {
   /** The manifest's refusals, for checkExamples. */
   refusals: Refusal[];
   foreign: ForeignModule[];
+  /** Every data file the Dialect reads (kit/define's dataFiles), by path; empty when the package did not load. */
+  data: Record<string, DataFile>;
   diagnostics: PackageDiagnostic[];
+}
+
+/** The files a host holds: each path's text, or its bytes. */
+export type PackageFiles = Record<string, string | Uint8Array>;
+
+/** One loaded data file. `text` for text, json and csv (`value` the parsed JSON); `bytes`, `width` and `height` for an image. */
+export interface DataFile {
+  path: string;
+  kind: "text" | "json" | "csv" | "image";
+  /** Where the Dialect names it: `files.<name>` or `images.<image>`. */
+  from: string;
+  text?: string;
+  value?: unknown;
+  bytes?: Uint8Array;
+  width?: number;
+  height?: number;
 }

@@ -50,6 +50,7 @@ export function defineUI(builder, decl, options = {}) {
   const globalObjects = Object.fromEntries(Object.entries(def.globals ?? {}).filter(([, o]) => typeof o === "string" && Object.hasOwn(objects, o)).map(([n, o]) => [n, objects[/** @type {string} */ (o)]]));
   const problems = validateUI(decl, {
     pkg: String(dialect.name), state: dialect.stateType ?? null, objects, aliases, free, globalObjects,
+    outputs: Object.fromEntries(Object.entries(/** @type {Record<string, any>} */ (dialect.seams?.out ?? {})).map(([n, o]) => [n, { seam: String(o.seamText), draw: o.seam?.kind === "draw" }])),
     moduleText: typeof options.moduleText === "function" ? options.moduleText : null,
   });
   if (!dialect.stateType) problems.unshift({ code: "U013", path: [], message: `the ${dialect.name} Dialect declares no state, so a UI has nothing to read.`, tip: "declare the run's state in defineDialect: state: { score: \"f64\", … }" });

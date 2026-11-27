@@ -322,7 +322,7 @@ export type GrammarBuilder = ((...args: unknown[]) => any) & { dialect: Dialect;
 
 /** The UI declaration `defineUI` takes: what is left after the generated views. The run's state is not here; the Dialect declares it. A value is a path into the Dialect's state ("bounds.width") or a lambda `(s, $) => …` (a table column's: `(row, s, $) => …`). */
 export interface UIDef {
-  /** The custom element that draws the stage: `{ element: "<pkg>-<name>", module: "./<file>.js", emits?: ["pick" | "select" | "param"] }`. */
+  /** What draws the stage: a custom element, `{ element: "<pkg>-<name>", module: "./<file>.js", emits?: ["pick" | "select" | "param"] }`, or the Dialect's own Draw output, `{ draw: "<output>" }`; none is the text view. */
   stage?: Record<string, unknown>;
   /** `{ object: "Pad", buttons: { left: { role: "dpad.left" }, … } }`: the Dialect object whose bool members are the buttons. */
   inputs?: Record<string, unknown>;

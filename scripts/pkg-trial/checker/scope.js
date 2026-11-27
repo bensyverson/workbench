@@ -33,12 +33,12 @@ function install() {
  * Starts a check: the modules at `paths` under `dirUrl` get their scope export, and `files` is what moduleScope reads.
  * @param {string} dirUrl  the package folder as a file URL ending in /
  * @param {string[]} paths  the manifest's examples and refusals
- * @param {Record<string, string>} files
+ * @param {Record<string, string | Uint8Array>} files  the package's files; only text files are sources
  */
 export function scopeModules(dirUrl, paths, files) {
   install();
   scoped = new Set(paths.map((p) => `${dirUrl}${p}`));
-  defineSession.sources = files;
+  defineSession.sources = /** @type {Record<string, string>} */ (Object.fromEntries(Object.entries(files).filter(([, t]) => typeof t === "string")));
   defineSession.diagnostics = [];
 }
 

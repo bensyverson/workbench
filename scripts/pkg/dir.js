@@ -1,16 +1,16 @@
-// Reads a package folder into the { path: text } map kit/package works on (the Node side of "files the host holds").
+// Reads a package folder into the { path: text | bytes } map kit/package works on (the Node side of "files the host holds"); a file that is not UTF-8, such as a PNG, is read as bytes.
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { hashText, MANIFEST_PATH } from "../../kit/package/index.js";
+import { hashText, textOf, MANIFEST_PATH } from "../../kit/package/index.js";
 
 /** A folder that is missing, or has no readable manifest. */
 export class PackageDirError extends Error {}
 
 /**
- * Every file under `dir` except dotfiles (a path part starting with `.`), as { path: text }, paths sorted.
+ * Every file under `dir` except dotfiles (a path part starting with `.`), as { path: text | bytes }, paths sorted.
  * @param {string} dir
- * @returns {Record<string, string>}
+ * @returns {Record<string, string | Uint8Array>}
  */
 export function readPackageDir(dir) {
   let st;
@@ -28,7 +28,13 @@ export function readPackageDir(dir) {
     }
   };
   walk("");
-  return Object.fromEntries(paths.sort().map((p) => [p, readFileSync(join(dir, p), "utf8")]));
+  return Object.fromEntries(paths.sort().map((p) => [p, readContent(join(dir, p))]));
+}
+
+/** A file's text when its bytes are valid UTF-8, else its bytes (a PNG). @param {string} path @returns {string | Uint8Array} */
+function readContent(path) {
+  const bytes = new Uint8Array(readFileSync(path));
+  return textOf(bytes) ?? bytes;
 }
 
 /**

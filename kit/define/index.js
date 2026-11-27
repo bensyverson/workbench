@@ -11,3 +11,4 @@ export { vector, scalar, exact, tolerance, list, opt, struct, union, enumOf, obj
 export { run, needsRebuild, bindingText } from "./params.js";
 export { KIT_VERSION } from "./version.js";
 export { isHandle } from "./handles.js";
+export { dataFiles, DATA_KINDS } from "./data-files.js";

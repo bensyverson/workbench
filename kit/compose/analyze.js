@@ -334,6 +334,7 @@ export function analyze(name, start, given, options) {
     }),
     show: live ? live.name : null,
     ...(drawn.view ? { view: drawn.view } : {}),
+    ...(drawn.profile ? { profile: drawn.profile } : {}),
   };
   /** @param {Record<string, unknown>} o */
   const values = (o) => Object.entries(o).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ");
