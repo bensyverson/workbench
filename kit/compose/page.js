@@ -40,9 +40,28 @@ export const isPageHandle = (h) => isHandle(h) && h.program === pageProgram;
 /**
  * One Control as the composed page records it: what kit/run checks a page input against (its seam), how its records
  * fold (state) or carry over (delta), and what a host builds its forms and key maps from (its declaration, with no
- * functions, so the record stays data).
- * @typedef {{ kind: string, seam: string, records: "state" | "delta", perFrame: number, latency?: string, keyed?: true, decl: Record<string, any> }} PageControl
+ * functions, so the record stays data). A scoped Control (keyed, or with `to`) names the part that owns it and its
+ * declared name there (`part`, `control`); its page name is `<part>.<control>`.
+ * @typedef {{ kind: string, seam: string, records: "state" | "delta", perFrame: number, latency?: string, keyed?: true, part?: string, control?: string, decl: Record<string, any> }} PageControl
  */
+
+/**
+ * The page Control a glue's `page.out.<name>` names when it feeds `consumer`: the name itself when a Control has it
+ * (a shared one, or a scoped one spelled out as `page.out["<part>.<control>"]`), else the consumer's own scoped
+ * Control of that name, else null.
+ * @param {Record<string, PageControl>} controls @param {string} name @param {string | null} consumer  the part the wire feeds
+ */
+export function pageControlFor(controls, name, consumer) {
+  if (Object.hasOwn(controls, name)) return name;
+  if (consumer !== null) {
+    const own = scopedName(consumer, name);
+    if (Object.hasOwn(controls, own) && controls[own].control === name) return own;
+  }
+  return null;
+}
+
+/** The scoped Controls declared under one name, by page name. @param {Record<string, PageControl>} controls @param {string} name */
+export const scopedOf = (controls, name) => Object.keys(controls).filter((k) => controls[k].control === name);
 
 /** A declaration as plain data: its functions (an `each`) left out. @param {unknown} decl */
 const dataOf = (decl) => JSON.parse(JSON.stringify(decl, (_k, v) => (typeof v === "function" ? undefined : v)));
@@ -73,16 +92,27 @@ export function uiFor(packages, dialect) {
 }
 
 /**
- * The page's Controls from the composed parts' UIs: each Control with an Event input, by name, with the parts that
- * declare it. Two parts' Controls of one name are one Control only when both declarations are equal data with no
- * `each` and no `to`; any other pair is a clash (S119). Keys two different Controls bind are S121's.
+ * Whether a declared Control belongs to its part (Ben's ruling of 2026-11-27, leaf ZNpW0f): a keyed one (`each`),
+ * whose instances come from its own part's record, and one with `to`, whose target is an address in its own part's
+ * Program. Either one means something only for the part that declares it, so two instances of one package each keep
+ * theirs. Any other Control is shared by name across the composition.
+ * @param {{ each?: unknown, to?: unknown }} decl
+ */
+export const isScoped = (decl) => decl.each !== undefined || decl.to !== undefined;
+
+/** A part's own Control's name on the page: `<part>.<control>`, as a part's image is `<part>.<image>`. @param {string} part @param {string} control */
+export const scopedName = (part, control) => `${part}.${control}`;
+
+/**
+ * The page's Controls from the composed parts' UIs: each Control with an Event input, with the parts that declare it.
+ * A scoped Control (`isScoped`) is its part's alone, named `<part>.<control>`, and never clashes. A shared one is
+ * named by its declared name, and two parts' shared Controls of one name are one Control only when both declarations
+ * are equal data; any other pair is a clash (S119). Keys two different Controls bind are S121's.
  * @param {Array<{ name: string, dialectName: string, ui: any }>} parts  the parts with a UI, in composition order
  */
 export function pageControls(parts) {
   /** @type {Record<string, PageControl & { parts: Array<{ part: string, input: string }> }>} */
   const controls = {};
-  /** The Controls a second part may share: declared with no each and no to. */
-  const shareable = new Set();
   /** @type {Array<{ name: string, first: { part: string, dialect: string, decl: unknown }, second: { part: string, dialect: string, decl: unknown } }>} */
   const clashes = [];
   /** @type {Map<string, { part: string, dialect: string, decl: unknown }>} */
@@ -91,17 +121,17 @@ export function pageControls(parts) {
     for (const [n, c] of Object.entries(/** @type {Record<string, any>} */ (p.ui.controls ?? {}))) {
       if (c.local) continue;
       const decl = dataOf(c.decl);
-      const shared = c.decl.each === undefined && c.decl.to === undefined;
-      const had = controls[n];
+      const scoped = isScoped(c.decl);
+      const key = scoped ? scopedName(p.name, n) : n;
+      const had = controls[key];
       if (had) {
-        const first = /** @type {{ part: string, dialect: string, decl: unknown }} */ (firstBy.get(n));
-        if (!shared || !shareable.has(n) || JSON.stringify(canonical(decl)) !== JSON.stringify(canonical(had.decl))) { clashes.push({ name: n, first, second: { part: p.name, dialect: p.dialectName, decl } }); continue; }
+        const first = /** @type {{ part: string, dialect: string, decl: unknown }} */ (firstBy.get(key));
+        if (JSON.stringify(canonical(decl)) !== JSON.stringify(canonical(had.decl))) { clashes.push({ name: n, first, second: { part: p.name, dialect: p.dialectName, decl } }); continue; }
         had.parts.push({ part: p.name, input: n });
         continue;
       }
-      firstBy.set(n, { part: p.name, dialect: p.dialectName, decl });
-      controls[n] = /** @type {any} */ ({ kind: c.kind, seam: c.seam, records: c.records, perFrame: c.perFrame, ...(c.latency ? { latency: c.latency } : {}), ...(c.keyed ? { keyed: true } : {}), decl, parts: [{ part: p.name, input: n }] });
-      if (shared) shareable.add(n);
+      firstBy.set(key, { part: p.name, dialect: p.dialectName, decl });
+      controls[key] = /** @type {any} */ ({ kind: c.kind, seam: c.seam, records: c.records, perFrame: c.perFrame, ...(c.latency ? { latency: c.latency } : {}), ...(c.keyed ? { keyed: true } : {}), ...(scoped ? { part: p.name, control: n } : {}), decl, parts: [{ part: p.name, input: n }] });
     }
   }
   /** @type {Array<{ code: string, controls: string[] }>} */

@@ -50,7 +50,7 @@ test("26. a control input is checked against the Control's seam (N012); an unkno
 test("27. a state Control folds as before (the first max - 1, then the latest); a keyed one folds to each key's latest", () => {
   const s = synth();
   const tempo = (T, value) => ({ kind: "control", T, part: "page", name: "tempo", value: { value } });
-  const ratio = (T, key, value) => ({ kind: "control", T, part: "page", name: "ratio", value: { key, value } });
+  const ratio = (T, key, value) => ({ kind: "control", T, part: "page", name: "fm.ratio", value: { key, value } });
   const run = createRun(s.composed, { runtimes: s.runtimes, inputs: [tempo(0.1, 100), tempo(0.11, 110), tempo(0.12, 120), tempo(0.13, 130), ratio(0.1, "a", 1), ratio(0.11, "b", 2), ratio(0.12, "a", 3), ratio(0.13, "b", 4)] });
   run.runUntil(0.3);
   assert.deepEqual(run.state("fm").tempo, [100, 130]);

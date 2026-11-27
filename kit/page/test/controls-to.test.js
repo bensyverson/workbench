@@ -48,8 +48,8 @@ async function synth(more = {}) {
 test("UYk5XG. page.controls() lists a keyed Control's instances with their to, and a part-local Control with its part and to", async () => {
   const { pg } = await synth();
   const cs = pg.controls();
-  assert.deepEqual(cs.map((c) => c.name), ["ratio", "detune"]);
-  const ratio = cs.find((c) => c.name === "ratio");
+  assert.deepEqual(cs.map((c) => c.name), ["s.ratio", "detune"]);
+  const ratio = cs.find((c) => c.name === "s.ratio");
   assert.equal(ratio.keyed, true);
   assert.deepEqual(ratio.instances.map((i) => [i.key, i.value, i.to, i.disabled]), [["a", 2, "arg.s.op#0:1.ratio", null], ["b", 3, "arg.s.op#1:1.ratio", null]]);
   const detune = cs.find((c) => c.name === "detune");
@@ -58,10 +58,10 @@ test("UYk5XG. page.controls() lists a keyed Control's instances with their to, a
 
 test("UYk5XG. a keyed knob with an input carries the live value through it, and its release gives the commit the host writes back", async () => {
   const { pg, f } = await synth();
-  assert.equal(pg.control("ratio", { key: "b", value: 5 }, { phase: "preview" }), null, "a preview commits nothing");
-  const commit = pg.control("ratio", { key: "b", value: 6 });
+  assert.equal(pg.control("s.ratio", { key: "b", value: 5 }, { phase: "preview" }), null, "a preview commits nothing");
+  const commit = pg.control("s.ratio", { key: "b", value: 6 });
   assert.deepEqual(commit, { part: "s", to: "arg.s.op#1:1.ratio", value: 6 });
-  assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "control").map((e) => [e.name, e.value]), [["ratio", { key: "b", value: 5 }], ["ratio", { key: "b", value: 6 }]]);
+  assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "control").map((e) => [e.name, e.value]), [["s.ratio", { key: "b", value: 5 }], ["s.ratio", { key: "b", value: 6 }]]);
   assert.equal(pg.run.log.inputs.filter((e) => e.kind === "rebuild").length, 0, "the input carries it: no preview rebuild");
   const w = writeBack(SYNTH_TEXT, pg.run.composed.parts.find((p) => p.name === "s").record, commit.to, commit.value);
   assert.equal(w.ok, true, w.message);
@@ -85,14 +85,14 @@ test("UYk5XG. a part-local param Control previews a param input at most once a f
 
 test("UYk5XG. a target that cannot be written back is H011: the instance is listed disabled, its input still plays, and it commits nothing", async () => {
   const { pg } = await synth({ stray: true });
-  const x = pg.controls().find((c) => c.name === "ratio").instances.find((i) => i.key === "x");
+  const x = pg.controls().find((c) => c.name === "s.ratio").instances.find((i) => i.key === "x");
   assert.equal(x.disabled.code, "H011");
   assert.ok(pg.diagnostics.some((d) => d.code === "H011" && /ratio/.test(d.message)), JSON.stringify(pg.diagnostics));
-  assert.equal(pg.control("ratio", { key: "x", value: 2 }), null);
+  assert.equal(pg.control("s.ratio", { key: "x", value: 2 }), null);
   assert.equal(pg.run.log.inputs.filter((e) => e.kind === "control").length, 1, "the live value still went through the input");
-  assert.deepEqual(pg.control("ratio", { key: "a", value: 4 }), { part: "s", to: "arg.s.op#0:1.ratio", value: 4 }, "the other instances still commit");
+  assert.deepEqual(pg.control("s.ratio", { key: "a", value: 4 }), { part: "s", to: "arg.s.op#0:1.ratio", value: 4 }, "the other instances still commit");
   assert.throws(() => pg.control("nope", { value: 1 }), /nope/);
-  assert.throws(() => pg.control("ratio", { key: "zz", value: 1 }), /zz/, "an instance the Control lacks");
+  assert.throws(() => pg.control("s.ratio", { key: "zz", value: 1 }), /zz/, "an instance the Control lacks");
 });
 
 const LENS_TEXT = `import { g } from "${LENS}";
@@ -160,7 +160,7 @@ test("FtbfNP. a wired keyed Control's form says it is keyed, though its composed
   const { composed, rt, packages, preset } = await synth();
   const f = frames();
   const s = createSession({ composed, runtimes: [rt], packages: packages.map((p) => ({ name: p.name, loaded: { ui: p.ui } })), rebuild: preset.build, diagnostics: [] }, { context: fakeContext(), requestFrame: f.requestFrame });
-  const ratio = s.forms().find((x) => x.name === "ratio");
+  const ratio = s.forms().find((x) => x.name === "s.ratio");
   assert.equal(ratio.each, undefined, "plain data");
   assert.deepEqual([ratio.keyed, ratio.instances.map((i) => i.key)], [true, ["a", "b"]]);
   assert.equal(s.forms().find((x) => x.name === "detune").keyed, false);
@@ -168,13 +168,13 @@ test("FtbfNP. a wired keyed Control's form says it is keyed, though its composed
 
 test("x3LcAJ. a wired Control's commit is checked by a build: a value the Grammar refuses gives null and H012, a value that builds still commits", async () => {
   const { pg } = await synth();
-  const refused = pg.control("ratio", { key: "b", value: 1000 });
+  const refused = pg.control("s.ratio", { key: "b", value: 1000 });
   assert.equal(refused, null, "ratio is bounded to 16 by the Grammar: no build accepts 1000");
   assert.deepEqual(pg.diagnostics.map((d) => d.code), ["H012"]);
-  const ok = pg.control("ratio", { key: "b", value: 5 });
+  const ok = pg.control("s.ratio", { key: "b", value: 5 });
   assert.deepEqual(ok, { part: "s", to: "arg.s.op#1:1.ratio", value: 5 });
   const w = writeBack(SYNTH_TEXT, pg.run.composed.parts.find((p) => p.name === "s").record, ok.to, ok.value);
   assert.equal(w.ok, true, "and the commit writes");
   assert.ok(run(await fromText(w.text)).record, "into a text that builds");
-  assert.equal(pg.control("ratio", { key: "b", value: 1000 }, { phase: "preview" }), null, "a preview of a wired Control builds nothing and reports nothing new");
+  assert.equal(pg.control("s.ratio", { key: "b", value: 1000 }, { phase: "preview" }), null, "a preview of a wired Control builds nothing and reports nothing new");
 });

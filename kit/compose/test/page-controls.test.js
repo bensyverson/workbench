@@ -45,7 +45,7 @@ test("19. S111 for a Control no UI declares, with a did-you-mean, and for packag
   assert.match(none.fix, /loaded packages/);
 });
 
-test("20. two equal declarations are one Control wired to two parts; differing, keyed or committing ones are S119", () => {
+test("20. two equal declarations are one Control wired to two parts; differing ones are S119, and one with to declared twice is each part's own", () => {
   const k = keys(), d = drums(), a = k.grammar("synth"), b = d.grammar("kit");
   const both = compose("play").part(a).part(b).wire(page.out.notes, a.in.notes).wire(page.out.notes, b.in.notes);
   assert.deepEqual(both.check({ packages: [k.pkg, d.pkg] }).filter((x) => x.severity === "error"), []);
@@ -56,7 +56,7 @@ test("20. two equal declarations are one Control wired to two parts; differing, 
   assert.match(clash[0].message, /drums/);
   const keyed = (n) => part(n, { tempo: { kind: "number", min: 40, max: 240, value: 120, to: "param.bpm" } });
   const x = keyed("keys"), y = keyed("drums");
-  assert.equal(compose("play").part(x.grammar("a")).part(y.grammar("b")).check({ packages: [x.pkg, y.pkg] }).filter((d) => d.code === "S119").length, 1, "one with to, twice");
+  assert.equal(compose("play").part(x.grammar("a")).part(y.grammar("b")).check({ packages: [x.pkg, y.pkg] }).filter((d) => d.code === "S119").length, 0, "one with to, twice: each part's own (ZNpW0f)");
 });
 
 test("21. S120 warns for a declared Control whose input nothing wires, and not once another part wires it", () => {

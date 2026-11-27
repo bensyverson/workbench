@@ -1,6 +1,9 @@
 // Grips (project/2026-11-27-controls-draft.md, requirement 7): a drag's value from the value at the down and the
 // pointer's path, by the Grip's kind, then clamped to the target's own bounds (the Grammar's shape, or the param's
-// min and max) and rounded when the shape is whole or the Grip has a step (Alt suspends the step). Pure.
+// min and max) and rounded: to a whole number when the shape is whole, to the Grip's step (Alt suspends it), else to the
+// digits a double holds, so no float noise reaches the preview or the text (round.js). Pure.
+
+import { roundNumber } from "./round.js";
 
 /**
  * @typedef {object} Drag
@@ -32,9 +35,8 @@ export function gripValue(d) {
     let x = v;
     if (typeof d.min === "number") x = Math.max(d.min, x);
     if (typeof d.max === "number") x = Math.min(d.max, x);
-    if (d.whole) x = Math.round(x);
-    else if (d.step && !d.alt) x = Math.round(x / d.step) * d.step;
-    return x;
+    if (d.whole) return Math.round(x);
+    return roundNumber(x, d.step && !d.alt ? d.step : undefined);
   };
   switch (d.kind) {
     case "translate": {

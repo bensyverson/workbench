@@ -15,7 +15,7 @@ import { compareSeams, printValue, printSeam, FrameGraph, edgeText, convertText,
 import { applyRename, applySet, undelayedLoops } from "./wires.js";
 import { paramWireProblems, paramLoops, rateOf } from "./param-wires.js";
 import { queueProblems } from "./queues.js";
-import { withPage, pageRuntimeFor, isPageHandle, pageControls, pageSeams, uiFor } from "./page.js";
+import { withPage, pageRuntimeFor, isPageHandle, pageControls, pageSeams, uiFor, page, pageControlFor, scopedOf } from "./page.js";
 import { layerOf, registerLayers, planLayers, layerHandleProblem, LAYER } from "./layer.js";
 import { glueEdge, derived, edgeFor, derivationText, edgeForms, noPathFix } from "./edges.js";
 import { planOf, notesOf } from "./replan.js";
@@ -89,7 +89,7 @@ export function analyze(name, start, given, options) {
   if (pagePart) pagePart.seams = { ...pagePart.seams, out: pageSeams(controls) };
   for (const c of clashes) {
     const at = withUI.find((x) => x.name === c.second.part)?.part.at ?? start;
-    add(at, "S119", `the Control '${c.name}' is declared by part '${c.first.part}' (${c.first.dialect}) as ${JSON.stringify(c.first.decl)} and by part '${c.second.part}' (${c.second.dialect}) as ${JSON.stringify(c.second.decl)}: one name is one Control on the page, so two parts may share it only with equal declarations, and neither with each or to`, `rename one part's Control (and its Event input), or make the two declarations equal`);
+    add(at, "S119", `the Control '${c.name}' is declared by part '${c.first.part}' (${c.first.dialect}) as ${JSON.stringify(c.first.decl)} and by part '${c.second.part}' (${c.second.dialect}) as ${JSON.stringify(c.second.decl)}: one name is one Control on the page, so two parts may share it only with equal declarations (a keyed one, or one with to, would be each part's own)`, `rename one part's Control (and its Event input), or make the two declarations equal`);
   }
   for (const k of sharedKeys) add(start, "S121", `the key ${k.code} is bound by two Controls, '${k.controls[0]}' and '${k.controls[1]}': one keyboard has one meaning per key, so '${k.controls[0]}', declared first, takes it`, `give '${k.controls[1]}' another code, or override the key map in the host`, {}, "warning");
 
@@ -126,6 +126,11 @@ export function analyze(name, start, given, options) {
     if (h.side !== want) { add(at, "S102", `${call}: ${handleText(h)} is ${h.side === "frame" ? "a frame" : h.side === "param" ? "a param" : h.side === "out" ? "an output" : "an input"}, and this place takes ${want === "frame" ? "a frame" : want === "in" ? "an input or a param" : `an ${what}`}`, want === "frame" ? ".frame(a.frame.x, b.frame.y, edge)" : ".wire(producer.out.x, consumer.in.y)", sides); return null; }
     if (!h.known && p.layer !== undefined) { const lp = layerHandleProblem(p, h); add(at, "S111", `${call}: ${lp.message}`, lp.fix, sides); return null; }
     if (!h.known && p === pagePart && want === "out" && Object.hasOwn(controls, h.name)) return broken.has(p) ? null : p;
+    const scoped = !h.known && p === pagePart ? scopedOf(controls, h.name) : [];
+    if (scoped.length) {
+      add(at, "S111", `${call}: the page has no Control '${h.name}' for this wire: ${scoped.map((n) => `'${n}'`).join(" and ")} ${scoped.length === 1 ? "is" : "are"} each one part's own (keyed, or with to), and page.out.${h.name} names one only in a wire into the part that declares it`, `wire the part's own by its page name: ${scoped.map((n) => `page.out[${JSON.stringify(n)}]`).join(" or ")}`, sides);
+      return null;
+    }
     if (!h.known && p === pagePart) {
       const has = names(p, want);
       const given = (options.packages ?? []).some((x) => x?.ui);
@@ -210,6 +215,17 @@ export function analyze(name, start, given, options) {
     extentOf: (id) => { const [pn, f] = id.split("."); return byName.get(pn)?.extents[f]; },
     conversion: (fromId, toId, path) => { const conv = { field: "", kind: /** @type {const} */ ("draw"), from: frameName(fromId), to: frameName(toId), fromId, toId, ...planOf("draw", path.edge) }; return { ...conv, text: convertText({ ...conv, edge: path.edge }) + notesOf(path) }; },
   });
+  /**
+   * A wire's producer as the page names it: a glue's page.out.<control> into a part that declares that Control scoped
+   * (keyed, or with to) is that part's own, page.out["<part>.<control>"], so a glue that plays one instance plays two.
+   * @param {unknown} h @param {unknown} to
+   */
+  const pageFrom = (h, to) => {
+    if (!isPageHandle(h) || /** @type {Handle} */ (h).known) return h;
+    const consumer = isHandle(to) ? parts.get(to.program)?.name ?? null : null;
+    const n = pageControlFor(controls, /** @type {Handle} */ (h).name, consumer);
+    return n !== null && n !== /** @type {Handle} */ (h).name ? page.out[n] : h;
+  };
   /** Each wired input or param, by its handle's text. @type {Map<string, At>} */
   const wired = new Map();
   /** The inputs the glue wired, however the wire fared: a wire refused for its producer or its output is that wire's problem, not a missing one. @type {Set<string>} */
@@ -218,13 +234,14 @@ export function analyze(name, start, given, options) {
     if (c.kind !== "wire") continue;
     const at = c.at;
     if (isHandle(c.to) && c.to.side === "in" && c.to.known && parts.has(c.to.program)) attempted.add(`${c.to.part}.${c.to.name}`);
-    const both = callSides(c.from, c.to);
+    const from = pageFrom(c.from, c.to);
+    const both = callSides(from, c.to);
     const into = isHandle(c.to) && c.to.side === "param" ? "param" : "in";
     const opts = into === "param" && c.options !== undefined ? "a param wire takes no options: it sets the param to the output's value, between instants" : wireOptions(c.options);
     if (typeof opts === "string") { add(at, "S102", `.wire(…, …, ${describe(c.options)}): ${opts}`, into === "param" ? "remove the options" : ".wire(a.out.x, b.in.y, { rename: { pos: \"at\" }, set: { kind: \"coin\" }, delay: true, overflow: \"keepLast\" }), each optional", both); continue; }
-    const pa = resolve(c.from, "out", at, ".wire", both), pb = resolve(c.to, into, at, ".wire", both);
+    const pa = resolve(from, "out", at, ".wire", both), pb = resolve(c.to, into, at, ".wire", both);
     if (!pa || !pb) continue;
-    const ho = /** @type {Handle} */ (c.from), hi = /** @type {Handle} */ (c.to);
+    const ho = /** @type {Handle} */ (from), hi = /** @type {Handle} */ (c.to);
     const text = `${handleText(ho)} cannot feed ${handleText(hi)}`;
     const sides = { from: side(ho), to: side(hi) };
     if (wired.has(handleText(hi))) { add(at, "S112", `${handleText(hi)} is already wired (line ${wired.get(handleText(hi))?.loc.start.line}); ${into === "param" ? "a param" : "an input"} takes one wire`, "remove one of the two wires", sides); continue; }

@@ -31,6 +31,12 @@ test("40b. the drag value for translate, length, rotate and scale, clamped to th
   assert.equal(gripValue({ kind: "length", v0: 0, p0: [0, 0], p: [0.37, 0], axis: [1, 0], step: 0.25, alt: true }), 0.37, "Alt suspends the step");
 });
 
+test("ZNpW0f. a drag value carries no float noise: with no step to the 15 digits a double holds, with a step to the step's decimals", () => {
+  assert.equal(gripValue({ kind: "length", v0: 0.1, p0: [0, 0], p: [0.2, 0], axis: [1, 0] }), 0.3);
+  assert.equal(gripValue({ kind: "length", v0: 0, p0: [0, 0], p: [0.29, 0], axis: [1, 0], step: 0.1 }), 0.3);
+  assert.deepEqual(gripValue({ kind: "translate", v0: [0.1, 29], p0: [0, 0], p: [0.2, 0.4000000000000057] }), [0.3, 29.4]);
+});
+
 test("40c. an arg Grip logs at most one rebuild a frame, built with args; a param Grip one param input; the release gives the commit", () => {
   const { page: pg, f } = lensPage();
   pg.unlock();

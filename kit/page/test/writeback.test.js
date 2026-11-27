@@ -77,11 +77,11 @@ test("45. a name, a const, arithmetic, a template and a call are each H011 with 
   assert.equal(helper.back("arg.s.k#1:0", 3).code, "H011");
 });
 
-test("46. editSource: shortest round-trip numbers or to the step, quotes kept, the rest unchanged, edits from the end", () => {
+test("46. editSource: numbers to the step, or with none to the digits a double holds (ZNpW0f), quotes kept, the rest unchanged, edits from the end", () => {
   const text = `.k(1).tag("a").k(2)`;
   const r = editSource(text, [{ start: 3, end: 4, expect: "1", value: 0.1 + 0.2 }, { start: 17, end: 18, expect: "2", value: 0.30000000000000004, step: 0.1 }, { start: 10, end: 13, expect: `"a"`, value: "b" }]);
   assert.equal(r.ok, true);
-  assert.equal(r.text, `.k(0.30000000000000004).tag("b").k(0.3)`);
+  assert.equal(r.text, `.k(0.3).tag("b").k(0.3)`);
   assert.equal(editSource(`.tag('a')`, [{ start: 5, end: 8, expect: "'a'", value: "it's" }]).text, `.tag('it\\'s')`);
 });
 
@@ -194,7 +194,11 @@ test("46. a string with a carriage return is written escaped, so the text reads 
   assert.equal(printNumber(2.5e-9, 5e-10), "2.5e-9", "a step with decimals of its own");
   assert.equal(printNumber(0.30000000000000004, 0.1), "0.3", "as it was");
   assert.equal(printNumber(12.5, 5), "15", "a half rounds up, as a Grip's step does");
-  assert.equal(printNumber(0.1 + 0.2), "0.30000000000000004", "no step: shortest round-trip");
+  assert.equal(printNumber(0.1 + 0.2), "0.3", "no step: the 15 digits a double holds, so float noise is not written (ZNpW0f)");
+  assert.equal(printNumber(29.400000000000006), "29.4", "a Grip release with no step (ZNpW0f)");
+  assert.equal(printNumber(1 / 3), "0.333333333333333");
+  assert.equal(printNumber(123456789012), "123456789012");
+  assert.equal(printNumber(-0), "0");
 });
 
 test("8XU2O2. a call that moved onto an identical neighbor, or whose name literal changed, is H012; the unedited text and a line moved intact still write", async () => {

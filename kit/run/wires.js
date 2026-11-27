@@ -21,8 +21,12 @@ import { imagesOf } from "./draw.js";
  */
 /** What a consumer reads of a producer: its state and revision now, or as the instant began (the page's: no state, revision 1). @typedef {{ state: any, revision: number, part: Part | null, draws?: import("./draw.js").Draws }} View */
 
-/** @param {string} h  "level.out.picked", "cave.param.depth" */
-export const ends = (h) => { const [part, side, port] = h.split("."); return { part, side, port }; };
+/**
+ * A wire end's part, side and port. The port is the rest after the side: a part's own page Control is
+ * `page.out.<part>.<control>` (kit/compose's part-qualified Controls).
+ * @param {string} h  "level.out.picked", "cave.param.depth", "page.out.lead.ratio"
+ */
+export const ends = (h) => { const [part, side, ...port] = h.split("."); return { part, side, port: port.join(".") }; };
 
 /**
  * The composed wires into inputs, each with an empty queue; a wire into a param is param-wires.js's.

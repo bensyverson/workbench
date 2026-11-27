@@ -7,6 +7,7 @@
 
 import { parseModule, walkNodes } from "../parse/module.js";
 import { siteOf } from "../define/sites.js";
+import { roundNumber } from "./round.js";
 
 /** The fix every refused argument offers. */
 export const LITERAL_FIX = "write the literal at the call, or declare a param and pass $.<name>";
@@ -171,16 +172,11 @@ export function writeBackAll(text, record, edits) {
 export const writeBack = (text, record, target, value, o = {}) => writeBackAll(text, record, [{ to: target, value, ...(o.step ? { step: o.step } : {}) }]);
 
 /**
- * A number as the text writes it: the shortest text that reads back as it, or to the step's decimals.
+ * A number as the text writes it: rounded to the step (with its decimals) or, with none, to the 15 significant digits
+ * a double holds (round.js), so float noise from a drag is never written; then the shortest text that reads back as it.
  * @param {number} n @param {number} [step]
  */
-export function printNumber(n, step) {
-  if (!step) return String(Object.is(n, -0) ? 0 : n);
-  // the step's decimals from its exponent form, which String() gives below 1e-6 ("1e-7" has seven)
-  const [mantissa, exponent] = step.toExponential().split("e");
-  const decimals = Math.min(100, Math.max(0, (mantissa.split(".")[1] ?? "").length - Number(exponent)));
-  return String(Number((Math.round(n / step) * step).toFixed(decimals)));
-}
+export const printNumber = (n, step) => String(roundNumber(n, step));
 
 /** A value as a literal: a number, a string in the given quote, a boolean, or a list of them. @param {unknown} v @param {string} quote @param {number} [step] @returns {string} */
 function literal(v, quote, step) {
