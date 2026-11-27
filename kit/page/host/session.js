@@ -4,7 +4,8 @@
 // its control name, its annotations and its sweeps are the kit's (kit/define's ui.compile, kit/page's sweepRuns).
 
 import { createPage, sweepRuns } from "../index.js";
-import { paramValues, shownTiles, SeriesStore, numberPaths } from "./ui-eval.js";
+import { RunError } from "../../run/index.js";
+import { shownTiles, SeriesStore, numberPaths } from "./ui-eval.js";
 
 /**
  * @typedef {object} SessionOptions
@@ -12,6 +13,7 @@ import { paramValues, shownTiles, SeriesStore, numberPaths } from "./ui-eval.js"
  * @property {(callback: (ms: number) => void) => unknown} requestFrame
  * @property {(bytes: Uint8Array, info: any) => any} [decode]
  * @property {(snapshot: Snapshot) => void} [onFrame]  called after each display frame and each step, rewind or input made through the session
+ * @property {(message: string) => void} [onProblem]  a snapshot or an `onFrame` that throws, said once while it keeps throwing the same (the frames go on)
  */
 
 /**
@@ -21,6 +23,8 @@ import { paramValues, shownTiles, SeriesStore, numberPaths } from "./ui-eval.js"
  * @property {number} head  the furthest time the run has reached, which the scrubber's top is
  * @property {{ part: string, tiles: ReturnType<typeof shownTiles>, state: any, params: Record<string, any>, traces: { path: string, value: number }[] }[]} parts
  */
+
+/** @typedef {{ running: boolean, progress: number, result: import("../sweep.js").Sweep | null, abort: AbortController }} SweepState */
 
 /**
  * @param {import("./load.js").Loaded} loaded  a workbench that built (`composed` is not null)
@@ -38,14 +42,20 @@ export function createSession(loaded, options) {
     ...(options.decode ? { decode: options.decode } : {}),
     ...(loaded.rebuild ? { run: { build: loaded.rebuild } } : {}),
   });
-  /** @type {Map<string, Record<string, any>>} the params as the person set them, by part */
-  const edits = new Map();
   const series = new SeriesStore();
   let head = 0;
   const uiOf = (/** @type {string} */ part) => {
     const dialect = composed.parts.find((/** @type {any} */ p) => p.name === part)?.dialect;
     return loaded.packages.find((p) => p.name === dialect)?.loaded.ui ?? null;
   };
+  /**
+   * Each runs component's sweep, by part and the component's id (its `y`): two parts' tiles with one label are two
+   * sweeps. `result` is the last finished one; `progress` the running one's share done.
+   * @type {Map<string, SweepState>}
+   */
+  const sweeps = new Map();
+  /** @param {string} part @param {{ y: string }} spec */
+  const sweepKey = (part, spec) => JSON.stringify([part, spec.y]);
   /** Each part's UI compiled against its record (kit/define's `ui.compile`), made once. @type {Map<string, import("../../define/ui/compile.js").UICompiled | null>} */
   const compiled = new Map();
   /** @param {string} part */
@@ -60,7 +70,8 @@ export function createSession(loaded, options) {
     head = Math.max(head, status.seconds);
     const parts = composed.parts.filter((/** @type {any} */ p) => p.name !== "page").map((/** @type {any} */ p) => {
       const state = page.run.state(p.name);
-      const params = paramValues(p.record, edits.get(p.name));
+      // the run's params, which follow a rewind, not a copy of what the person set
+      const params = page.run.params(p.name);
       const ui = compiledOf(p.name);
       const tiles = state && ui ? shownTiles(ui.evaluate(state, params).tiles) : [];
       for (const t of tiles) t.body.forEach((c, i) => plots(`${p.name}.${t.id}.${i}`, c, status.seconds));
@@ -78,7 +89,14 @@ export function createSession(loaded, options) {
     if (c.kind === "plot") { series.add(key, T, c.y, c.window); c.key = key; }
     if (c.items) c.items.forEach((/** @type {any} */ i, /** @type {number} */ n) => plots(`${key}.${n}`, i, T));
   }
-  notify = () => options.onFrame?.(snapshot());
+  /** The last problem said, so one that repeats every frame is said once. @type {string | null} */
+  let said = null;
+  notify = () => {
+    try { options.onFrame?.(snapshot()); said = null; } catch (e) {
+      const m = `the panels threw: ${e instanceof Error ? e.message : e}`;
+      if (m !== said) { said = m; options.onProblem?.(m); }
+    }
+  };
   const changed = () => { page.draw(); notify(); };
 
   return {
@@ -96,11 +114,19 @@ export function createSession(loaded, options) {
       if (t < page.run.seconds) page.run.rewind(t); else page.run.runUntil(t);
       changed();
     },
-    /** A param edit, as a logged input the run applies at its next instant. @param {string} part @param {string} name @param {number | string | boolean} value */
+    /**
+     * A param edit, as a logged input the run applies at its next instant: the diagnostics the run refused it with
+     * (N008: a value that does not fit the param's declaration), empty when it was logged.
+     * @param {string} part @param {string} name @param {number | string | boolean} value
+     * @returns {Array<{ code: string, message: string, part?: string }>}
+     */
     setParam(part, name, value) {
-      page.run.input({ kind: "param", part, name, value });
-      edits.set(part, { ...edits.get(part), [name]: value });
+      try { page.run.input({ kind: "param", part, name, value }); } catch (e) {
+        if (e instanceof RunError) { notify(); return /** @type {any[]} */ (e.diagnostics); }
+        throw e;
+      }
       notify();
+      return [];
     },
     /** A UI button change: the buttons held, sent as the run control the part's UI names (kit/define's `ui.control`). @param {string} part @param {Record<string, boolean>} held */
     control(part, held) {
@@ -111,12 +137,34 @@ export function createSession(loaded, options) {
     },
     /** A param's annotation in the params view (the compiled UI's `annotation`). @param {string} part @param {string} name @param {any} state @param {Record<string, any>} params */
     paramAnnotation: (part, name, state, params) => compiledOf(part)?.annotation("params", name, state, params) ?? {},
-    /** A runs tile's sweep (kit/page's sweepRuns). @param {string} part @param {any} spec */
-    sweep(part, spec) {
+    /**
+     * A runs tile's sweep (kit/page's sweepRuns), in slices that yield, so the page stays live; one of the same
+     * component already running is cancelled. Its state is `sweepState`, and each change notifies.
+     * @param {string} part @param {any} spec @returns {Promise<import("../sweep.js").Sweep>}
+     */
+    async sweep(part, spec) {
+      const key = sweepKey(part, spec);
+      const was = sweeps.get(key);
+      was?.abort.abort();
       const ui = compiledOf(part);
       if (!ui) return { points: [], error: `part ${part} has no UI` };
-      return sweepRuns({ composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), part, spec, compiled: ui, ...(loaded.rebuild ? { build: loaded.rebuild } : {}) });
+      const abort = new AbortController();
+      /** @type {SweepState} */
+      const state = { running: true, progress: 0, result: was?.result ?? null, abort };
+      sweeps.set(key, state);
+      notify();
+      const r = await sweepRuns({ composed, runtimes: loaded.runtimes, packages: loaded.packages.map((p) => p.loaded), part, spec, compiled: ui, ...(loaded.rebuild ? { build: loaded.rebuild } : {}), signal: abort.signal, onProgress: (f) => { state.progress = f; notify(); } });
+      // a sweep a rerun cancelled leaves the rerun's state alone
+      if (sweeps.get(key) === state) { Object.assign(state, { running: false, ...(r.cancelled ? {} : { result: r }) }); notify(); }
+      return r;
     },
+    /** A component's sweep as it stands, or null when none ran. @param {string} part @param {{ y: string }} spec */
+    sweepState(part, spec) {
+      const s = sweeps.get(sweepKey(part, spec));
+      return s ? { running: s.running, progress: s.progress, result: s.result } : null;
+    },
+    /** Cancels a component's running sweep. @param {string} part @param {{ y: string }} spec */
+    cancelSweep(part, spec) { sweeps.get(sweepKey(part, spec))?.abort.abort(); },
     /** A key as the page's control: true when it was one (the host prevents its default). @param {{ type: string, code: string }} event */
     key: (event) => page.key(event),
     why: () => page.why(),

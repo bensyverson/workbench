@@ -5,10 +5,11 @@
 // lists. No decision is made here that the kit makes: each check, each build and each refusal is the kit's.
 
 import { KIT_VERSION, withScope, moduleScope } from "../../define/index.js";
-import { scanGlue, isComposition, formatDiagnostic } from "../../compose/index.js";
+import { rewriteGlue, callGlue, formatDiagnostic } from "../../compose/index.js";
 import { examplePreset } from "../index.js";
-import { loadPackage, rewriteSpecifiers, checkManifest, textOf, MANIFEST_PATH } from "../../package/index.js";
+import { loadPackage, rewriteSpecifiers, checkManifest, textOf, uiModulePath, MANIFEST_PATH } from "../../package/index.js";
 import { isDotPath } from "../../package/paths.js";
+import { withoutBom } from "../../package/content.js";
 
 /**
  * One diagnostic of any source, as the page lists it. `text` is the kit's printed form where it has one.
@@ -128,9 +129,9 @@ function checkAndBuild(out, composition, options, gluePath) {
 const message = (e) => (e instanceof Error ? e.message : String(e));
 
 /**
- * Loads packages and a glue: the glue's imports read by `scanGlue`, each bare name resolved to its package's Grammar
- * module, the module imported with its scope, its default export called with an empty frozen `$`, and the composition
- * checked and built.
+ * Loads packages and a glue: kit/compose's `rewriteGlue` resolves its imports (each bare name to its package's Grammar
+ * module), the module is imported with its scope, kit/compose's `callGlue` calls its default export (a build-time
+ * read of the glue's `$` is S104), and the composition is checked and built.
  * @param {{ packages: Record<string, Record<string, string | Uint8Array>>, glue: { path: string, text: string }, profile?: string }} input
  * @param {LoadEnv} env
  * @returns {Promise<Loaded>}
@@ -141,29 +142,19 @@ export async function loadWorkbench(input, env) {
   out.sourceName = input.glue.path;
   if (!all) return out;
   const { path, text } = input.glue;
-  const names = out.packages.map((p) => p.name);
-  const scanned = scanGlue(text, names, path);
-  if (scanned.diagnostics.length) { out.diagnostics.push(...scanned.diagnostics.map((d) => hostDiagnostic("glue", d))); return out; }
   /** @type {Record<string, string>} */
-  const named = { "kit/compose": env.urls.compose, "kit/define": env.urls.define };
-  for (const p of out.packages) named[p.name] = /** @type {string} */ (p.urls.get(entryGrammar(p)));
-  let rewritten = text;
-  for (const i of [...scanned.imports].sort((a, b) => b.start - a.start)) {
-    const url = named[i.resolved ?? i.specifier];
-    if (url === undefined) { out.diagnostics.push(loadError("glue", `${path}:${i.line}: no module for '${i.specifier}'`)); return out; }
-    rewritten = rewritten.slice(0, i.start) + url + rewritten.slice(i.end);
-  }
+  const urls = { "kit/compose": env.urls.compose, "kit/define": env.urls.define };
+  for (const p of out.packages) { const url = p.urls.get(entryGrammar(p)); if (url !== undefined) urls[p.name] = url; }
+  /** @type {ReturnType<typeof rewriteGlue>} */
+  let rewritten;
+  try { rewritten = rewriteGlue(text, urls, path); } catch (e) { out.diagnostics.push(loadError("glue", message(e))); return out; }
+  if (rewritten.text === null) { out.diagnostics.push(...rewritten.diagnostics.map((d) => hostDiagnostic("glue", d))); return out; }
   /** @type {any} */
   let mod;
-  try { mod = await env.importUrl(env.makeUrl(withScope(rewritten))); } catch (e) { out.diagnostics.push(loadError("glue", `${path} did not load: ${message(e)}`)); return out; }
-  /** @type {any} */
-  let composition;
-  try { composition = typeof mod.default === "function" ? mod.default(Object.freeze({})) : undefined; } catch (e) {
-    const code = /** @type {any} */ (e)?.code;
-    out.diagnostics.push(hostDiagnostic("glue", { code: typeof code === "string" && /^[A-Z]\d{3}$/.test(code) ? code : "LOAD", severity: "error", message: `the default export threw: ${message(e)}` }));
-    return out;
-  }
-  if (!isComposition(composition)) { out.diagnostics.push(loadError("glue", `${path}'s default export is not a function ($) => composition`, 'export default ($) => compose("name").part(…)…')); return out; }
+  try { mod = await env.importUrl(env.makeUrl(withScope(rewritten.text))); } catch (e) { out.diagnostics.push(loadError("glue", `${path} did not load: ${message(e)}`)); return out; }
+  const called = callGlue(mod.default, path);
+  if (!called.composition) { out.diagnostics.push(...called.diagnostics.map((d) => hostDiagnostic("glue", d))); return out; }
+  const composition = called.composition;
   const build = scopeOf(out, "glue", text, mod, path);
   if (build) finish(out, composition, build, path, input.profile);
   return out;
@@ -173,6 +164,19 @@ export async function loadWorkbench(input, env) {
 function entryGrammar(p) {
   const { manifest } = checkManifest(textOf(p.files[MANIFEST_PATH]) ?? "");
   return manifest?.entry.grammar ?? "";
+}
+
+/**
+ * The URL of a custom element's module, named as the UI names it (`./field.js`): kit/package's `uiModulePath`,
+ * relative to the UI module, the path kit/package checked against `elements`; null when the package has none.
+ * @param {Pick<HostPackage, "files" | "urls">} p @param {string} module
+ */
+export function elementModuleUrl(p, module) {
+  /** @type {any} */
+  let manifest = null;
+  try { manifest = JSON.parse(withoutBom(textOf(p.files[MANIFEST_PATH] ?? "") ?? "")); } catch { return null; }
+  const path = uiModulePath(typeof manifest?.entry?.ui === "string" ? manifest.entry.ui : "ui.js", module);
+  return path === null ? null : p.urls.get(path) ?? null;
 }
 
 /**

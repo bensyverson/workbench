@@ -6,7 +6,7 @@
 // is instants.js; frame stamps and the slowdown N001 frames.js; wires, queues and wire order wires.js.
 
 import { q, cmp, sub, toNumber, qText, parseQ, fromNumber } from "../define/rational.js";
-import { needsRebuild } from "../define/params.js";
+import { needsRebuild, misfit } from "../define/params.js";
 import { clockOf } from "../define/runtime.js";
 import { queueProblems, catchUpOf } from "../compose/queues.js";
 import { PAGE, pageRuntime, pageInputProblem } from "../compose/page.js";
@@ -180,8 +180,22 @@ export function createRun(composed, options) {
       const bad = pageInputProblem(/** @type {string} */ (e.name), e.value);
       if (bad) throw new Error(bad);
     }
+    if (e.kind === "param") paramProblem(e);
     inputs.splice(i, 0, e);
     if (e.kind === "frame") frameLog.add(e.T);
+  }
+
+  /**
+   * Refuses a param input whose value does not fit the param's declaration in the part's record (its type, finite,
+   * min..max, options), before it is logged: applied, one past a build-time param's range would throw in the rebuild,
+   * and a run-time one would run with a value no control can give. A param the record does not declare is the host's.
+   * @param {Entry} e
+   */
+  function paramProblem(e) {
+    const p = byName.get(e.part ?? "");
+    const decl = p?.record.params?.[/** @type {string} */ (e.name)];
+    const bad = p && decl && typeof decl === "object" ? misfit(e.value, decl) : null;
+    if (p && bad) throw new RunError([{ code: "N008", part: p.name, message: `a param input at ${qText(e.T)}: ${p.name}.$.${e.name} ${bad}, so it is not logged and the run is unchanged` }]);
   }
 
   /**
@@ -419,6 +433,12 @@ export function createRun(composed, options) {
       // its Draw lists, for a part that has them (pageView reads them)
       return { state: p.state, revision: p.revision, T: p.snapT ? qText(p.snapT) : null, ...(Object.keys(p.draws).length ? { draws: p.draws } : {}) };
     },
+    /**
+     * A part's params as its Kernels read `$` now, frozen: the declared values, then every param input applied; a
+     * rewind, a restore and a rebuild leave what the run holds after them (a host reads this, not its own copy).
+     * @param {string} part
+     */
+    params(part) { return Object.freeze({ ...mustPart(part).params }); },
     /** A part's content key. @param {string} part */
     key(part) { return mustPart(part).key; },
     /** Drops (by a keepLast input; to a stopped part; by a wire's overflow policy) and slowdowns so far. */

@@ -63,7 +63,7 @@ export async function loadPackage(files, { importModule, kitVersion = KIT_VERSIO
   if (dialect && grammar && grammar.dialect !== dialect) diagnostics.push(diag("K008", `the Grammar in ${manifest.entry.grammar} is not built on the Dialect in ${manifest.entry.dialect}`, `build it with defineGrammar(<the Dialect imported from ./${manifest.entry.dialect}>, …)`, manifest.entry.grammar));
   if (grammar && ui && ui.builder !== grammar) diagnostics.push(diag("K008", `the UI in ${manifest.entry.ui} is not built on the Grammar in ${manifest.entry.grammar}`, `build it with defineUI(<the Grammar builder imported from ./${manifest.entry.grammar}>, …)`, manifest.entry.ui));
   if (grammar && runtime && runtime.grammar !== grammar) diagnostics.push(diag("K008", `the Runtime in ${manifest.entry.runtime} is not built on the Grammar in ${manifest.entry.grammar}`, `build it with defineRuntime(<the Grammar builder imported from ./${manifest.entry.grammar}>, …)`, manifest.entry.runtime));
-  if (!diagnostics.length) diagnostics.push(...checkElements(manifest.elements ?? [], ui ?? null));
+  if (!diagnostics.length) diagnostics.push(...checkElements(manifest.elements ?? [], ui ?? null, manifest.entry.ui));
   const read = !diagnostics.length && dialect ? checkData(dialect, manifest, files) : { data: {}, diagnostics: [] };
   diagnostics.push(...read.diagnostics);
   if (diagnostics.length) return out;

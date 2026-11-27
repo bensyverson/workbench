@@ -130,6 +130,23 @@ test("a UI lambda never reads the host's global object: a Dialect global other t
   } finally { delete globalThis.world; }
 });
 
+test("a UI lambda reading a free $ reads evaluate's $, never the host's (review H3)", () => {
+  const ui = tile(
+    { kind: "stat", label: "free", value: (s) => $.cap * s.t },
+    { kind: "table", label: "rows", rows: "bodies", columns: [{ label: "c", value: (row) => row.speed + $.cap }] },
+  );
+  const c = ui.compile(program("cap"));
+  assert.equal(c.ok, true);
+  globalThis.$ = { cap: 999 }; // a page that loads jQuery has a global $
+  try {
+    const [stat, table] = c.evaluate(STATE, { cap: 2 }).tiles[0].body;
+    assert.equal(stat.value, 8);
+    assert.deepEqual(table.rows, [[10], [4]]);
+    assert.equal(c.value("tiles.t.body[0].value", STATE, { cap: 3 }), 12);
+    assert.equal(c.value("tiles.t.body[1].columns[0].value", { speed: 1 }, STATE, { cap: 3 }), 4);
+  } finally { delete globalThis.$; }
+});
+
 test("annotations evaluate, and a param's takes '*''s fields under its own", () => {
   const ui = defineUI(orbits, {
     annotate: { params: { cap: { badge: (s, $) => ($.cap > 5 ? "big" : null), note: "the cap" }, "*": { tone: "dim", badge: "any" } }, traces: { t: { tone: (s) => (s.alive ? "good" : "bad") } } },

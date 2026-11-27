@@ -40,17 +40,24 @@ function readPath(obj, path) {
 const messageOf = (e) => (e instanceof Error ? e.message : String(e));
 
 /**
- * The Dialect's globals a UI Kernel may name, bound so it never reads the host's: the page globals from the page,
- * every other global a stand-in that throws, since a view runs outside a step and no runtime set its value.
- * @param {Record<string, any>} def
+ * The Dialect's globals a UI Kernel may name, bound so it never reads the host's, as kit/run binds a Program's: each
+ * a forwarding object over `current[name]`. `$` is the params a call is handed (its last argument); the page globals
+ * are the page's; every other global has no value, since a view runs outside a step, and reading it throws. A name no
+ * identifier spells cannot appear in a lambda's source, so it needs no binding.
+ * @param {Record<string, any>} def @param {{ current: Record<string, unknown> }} globals
  */
-function globalScope(def) {
+function globalScope(def, globals) {
   /** @type {Record<string, unknown>} */
   const scope = {};
   for (const n of Object.keys(def.globals ?? {})) {
-    if (PAGE_GLOBALS.includes(n) || !/^[A-Za-z_][\w]*$/.test(n)) continue;
-    const no = () => { throw new TypeError(`a UI lambda reads the global '${n}', which has no value outside a step`); };
-    scope[n] = new Proxy({}, { get: no, set: no, has: no, apply: no });
+    if (PAGE_GLOBALS.includes(n) || !/^[A-Za-z_$][\w$]*$/.test(n)) continue;
+    const target = () => {
+      const v = globals.current[n];
+      if (v === null || typeof v !== "object") throw new TypeError(`a UI lambda reads the global '${n}', which has no value outside a step`);
+      return /** @type {object} */ (v);
+    };
+    const no = () => { throw new TypeError(`a UI lambda cannot write the global '${n}'`); };
+    scope[n] = new Proxy({}, { get: (_t, k) => Reflect.get(target(), k), has: (_t, k) => Reflect.has(target(), k), set: no, apply: no });
   }
   return scope;
 }
@@ -67,12 +74,17 @@ export function compileUI(ui, record) {
   /** @type {Record<string, any>} */
   const intrinsics = {};
   for (const [n, i] of Object.entries(/** @type {Record<string, any>} */ (ui.dialect.intrinsics ?? {}))) if (i.js) intrinsics[n] = i;
-  const scope = globalScope(def);
+  const globals = { current: /** @type {Record<string, unknown>} */ ({}) };
+  const scope = globalScope(def, globals);
   const helperEmits = low.helpers.filter((h) => h.kind === "fn" && h.result?.kernel).map((h) => emitKernel(/** @type {any} */ (h.result.kernel), { intrinsics }));
   const helpers = helperEmits.length ? helpersWith(helperEmits, scope) : {};
   /** @type {Record<string, (...args: unknown[]) => unknown>} */
   const fns = {};
-  for (const [id, k] of Object.entries(low.kernels)) fns[id] = /** @type {any} */ (instantiate(emitKernel(k, { intrinsics }), { ...scope, ...helpers }));
+  for (const [id, k] of Object.entries(low.kernels)) {
+    const fn = /** @type {(...args: unknown[]) => unknown} */ (instantiate(emitKernel(k, { intrinsics }), { ...scope, ...helpers }));
+    // every call ends with the params: `state, $`, a column's `row, state, $`
+    fns[id] = (...args) => { globals.current = { $: args[args.length - 1] }; return fn(...args); };
+  }
   /** The first error lowering gave each lambda, by id. @type {Map<string, UILowerDiagnostic>} */
   const failed = new Map();
   for (const d of low.diagnostics) if ("id" in d && (d.severity === "error" || d.severity === undefined) && !failed.has(d.id)) failed.set(d.id, d);

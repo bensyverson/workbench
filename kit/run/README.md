@@ -26,7 +26,8 @@ const driver = createDriver(live);   // the page calls driver.frame(wallSeconds)
 | `run.runUntil(t)` | runs every instant at or before `t` (seconds, or a rational `{ n, d }`) and applies every input stamped by `t`, each at its own stamp, so the run is the same however it is chunked, and as in a replay. In a display run whose frame part waits on a frame not yet logged, an input waits for that frame, which may come first. A display run first logs frames up to `t` on the nominal grid from the last frame (see Run control) |
 | `run.advance(t)` | `runUntil` from the log alone, logging no frames: what `replay` runs |
 | `run.nextInstant()` | the next instant a part is due at, as a rational, not run; null when none is |
-| `run.input(entry)` | adds an outside input, stamped with `entry.T` or the next instant (when none is due yet, as in a display run of frame parts waiting on its next frame: `run.T`, or the first millisecond after it when `run.T` is the last instant run); a stamp at or before the last instant run throws, and one at or before `run.T` applies at once, as `runUntil(run.T)` would |
+| `run.input(entry)` | adds an outside input, stamped with `entry.T` or the next instant (when none is due yet, as in a display run of frame parts waiting on its next frame: `run.T`, or the first millisecond after it when `run.T` is the last instant run); a stamp at or before the last instant run throws, and one at or before `run.T` applies at once, as `runUntil(run.T)` would. A `param` input whose value does not fit the param's declaration in the part's record (its type, finite, `min..max`, `options`) is refused before it is logged: a `RunError` with N008, and the run is unchanged, so the log never holds an input that would throw on replay (a log handed to `createRun` as `inputs` is checked the same way). A param the record does not declare is not checked |
+| `run.params(part)` | a part's params as its Kernels read `$` now, frozen: the declared values, then every param input applied up to `run.T` (an input stamped at the next instant shows once that instant has run). It follows rewinds, restores and rebuilds, so a host reads it rather than keeping its own copy of what it set |
 | `run.state(part)`, `run.snapshot(part)` | a part's state (null if its init failed); `{ state, revision, T, draws? }`, T the instant it was committed (null: init's), `draws` its Draw lists by port when it has Draw outputs |
 | `run.T`, `run.seconds` | the time the run has reached |
 | `run.catchUp`, `run.lastFrame`, `run.framed` | the catch-up cap (a rational); the last frame at or before `run.T` (a display run starts at a frame at T = 0); whether a running part steps on frames (what the driver reads) |
@@ -96,7 +97,7 @@ N is kit/run's letter, reserved in kit/define (a Dialect's own codes may not use
 | N005 | a replay diverged: a state hash differs at an instant, or the build events differ |
 | N006 | a runtime's `clock(record)` is not one (refused at `createRun`; in a rebuild, the build event fails) |
 | N007 | a composed record's wire has an `overflow` that is neither `"keepLast"` nor `"keepFirst"` (refused at `createRun`; compose's S102 refuses it at the glue, so only a hand-edited record reaches it) |
-| N008 | a param wire's value does not fit the param's declaration (its type, finite, `min..max`, `options`): the wire does not set it and the part keeps its build; noted once per value |
+| N008 | a param's value does not fit its declaration (its type, finite, `min..max`, `options`): a param wire's is not set and the part keeps its build, noted once per value; a param input's is refused by `run.input` (a `RunError`, the run unchanged) |
 
 ## Not built
 

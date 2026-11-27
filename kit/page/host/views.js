@@ -36,7 +36,7 @@ export function chart(pts, { w = 220, h: ht = 44, bars = false } = {}) {
 /**
  * One evaluated component.
  * @param {Record<string, any>} c
- * @param {{ series: (key: string) => { T: number, y: number }[], sweep: (c: any) => { points: { x: number, y: number }[], error?: string } | null, runSweep: (c: any) => void, element: (c: any) => any }} io
+ * @param {{ series: (key: string) => { T: number, y: number }[], sweep: (c: any) => { running: boolean, progress: number, result: { points: { x: number, y: number }[], error?: string } | null } | null, runSweep: (c: any) => void, cancelSweep: (c: any) => void, element: (c: any) => any }} io
  * @returns {any}
  */
 export function componentView(c, io) {
@@ -48,9 +48,13 @@ export function componentView(c, io) {
       h("table", null, h("thead", null, h("tr", null, c.columns.map((/** @type {string} */ x) => h("th", null, x)))), h("tbody", null, c.rows.map((/** @type {string[]} */ r) => h("tr", null, r.map((x) => h("td", null, x)))))));
     case "plot": return h("div", { class: "comp" }, h("div", { class: "k" }, c.label, " ", h("b", null, String(Math.round(c.y * 1000) / 1000))), chart(io.series(c.key).map((p) => ({ x: p.T, y: p.y }))));
     case "runs": {
-      const swept = io.sweep(c);
+      const state = io.sweep(c);
+      const swept = state?.result ?? null;
       const pts = swept?.points ?? null;
-      return h("div", { class: "comp" }, h("div", { class: "k" }, c.label, " ", h("button", { class: "btn sm", onclick: () => io.runSweep(c) }, swept ? "Rerun" : "Run sweep")), pts && chart(pts, { bars: true }), pts && h("div", { class: "dim" }, `${c.spec.param}: ${pts.map((p) => `${p.x}→${Math.round(p.y * 100) / 100}`).join("  ")}`), swept?.error && h("div", { class: "comp bad" }, swept.error));
+      const button = state?.running
+        ? h("button", { class: "btn sm", onclick: () => io.cancelSweep(c) }, `Cancel (${Math.round(state.progress * 100)}%)`)
+        : h("button", { class: "btn sm", onclick: () => io.runSweep(c) }, swept ? "Rerun" : "Run sweep");
+      return h("div", { class: "comp" }, h("div", { class: "k" }, c.label, " ", button), pts && chart(pts, { bars: true }), pts && h("div", { class: "dim" }, `${c.spec.param}: ${pts.map((p) => `${p.x}→${Math.round(p.y * 100) / 100}`).join("  ")}`), swept?.error && h("div", { class: "comp bad" }, swept.error));
     }
     case "text": return h("p", { class: "comp text" }, c.text);
     case "row": case "col": return h("div", { class: `comp ${c.kind}` }, c.items.map((/** @type {any} */ i) => componentView(i, io)));
@@ -61,12 +65,14 @@ export function componentView(c, io) {
 /**
  * A param's editor: a slider with a number for a bounded number, a select for options, a checkbox, a text box.
  * @param {string} name @param {any} decl  `{ value, min?, max?, options? }` @param {any} annotation @param {(value: any) => void} onEdit
+ * @param {unknown} [value]  the param's value now (the run's), the declared one by default
  */
-export function paramEditor(name, decl, annotation, onEdit) {
-  const v = decl.value;
+export function paramEditor(name, decl, annotation, onEdit, value = decl.value) {
+  const v = /** @type {any} */ (value);
   /** @type {any} */
   let input;
-  if (Array.isArray(decl.options)) input = h("select", { onchange: (/** @type {any} */ e) => onEdit(e.target.value) }, decl.options.map((/** @type {string} */ o) => h("option", { value: o }, o)));
+  // a select's edit is the option itself, not its text, so a number option stays a number (N008 refuses text)
+  if (Array.isArray(decl.options)) input = h("select", { onchange: (/** @type {any} */ e) => onEdit(decl.options[e.target.selectedIndex]) }, decl.options.map((/** @type {string} */ o) => h("option", { value: String(o) }, String(o))));
   else if (typeof v === "boolean") input = h("input", { type: "checkbox", checked: v, onchange: (/** @type {any} */ e) => onEdit(e.target.checked) });
   else if (typeof v === "number") {
     const num = h("input", { type: "number", value: String(v), step: "any", min: decl.min, max: decl.max });
@@ -76,7 +82,7 @@ export function paramEditor(name, decl, annotation, onEdit) {
     if (range) range.oninput = edit;
     input = h("span", { class: "pin" }, range, num);
   } else input = h("input", { type: "text", value: String(v), onchange: (/** @type {any} */ e) => onEdit(e.target.value) });
-  if (input.tagName === "SELECT") input.value = v;
+  if (input.tagName === "SELECT") input.value = String(v);
   return h("label", { class: "param" }, h("span", { class: "k" }, name, annotation.badge && h("span", { class: "tag live" }, annotation.badge)), input, annotation.note && h("span", { class: "dim" }, annotation.note));
 }
 

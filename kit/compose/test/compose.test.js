@@ -317,10 +317,10 @@ test("S116: a frame consumer is bounded by the catch-up cap, and the cap is an o
   assert.deepEqual(codes(check(f.c, { runtimes: f.runtimes, catchUp: 1 / 60 })), []);
 });
 
-/** The codes of a wire constant and a param wire: wire-set-param.test.js has their cases and checks them. */
-const ELSEWHERE = ["S117", "S118", "S207", "S208"];
+/** The codes of a wire constant and a param wire (wire-set-param.test.js has their cases), and of loading a glue (glue-load.test.js). */
+const ELSEWHERE = ["S103", "S104", "S117", "S118", "S207", "S208"];
 
-test("every S code has a failing case above (or in wire-set-param.test.js, or draw.test.js for S4…)", () => {
+test("every S code has a failing case above (or in wire-set-param.test.js, glue-load.test.js, or draw.test.js for S4…)", () => {
   for (const c of Object.keys(COMPOSE_CODES)) if (!c.startsWith("S4")) assert.ok(seen.has(c) || ELSEWHERE.includes(c), `no case for ${c}`);
 });
 

@@ -75,9 +75,19 @@ test("a glue that imports something else is S-free K007 and one that is not a co
   const packages = { maze: readPackageDir(root(`${DRAW}/maze`)) };
   const bad = await loadWorkbench({ packages, glue: { path: "g.js", text: 'import fs from "node:fs";\nexport default () => 1;' } }, env);
   assert.equal(bad.diagnostics[0]?.code, "K007");
+  // kit/compose's callGlue says so now (S103), not a host LOAD entry (review M4.4)
   const notOne = await loadWorkbench({ packages, glue: { path: "g.js", text: "export default () => 1;" } }, env);
-  assert.equal(notOne.diagnostics[0]?.code, "LOAD");
-  assert.match(notOne.diagnostics[0]?.message ?? "", /not a function/);
+  assert.equal(notOne.diagnostics[0]?.code, "S103");
+  assert.match(notOne.diagnostics[0]?.message ?? "", /not a composition/);
+});
+
+test("a glue whose build-time code reads $ is S104 at its line, not a part built with undefined (review M2)", async () => {
+  const packages = Object.fromEntries(["maze", "particles", "arcade"].map((n) => [n, readPackageDir(root(`${DRAW}/${n}`))]));
+  const text = readFileSync(root(`${DRAW}/workbench.js`), "utf8").replace(".maxParticles(400)", ".maxParticles($.cap)");
+  const w = await loadWorkbench({ packages, glue: { path: "workbench.js", text } }, env);
+  assert.deepEqual(w.diagnostics.map((d) => [d.source, d.code]), [["glue", "S104"]]);
+  assert.match(w.diagnostics[0].message, /\$\.cap/);
+  assert.equal(w.composed, null);
 });
 
 test("a glue whose wire does not fit gives the S diagnostic with the glue's line", async () => {
@@ -88,6 +98,17 @@ test("a glue whose wire does not fit gives the S diagnostic with the glue's line
   assert.ok(s, JSON.stringify(w.diagnostics.map((d) => d.code)));
   assert.ok(typeof s.line === "number" && s.line > 0);
   assert.equal(w.composed, null);
+});
+
+test("a custom element's module is found relative to the UI module, as kit/package names it (review M4.5)", async () => {
+  const { elementModuleUrl } = await import("../load.js");
+  const files = { "wb-package.json": JSON.stringify({ entry: { ui: "ui/p.ui.js" } }) };
+  const pkg = /** @type {any} */ ({ files, urls: new Map([["ui/stage.js", "blob:stage"], ["stage.js", "blob:wrong"]]) });
+  assert.equal(elementModuleUrl(pkg, "./stage.js"), "blob:stage");
+  assert.equal(elementModuleUrl(pkg, "../../out.js"), null);
+  const w = await loadPreset({ packages: { particles: readPackageDir(root(`${DRAW}/particles`)) }, package: "particles", example: "examples/01.js" }, env);
+  const p = w.packages[0];
+  assert.equal(elementModuleUrl(p, p.loaded.ui.stage.module), p.urls.get("particles-field.js"));
 });
 
 test("a package's example loads as a one-part preset", async () => {

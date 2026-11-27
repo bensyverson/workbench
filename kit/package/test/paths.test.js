@@ -29,3 +29,12 @@ test("resolveRelative refuses a trailing slash or an empty part", () => {
 test("?, # and % are refused: a URL import would read them as a query, a fragment or an escape", () => {
   for (const p of ["a.mjs#.js", "a.mjs?.js", "x%2ejs", "lib/a#b.js", "lib/a?b.js"]) assert.equal(isPackagePath(p), false, p);
 });
+
+test("a UI's element module is named from the UI module's folder (review M4.5): uiModules takes the UI's path", async () => {
+  const { uiModules, uiModulePath } = await import("../index.js");
+  const ui = { stage: { element: "p-stage", module: "./stage.js" }, tiles: { a: { body: [{ kind: "text", element: "p-x", module: "../x.js" }] } } };
+  assert.deepEqual(uiModules(ui, "ui/p.ui.js"), ["ui/stage.js", "x.js"]);
+  assert.deepEqual(uiModules({ stage: { element: "p-stage", module: "./stage.js" } }), ["stage.js"], "a UI at the root, the default");
+  assert.equal(uiModulePath("ui/p.ui.js", "./stage.js"), "ui/stage.js");
+  assert.equal(uiModulePath("p.ui.js", "../out.js"), null);
+});

@@ -3,16 +3,16 @@
 
 import { DEFAULT_KEYS } from "../index.js";
 import { h, fill } from "./dom.js";
-import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic } from "./load.js";
+import { loadWorkbench, loadPreset, loadPackagesOnly, hostDiagnostic, elementModuleUrl } from "./load.js";
 import { createSession } from "./session.js";
-import { parseQuery, importedPackages, fetchPackage, fetchGlue, groupUpload, packageFromBundle, contentOf } from "./sources.js";
+import { parseQuery, importedPackages, fetchPackage, fetchGlue, groupUpload, packageFromBundle, contentOf, glueOf } from "./sources.js";
 import { diagnosticsView, componentView, paramEditor, codeView, chart } from "./views.js";
 
 const $ = (/** @type {string} */ id) => /** @type {any} */ (document.getElementById(id));
 const PANEL_MS = 100;
 const PAD_KEYS = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight", a: "KeyX", b: "KeyZ", start: "Enter", select: "ShiftLeft" };
 
-/** @typedef {{ loaded: import("./load.js").Loaded, session: ReturnType<typeof createSession> | null, sweeps: Map<string, any>, elements: Map<string, any> }} Current */
+/** @typedef {{ loaded: import("./load.js").Loaded, session: ReturnType<typeof createSession> | null, elements: Map<string, any> }} Current */
 
 /**
  * @param {{ importModule: (url: string) => Promise<any> }} host  `import(url)`, which the kit's modules may not hold
@@ -34,6 +34,8 @@ export function start({ importModule }) {
 
   /** @param {string} message */
   const problem = (message) => { hostProblems.push(hostDiagnostic("host", { code: "LOAD", severity: "error", message })); showDiagnostics(); };
+  /** An input the run refused (a param edit outside its declaration: N008), listed with the others; the editors go back to the run's values. @param {Array<{ code: string, message: string }>} ds */
+  const refused = (ds) => { if (!ds.length) return; hostProblems.push(...ds.map((d) => hostDiagnostic("run", { ...d, severity: "error" }))); showDiagnostics(); if (current?.session) refreshParams(current.session); };
   addEventListener("error", (e) => problem(`${e.message} (${e.filename}:${e.lineno})`));
   addEventListener("unhandledrejection", (e) => problem(`unhandled: ${e.reason instanceof Error ? e.reason.message : e.reason}`));
 
@@ -45,7 +47,7 @@ export function start({ importModule }) {
     let loaded;
     try { loaded = await make(); } catch (e) { loaded = null; problem(`loading threw: ${e instanceof Error ? e.stack ?? e.message : e}`); }
     if (!loaded) return;
-    current = { loaded, session: null, sweeps: new Map(), elements: new Map() };
+    current = { loaded, session: null, elements: new Map() };
     $("code-name").textContent = loaded.sourceName || "no glue";
     fill($("code"), codeView(loaded.source, loaded.sourceName));
     fillPresets(loaded);
@@ -74,6 +76,7 @@ export function start({ importModule }) {
       requestFrame: (cb) => requestAnimationFrame(cb),
       decode: (bytes) => createImageBitmap(new Blob([/** @type {BlobPart} */ (bytes)], { type: "image/png" })),
       onFrame: (snap) => { const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
+      onProblem: problem,
     });
     c.session = session;
     const size = session.page.size;
@@ -98,10 +101,28 @@ export function start({ importModule }) {
         h("h3", null, p.part, h("span", { class: "tag" }, dialect)),
         buttons,
         h("div", { class: "tiles", "data-tiles": p.part }),
-        params.length ? h("details", { open: true }, h("summary", null, "Params"), params.map(([name, decl]) => paramEditor(name, /** @type {any} */ (decl), session.paramAnnotation(p.part, name, p.state, p.params), (v) => session.setParam(p.part, name, v)))) : null,
+        params.length ? h("details", { open: true }, h("summary", null, "Params"), h("div", { "data-params": p.part }, paramEditors(session, p, params))) : null,
         h("details", null, h("summary", null, "Traces"), h("div", { "data-traces": p.part })),
         h("details", null, h("summary", null, "State"), h("pre", { class: "state", "data-state": p.part })));
     }));
+  }
+
+  /**
+   * A part's param editors, showing the run's values (`run.params`, which a rewind changes).
+   * @param {ReturnType<typeof createSession>} session @param {any} p  the part's snapshot @param {Array<[string, unknown]>} params  the declarations
+   */
+  function paramEditors(session, p, params) {
+    return params.map(([name, decl]) => paramEditor(name, /** @type {any} */ (decl), session.paramAnnotation(p.part, name, p.state, p.params), (v) => refused(session.setParam(p.part, name, v)), p.params[name]));
+  }
+  /** After a rewind the run's params may differ from what the editors show: build them again. @param {ReturnType<typeof createSession>} session */
+  function refreshParams(session) {
+    const c = current;
+    if (!c) return;
+    for (const p of session.snapshot().parts) {
+      const box = document.querySelector(`[data-params="${p.part}"]`);
+      const record = c.loaded.composed?.parts.find((/** @type {any} */ q) => q.name === p.part)?.record;
+      if (box && record) fill(box, paramEditors(session, p, Object.entries(record.params ?? {})));
+    }
   }
 
   /** @param {ReturnType<typeof createSession>} session @param {string} part @param {any} inputs */
@@ -128,8 +149,10 @@ export function start({ importModule }) {
     $("pause").textContent = status.paused ? "Resume" : "Pause";
     const io = {
       series: (/** @type {string} */ k) => c.session?.series.get(k).map((p) => p) ?? [],
-      sweep: (/** @type {any} */ x) => c.sweeps.get(x.label) ?? null,
-      runSweep: (/** @type {any} */ x) => { c.sweeps.set(x.label, c.session?.sweep(x.part, x.spec) ?? null); panels(c.session?.snapshot() ?? snap); },
+      sweep: (/** @type {any} */ x) => c.session?.sweepState(x.part, x.spec) ?? null,
+      // the session notifies as the sweep goes, so the panels show its progress; a throw is one reported problem
+      runSweep: (/** @type {any} */ x) => { c.session?.sweep(x.part, x.spec).catch((e) => problem(`the sweep threw: ${e instanceof Error ? e.message : e}`)); },
+      cancelSweep: (/** @type {any} */ x) => c.session?.cancelSweep(x.part, x.spec),
       element: () => null,
     };
     for (const p of snap.parts) {
@@ -163,11 +186,12 @@ export function start({ importModule }) {
       let el = c.elements.get(stage.element);
       if (el === undefined) {
         c.elements.set(stage.element, null);
-        const url = pkg?.urls.get(String(stage.module).replace(/^\.\//, ""));
+        const url = pkg ? elementModuleUrl(pkg, String(stage.module)) : null;
         (url ? importModule(url).then(() => { if (customElements.get(stage.element)) c.elements.set(stage.element, document.createElement(stage.element)); else problem(`${stage.module} did not define <${stage.element}>`); }).catch((e) => problem(`${stage.module} did not load: ${e.message}`)) : Promise.resolve(problem(`no module ${stage.module} in package ${dialect}`)));
       }
       el = c.elements.get(stage.element);
       if (el) {
+        // a throw here propagates to the session, which says it once while it repeats
         el.state = part.state; el.params = part.params; el.text = pkg?.loaded.dialect.text(part.state);
         if (el.parentElement !== box) fill(box, el);
         return;
@@ -195,7 +219,7 @@ export function start({ importModule }) {
   // ---- controls ----
   $("pause").onclick = () => { const s = current?.session; if (!s) return; if (s.page.status().halted) { s.start(); s.resume(); } else if (s.page.driver.paused) s.resume(); else s.pause(); };
   $("step").onclick = () => { const s = current?.session; if (s) { s.pause(); s.step(); } };
-  $("scrub").oninput = (/** @type {any} */ e) => current?.session?.scrub(Number(e.target.value));
+  $("scrub").oninput = (/** @type {any} */ e) => { const s = current?.session; if (!s) return; s.scrub(Number(e.target.value)); refreshParams(s); };
   $("profile").onchange = (/** @type {any} */ e) => { input.profile = e.target.value; if (input.glue || current) loadGlue(); };
   for (const [name, code] of Object.entries(PAD_KEYS)) {
     const b = $(`pad-${name}`);
@@ -218,6 +242,7 @@ export function start({ importModule }) {
     const files = /** @type {File[]} */ ([...e.target.files]);
     const entries = await Promise.all(files.map(async (f) => ({ path: f.webkitRelativePath || f.name, content: contentOf(f.webkitRelativePath || f.name, await f.arrayBuffer()) })));
     const g = groupUpload(entries);
+    hostProblems.push(...g.diagnostics);
     input.packages = { ...input.packages, ...g.packages };
     if (g.glue) input.glue = g.glue;
     else if (g.glues.length > 1) problem(`the folder holds several glue files (${g.glues.join(", ")}) and none is workbench.js: pick one with Glue file`);
@@ -233,7 +258,10 @@ export function start({ importModule }) {
   };
   $("up-glue").onchange = async (/** @type {any} */ e) => {
     const f = /** @type {File | undefined} */ (e.target.files?.[0]);
-    if (f) { input.glue = { path: f.name, text: await f.text() }; await loadGlue(); }
+    if (!f) return;
+    const g = glueOf(f.name, new Uint8Array(await f.arrayBuffer()));
+    hostProblems.push(...g.diagnostics);
+    if (g.glue) { input.glue = g.glue; await loadGlue(); } else showDiagnostics();
   };
 
   // ---- the URL ----

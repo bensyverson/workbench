@@ -65,12 +65,13 @@ export function analyze(name, start, given, options) {
     // the part, built and lowered by its own Grammar exactly as if it stood alone
     const { diagnostics: built } = program.analyze(options.build);
     const refused = built.filter((/** @type {any} */ d) => d.severity === "error");
-    for (const d of refused) add(placed(d, c.at), d.code, `part '${part.name}' (${part.dialectName}): ${d.message}`, d.tip ?? "");
+    // a part's warnings are the composition's too, as warnings: a preset's and a glue part's alike (review M1)
+    for (const d of [...refused, ...built.filter((/** @type {any} */ d) => d.severity === "warning")]) add(placed(d, c.at), d.code, `part '${part.name}' (${part.dialectName}): ${d.message}`, d.tip ?? "", {}, d.severity === "warning" ? "warning" : "error");
     if (refused.length) { broken.add(part); continue; }
     part.record = program.build(options.build);
     const lowered = lowerRecord(program.g, /** @type {Record<string, any>} */ (part.record));
     const errors = lowered.diagnostics.filter((/** @type {any} */ d) => d.severity === "error" || d.severity === undefined);
-    for (const d of errors) add(placed(d, c.at), d.code, `part '${part.name}' (${part.dialectName}): ${d.message}`, /** @type {any} */ (d).tip ?? "");
+    for (const d of [...errors, ...lowered.diagnostics.filter((/** @type {any} */ d) => d.severity === "warning")]) add(placed(d, c.at), d.code, `part '${part.name}' (${part.dialectName}): ${d.message}`, /** @type {any} */ (d).tip ?? "", {}, d.severity === "warning" ? "warning" : "error");
     if (errors.length) { broken.add(part); continue; }
     part.extents = lowered.seams?.extents ?? {};
     part.edges = lowered.seams?.edges ?? [];

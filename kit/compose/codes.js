@@ -7,6 +7,8 @@
 export const COMPOSE_CODES = Object.freeze({
   S101: "Two parts with one name",
   S102: "A composition call given the wrong thing: .part of something that is not a builder or twice, a handle of a part not passed to .part, .wire of anything but an output then an input, wire options other than { rename, set, delay, overflow } (or an overflow that is not keepLast or keepFirst, or one on a value wire, or a set that is not an object of literal data), a param wire with any option, a param as a wire's producer, .frame of anything but two frames, .show of a part not in the composition or a second .show, a composition name that is not lowercase letters, digits and -",
+  S103: "A glue's default export is not a function ($) => composition, throws (a thrown kit code or kit diagnostics are kept instead), or returns something that is not a composition (callGlue)",
+  S104: "A glue's build-time code reads its $ (a param by name, a spread, `in`): a glue has no params, each part keeps its own, so the read is refused rather than undefined (callGlue)",
   S111: "An output, input, frame or param the part does not have (lists what it has, with a did-you-mean)",
   S112: "An input wired twice",
   S113: "A required input with no wire",

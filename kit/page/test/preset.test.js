@@ -66,7 +66,7 @@ test("an example that does not build is its B diagnostics; one that is not ($) =
   assert.ok(Object.hasOwn(PAGE_CODES, "H005"));
 });
 
-test("a runs tile sweeps fresh runs, each value clamped to the param's range, y read through the UI's Kernels", () => {
+test("a runs tile sweeps fresh runs, each value clamped to the param's range, y read through the UI's Kernels", async () => {
   const p = examplePreset("w", (/** @type {any} */ $) => g("box").param("speed", { value: 1, min: 0, max: 4 }).size(4));
   const composed = built(p);
   const ui = defineUI(g, { tiles: { s: { title: "S", place: { splitBelow: "stage" }, body: [
@@ -74,17 +74,52 @@ test("a runs tile sweeps fresh runs, each value clamped to the param's range, y 
   ] } } });
   const compiled = ui.compile(composed.parts[0].record);
   const spec = /** @type {any} */ (compiled.evaluate({ size: 4, t: 0 }, { speed: 1 }).tiles[0].body[0]);
-  const r = sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec, compiled, build: p.build });
+  const r = await sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec, compiled, build: p.build });
   assert.deepEqual(r, { points: [{ x: 0, y: 0 }, { x: 4, y: 5 }, { x: 4, y: 5 }] });
 });
 
-test("a sweep of a param the Program lacks, or of a build-time param with no rebuild, says why and has no points", () => {
+/** A sweep of `speed` over `seconds` of run each, with a counting yield. @param {number} seconds @param {number} steps */
+function longSweep(seconds, steps) {
+  const p = examplePreset("w", (/** @type {any} */ $) => g("box").param("speed", { value: 1, min: 0, max: 4 }).size(4));
+  const composed = built(p);
+  const ui = defineUI(g, { tiles: { s: { title: "S", place: { splitBelow: "stage" }, body: [{ kind: "runs", label: "t", param: "speed", from: 0, to: 4, steps, seconds, y: "t" }] } } });
+  const compiled = ui.compile(composed.parts[0].record);
+  const spec = /** @type {any} */ (compiled.evaluate({ size: 4, t: 0 }, { speed: 1 }).tiles[0].body[0]);
+  let yields = 0;
+  return { o: { composed, runtimes: [W.runtime], part: "box", spec, compiled, build: p.build, budgetMs: 0, yieldFn: async () => { yields++; } }, yields: () => yields };
+}
+
+test("a sweep yields between runs and inside a long one, reports its progress, and gives the points an unchunked run gives (review M3)", async () => {
+  const s = longSweep(10, 3);
+  /** @type {number[]} */
+  const progress = [];
+  const r = await sweepRuns({ ...s.o, onProgress: (f) => progress.push(f) });
+  assert.deepEqual(r, { points: [{ x: 0, y: 0 }, { x: 2, y: 20.5 }, { x: 4, y: 41 }] }); // 41 steps of 1/4 s, from T = 0
+  assert.ok(s.yields() >= 3 * 10, `yielded ${s.yields()} times: at least once a run second`);
+  assert.ok(progress.length > 3 && progress.every((f, i) => f > 0 && f <= 1 && (i === 0 || f >= progress[i - 1])), JSON.stringify(progress.slice(0, 5)));
+  assert.equal(progress.at(-1), 1);
+});
+
+test("a sweep stops when its signal aborts: the points so far, cancelled, and no run after", async () => {
+  const s = longSweep(10, 4);
+  const ac = new AbortController();
+  let seen = 0;
+  const r = await sweepRuns({ ...s.o, signal: ac.signal, onProgress: (f) => { if (f >= 0.5) ac.abort(); seen = f; } });
+  assert.equal(r.cancelled, true);
+  assert.deepEqual(r.points.map((pt) => pt.x), [0, 4 / 3]);
+  assert.ok(seen < 0.6, `it stopped at ${seen}`);
+  const already = new AbortController();
+  already.abort();
+  assert.deepEqual(await sweepRuns({ ...s.o, signal: already.signal }), { points: [], cancelled: true });
+});
+
+test("a sweep of a param the Program lacks, or of a build-time param with no rebuild, says why and has no points", async () => {
   const p = examplePreset("w", buildTime);
   const composed = built(p);
   const ui = defineUI(g, { tiles: { s: { title: "S", place: { splitBelow: "stage" }, body: [{ kind: "runs", label: "r", param: "n", from: 1, to: 3, steps: 2, seconds: 1, y: "size" }] } } });
   const compiled = ui.compile(composed.parts[0].record);
   const spec = /** @type {any} */ (compiled.evaluate({ size: 0, t: 0 }, {}).tiles[0].body[0]);
-  assert.deepEqual(sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec, compiled, build: p.build }), { points: [{ x: 1, y: 2 }, { x: 3, y: 6 }] });
-  assert.match(String(sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec, compiled }).error), /read at build time/);
-  assert.match(String(sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec: { ...spec, param: "nope" }, compiled }).error), /no param 'nope'/);
+  assert.deepEqual(await sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec, compiled, build: p.build }), { points: [{ x: 1, y: 2 }, { x: 3, y: 6 }] });
+  assert.match(String((await sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec, compiled })).error), /read at build time/);
+  assert.match(String((await sweepRuns({ composed, runtimes: [W.runtime], part: "box", spec: { ...spec, param: "nope" }, compiled })).error), /no param 'nope'/);
 });

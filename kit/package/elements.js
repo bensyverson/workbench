@@ -6,12 +6,20 @@ import { MANIFEST_PATH } from "./manifest.js";
 import { resolveRelative } from "./paths.js";
 
 /**
- * The package paths of the modules a UI's custom elements name, sorted and without repeats. The UI value is
- * plain frozen data apart from its lambdas, so this walks it for objects that carry both `element` and `module`.
- * @param {unknown} ui
+ * The package path an element's `module` names: relative to the UI module, as an import in it would be (null when
+ * it leaves the package). The host imports that path; `uiModules` lists the same ones.
+ * @param {string} uiPath  the manifest's `entry.ui` @param {string} module
+ */
+export const uiModulePath = (uiPath, module) => resolveRelative(uiPath, module);
+
+/**
+ * The package paths of the modules a UI's custom elements name, sorted and without repeats, each relative to the
+ * UI module at `uiPath` (`uiModulePath`). The UI value is plain frozen data apart from its lambdas, so this walks
+ * it for objects that carry both `element` and `module`.
+ * @param {unknown} ui @param {string} [uiPath]  the manifest's `entry.ui` (a module at the root, by default)
  * @returns {string[]}
  */
-export function uiModules(ui) {
+export function uiModules(ui, uiPath = "ui.js") {
   /** @type {Set<string>} */
   const found = new Set();
   /** @param {unknown} v */
@@ -19,7 +27,7 @@ export function uiModules(ui) {
     if (Array.isArray(v)) { v.forEach(walk); return; }
     if (typeof v !== "object" || v === null) return;
     const o = /** @type {Record<string, unknown>} */ (v);
-    if ("element" in o && typeof o.module === "string") found.add(resolveRelative("x.js", o.module) ?? o.module);
+    if ("element" in o && typeof o.module === "string") found.add(uiModulePath(uiPath, o.module) ?? o.module);
     for (const k of Object.keys(o)) walk(o[k]);
   };
   const u = /** @type {Record<string, unknown> | null} */ (ui);
@@ -31,10 +39,11 @@ export function uiModules(ui) {
  * K015 and K016: the manifest's `elements` and the modules the UI names must be the same set.
  * @param {string[]} elements  the manifest's `elements` (empty when it has none)
  * @param {unknown} ui  the loaded UI, or null when the package has none
+ * @param {string} [uiPath]  the manifest's `entry.ui`, which the modules are named from
  * @returns {import("./package.js").PackageDiagnostic[]}
  */
-export function checkElements(elements, ui) {
-  const named = uiModules(ui);
+export function checkElements(elements, ui, uiPath) {
+  const named = uiModules(ui, uiPath);
   const listed = new Set(elements);
   /** @type {import("./package.js").PackageDiagnostic[]} */
   const out = [];

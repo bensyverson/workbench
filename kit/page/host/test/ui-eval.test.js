@@ -56,7 +56,7 @@ test("a shown component keeps the kit's error, and a number shows to three place
 test("a runs tile sweeps the param, clamped, from fresh runs (kit/page's sweepRuns)", async () => {
   const { w, compiled, state, $ } = await fountain();
   const spec = /** @type {any} */ (compiled.evaluate(state, $).tiles[1].body[1]);
-  const r = sweepRuns({ composed: w.composed, runtimes: w.runtimes, part: "fountain", spec: { ...spec, steps: 3, seconds: 1, to: 1000 }, compiled });
+  const r = await sweepRuns({ composed: w.composed, runtimes: w.runtimes, part: "fountain", spec: { ...spec, steps: 3, seconds: 1, to: 1000 }, compiled });
   assert.equal(r.error, undefined);
   assert.deepEqual(r.points.map((p) => p.x), [0, 400, 400]);
   assert.ok(r.points[2].y > r.points[0].y);
