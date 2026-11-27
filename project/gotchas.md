@@ -69,3 +69,7 @@ In the M4 trial (leaf `IhJ35P`) every `claude -p` leg's transcript shows it read
 ## 2026-11-27: the compose README must not quote the heading layer-docs.js strips
 
 `scripts/m4-trial/test/layer.test.js` asserts that a leg's copy of `kit/compose/README.md` no longer contains "The M4 trial's glue" after `layer-docs.js` strips that subsection, so any other mention of the heading (a cross-reference elsewhere in the README) fails `npm test` (leaf `JBkhsf`). The strip also ends at the next `#`, `##` or `###` heading, so a later section holding the task's answer (real names, the offset) is not stripped unless `layer-docs.js` names its heading too, as it now does for the anchored-edge draft's "The M4 trial's HUD, anchored"; a new section with the answer needs its heading added there.
+
+## 2026-11-27: a worktree agent's first `job claim` without `--db` writes to the worktree's tracked log
+
+`.jobs/log/*.jsonl` is tracked, so a worktree has its own copy, and `job` there without `--db` writes the claim into the worktree's log instead of the main database (anchor-dogfood-54 left an untracked `.jobs/log/<id>.jsonl` that a squash would have carried to main). Briefs now say "pass --db on EVERY job call, the first claim included"; at integration, check `git -C <worktree> status --porcelain .jobs` and delete any stray log file before the snapshot.
