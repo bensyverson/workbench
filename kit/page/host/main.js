@@ -115,14 +115,18 @@ export function start({ importModule }) {
       context: canvas.getContext("2d"),
       requestFrame: (cb) => requestAnimationFrame(cb),
       decode: (bytes) => createImageBitmap(new Blob([/** @type {BlobPart} */ (bytes)], { type: "image/png" })),
-      onFrame: (snap) => { const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
+      onFrame: (snap) => { fit(); const now = performance.now(); if (now - lastPanels >= PANEL_MS || snap.status.paused) { lastPanels = now; panels(snap); } },
       onProblem: problem,
       ...(opening ? { run: { inputs: opening.inputs, seed: opening.seed } } : {}),
     });
     c.session = session;
-    const size = session.page.size;
-    canvas.hidden = !size;
-    if (size) { canvas.width = size.width; canvas.height = size.height; canvas.style.aspectRatio = `${size.width} / ${size.height}`; }
+    // the page's size follows the box in force, which a rebuild can change, so the canvas is fitted on every frame
+    function fit() {
+      const size = session.page.size;
+      canvas.hidden = !size;
+      if (size && (canvas.width !== size.width || canvas.height !== size.height)) { canvas.width = size.width; canvas.height = size.height; canvas.style.aspectRatio = `${size.width} / ${size.height}`; }
+    }
+    fit();
     buildParts(loaded, session);
     buildControls(session);
     await session.page.ready;

@@ -84,12 +84,15 @@ export function createPage(options) {
     const message = composed.show ? `the page shows ${composed.show}, which has no Draw output (a custom element stage or the text view draws it), so the canvas stays empty` : "the composition shows no part (.show(<part>) in the glue), so the canvas stays empty";
     report({ code: "H002", severity: "warning", message, T: now(), ...(composed.show ? { part: composed.show } : {}) });
   }
-  const box = first?.box ?? null;
+  /** The box in force: pageView's, which a rebuild that changes the shown picture's extent changes (leaf EggIAM). */
+  let box = first?.box ?? null;
   const shown = composed.parts.find((/** @type {{ name: string }} */ p) => p.name === composed.show);
   if (first && !box && shown?.layer !== undefined) {
     report({ code: "H010", severity: "warning", message: `the page shows layer ${shown.name}, whose bottom frame ${shown.layer.frame} has no extent, so the page has no size and the canvas stays hidden (a layer has no text stage to fall back on)`, T: now(), part: shown.name });
   }
-  const size = box ? { width: box.max[0] - box.min[0], height: box.max[1] - box.min[1] } : null;
+  /** @param {{ min: number[], max: number[] } | null} b */
+  const sizeOf = (b) => (b ? { width: b.max[0] - b.min[0], height: b.max[1] - b.min[1] } : null);
+  let size = sizeOf(box);
 
   const ready = decodeSources(composed.parts, runtimes, packages, options.decode).then((r) => {
     sources = r.sources;
@@ -104,13 +107,16 @@ export function createPage(options) {
   /** Draws the shown list now, through the host's zoom and pan, and reports a draw-time refusal once. */
   function draw() {
     const v = view();
-    if (size) ctx.clearRect(0, 0, size.width, size.height);
+    // a host that keeps its canvas at the old size until it reads the new one is cleared over both
+    const was = size;
+    if (v?.box && box && (v.box.min.some((x, i) => x !== box?.min[i]) || v.box.max.some((x, i) => x !== box?.max[i]))) { box = v.box; size = sizeOf(box); }
+    if (size) ctx.clearRect(0, 0, Math.max(size.width, was?.width ?? 0), Math.max(size.height, was?.height ?? 0));
     if (!v) return null;
     const moved = box && (box.min[0] !== 0 || box.min[1] !== 0);
     const zoomed = viewport.zoom !== 1 || viewport.pan[0] !== 0 || viewport.pan[1] !== 0;
     if (moved || zoomed) ctx.save();
     if (zoomed) { ctx.translate(viewport.pan[0], viewport.pan[1]); ctx.scale(viewport.zoom, viewport.zoom); }
-    if (moved) ctx.translate(-box.min[0], -box.min[1]);
+    if (moved && box) ctx.translate(-box.min[0], -box.min[1]);
     drawCanvas(ctx, [...v.list], { images: v.images, sources });
     if (moved || zoomed) ctx.restore();
     const check = v.check;
@@ -333,7 +339,9 @@ export function createPage(options) {
   };
 
   return {
-    run, driver, ready, size, options,
+    run, driver, ready, options,
+    /** The canvas size the box in force needs, or null; a host resizes its canvas when this changes. */
+    get size() { return size; },
     /** The page diagnostics, H…, in the order they arose. */
     diagnostics,
     /** The decoded image sources, by carried name (`<part>.<image>`). */
