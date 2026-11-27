@@ -85,7 +85,7 @@ export async function loadOnePackage(label, given, env) {
  * @property {string} source  the glue's text, or the preset's example's
  * @property {string} sourceName
  * @property {Record<string, any>} options  compose's options (packages, build scope, runtimes, profile)
- * @property {((part: string, params: Record<string, unknown>) => Record<string, any>) | null} rebuild  a preset's rebuild for a build-time param edit (kit/page's examplePreset), which createRun takes as `build`; null for a glue
+ * @property {((part: string, params: Record<string, unknown>, more?: { args?: Record<string, unknown> }) => Record<string, any>) | null} rebuild  a preset's rebuild for a build-time param edit (kit/page's examplePreset), which createRun takes as `build`; for a glue, its part built again with argument overrides (callGlue's `args`), a Grip's or a Control's preview; null when nothing built
  */
 
 /** @returns {Loaded} */
@@ -156,7 +156,22 @@ export async function loadWorkbench(input, env) {
   const composition = called.composition;
   const build = scopeOf(out, "glue", text, mod, path);
   if (build) finish(out, composition, build, path, input.profile);
+  // a Grip's or a Control's preview of a glue part's argument: the glue called again with the override
+  if (out.composed) out.rebuild = (part, _params, more = {}) => glueRebuild(mod.default, path, out.options, part, more.args);
   return out;
+}
+
+/**
+ * One part of a glue built again with argument overrides (kit/compose's `callGlue(…, { args })`), for a preview: the
+ * part's record, or a throw naming what refused it. A glue has no params, so `params` is not read.
+ * @param {unknown} exported @param {string} path @param {Record<string, any>} options @param {string} part @param {Record<string, unknown>} [args]
+ */
+function glueRebuild(exported, path, options, part, args) {
+  const called = callGlue(exported, path, args ? { args } : {});
+  if (!called.composition) throw new Error(`the glue did not build with ${JSON.stringify(args)}: ${called.diagnostics.map((d) => `${d.code} ${d.message}`).join("; ")}`);
+  const record = called.composition.build(options).parts.find((/** @type {any} */ p) => p.name === part)?.record;
+  if (!record) throw new Error(`the glue has no part ${part}`);
+  return record;
 }
 
 /** @param {HostPackage} p @returns {string} the manifest's grammar path */

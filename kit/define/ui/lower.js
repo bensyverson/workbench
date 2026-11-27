@@ -257,6 +257,8 @@ function controlInstances(ui, record, diagnostics) {
       const merged = { ...base, ...entry };
       const problems = controlProblems(merged, ["controls", name], { files, instance: true });
       if (keys.has(entry.key)) problems.push({ code: "U017", path, message: `instance ${i} of '${name}' repeats the key '${entry.key}'`, tip: "give each instance its own key" });
+      // a part-local Control has no input to carry its value, so each instance writes to its own target
+      if (c.local && typeof merged.to !== "string") problems.push({ code: "U017", path, message: `instance ${i} of '${name}' has no to: the Control is part-local (no Event input of its name), so each instance needs a target`, tip: 'give the instance to: "param.<name>" or "arg.<address>", or the declaration a to they share' });
       keys.add(entry.key);
       for (const p of problems) u017(path, `instance ${i} of '${name}': ${p.message}`, p.tip);
       if (!problems.length) list.push(Object.freeze(merged));

@@ -30,6 +30,12 @@ test("50. runAction: a file's shape is checked, a bad shape or a throw is H013; 
   assert.equal(history.undo(), TEXT, "one undo step for the whole result");
   const wrong = await runAction(async () => [{ to: 3 }], { ...ctx, gives: "edits", history: createHistory(TEXT) });
   assert.equal(wrong.code, "H013");
+  const kept = createHistory(TEXT);
+  const overlap = await runAction(async () => [{ to: "arg.s.op#0:1.ratio", value: 3 }, { to: "arg.s.op#0:1.ratio", value: 4 }], { ...ctx, gives: "edits", history: kept });
+  assert.deepEqual([overlap.ok, overlap.code], [false, "H013"], "an action whose edits overlap gave the wrong shape");
+  assert.match(overlap.message, /overlap/);
+  assert.equal(kept.text, TEXT, "nothing is kept");
+  assert.equal(kept.canUndo, false);
 
   const abort = new AbortController();
   /** @type {number[]} */

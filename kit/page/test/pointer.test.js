@@ -49,3 +49,42 @@ test("42. the first pointer down unlocks a locked page and is delivered", () => 
   settle(pg);
   assert.deepEqual(pg.run.state("b").got, ["down@50,50:bg"]);
 });
+
+import { compose, layer } from "../../compose/index.js";
+import { defineUI, list, pointerSeam } from "../../define/index.js";
+import { tiny } from "../../run/test/helpers.js";
+import { createPage } from "../index.js";
+import { fakeContext, frames } from "../fixtures/bench.js";
+
+/** The lens board under marks in the shown layer `top`, and also, in px converted to cells, in a layer `other` the page does not show. */
+function twoLayers(otherFirst) {
+  const board = tiny("lens", {
+    state: { got: list("str", 50) }, inputs: false,
+    frames: { px: { dims: 2, note: "pixels", extent: () => ({ min: [0, 0], max: [100, 100] }) } },
+    ports: { in: { pointer: { seam: pointerSeam("px") } }, out: { view: { seam: "Draw<4>@px", from: () => [{ op: "rect", at: [0, 0], size: [100, 100], fill: "#000000", id: "bg" }] } } },
+  }, { clock: () => ({ tick: 1 / 60 }), events: { in: { pointer: 16 } }, init: () => ({ got: [] }), step: (s, c) => ({ got: [...s.got, ...c.inputs.pointer.map((r) => `${r.phase}@${r.at}`)] }) });
+  const marks = tiny("marks", {
+    state: { n: "f64" }, inputs: false,
+    frames: { cell: { dims: 2, note: "cells", extent: () => ({ min: [0, 0], max: [10, 10] }) } },
+    ports: { in: {}, out: { view: { seam: "Draw<4>@cell", from: () => [{ op: "rect", at: [9, 9], size: [1, 1], fill: "#ffffff", id: "m" }] } } },
+  }, { clock: () => ({ tick: 1 / 60 }), init: () => ({ n: 0 }), step: (s) => s });
+  const b = board.grammar("b"), m = marks.grammar("m");
+  const top = layer("top", b.out.view, m.out.view);
+  const other = layer("other", m.out.view, b.out.view);
+  let c = compose("bench").part(b).part(m);
+  c = otherFirst ? c.part(other).part(top) : c.part(top).part(other);
+  c = c.frame(m.frame.cell, b.frame.px, { scale: 10, offset: 0 }).show(top);
+  const packages = [{ name: "lens", ui: defineUI(board.grammar, { stage: { draw: "view", pointer: "pointer" } }) }, { name: "marks", ui: defineUI(marks.grammar, {}) }];
+  const runtimes = [board.runtime, marks.runtime];
+  return createPage({ composed: c.build({ runtimes, packages }), runtimes, packages, context: fakeContext(), requestFrame: frames().requestFrame });
+}
+
+test("39. a point maps only through the shown layer's path, whichever layer the glue declares first", () => {
+  for (const otherFirst of [false, true]) {
+    const pg = twoLayers(otherFirst);
+    assert.deepEqual(pg.hits(50, 50).find((h) => h.part === "b").at, [50, 50], `hits, other first: ${otherFirst}`);
+    pg.pointer(ev("pointerdown", 50, 50));
+    settle(pg);
+    assert.deepEqual(pg.run.state("b").got, ["down@50,50"], `other first: ${otherFirst}`);
+  }
+});

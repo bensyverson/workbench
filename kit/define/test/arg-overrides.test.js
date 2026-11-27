@@ -56,6 +56,18 @@ test("16. siteOf gives the file, the loc and the shape's bounds for an arg and f
   assert.equal(siteOf(record, "bogus"), null);
 });
 
+test("16. siteOf names the call's slot, and a preview's record still says what its text held before the override", () => {
+  const record = run(chain).record;
+  assert.deepEqual([siteOf(record, "arg.s.op#1:1.ratio").slot, siteOf(record, "param.gain").slot], ["op", "param"]);
+  assert.equal(siteOf(record, "arg.s.op#1:1.ratio").source, 2);
+  const preview = run(chain, { args: { "s.op#1:1.ratio": 5, "s.env#4:0[1]": [0.25, 0.75] } }).record;
+  const site = siteOf(preview, "arg.s.op#1:1.ratio");
+  assert.deepEqual([site.value, site.source], [5, 2]);
+  assert.deepEqual(siteOf(preview, "arg.s.env#4:0").source, [[0, 0], [0.5, 1], [1, 0]]);
+  assert.deepEqual(siteOf(preview, "arg.s.env#4:0[1]").source, [0.5, 1]);
+  assert.equal(siteOf(preview, "arg.s.op#2:1.ratio").source, 3, "an argument the preview left alone");
+});
+
 test("17. callGlue(exported, path, { args }) builds the glue's part with the override", () => {
   const glue = () => compose("bench").part(g("s").op("a", { ratio: 2, level: 0.5 }));
   const { composition, diagnostics } = callGlue(glue, "workbench.js", { args: { "s.op#0:1.ratio": 4 } });

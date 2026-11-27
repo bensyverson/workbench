@@ -53,7 +53,8 @@ export async function runAction(fn, o) {
   if (!Array.isArray(got) || !got.every((e) => e && typeof e === "object" && typeof e.to === "string" && /^(param|arg)\./.test(e.to) && "value" in e)) return bad(`an edits action gives [{ to: "param.<name>" | "arg.<address>", value }], not ${describe(got)}`);
   if (!o.history) return bad("an edits action needs the text's history to land in");
   const r = writeBackAll(o.history.text, o.record, /** @type {Array<{ to: string, value: unknown }>} */ (got));
-  if (!r.ok) return r;
+  // edits that overlap are the action's mistake: it gave two values for one place
+  if (!r.ok) return r.overlap ? bad(`the action's edits overlap: ${r.message}`) : r;
   o.history.commit(r.text);
   return { ok: true, edits: got, text: r.text };
 }

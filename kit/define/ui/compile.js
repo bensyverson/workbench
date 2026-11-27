@@ -23,6 +23,7 @@ import { lowerUI, idOf } from "./lower.js";
  * @typedef {object} UICompiled
  * @property {boolean} ok  every lambda lowered
  * @property {UILowerDiagnostic[]} diagnostics  ui.lower's
+ * @property {Record<string, Array<Record<string, any>>>} instances  each keyed Control's instances for this record (ui.lower's)
  * @property {(state: any, $: Record<string, unknown>) => { tiles: EvaluatedTile[], annotate: Record<string, Record<string, Annotation>> }} evaluate
  * @property {(id: string, ...args: unknown[]) => unknown} value  one value by its id (`tiles.<tile>.body[0].y`): a lambda's Kernel called with `args` (exactly `state, $`; a column's `row, state, $`), a path read from the first argument, a literal as it is; throws when the lambda did not lower or is handed another number of arguments
  * @property {(view: string, key: string, state: any, $: Record<string, unknown>) => Annotation} annotation  one key's annotation; under `params`, `"*"`'s fields under the key's own
@@ -172,6 +173,7 @@ export function compileUI(ui, record) {
   return {
     ok: failed.size === 0,
     diagnostics: low.diagnostics,
+    instances: low.instances,
     evaluate(state, $) {
       const tiles = Object.entries(ui.tiles).map(([id, t]) => ({
         id, title: /** @type {any} */ (t).title, place: /** @type {any} */ (t).place,

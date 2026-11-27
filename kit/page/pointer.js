@@ -17,20 +17,31 @@ export const toStage = (x, y, view, box) => [(x - view.pan[0]) / view.zoom + (bo
 
 /**
  * The draw edge that carries a part's output into the shown layer, from the composed wires: `{ scale, offset }`,
- * composed through nested layers, or null when the part is the shown one (no edge).
+ * composed through nested layers, or null when the part is the shown one (no edge). Only the layer wires on the path
+ * down from the shown layer count: an output that also feeds a layer the page does not show is not mapped through it.
  * @param {any} composed @param {string} shown @param {string} part @param {string} port
  * @returns {{ scale: number[], offset: number[] } | null}
  */
 export function edgeInto(composed, shown, part, port) {
-  const wire = composed.wires.find((/** @type {any} */ w) => w.from === `${part}.out.${port}` && composed.parts.some((/** @type {any} */ p) => p.layer !== undefined && w.to.startsWith(`${p.name}.`)));
-  if (!wire) return null;
-  const layer = wire.to.split(".")[0];
-  const c = wire.convert.find((/** @type {any} */ x) => x.kind === "draw");
-  const own = c ? { scale: c.scale, offset: c.offset } : { scale: [1, 1], offset: [0, 0] };
-  if (layer === shown) return own;
-  const outer = edgeInto(composed, shown, layer, "view");
-  if (!outer) return own;
-  return { scale: own.scale.map((/** @type {number} */ s, /** @type {number} */ i) => s * outer.scale[i]), offset: own.offset.map((/** @type {number} */ o, /** @type {number} */ i) => o * outer.scale[i] + outer.offset[i]) };
+  const layers = new Set(composed.parts.filter((/** @type {any} */ p) => p.layer !== undefined).map((/** @type {any} */ p) => p.name));
+  /** @param {any} w */
+  const edgeOf = (w) => { const c = w.convert.find((/** @type {any} */ x) => x.kind === "draw"); return c ? { scale: c.scale, offset: c.offset } : { scale: [1, 1], offset: [0, 0] }; };
+  /** A layer's edge, then the edge of the wire that carries that layer into the next one up. @param {{ scale: number[], offset: number[] }} inner @param {{ scale: number[], offset: number[] }} outer */
+  const then = (inner, outer) => ({ scale: inner.scale.map((s, i) => s * outer.scale[i]), offset: inner.offset.map((o, i) => o * outer.scale[i] + outer.offset[i]) });
+  /** @param {string} layer @param {Set<string>} seen @returns {{ scale: number[], offset: number[] } | null} */
+  const down = (layer, seen) => {
+    const into = composed.wires.filter((/** @type {any} */ w) => w.to.startsWith(`${layer}.`));
+    const direct = into.find((/** @type {any} */ w) => w.from === `${part}.out.${port}`);
+    if (direct) return edgeOf(direct);
+    for (const w of into) {
+      const from = w.from.split(".")[0];
+      if (!layers.has(from) || seen.has(from)) continue;
+      const inner = down(from, new Set([...seen, from]));
+      if (inner) return then(inner, edgeOf(w));
+    }
+    return null;
+  };
+  return layers.has(shown) ? down(shown, new Set([shown])) : null;
 }
 
 /** A shown-frame point in a part's frame: the part's edge into the shown layer inverted. @param {number[]} p @param {{ scale: number[], offset: number[] } | null} e */

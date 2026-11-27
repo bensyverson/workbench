@@ -7,7 +7,7 @@ import { refuse, isDialect } from "./dialect.js";
 import { didYouMean, dialectError, an } from "./codes.js";
 import { TAG, kindOf } from "./tags.js";
 import { callSite } from "./site.js";
-import { GRAMMARS } from "./sites.js";
+import { GRAMMARS, REPLACED } from "./sites.js";
 import { lambdaSource, constSource, found, where } from "./shapes.js";
 import { recordOf, matchArgs, openKey, instanceName } from "./record.js";
 import { freeNames, paramNames } from "./free.js";
@@ -366,7 +366,13 @@ class Program {
   }
 
   /** The record so far. */
-  record() { const r = recordOf(/** @type {Instance} */ (this.root)); GRAMMARS.set(r, this.g); return r; }
+  record() {
+    const r = recordOf(/** @type {Instance} */ (this.root));
+    GRAMMARS.set(r, this.g);
+    const replaced = REPLACED.get(this);
+    if (replaced) REPLACED.set(r, replaced);
+    return r;
+  }
 
   /**
    * Every diagnostic: those collected at the calls, then the Program-wide ones (B003, B005, B008, construct checks,

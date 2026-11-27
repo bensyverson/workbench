@@ -5,6 +5,7 @@
 // handles read as values. Every S diagnostic about a wire or an edge carries both sides.
 
 import { programOf } from "../define/grammar.js";
+import { BUILT_WITH } from "../define/sites.js";
 import { lowerRecord } from "../define/lower.js";
 import { instanceName } from "../define/record.js";
 import { didYouMean } from "../define/codes.js";
@@ -404,6 +405,9 @@ export function analyze(name, start, given, options) {
     ...(drawn.view ? { view: drawn.view } : {}),
     ...(drawn.profile ? { profile: drawn.profile } : {}),
   };
+  // the parts' records were built together: a call one glue helper makes for two parts is at one place in both
+  const built = record.parts.map((p) => p.record).filter((r) => r && Object.keys(r).length);
+  for (const r of built) BUILT_WITH.set(r, built);
   /** @param {Record<string, unknown>} o */
   const values = (o) => Object.entries(o).map(([k, v]) => `${k} = ${printValue(/** @type {any} */ (v))}`).join(", ");
   const plan = wires.filter((w) => w.ok).map((w) => `${handleText(w.from)} → ${handleText(w.to)}: ${w.convert.map((c) => c.text).join("; ") || "unchanged"}${w.dropped.length ? `; drops ${w.dropped.join(", ")}` : ""}${Object.keys(w.fill).length ? `; fills ${values(w.fill)}` : ""}${Object.keys(w.set).length ? `; sets ${values(w.set)}` : ""}${w.into === "param" ? "; sets the param between instants" : ""}${w.delay ? "; delayed" : ""}${w.overflow ? `; overflow ${w.overflow}` : ""}`);

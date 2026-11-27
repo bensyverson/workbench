@@ -123,6 +123,36 @@ test("5. each: the record seam gains key, lower(record) gives the instances, and
   assert.deepEqual(out.map((d) => d.path), [["controls", "ratio", "each", 0]]);
 });
 
+test("4. U017: a keyed Control (each) takes no device binding, keys, gamepad or midi, in its declaration or an entry, since a device's record has no key; on screen it builds", () => {
+  const knob = { kind: "number", min: 0.25, max: 16, value: 1, step: 0.25, each: () => [{ key: "a" }] };
+  for (const device of [{ keys: { up: ["Equal"], down: ["Minus"] } }, { gamepad: { axis: 0 } }, { midi: { cc: 74 } }]) {
+    const ds = refused(one("ratio", { ...knob, ...device }));
+    assert.deepEqual(ds.map((d) => d.code), ["U017"], JSON.stringify(device));
+    assert.deepEqual(ds[0].path, ["controls", "ratio", Object.keys(device)[0]]);
+    assert.match(ds[0].message, /keyed|each/);
+  }
+  const ui = defineUI(synth(), one("ratio", { ...knob, each: () => [{ key: "a", keys: { up: ["Equal"] } }] }));
+  const record = synth()("s").op("a", { ratio: 2, level: 1 }).build();
+  assert.deepEqual(ui.lower(record).diagnostics.filter((d) => d.code === "U017").map((d) => d.path), [["controls", "ratio", "each", 0]], "an entry's keys");
+  assert.equal(defineUI(synth(), one("ratio", knob)).controls.ratio.keyed, true, "a keyed knob on screen builds");
+  assert.equal(codes(one("volume", { kind: "number", min: 0, max: 1, value: 0.5, keys: { up: ["Equal"] }, midi: { cc: 7 } })).length, 0, "an unkeyed knob keeps its keys and MIDI");
+});
+
+test("5. a part-local keyed Control (no input of its name) needs to in every instance: one without is U017 at lower; the declaration's to serves them all", () => {
+  const record = synth()("s").op("a", { ratio: 2, level: 1 }).op("b", { ratio: 3, level: 1 }).build();
+  const local = (/** @type {any} */ c) => defineUI(synth(), one("detune", { kind: "number", min: 0, max: 4, value: 1, ...c }));
+  const missing = local({ each: (r) => Object.keys(r.ops).map((k, i) => ({ key: k, ...(i === 0 ? { to: `arg.s.op#${i}:1.ratio` } : {}) })) }).lower(record);
+  const u = missing.diagnostics.filter((d) => d.code === "U017");
+  assert.deepEqual(u.map((d) => d.path), [["controls", "detune", "each", 1]]);
+  assert.match(u[0].message, /part-local|to/);
+  assert.deepEqual(missing.instances.detune.map((i) => i.key), ["a"], "the instance with to is kept");
+  const shared = local({ to: "param.gain", each: (r) => Object.keys(r.ops).map((k) => ({ key: k })) }).lower(record);
+  assert.deepEqual(shared.diagnostics.filter((d) => d.code === "U017"), []);
+  assert.equal(shared.instances.detune.length, 2);
+  const played = defineUI(synth(), one("ratio", { kind: "number", min: 0.25, max: 16, value: 1, each: (r) => Object.keys(r.ops).map((k) => ({ key: k })) })).lower(record);
+  assert.deepEqual(played.diagnostics.filter((d) => d.code === "U017"), [], "a keyed Control with an input needs no to");
+});
+
 test("10. annotate.params takes look, curve and step; a bad one is U012", () => {
   const ui = defineUI(synth(), { annotate: { params: { gain: { look: "knob", curve: "log", step: 0.01 } } } });
   assert.deepEqual({ ...ui.annotate.params.gain }, { look: "knob", curve: "log", step: 0.01 });

@@ -95,13 +95,18 @@ export function codeView(text, name) {
 /**
  * One declared Control's on-screen form (the generated `controls` view), from its declaration: buttons laid out by
  * its grid (else in a row), a row of triggers, a slider, a checkbox, a menu, a text field, a color well; vectors,
- * points and picks as a JSON field until their own widgets land. `send(record)` logs the Control's record;
- * `focus(on)` tells the page a text field has the keys. A keyed Control (`each`) shows nothing here: its instances
- * are a Program's, which a tile's control component places.
- * @param {any} form  a session form @param {(record: Record<string, unknown>) => void} send @param {(on: boolean) => void} focus
+ * points and picks as a JSON field until their own widgets land. `send(record, phase?)` logs the Control's record
+ * (`"preview"` while a Control with `to` moves, then nothing, a commit, on its change); `focus(on)` tells the page a
+ * text field has the keys. A keyed Control (the form's `keyed`: its composed declaration is plain data, with no
+ * `each`) shows one form per instance, each sending its record with the instance's key.
+ * @param {any} form  a session form @param {(record: Record<string, unknown>, phase?: "preview") => void} send @param {(on: boolean) => void} focus
  */
 export function controlForm(form, send, focus) {
-  if (form.each) return null;
+  if (form.keyed) {
+    const { instances = [], ...rest } = form;
+    return h("div", { class: "control" }, h("span", { class: "dim" }, form.label ?? form.name),
+      instances.map((/** @type {any} */ i) => controlForm({ ...rest, ...i, keyed: false, name: i.key, label: i.label ?? i.key }, (record, phase) => send({ ...record, key: i.key }, phase), focus)));
+  }
   const label = h("span", { class: "dim" }, form.label ?? form.name);
   /** A button that is held while pressed. @param {string} text @param {(down: boolean) => void} set */
   const hold = (text, set) => h("button", {
@@ -122,7 +127,15 @@ export function controlForm(form, send, focus) {
       const first = form.first ?? 0;
       return h("div", { class: "control" }, label, h("div", { class: "inputs" }, Array.from({ length: form.count }, (_, i) => hold(String(first + i), (on) => send({ index: first + i, on, velocity: 1 })))));
     }
-    case "number": return h("label", { class: "control" }, label, h("input", { type: "range", min: form.min, max: form.max, step: form.step ?? "any", value: form.value, oninput: (/** @type {any} */ e) => send({ value: Number(e.target.value) }) }));
+    case "number": {
+      // with to, a slider previews while it moves and commits once it is let go
+      const to = typeof form.to === "string";
+      return h("label", { class: "control" }, label, h("input", {
+        type: "range", min: form.min, max: form.max, step: form.step ?? "any", value: form.value, ...(to && form.disabled ? { disabled: true, title: `${form.disabled.code} ${form.disabled.message}` } : {}),
+        oninput: (/** @type {any} */ e) => (to ? send({ value: Number(e.target.value) }, "preview") : send({ value: Number(e.target.value) })),
+        ...(to ? { onchange: (/** @type {any} */ e) => send({ value: Number(e.target.value) }) } : {}),
+      }));
+    }
     case "toggle": return h("label", { class: "control" }, label, h("input", { type: "checkbox", checked: !!form.value, onchange: (/** @type {any} */ e) => send({ value: e.target.checked }) }));
     case "choice": return h("label", { class: "control" }, label, h("select", { onchange: (/** @type {any} */ e) => send({ value: e.target.value }) }, form.options.map((/** @type {string} */ o) => h("option", { value: o, ...(o === form.value ? { selected: true } : {}) }, o))));
     case "text": return h("label", { class: "control" }, label, h("input", { type: "text", value: form.value ?? "", maxlength: form.max ?? 256, onfocus: () => focus(true), onblur: () => focus(false), oninput: (/** @type {any} */ e) => send({ value: e.target.value }) }));

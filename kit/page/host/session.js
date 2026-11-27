@@ -15,6 +15,7 @@ import { shownTiles, SeriesStore, numberPaths } from "./ui-eval.js";
  * @property {(snapshot: Snapshot) => void} [onFrame]  called after each display frame and each step, rewind or input made through the session
  * @property {{ inputs?: Array<Record<string, any>>, seed?: number }} [run]  a run to start from (Open on a failed test: its input log and seed)
  * @property {(message: string) => void} [onProblem]  a snapshot or an `onFrame` that throws, said once while it keeps throwing the same (the frames go on)
+ * @property {(commit: { part: string, to: string, value: unknown }) => void} [onCommit]  a Control with `to` released: the commit to write back into the part's text (kit/page's writeBack)
  */
 
 /**
@@ -141,26 +142,36 @@ export function createSession(loaded, options) {
       return [];
     },
     /**
-     * A declared Control's change from an on-screen form or a custom element's wb-control: logged as the page's
-     * input, stamped from the event's own time when it has one (kit/page's stampOf). Throws for a Control the page
-     * does not wire, and a run's refusal (N012: a value that does not fit) comes back as its diagnostics.
-     * @param {string} control @param {Record<string, unknown>} value @param {{ timeStamp?: number }} [event]
+     * A declared Control's change from an on-screen form or a custom element's wb-control, through kit/page's
+     * `page.control`: a Control with an input logs it as the page's input, stamped from the event's own time when it
+     * has one; one with `to` previews (`phase: "preview"`) or, released, hands its commit to `onCommit`. Throws for a
+     * Control the page lacks, and a run's refusal (N012: a value that does not fit) comes back as its diagnostics.
+     * @param {string} control @param {Record<string, unknown>} value @param {{ timeStamp?: number, phase?: "preview" | "commit" }} [event]
      * @returns {Array<{ code: string, message: string }>}
      */
     control(control, value, event = {}) {
-      if (!page.controls().some((c) => c.name === control)) throw new Error(`the page wires no Control '${control}': its Controls are ${page.controls().map((c) => c.name).join(", ") || "none"}`);
-      try { page.run.input({ kind: "control", part: "page", name: control, value: { ...value }, ...(typeof event.timeStamp === "number" ? { T: page.stampOf(event.timeStamp) } : {}) }); } catch (e) {
+      /** @type {{ part: string, to: string, value: unknown } | null} */
+      let commit;
+      try { commit = page.control(control, { ...value }, event); } catch (e) {
         if (e instanceof RunError) { notify(); return /** @type {any[]} */ (e.diagnostics); }
         throw e;
       }
+      if (commit) options.onCommit?.(commit);
       notify();
       return [];
     },
     /**
-     * The on-screen forms the generated controls view shows: each wired Control, in declaration order, with what a
-     * form needs (its kind, label and kind keys). An unwired Control has no form.
+     * The on-screen forms the generated controls view shows: each wired Control in declaration order, then each part's
+     * part-local one, with what a form needs (its kind, label and kind keys, `keyed`, a keyed one's `instances`, and
+     * with `to` its part, target and `disabled`). An unwired Control with an input has no form.
      */
-    forms: () => page.controls().map((c) => ({ name: c.name, kind: c.kind, records: c.records, ...(c.decl.label ? { label: c.decl.label } : {}), ...c.decl })),
+    forms: () => page.controls().map((c) => {
+      const { each: _, ...decl } = c.decl ?? {};
+      return {
+        name: c.name, kind: c.kind, records: c.records, ...(decl.label ? { label: decl.label } : {}), ...decl, keyed: !!c.keyed,
+        ...(c.local ? { local: true } : {}), ...(c.part ? { part: c.part } : {}), ...(c.to ? { to: c.to, disabled: c.disabled } : {}), ...(c.instances ? { instances: c.instances } : {}),
+      };
+    }),
     /** A param's annotation in the params view (the compiled UI's `annotation`). @param {string} part @param {string} name @param {any} state @param {Record<string, any>} params */
     paramAnnotation: (part, name, state, params) => compiledOf(part)?.annotation("params", name, state, params) ?? {},
     /**

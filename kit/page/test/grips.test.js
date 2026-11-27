@@ -58,3 +58,78 @@ test("40c. an arg Grip logs at most one rebuild a frame, built with args; a para
   assert.deepEqual(params.map((e) => [e.name, e.value]), [["focus", 7]]);
   assert.deepEqual(d.release(), { to: "param.focus", value: 7 });
 });
+
+// the lens bench from a Program text (kit/page/fixtures/lens-program.js): a position is a list whose elements the
+// Grammar bounds, 0 to 100
+import { compose } from "../../compose/index.js";
+import { defineUI, run, siteOf } from "../../define/index.js";
+import { createPage } from "../index.js";
+import { fakeContext, frames } from "../fixtures/bench.js";
+import { lens, HERE as LENS } from "../fixtures/lens-program.js";
+
+const LENS_TEXT = `import { g } from "${LENS}";
+export default ($) => g("b")
+  .lens({ radius: 10, at: [20, 30] })
+  .lens({ radius: 25, at: [60, 70] });
+`;
+/** The lens bench's page over LENS_TEXT; `build` may stand in for the preview's build. */
+async function lensText(build) {
+  const fn = (await import(`data:text/javascript;base64,${Buffer.from(LENS_TEXT).toString("base64")}`)).default;
+  const ui = defineUI(lens.grammar, {
+    stage: { draw: "view", pointer: "pointer" },
+    grips: {
+      radius: { each: "grips", kind: "length", at: (g) => [g.x, g.y], axis: (g) => [g.dx, g.dy], to: (g) => g.r },
+      move: { each: "grips", kind: "translate", at: (g) => [g.x, g.y], to: (g) => g.at },
+    },
+  });
+  const record = run(fn).record;
+  const packages = [{ name: "lens", ui }];
+  const bp = lens.grammar("b");
+  const composed = compose("bench").part(bp).show(bp).build({ runtimes: [lens.runtime], packages });
+  composed.parts = composed.parts.map((p) => (p.name === "b" ? { ...p, record } : p));
+  const f = frames();
+  const own = (_part, values, more = {}) => run(fn, { values, ...(more.args ? { args: more.args } : {}) }).record;
+  const pg = createPage({ composed, runtimes: [lens.runtime], packages, context: fakeContext(), requestFrame: f.requestFrame, texts: { b: LENS_TEXT }, run: { build: build ? build(own) : own } });
+  pg.start(); f.tick(0); f.tick(16);
+  return { pg, f, record };
+}
+
+test("40b. a list of numbers takes its element's bounds: siteOf gives them, and a translate drag past them is clamped per component", async () => {
+  const { pg, f, record } = await lensText();
+  const site = siteOf(record, "arg.b.lens#1:0.at");
+  assert.deepEqual([site.min, site.max], [0, 100]);
+  assert.deepEqual([siteOf(record, "arg.b.lens#1:0.at[0]").min, siteOf(record, "arg.b.lens#1:0.at[0]").max], [0, 100], "an element itself");
+  assert.deepEqual([siteOf(record, "arg.b.lens#1:0.radius").min, siteOf(record, "arg.b.lens#1:0.radius").max], [1, 40], "a number is as it was");
+  const d = pg.grab({ part: "b", grip: "move", index: 0 }, [20, 30]);
+  d.move([180, -40]);
+  f.tick(32);
+  assert.equal(pg.status().halted, null);
+  assert.deepEqual(d.release(), { to: "arg.b.lens#0:0.at", value: [100, 0] });
+  assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "rebuild").at(-1).record.lens[0].at, [100, 0]);
+});
+
+test("40c. a preview whose build fails is skipped with a page diagnostic: the frame loop goes on, and the release gives the last value that built", async () => {
+  // a build that refuses a radius past 30, as a Dialect's own check would
+  const { pg, f } = await lensText((own) => (part, values, more = {}) => (Object.values(more.args ?? {}).some((v) => v > 30) ? null : own(part, values, more)));
+  const d = pg.grab({ part: "b", grip: "radius", index: 0 }, [20, 30]);
+  d.move([30, 30]);
+  f.tick(32);
+  d.move([45, 30]);
+  f.tick(48);
+  assert.equal(pg.status().halted, null, "the frame loop did not stop");
+  const said = pg.diagnostics.find((x) => x.code === "H012");
+  assert.ok(said, JSON.stringify(pg.diagnostics));
+  assert.match(said.message, /preview/);
+  assert.deepEqual(pg.run.log.inputs.filter((e) => e.kind === "rebuild").map((e) => e.record.lens[0].radius), [20], "the failed preview is not logged");
+  f.tick(64);
+  assert.ok(pg.run.seconds > 0.04, "frames still run");
+  assert.deepEqual(d.release(), { to: "arg.b.lens#0:0.radius", value: 20 });
+  // a build that throws is skipped the same way
+  const t = await lensText((own) => (part, values, more = {}) => { if (Object.values(more.args ?? {}).some((v) => v > 30)) throw new Error("B004 radius"); return own(part, values, more); });
+  const d2 = t.pg.grab({ part: "b", grip: "radius", index: 0 }, [20, 30]);
+  d2.move([45, 30]);
+  t.f.tick(32);
+  assert.equal(t.pg.status().halted, null);
+  assert.ok(t.pg.diagnostics.some((x) => x.code === "H012" && /B004 radius/.test(x.message)));
+  assert.deepEqual(d2.release(), { to: "arg.b.lens#0:0.radius", value: 10 }, "nothing built: the value at the down");
+});

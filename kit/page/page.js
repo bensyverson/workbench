@@ -200,6 +200,37 @@ export function createPage(options) {
     }
     return out;
   }
+  /** The previews that failed and were reported, by part and target, until one builds again. */
+  const failing = new Set();
+  /**
+   * Previews a target's value through the log: a `param` input, or a `rebuild` built with the argument overridden
+   * (createPage's `run.build`). A preview whose build fails (no record, or a throw: the Grammar or the Dialect refused
+   * the value) is skipped and reported once as H012, so the drag goes on and its release gives the last value that
+   * built. True when it was logged.
+   * @param {string} part @param {string} to @param {unknown} value @param {string} what
+   */
+  function preview(part, to, value, what) {
+    const param = to.startsWith("param.") ? to.slice(6) : null;
+    const build = options.run?.build;
+    if (param === null && typeof build !== "function") throw new Error("a Grip or a Control on an argument previews by building the part with the argument overridden: pass run: { build(part, params, { args }) }");
+    const key = `${part} ${to}`;
+    try {
+      if (param !== null) logInput({ kind: "param", part, name: param, value });
+      else {
+        const record = /** @type {Function} */ (build)(part, { ...run.params(part) }, { args: { [to.slice(4)]: value } });
+        if (record === null || typeof record !== "object") throw new Error("its build gave no record (the Program refused the value)");
+        logInput({ kind: "rebuild", part, record });
+      }
+      failing.delete(key);
+      return true;
+    } catch (e) {
+      if (!failing.has(key)) {
+        failing.add(key);
+        report({ code: "H012", severity: "error", message: `the preview of ${what} of part ${part} at ${to} = ${JSON.stringify(value)} does not build, so it is skipped and the drag goes on: ${messageOf(e)}`, T: now(), part });
+      }
+      return false;
+    }
+  }
   /** The drags in flight, each with its latest unflushed value. @type {Set<{ flush: () => void }>} */
   const drags = new Set();
   /**
@@ -226,13 +257,7 @@ export function createPage(options) {
       if (pending === undefined) return;
       const value = pending;
       pending = undefined;
-      last = value;
-      if (param !== null) run.input({ kind: "param", part: g.part, name: param, value });
-      else {
-        const build = options.run?.build;
-        if (typeof build !== "function") throw new Error("a Grip on an argument previews by building the part with the argument overridden: pass run: { build(part, params, { args }) }");
-        run.input({ kind: "rebuild", part: g.part, record: build(g.part, { ...run.params(g.part) }, { args: { [g.to.slice(4)]: value } }) });
-      }
+      if (preview(g.part, g.to, value, `the Grip ${g.grip} [${g.index}]`)) last = value;
     };
     const drag = { flush };
     drags.add(drag);
@@ -243,6 +268,101 @@ export function createPage(options) {
       },
       release() { flush(); drags.delete(drag); return { to: g.to, value: last }; },
     };
+  }
+
+  // ---- Controls with `to` (requirements 1, 2 and 8) ----
+  /** The part whose UI declares a Control, and that UI: a page Control's (S119 keeps one with `to` to one part), or a part-local one's. @param {string} name */
+  const ownerOf = (name) => {
+    for (const cp of composed.parts) {
+      if (cp.name === PAGE || cp.layer !== undefined) continue;
+      const ui = uiOfPart(cp.name);
+      if (ui && Object.hasOwn(ui.controls ?? {}, name)) return { part: /** @type {string} */ (cp.name), ui };
+    }
+    return null;
+  };
+  /** Why a Control's target cannot be written, reported once as H011, or null. @param {string} part @param {string} what @param {string} to */
+  const controlProblem = (part, what, to) => {
+    const d = writeProblem(part, to);
+    if (d) {
+      const key = `${part}.${what} ${to}`;
+      if (!said.has(key)) { said.add(key); report({ code: "H011", severity: "warning", message: `the Control ${what} of part ${part} cannot write back to ${to}: ${d.message}`, T: now(), part }); }
+    }
+    return d ? { code: d.code, message: d.message } : null;
+  };
+  /**
+   * The page's Controls: the wired page Controls in declaration order, then each part's part-local ones (a name that
+   * is no Event input, with `to`). A Control with `to` carries its part, its target and why it cannot be written (or
+   * null); a keyed one its instances for the record in force, each with its own `to`.
+   * @returns {Array<Record<string, any>>}
+   */
+  function controlList() {
+    /** @param {string} name @param {Record<string, any>} c @param {{ part: string, ui: any } | null} own */
+    const entry = (name, c, own) => {
+      const decl = own?.ui.controls?.[name]?.decl ?? c.decl ?? {};
+      const to = typeof decl.to === "string" ? decl.to : undefined;
+      /** @type {Record<string, any>} */
+      const item = { name, ...c, ...(own ? { part: own.part } : {}), ...(to && own ? { to, disabled: controlProblem(own.part, name, to) } : {}) };
+      if (c.keyed && own) {
+        const instances = /** @type {Array<Record<string, any>>} */ (compiledOf(own.part)?.instances?.[name] ?? []);
+        item.instances = instances.map(({ each: _, ...i }) => ({ ...i, ...(typeof i.to === "string" ? { disabled: controlProblem(own.part, `${name} [${i.key}]`, i.to) } : {}) }));
+      }
+      return item;
+    };
+    const out = Object.entries(controls).map(([name, c]) => entry(name, c, ownerOf(name)));
+    for (const cp of composed.parts) {
+      if (cp.name === PAGE || cp.layer !== undefined) continue;
+      const ui = uiOfPart(cp.name);
+      for (const [name, c] of Object.entries(/** @type {Record<string, any>} */ (ui?.controls ?? {}))) {
+        if (!c.local) continue;
+        const { input: _, ...rest } = c;
+        out.push(entry(name, rest, { part: cp.name, ui }));
+      }
+    }
+    return out;
+  }
+  /** A part-local Control's previews waiting for the next frame, the latest of each target. @type {Map<string, { part: string, to: string, value: unknown, what: string }>} */
+  const waiting = new Map();
+  const flushControls = () => {
+    const all = [...waiting.values()];
+    waiting.clear();
+    for (const w of all) preview(w.part, w.to, w.value, w.what);
+  };
+  /**
+   * A Control's change from an on-screen form or a custom element (`record` is the Control's record, a keyed one's
+   * with its `key`). A Control with an input logs it as a page input, stamped as a key is (`o.timeStamp`), and its
+   * input carries the live value. With `to`, a `phase: "preview"` (a drag in flight) commits nothing, and a part-local
+   * Control previews its target through the log, at most once a frame, as a Grip does; the release (`phase` "commit",
+   * the default) gives the commit `{ part, to, value }` for the host to write back, a part-local one's preview logged
+   * at once. A target that cannot be written is H011: a part-local Control's change then throws, and one with an
+   * input still plays and commits nothing. Throws for a Control the page lacks or an instance a keyed one lacks.
+   * @param {string} name @param {Record<string, any>} record @param {{ phase?: "preview" | "commit", timeStamp?: number }} [o]
+   * @returns {{ part: string, to: string, value: unknown } | null}
+   */
+  function control(name, record, o = {}) {
+    const phase = o.phase ?? "commit";
+    if (phase !== "preview" && phase !== "commit") throw new TypeError(`a Control's phase is "preview" or "commit", not ${JSON.stringify(phase)}`);
+    const list = controlList();
+    const c = list.find((x) => x.name === name);
+    if (!c) throw new Error(`the page has no Control '${name}' (a page Control some wire takes, or a part-local one): its Controls are ${list.map((x) => x.name).join(", ") || "none"}`);
+    let to = c.to, disabled = c.disabled ?? null, what = name;
+    // a keyed Control whose UI the page cannot read has no instances to check: its input alone judges the record
+    if (c.keyed && c.instances) {
+      const inst = /** @type {Array<Record<string, any>>} */ (c.instances).find((i) => i.key === record?.key);
+      if (!inst) throw new Error(`the Control '${name}' has no instance '${record?.key}': its keys are ${(c.instances ?? []).map((/** @type {any} */ i) => i.key).join(", ") || "none"}`);
+      to = inst.to; disabled = inst.disabled ?? null; what = `${name} [${inst.key}]`;
+    }
+    if (!c.local) logInput({ kind: "control", part: PAGE, name, value: { ...record } }, o);
+    if (typeof to !== "string") return null;
+    if (disabled) { if (c.local) throw new Error(`${disabled.code} ${disabled.message}`); return null; }
+    if (!record || !("value" in record)) throw new TypeError(`the Control '${name}' writes its record's value back to ${to}, and ${JSON.stringify(record)} has none`);
+    const part = /** @type {string} */ (c.part), value = record.value;
+    if (c.local) {
+      const key = `${part} ${to}`;
+      if (phase === "preview") { waiting.set(key, { part, to, value, what: `the Control ${what}` }); return null; }
+      waiting.delete(key);
+      if (!preview(part, to, value, `the Control ${what}`)) return null;
+    } else if (phase === "preview") return null;
+    return { part, to, value };
   }
 
   // ---- the pointer (requirements 5 and 10) ----
@@ -286,30 +406,59 @@ export function createPage(options) {
     if (phase === "down") captured.set(id, { ...target, at });
     else if (captured.has(id)) /** @type {any} */ (captured.get(id)).at = at;
     if (phase === "up" || phase === "cancel") captured.delete(id);
-    run.input({ kind: "pointer", part: target.part, output: target.output, value: pointerRecord(event, at, own?.id ?? ""), ...stamp(event) });
+    logInput({ kind: "pointer", part: target.part, output: target.output, value: pointerRecord(event, at, own?.id ?? "") }, event);
     return true;
   }
 
-  /** An event's stamp from its device time, when it has one. @param {{ timeStamp?: number }} event */
-  const stamp = (event) => (typeof event.timeStamp === "number" ? { T: stampOf(event.timeStamp) } : {});
+  /**
+   * The latest stamp the page has logged a page input at, in seconds: no later page input is stamped before it. A
+   * rewind starts a new branch (kit/run drops the inputs after it), so the run's T going back clears it.
+   */
+  let latest = 0;
+  /** The run's T when the page last looked (each frame, each input). */
+  let latestAt = 0;
+  const latestNow = () => { const t = toNumber(run.T); if (t < latestAt) latest = 0; latestAt = t; return latest; };
+  /** The first millisecond after the run's T, in seconds. */
+  const afterNow = () => (Math.floor(toNumber(run.T) * 1000) + 1) / 1000;
+  /**
+   * Logs a page input (a Control's record, a pointer event, a Grip's preview) at the event's device time when it has
+   * one, else the first millisecond after T, and never before the latest stamp the page logged: inputs reach the
+   * log in the order the page made them, so a blur's release cannot precede the press it releases.
+   * @param {Record<string, any>} e @param {{ timeStamp?: number }} [event]
+   */
+  const logInput = (e, event = {}) => {
+    const T = Math.max(typeof event.timeStamp === "number" ? stampOf(event.timeStamp) : afterNow(), latestNow());
+    latest = T;
+    return run.input({ ...e, T });
+  };
   /**
    * A device time (an event's timeStamp, in ms) as a stamp in seconds: mapped onto T through the last display frame,
-   * never at or before the last instant run (then the first millisecond after it), and while paused the next instant.
+   * never at or before the last instant run (then the first millisecond after it), never past the furthest the
+   * following frame can reach (the run's catch-up cap past the last frame: a late frame callback runs capped), never
+   * before the latest stamp the page logged, and while paused the next instant.
    * @param {number} ms
    */
   function stampOf(ms) {
-    const after = (Math.floor(toNumber(run.T) * 1000) + 1) / 1000;
+    const after = Math.max(afterNow(), latestNow());
     if (driver.paused || !lastFrame) return after;
     const t = Math.round((lastFrame.T + (ms - lastFrame.ms) / 1000) * 1000) / 1000;
-    return t <= toNumber(run.T) ? after : t;
+    const cap = toNumber(run.catchUp);
+    const open = toNumber(run.lastFrame) + cap > toNumber(run.T);
+    const most = Math.floor(((open ? toNumber(run.lastFrame) : toNumber(run.T)) + cap) * 1000) / 1000;
+    return Math.max(after, Math.min(t, most));
   }
 
-  /** The one gesture: focus, every hook (MIDI access, an AudioContext), and the run started. */
+  /**
+   * The one gesture: the run started, then every hook (MIDI access, an AudioContext). A hook that throws is H014 (a
+   * device adapter refused), and the other hooks and adapters still work: the run never stays paused for it.
+   */
   function unlock() {
     if (!locked) return;
     locked = false;
-    for (const h of unlockHooks) h();
     driver.resume();
+    for (const h of unlockHooks) {
+      try { h(); } catch (e) { report({ code: "H014", severity: "warning", message: `an unlock hook threw ${messageOf(e)}: that device is not available, and the other adapters still work`, T: now() }); }
+    }
   }
 
   let generation = 0;
@@ -324,8 +473,10 @@ export function createPage(options) {
     last = ms;
     try {
       for (const d of drags) d.flush();
+      flushControls();
       if (wall > 0) driver.frame(wall);
       lastFrame = { ms, T: toNumber(run.T) };
+      latestNow();
       draw();
     } catch (e) {
       // a frame that throws would throw again on the next, so the loop stops and the host sees why
@@ -355,8 +506,12 @@ export function createPage(options) {
     draw, stampOf, unlock, grips, grab,
     /** Registers a hook the gesture calls (MIDI access, an AudioContext's resume). @param {() => unknown} hook */
     onUnlock(hook) { unlockHooks.push(hook); },
-    /** The page's wired Controls, in declaration order: what the generated controls view shows. */
-    controls: () => Object.entries(controls).map(([name, c]) => ({ name, ...c })),
+    /**
+     * The page's Controls: the wired ones in declaration order, then each part's part-local ones; with `to`, their
+     * part, target and H011 (`disabled`), and a keyed one's instances: what the generated controls view shows.
+     */
+    controls: controlList,
+    control,
     /** Gives a text Control focus (it takes every key), or none. @param {string | null} name */
     focus(name) { focused = name; },
     /**
@@ -372,7 +527,7 @@ export function createPage(options) {
       if (!hit || !Object.hasOwn(controls, hit.control)) return false;
       const change = held.press(event.code, event.type === "keydown");
       if (change === undefined) return false;
-      if (change) run.input({ kind: "control", part: PAGE, name: change.name, value: change.value, ...stamp(event) });
+      if (change) logInput({ kind: "control", part: PAGE, name: change.name, value: change.value }, event);
       return true;
     },
     pointer,
@@ -384,9 +539,9 @@ export function createPage(options) {
     setView(v) { viewport = { zoom: v.zoom ?? viewport.zoom, pan: v.pan ?? viewport.pan }; },
     /** The focus left: every held button and trigger is let go, and a captured pointer is cancelled; the run goes on. */
     blur() {
-      for (const change of held.release()) if (Object.hasOwn(controls, change.name)) run.input({ kind: "control", part: PAGE, name: change.name, value: change.value });
+      for (const change of held.release()) if (Object.hasOwn(controls, change.name)) logInput({ kind: "control", part: PAGE, name: change.name, value: change.value });
       for (const [id, target] of captured) {
-        run.input({ kind: "pointer", part: target.part, output: target.output, value: pointerRecord({ type: "pointercancel", pointerId: id }, target.at ?? [0, 0], "") });
+        logInput({ kind: "pointer", part: target.part, output: target.output, value: pointerRecord({ type: "pointercancel", pointerId: id }, target.at ?? [0, 0], "") });
       }
       captured.clear();
     },

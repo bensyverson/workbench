@@ -112,6 +112,8 @@ export function controlProblems(c, at, env) {
   if ("each" in c && !env.instance && typeof c.each !== "function") add(k("each"), `each is ${str(c.each)}, not a function of the built record`, "write each: (record) => [{ key: \"<key>\", … }]");
   if ("to" in c && !(typeof c.to === "string" && /^(param|arg)\./.test(c.to))) add(k("to"), `to is ${str(c.to)}; a target is "param.<name>" or "arg.<address>"`, 'write to: "param.<name>"');
   if (env.instance && !(typeof c.key === "string" && c.key.length > 0)) add(k("key"), `an each instance's key is ${str(c.key)}, not a string`, "give each instance key: \"<key>\"");
+  // a device (a key, a gamepad, a MIDI message) sends a record with no key, which a keyed input refuses (N012)
+  if ("each" in c || env.instance) for (const device of ["keys", "gamepad", "midi"]) if (device in c) add(k(device), `a keyed Control (each) takes no ${device}: a device's record carries no key, so it cannot say which instance it plays`, `play each instance on screen, or declare one Control per instance with its own ${device}`);
   const codes = (/** @type {unknown} */ v, /** @type {Array<string | number>} */ p) => {
     if (!Array.isArray(v) || v.length === 0) { add(p, `${str(v)} is not a list of KeyboardEvent codes`, 'write ["KeyA"]'); return; }
     for (const [i, code] of v.entries()) if (typeof code !== "string" || !CODE.test(code)) add([...p, i], `${str(code)} is not a KeyboardEvent.code (KeyA, ArrowUp, Space, Digit1, …)`, "write the code a key event gives, such as \"KeyA\"");

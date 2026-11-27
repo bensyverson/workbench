@@ -172,7 +172,7 @@ export function start({ importModule }) {
   /** The generated controls view: an on-screen form per wired Control, in declaration order. @param {ReturnType<typeof createSession>} session */
   function buildControls(session) {
     const forms = session.forms();
-    fill($("controls"), forms.map((f) => controlForm(f, (record) => refused(session.control(f.name, record)), (on) => session.page.focus(on ? f.name : null))));
+    fill($("controls"), forms.map((f) => controlForm(f, (record, phase) => refused(session.control(f.name, record, phase ? { phase } : {})), (on) => session.page.focus(on ? f.name : null))));
     $("keys").textContent = forms.map((f) => Object.keys(f.keys ?? {}).length || Array.isArray(f.keys) ? `${f.label ?? f.name}: ${JSON.stringify(f.keys)}` : null).filter(Boolean).join(" · ");
     showLock(session);
   }

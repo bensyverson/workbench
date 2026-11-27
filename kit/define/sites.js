@@ -14,6 +14,20 @@ import { instanceName, matchArgs } from "./record.js";
 
 /** The Grammar each built record came from, so a record alone names its calls. @type {WeakMap<object, any>} */
 export const GRAMMARS = new WeakMap();
+/**
+ * What an override replaced: by Program (applyArgs), then by the record it builds (grammar.js), each overridden
+ * argument's value before the override, keyed `<tag>.<slot>[#<n>]:<i>`. So a preview's record still says what its
+ * text holds at the call, and write-back can tell a stale text (H012) from a preview. @type {WeakMap<object, Map<string, unknown>>}
+ */
+export const REPLACED = new WeakMap();
+/**
+ * The records built together with each record, as one composition's parts (kit/compose sets it): a glue helper that
+ * makes two parts makes both parts' calls at one place, so siteOf counts the calls at a place across all of them.
+ * @type {WeakMap<object, object[]>}
+ */
+export const BUILT_WITH = new WeakMap();
+/** The key of one argument of one call. @param {{ tag: string, slot: string, n: number | null, arg: number }} a */
+const argKey = (a) => `${a.tag}.${a.slot}${a.n === null ? "" : `#${a.n}`}:${a.arg}`;
 
 const ADDRESS = /^(.+)\.([A-Za-z_$][\w$]*)(?:#(\d+))?:(\d+)((?:\.[A-Za-z_$][\w$]*|\[\d+\])*)$/;
 
@@ -32,10 +46,13 @@ export function parseAddress(address) {
 
 /**
  * A site: where the builder made the call, the argument and path, its value in the record, its Grammar bounds
- * (`min`, `max`, `whole` of a number shape), and how many calls the record holds at that one place (more than one:
- * a call in a loop or a helper called twice, whose argument is not one value). A param's site is its declaration's
- * call, with the param's own bounds, its `value` the path.
- * @typedef {{ file: string, loc: Loc, arg: number, path: Array<string | number>, value: unknown, calls: number, min?: number, max?: number, whole?: boolean, param?: string }} Site
+ * (`min`, `max`, `whole` of a number shape), and how many calls the record holds at that one place, with the records
+ * of the composition it was built in (more than one: a call in a loop or a helper called twice, also one that makes
+ * two parts, whose argument is not one value). A param's site is its declaration's
+ * call, with the param's own bounds, its `value` the path. `slot` is the call's slot (the method the text calls), and
+ * `source` the value the text held there when the record was built: `value`, unless the record is a preview built
+ * with that argument overridden (`run(fn, { args })`), whose text still holds the value before the override.
+ * @typedef {{ file: string, loc: Loc, slot: string, arg: number, path: Array<string | number>, value: unknown, source: unknown, calls: number, min?: number, max?: number, whole?: boolean, param?: string }} Site
  */
 
 /**
@@ -65,6 +82,8 @@ function specAt(specs, i) {
 
 /**
  * The bounds at a path into a spec: a data tag's shape walked by the path, and the number shape's options it ends on.
+ * A path that ends on a list (of numbers, or of lists of them) takes its element's bounds, which hold per component:
+ * a translate Grip on a position clamps each coordinate.
  * @param {unknown} spec @param {Array<string | number>} path @returns {{ min?: number, max?: number, whole?: boolean }}
  */
 function boundsAt(spec, path) {
@@ -77,6 +96,7 @@ function boundsAt(spec, path) {
     const t = /** @type {any} */ (tagged(s));
     if (t?.[TAG] === "data") { opts = t.opts; s = t.shape; continue; }
     if (t?.[TAG] === "opt") { s = t.of; continue; }
+    if (!rest.length && t?.[TAG] === "listOf") { opts = undefined; s = t.of; continue; }
     if (!rest.length) break;
     const key = /** @type {string | number} */ (rest.shift());
     opts = undefined;
@@ -103,7 +123,8 @@ export function siteOf(record, target) {
   const g = GRAMMARS.get(record);
   if (!g || typeof target !== "string") return null;
   const instances = instancesOf(g, record);
-  const all = instances.flatMap((i) => i.calls);
+  const others = (BUILT_WITH.get(record) ?? []).filter((r) => r !== record && GRAMMARS.has(r));
+  const all = [...instances, ...others.flatMap((r) => instancesOf(GRAMMARS.get(r), r))].flatMap((i) => i.calls);
   const count = (/** @type {{ file: string, loc: Loc }} */ site) => all.filter((c) => samePlace(c.at, site)).length;
   if (target.startsWith("param.")) {
     const name = target.slice(6);
@@ -111,7 +132,7 @@ export function siteOf(record, target) {
     const call = instances[0]?.calls.find((c) => c.slot === slot && c.args[0] === name);
     if (!call) return null;
     const decl = /** @type {Record<string, any>} */ (call.args[1] ?? {});
-    return { file: call.at.file, loc: call.at.loc, arg: 1, path: ["value"], value: decl.value, calls: count(call.at), param: name, ...(typeof decl.min === "number" ? { min: decl.min } : {}), ...(typeof decl.max === "number" ? { max: decl.max } : {}) };
+    return { file: call.at.file, loc: call.at.loc, slot: call.slot, arg: 1, path: ["value"], value: decl.value, source: decl.value, calls: count(call.at), param: name, ...(typeof decl.min === "number" ? { min: decl.min } : {}), ...(typeof decl.max === "number" ? { max: decl.max } : {}) };
   }
   if (!target.startsWith("arg.")) return null;
   const a = parseAddress(target.slice(4));
@@ -125,7 +146,9 @@ export function siteOf(record, target) {
   if (!s || s.kind !== "decl") return null;
   const value = at(call.args[a.arg], a.path);
   if (value === undefined && a.path.length) return null;
-  return { file: call.at.file, loc: call.at.loc, arg: a.arg, path: a.path, value, calls: count(call.at), ...boundsAt(specAt(s.args, a.arg), a.path) };
+  const replaced = REPLACED.get(record);
+  const source = replaced?.has(argKey(a)) ? at(replaced.get(argKey(a)), a.path) : value;
+  return { file: call.at.file, loc: call.at.loc, slot: call.slot, arg: a.arg, path: a.path, value, source, calls: count(call.at), ...boundsAt(specAt(s.args, a.arg), a.path) };
 }
 
 /**
@@ -190,6 +213,10 @@ export function applyArgs(program, args) {
     if (!hit || !s || s.kind !== "decl" || a.arg >= hit.call.args.length) { missing.push(address); continue; }
     let args2;
     try { args2 = put(hit.call.args, [a.arg, ...a.path], value); } catch { missing.push(address); continue; }
+    const replaced = REPLACED.get(program) ?? new Map();
+    const key = argKey({ tag: hit.tag, slot: hit.call.slot, n: hit.once ? null : hit.index, arg: a.arg });
+    if (!replaced.has(key)) replaced.set(key, hit.call.args[a.arg]);
+    REPLACED.set(program, replaced);
     const m = matchArgs(s.args, /** @type {unknown[]} */ (args2));
     program.report(m.found.errors, `${hit.inst.construct.name} '${instanceName(hit.inst)}', .${hit.call.slot} (the override of ${address})`, { file: hit.call.file, loc: hit.call.loc });
     hit.call.args = m.args;

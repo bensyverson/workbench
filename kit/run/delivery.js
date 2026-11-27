@@ -48,10 +48,16 @@ export function createDelivery(wires, byName, report) {
     if (!running(/** @type {Part} */ (byName.get(w.to.part)))) { if (recs.length) dropStopped(w, recs.length, T); return; }
     for (const rec of recs) {
       const made = { T, record: stamped(carry(rec, w), T) };
-      // a run of pointer moves with nothing between them is one move: its last (requirement 5)
-      const last = w.queue.at(-1);
-      if (w.pointer && isMove(made.record) && last && isMove(last.record)) w.queue[w.queue.length - 1] = made;
-      else w.queue.push(made);
+      // a run of pointer moves with nothing between them is one move per pointer: each pointer's last (requirement
+      // 5). An earlier move of the same pointer in the run leaves it, and the new one goes last, so the queue stays in
+      // stamp order and two fingers moving in turn each keep their last move
+      if (w.pointer && isMove(made.record)) {
+        const id = /** @type {any} */ (made.record).pointer;
+        for (let i = w.queue.length - 1; i >= 0 && isMove(w.queue[i].record); i--) {
+          if (/** @type {any} */ (w.queue[i].record).pointer === id) { w.queue.splice(i, 1); break; }
+        }
+      }
+      w.queue.push(made);
     }
     if (w.keepLast === null || w.queue.length <= w.keepLast) return;
     const n = w.queue.length - w.keepLast;

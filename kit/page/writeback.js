@@ -11,7 +11,7 @@ import { siteOf } from "../define/sites.js";
 /** The fix every refused argument offers. */
 export const LITERAL_FIX = "write the literal at the call, or declare a param and pass $.<name>";
 
-/** @typedef {{ ok: true, text: string, retarget?: string } | { ok: false, code: "H011" | "H012", message: string, fix: string }} WriteResult */
+/** @typedef {{ ok: true, text: string, retarget?: string } | { ok: false, code: "H011" | "H012", message: string, fix: string, overlap?: true }} WriteResult */
 /** @typedef {{ start: number, end: number, expect: string, value: unknown, step?: number }} Edit */
 
 /** @param {any} n */
@@ -32,6 +32,20 @@ function valueDepth(v) {
   const ds = v.map(valueDepth);
   return ds.some((d) => d < 0 || d !== ds[0]) ? -1 : ds[0] + 1;
 }
+
+/** A literal node's value (a number, `-` a number, a string, a boolean, or a list of them), or undefined. @param {any} n @returns {unknown} */
+function literalValue(n) {
+  if (n?.type === "Literal" && ["number", "string", "boolean"].includes(typeof n.value)) return n.value;
+  if (isNumberNode(n)) return -n.argument.value;
+  if (n?.type !== "ArrayExpression") return undefined;
+  const items = /** @type {unknown[]} */ (n.elements.map(literalValue));
+  return items.some((x) => x === undefined) ? undefined : items;
+}
+/** Whether two literal values are one value. @param {unknown} a @param {unknown} b @returns {boolean} */
+const same = (a, b) => (Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => same(x, b[i])) : Object.is(a, b) || (a === 0 && b === 0));
+
+/** The fix a stale text offers. */
+const STALE_FIX = "build the text again, then drag again";
 
 /**
  * The call the builder made at a site: the CallExpression whose callee is a member whose property starts at the site's
@@ -64,7 +78,7 @@ function walkPath(node, path) {
  * Where a target's literal is in the text, or why it cannot be written: `{ edit }`, `{ param }` (the argument is
  * `$.<name>`, a read of a param, so the target is that param), or a refusal.
  * @param {string} text @param {Record<string, any>} record @param {string} target @param {unknown} value
- * @returns {{ edit: { start: number, end: number, expect: string, kind: string } } | { param: string } | { ok: false, code: "H011", message: string, fix: string }}
+ * @returns {{ edit: { start: number, end: number, expect: string, kind: string } } | { param: string } | { ok: false, code: "H011" | "H012", message: string, fix: string }}
  */
 function locate(text, record, target, value) {
   /** @param {string} message @returns {{ ok: false, code: "H011", message: string, fix: string }} */
@@ -75,8 +89,13 @@ function locate(text, record, target, value) {
   /** @type {any} */
   let tree;
   try { tree = parseModule(text); } catch (e) { return no(`the text does not parse: ${e instanceof Error ? e.message : e}`); }
+  /** @param {string} message @returns {{ ok: false, code: "H012", message: string, fix: string }} */
+  const stale = (message) => ({ ok: false, code: "H012", message: `${message}: the text changed since the record was built, so nothing is written`, fix: STALE_FIX });
+  const where = `line ${site.loc.start.line}, column ${site.loc.start.column + 1}`;
   const call = callAt(tree, site);
-  if (!call) return no(`no call is at line ${site.loc.start.line}, column ${site.loc.start.column + 1} of the text: the text is not the one the record was built from`);
+  if (!call) return stale(`no call is at ${where} of the text, where the record's ${target} was made`);
+  const method = call.callee.property?.type === "Identifier" ? call.callee.property.name : call.callee.property?.value;
+  if (method !== site.slot) return stale(`the call at ${where} is .${method}, not the .${site.slot} the record made there`);
   const arg = call.arguments[site.arg];
   if (!arg) return no(`the call at line ${site.loc.start.line} has no argument ${site.arg}`);
   const walked = walkPath(arg, site.path);
@@ -84,6 +103,8 @@ function locate(text, record, target, value) {
   const n = walked.node;
   const src = text.slice(n.start, n.end);
   if (n.type === "MemberExpression" && !n.computed && n.object.type === "Identifier" && n.object.name === "$" && n.property.type === "Identifier") return { param: n.property.name };
+  const held = literalValue(n);
+  if (held !== undefined && !same(held, site.source)) return stale(`the argument at ${target} is \`${src}\` in the text, and the record was built from ${JSON.stringify(site.source)}`);
   const at = { start: n.start, end: n.end, expect: src };
   if (isNumberNode(n)) return typeof value === "number" ? { edit: { ...at, kind: "number" } } : no(`the argument at ${target} is a number, and the value ${JSON.stringify(value)} is not`);
   if (n.type === "Literal" && typeof n.value === "string") return typeof value === "string" ? { edit: { ...at, kind: "string" } } : no(`the argument at ${target} is a string, and the value ${JSON.stringify(value)} is not`);
@@ -98,9 +119,10 @@ function locate(text, record, target, value) {
 }
 
 /**
- * Why a target cannot be written into this text, or null: what a Grip or a Control with `to` shows as H011.
+ * Why a target cannot be written into this text, or null: what a Grip or a Control with `to` shows as H011 (or
+ * H012, when the text is not the one the record was built from).
  * @param {string} text @param {Record<string, any>} record @param {string} target
- * @returns {{ code: "H011", message: string, fix: string } | null}
+ * @returns {{ code: "H011" | "H012", message: string, fix: string } | null}
  */
 export function targetProblem(text, record, target) {
   const site = siteOf(record, target);
@@ -146,7 +168,9 @@ export const writeBack = (text, record, target, value, o = {}) => writeBackAll(t
  */
 export function printNumber(n, step) {
   if (!step) return String(Object.is(n, -0) ? 0 : n);
-  const decimals = (String(step).split(".")[1] ?? "").length;
+  // the step's decimals from its exponent form, which String() gives below 1e-6 ("1e-7" has seven)
+  const [mantissa, exponent] = step.toExponential().split("e");
+  const decimals = Math.min(100, Math.max(0, (mantissa.split(".")[1] ?? "").length - Number(exponent)));
   return String(Number((Math.round(n / step) * step).toFixed(decimals)));
 }
 
@@ -154,7 +178,7 @@ export function printNumber(n, step) {
 function literal(v, quote, step) {
   if (typeof v === "number") return printNumber(v, step);
   if (typeof v === "boolean") return String(v);
-  if (typeof v === "string") return `${quote}${v.replace(/\\/g, "\\\\").replaceAll(quote, `\\${quote}`).replace(/\n/g, "\\n")}${quote}`;
+  if (typeof v === "string") return `${quote}${v.replace(/\\/g, "\\\\").replaceAll(quote, `\\${quote}`).replace(/\n/g, "\\n").replace(/\r/g, "\\r")}${quote}`;
   if (Array.isArray(v)) return `[${v.map((x) => literal(x, quote, step)).join(", ")}]`;
   throw new TypeError(`write-back writes a number, a string, a boolean or a list of them, not ${JSON.stringify(v)}`);
 }
@@ -166,7 +190,13 @@ function literal(v, quote, step) {
  */
 export function editSource(text, edits) {
   let out = text;
-  for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+  const order = [...edits].sort((a, b) => b.start - a.start);
+  // two spans that share text would each be written at the offsets of the text before the other: a text no edit asked for
+  for (let i = 1; i < order.length; i++) {
+    const later = order[i - 1], e = order[i];
+    if (e.end > later.start) return { ok: false, code: "H011", message: `two edits overlap at ${later.start}..${Math.min(e.end, later.end)} (\`${text.slice(e.start, e.end)}\` and \`${text.slice(later.start, later.end)}\`): one target twice, or a list and a part of it, is not one value`, fix: "write each place once: the whole list, or its parts", overlap: true };
+  }
+  for (const e of order) {
     if (text.slice(e.start, e.end) !== e.expect) return { ok: false, code: "H012", message: `the text at ${e.start}..${e.end} is \`${text.slice(e.start, e.end)}\`, not \`${e.expect}\`: it changed since the record was built, so nothing is written`, fix: "build the text again, then drag again" };
     const quote = /^['"`]/.test(e.expect) ? e.expect[0] : '"';
     out = out.slice(0, e.start) + literal(e.value, quote, e.step) + out.slice(e.end);

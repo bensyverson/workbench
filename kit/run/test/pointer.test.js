@@ -40,3 +40,12 @@ test("30. pointer inputs: delivered to the named input, refused (N013, N012), mo
   assert.ok(Object.values(carry.stats().carried).reduce((a, b) => a + b, 0) > 0);
   assert.equal(replay(small.composed, { runtimes: small.runtimes, packages: small.packages }, JSON.parse(JSON.stringify(carry.record()))).ok, true);
 });
+
+test("30. moves coalesce per pointer: two fingers moving in turn each deliver their last move, in stamp order; one finger's run still coalesces", () => {
+  const s = bench(8);
+  const two = (T, x, pointer) => ({ kind: "pointer", T, part: "bench", value: { ...P("move", x), pointer } });
+  const run = createRun(s.composed, { runtimes: s.runtimes, inputs: [two(0.1, 11, 1), two(0.11, 91, 2), two(0.12, 12, 1), two(0.13, 92, 2), two(0.14, 13, 1), two(0.15, 93, 2), two(0.16, 14, 1)] });
+  run.runUntil(0.5);
+  assert.deepEqual(run.state("bench").got, ["move93", "move14"], "each finger's last move, in the order they were stamped");
+  assert.equal(replay(s.composed, { runtimes: s.runtimes, packages: s.packages }, JSON.parse(JSON.stringify(run.record()))).ok, true);
+});

@@ -39,7 +39,6 @@ main { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(260px, 1f
 .textview { color: var(--ink); }
 .transport { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .transport input { flex: 1; }
-#pad-up { grid-area: up; } #pad-left { grid-area: left; } #pad-right { grid-area: right; } #pad-down { grid-area: down; }
 .hint { margin: 4px 0; }
 .presets { display: flex; flex-wrap: wrap; gap: 4px; }
 .testresult { display: inline-flex; align-items: center; gap: 4px; }

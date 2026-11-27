@@ -56,6 +56,16 @@ test("the seams trial's bounce and swarm load and run", async () => {
   assert.deepEqual(run.diagnostics.filter((d) => d.severity === "error"), []);
 });
 
+test("a glue's rebuild builds one part again with an argument overridden (callGlue's args), a Grip's or a Control's preview (leaf UYk5XG)", async () => {
+  const w = await workbench(SEAMS, ["bounce", "swarm"]);
+  const rebuild = w.rebuild;
+  assert.ok(rebuild);
+  const again = rebuild("table", {}, { args: { "table.ball#3:1.x": 50 } });
+  assert.deepEqual([again.balls.cue.x, again.balls.eight.x], [50, 120], "the one call overridden");
+  assert.equal(rebuild("table", {}).balls.cue.x, 40, "no override: the glue's own record");
+  assert.throws(() => rebuild("table", {}, { args: { "table.ball#3:1.x": "far" } }), /did not build|B0/, "a value the Grammar refuses");
+});
+
 test("a package that does not load gives its K diagnostics, and nothing after it runs", async () => {
   const files = readPackageDir(root(`${DRAW}/maze`));
   files["maze.dialect.js"] = `${files["maze.dialect.js"]}\n// edited`;

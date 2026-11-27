@@ -92,6 +92,25 @@ test("42. the lock: key-mapped Controls lock the page until one gesture, which c
   assert.equal(free.locked, false);
 });
 
+test("42. an unlock hook that throws (a MIDI request refused) is H014: the run still starts, the other hooks run, and the keys play", () => {
+  const { page: pg, f } = synthPage();
+  const calls = [];
+  pg.onUnlock(() => { throw new Error("SecurityError: requestMIDIAccess"); });
+  pg.onUnlock(() => calls.push("audio"));
+  pg.unlock();
+  assert.equal(pg.locked, false);
+  assert.equal(pg.driver.paused, false, "the run started");
+  assert.deepEqual(calls, ["audio"], "the next hook ran");
+  const said = pg.diagnostics.filter((d) => d.code === "H014");
+  assert.equal(said.length, 1);
+  assert.equal(said[0].severity, "warning");
+  assert.match(said[0].message, /requestMIDIAccess/);
+  pg.start();
+  f.tick(0); f.tick(16);
+  assert.ok(pg.run.seconds > 0);
+  assert.equal(down(pg, "KeyH"), true, "the keys still play");
+});
+
 test("49c. the generated controls view lists the page's Controls in declaration order", () => {
   const { page: pg } = unlocked();
   assert.deepEqual(pg.controls().map((c) => c.name), ["pads", "notes", "tempo", "wave", "mute", "word"]);
