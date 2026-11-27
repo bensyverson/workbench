@@ -281,6 +281,21 @@ function changes(stmts, name) {
 }
 
 /**
+ * The list local a `for` counts to the end of, so that inside its body `xs[i]` is never past the end: the test is
+ * `i < xs.length` on a local list, the counter starts at a whole number from zero up, and nothing in the body
+ * changes the list (the counter is already checked by `unbounded`). Null for any other loop.
+ * @param {Extract<Stmt, { k: "for" }>} s
+ * @returns {string | null}
+ */
+export function countsTo(s) {
+  const t = s.test;
+  const b = t.k === "op" && t.op === "lt" && t.args[0].k === "local" && t.args[0].name === s.name ? t.args[1] : null;
+  if (!(b && b.k === "field" && b.name === "length" && b.of.k === "local")) return null;
+  if (!(s.init.k === "num" && Number.isInteger(s.init.v) && s.init.v >= 0)) return null;
+  return changes(s.body, b.of.name) ? null : b.of.name;
+}
+
+/**
  * Why a `for` is not bounded, or null when it is: it counts by one, from an integer or a
  * param, up to the bound it names, and nothing in it changes the counter.
  * @param {Extract<Stmt, { k: "for" }>} s

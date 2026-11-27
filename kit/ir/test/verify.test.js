@@ -69,7 +69,7 @@ function rich() {
       { k: "do", value: { k: "helper", name: "clamp", args: [{ k: "str", v: "a", t: { enum: ["a"] }, span: S }], effects: ["call clamp"], t: "f64", span: S }, span: S, effects: ["call clamp"] },
       { k: "return", value: null, span: S, effects: [] },
     ],
-    effects: ["read Mole.up", "rng", "call World.award", "write World.score", "write Mole.up", "call clamp"],
+    effects: ["read Mole.up", "rng", "call World.award", "write World.score", "write Mole.up", "call clamp"], needs: [],
     src: SRC,
     span: [0, 200],
   };
@@ -95,7 +95,7 @@ test("the M1 goldens and the hand-built kernel verify clean", () => {
 });
 
 test("every code is documented, and each diagnostic names its code, a message, a path and a span", () => {
-  assert.deepEqual(Object.keys(VERIFY_CODES), ["V001", "V002", "V003", "V004", "V005", "V006", "V007", "V008", "V009", "V010", "V011", "V012"]);
+  assert.deepEqual(Object.keys(VERIFY_CODES), ["V001", "V002", "V003", "V004", "V005", "V006", "V007", "V008", "V009", "V010", "V011", "V012", "V013"]);
   const d = verify(broken(rich(), (k) => { k.body[0].value.t = "f64"; }));
   assert.equal(d[0].code, "V002");
   assert.match(d[0].message, /list/);

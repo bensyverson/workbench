@@ -101,6 +101,7 @@
     }
   ],
   "effects": ["read Mole.up", "read Mole.ttl", "write Mole.ttl", "write Mole.up"],
+  "needs": [],
   "src": "(self) => {\n    if (self.up && --self.ttl === 0) self.up = false;\n  }",
   "span": [0, 69]
 }

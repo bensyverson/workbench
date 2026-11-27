@@ -11,7 +11,7 @@
 //   Dialect to give null; that premise was wrong, since the empty values above come from the core, not the Dialect.)
 // - `x !== undefined` is refused: the kit's empty value is null, for which it is true.
 
-import { binary, describe, expr, spanOf } from "./expr.js";
+import { binary, describe, exprMaybeEmpty, spanOf } from "./expr.js";
 
 /** @import * as AST from "../parse/ast.js" */
 /** @import { Expr } from "../ir/ir.js" */
@@ -57,7 +57,7 @@ export function nullCheckOf(L, node) {
  */
 export function nullCheck(L, node, check) {
   const span = spanOf(node);
-  const v = expr(L, check.value);
+  const v = exprMaybeEmpty(L, check.value);
   const isOpt = typeof v.t === "object" && "opt" in v.t;
   if (isOpt && check.undef && !check.loose) {
     const src = L.src.slice(check.value.range[0], check.value.range[1]);

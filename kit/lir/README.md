@@ -41,7 +41,7 @@ Lowering's codes (**R**) are the author's: why this kernel cannot be a shader. E
 | Code | Meaning |
 |---|---|
 | R001 | The kernel's meaning depends on f64 precision (above) |
-| R002 | A value or statement with no form in the LIR: a string, list, struct, optional, entity, a nominal scalar (an f64 underneath), a store, a bump, a loop over a list, a read of state that is not a uniform; a sampler held in a local, compared, chosen by a ternary or returned (the core refuses these too, V002, but the LIR refuses them on its own) |
+| R002 | A value or statement with no form in the LIR: a string, list, struct, optional, entity, a nominal scalar (an f64 underneath), a store, a bump, a loop over a list, a list's `length` or an `index`, the temporary of a `??` (an optional), a read of state that is not a uniform; a sampler held in a local, compared, chosen by a ternary or returned (the core refuses these too, V002, but the LIR refuses them on its own) |
 | R003 | An intrinsic the target has no spelling for |
 | R004 | A helper that was not given, or that recurses (GLSL has no recursion) |
 | R005 | A read of a uniform the program does not declare |

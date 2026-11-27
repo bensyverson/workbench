@@ -51,6 +51,12 @@ export class Lowerer {
     this.scopes = [new Map()];
     /** Unique names of optional locals known to be present here. */
     this.narrowed = new Set();
+    /** Counters of the enclosing loops that run to the end of a list, each with that list's unique name: `xs[i]` there is not past the end. @type {Map<string, string>} */
+    this.countsTo = new Map();
+    /** The one index node to lower without its loop narrowing. @type {Node | null} */
+    this.keepEmpty = null;
+    /** Unique names of consts bound to a loop-index read: narrowed, but still optional when checked. @type {Set<string>} */
+    this.presumed = new Set();
     /** @type {Stmt[]} */
     this.out = [];
     /** Depth inside query callbacks, where only reads are allowed. */

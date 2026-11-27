@@ -13,7 +13,7 @@ import { lowerDraws } from "./draw-lower.js";
 
 /** @import { Seams } from "./define.js" */
 /** @import { Type } from "../ir/ir.js" */
-/** @import { Environment, SlotDecl, SlotRef, Member } from "../lower/environment.js" */
+/** @import { Environment, SlotDecl, SlotRef } from "../lower/environment.js" */
 /** @import { Edge, Box } from "../seam/frames.js" */
 
 /**
@@ -46,16 +46,12 @@ export function lowerPorts(dialect, record) {
     const state = closeLists(/** @type {Type} */ (dialect.stateType));
     const base = /** @type {Environment} */ (dialect.environment(record));
     const paramsObject = typeof def.params?.object === "string" && Object.hasOwn(base.objects, def.params.object) ? def.params.object : NO_PARAMS;
-    /** @type {Record<string, Member>} */
-    const listMembers = { ...base.list };
-    if (!Object.hasOwn(listMembers, "length")) listMembers.length = { kind: "value", t: "f64" };
     /** @type {Map<string, SlotDecl>} */
     const decls = new Map();
     /** @type {Environment} */
     const env = {
       ...base,
       objects: paramsObject === NO_PARAMS ? { ...base.objects, [NO_PARAMS]: { label: "the params ($)", members: {} } } : base.objects,
-      list: listMembers,
       slot(ref) { return decls.get(ref.id) ?? base.slot(ref); },
     };
     /** @type {SlotRef[]} */

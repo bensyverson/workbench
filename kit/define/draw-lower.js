@@ -49,9 +49,6 @@ export function lowerDraws(dialect, record, push) {
     for (const i of Object.values(/** @type {Record<string, any>} */ (dialect.seams.in))) if (i.seam.kind === "draw") drawn[i.name] = { kind: "value", t: t.list(i.seam.max) };
     objects[inputs.object] = { ...objects[inputs.object], members: { ...objects[inputs.object].members, ...drawn } };
   }
-  /** @type {Record<string, Member>} */
-  const list = { ...base.list };
-  if (!Object.hasOwn(list, "length")) list.length = { kind: "value", t: "f64" };
   /** @type {Map<string, SlotDecl>} */
   const decls = new Map();
   // a run gives a builder `$` and the inputs global (kit/run's part.js), so those are the globals it may read, with
@@ -71,7 +68,7 @@ export function lowerDraws(dialect, record, push) {
     return { message: `'${m[1]}' is a global of the ${dialect.name} Dialect, but a builder gets only ${seen} when it runs.`, tip: `A builder reads its parameters, ${seen}, the Dialect's intrinsics and Library, and the page's own globals (Math); pass what it needs through the state, the record, a param or an input.` };
   };
   /** @type {Environment} */
-  const env = { ...base, objects, list, globals, slot: (ref) => decls.get(ref.id) ?? base.slot(ref) };
+  const env = { ...base, objects, globals, slot: (ref) => decls.get(ref.id) ?? base.slot(ref) };
   /** @type {Array<{ port: any, i: number, layer: any, ref: SlotRef }>} */
   const units = [];
   for (const p of ports) {

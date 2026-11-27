@@ -2,7 +2,7 @@
 // returns, and expressions evaluated for their effects.
 
 import { assignable, exactLimit, join } from "../ir/types.js";
-import { expr, test, facts, check, describe } from "./expr.js";
+import { expr, exprMaybeEmpty, keptEmpty, test, facts, check, describe } from "./expr.js";
 import { assign, update } from "./assign.js";
 import { bindPattern, patternNames } from "./pattern.js";
 import { settle, clash } from "./numeric.js";
@@ -88,13 +88,15 @@ function declaration(L, node) {
       for (const n of patternNames(d.id)) L.declare(n, "unknown", "let");
       continue;
     }
-    const v = settle(L, expr(L, d.init));
+    const v = settle(L, exprMaybeEmpty(L, d.init));
     const kind = node.kind === "const" ? "const" : "let";
     if (d.id.type === "Identifier") {
       // A let may later hold any string, so its type is not the literal it starts with.
       const t = kind === "let" && typeof v.t === "object" && "enum" in v.t ? "str" : v.t;
       const name = L.declare(d.id.name, t, kind);
       L.emit({ k: "let", name, t, value: v, span: spanOf(d) });
+      // A const bound to a loop-index read is possibly empty by type, as before, but is known present.
+      if (kind === "const" && keptEmpty.has(d.init) && typeof t === "object" && "opt" in t) { L.narrowed.add(name); L.presumed.add(name); }
     } else bindPattern(L, d.id, v, kind);
   }
 }
@@ -215,9 +217,29 @@ function forStatement(L, node) {
       return;
     }
     const step = L.capture(() => effect(L, u)).stmts;
+    const list = narrowsTo(node, start, cond);
+    if (list) L.countsTo.set(name, list);
     const body = L.capture(() => statement(L, node.body)).stmts;
+    L.countsTo.delete(name);
     L.emit({ k: "for", name, init: start, test: cond, update: step, body, bound, span: spanOf(node) });
   });
+}
+
+/**
+ * The unique name of the list a counted loop runs to the end of, so `xs[i]` in its body is not empty, or null. The
+ * loop must test `i < xs.length` on a local list, start at a whole number from zero up, and leave the list alone
+ * (the counter is checked already: L007).
+ * @param {AST.ForStatement} node
+ * @param {Expr} start
+ * @param {Expr} cond
+ * @returns {string | null}
+ */
+function narrowsTo(node, start, cond) {
+  const b = cond.k === "op" && cond.op === "lt" ? cond.args[1] : null;
+  const listNode = node.test?.type === "BinaryExpression" && node.test.right.type === "MemberExpression" ? node.test.right.object : null;
+  if (!(b && b.k === "field" && b.name === "length" && b.of.k === "local" && listNode?.type === "Identifier")) return null;
+  if (!(start.k === "num" && Number.isInteger(start.v) && start.v >= 0)) return null;
+  return findWrite(node.body, listNode.name) ? null : b.of.name;
 }
 
 /**

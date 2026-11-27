@@ -95,8 +95,8 @@ export interface Environment {
   name: string;
   /** Every named object type: entity kinds and the handles (`World`, `Input`, …). */
   objects: Record<string, ObjectDecl>;
-  /** Members of every list, with type variable `T` bound to the item type. */
-  list: Record<string, Member>;
+  /** Members a Dialect adds to every list, with type variable `T` bound to the item type. `length` is built in. */
+  list?: Record<string, Member>;
   queries: QueryName[];
   /** Free identifiers every lambda may use, e.g. `Math`. */
   globals: Record<string, Type>;

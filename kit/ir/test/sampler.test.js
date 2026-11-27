@@ -31,7 +31,7 @@ const SAMPLER = "sampler";
 const kernel = (body, extra = [], over = {}) => ({
   ir: "kernel", name: "p.pixel", slot: "pixel", space: "pixel",
   params: [{ name: "uv", t: VEC2, kind: "param" }, { name: "u", t: U, kind: "param" }],
-  returns: VEC4, locals: extra, body, effects: [], src: SRC, span: S, ...over,
+  returns: VEC4, locals: extra, body, effects: [], needs: [], src: SRC, span: S, ...over,
 });
 
 /** @param {Kernel} k */

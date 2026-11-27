@@ -127,6 +127,21 @@ test("R002: a list concatenation has no GLSL form either, and is named a list", 
   assert.match(lower(k).diagnostics[0].message, /a list/);
 });
 
+test("R002: the CPU-tier stage 0 forms (a list's length, `??`, a loop-index read) are refused as lists, not mistaken for something else", () => {
+  const xs = /** @type {Type} */ ({ list: "f32", max: 4 });
+  const opt = /** @type {Type} */ ({ opt: "f32" });
+  const nullish = c.kernel({ name: "k#0", params: [["xs", xs]], returns: "f32", body: [
+    c.let_("t0", opt, c.index(c.local("xs", xs), c.num(1), opt)),
+    c.ret(c.cond(c.op("present", "bool", c.local("t0", opt)), c.local("t0", "f32"), c.f32(0), "f32")),
+  ] });
+  assert.ok(refused(nullish).every((code) => code === "R002"));
+  const len = c.field(c.local("xs", xs), "length", "f64");
+  const loop = /** @type {import("../../ir/ir.js").Stmt} */ ({ ...c.for_("i", 0, [c.do_(c.index(c.local("xs", xs), c.local("i"), "f32"))]), test: c.op("lt", "bool", c.local("i"), len), bound: "size ≤ 4" });
+  const counted = c.kernel({ name: "k#0", params: [["xs", xs]], returns: "f64", body: [loop, c.ret(len)] });
+  const why = refused(counted); // its f64 counter and length are R001 as well; the list is what makes it R002
+  assert.ok(why.includes("R002") && why.every((code) => code === "R001" || code === "R002"));
+});
+
 test("R003: an intrinsic with no spelling is refused", () => {
   assert.deepEqual(refused(c.kernel({ name: "k#0", returns: "f32", body: [c.ret(c.call("nosuch", "f32", [c.f32(1)]))] })), ["R003"]);
 });

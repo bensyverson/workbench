@@ -196,7 +196,22 @@ export interface Kernel {
   body: Stmt[];
   /** Every effect in the body, deduplicated, in first-seen order. */
   effects: Effect[];
+  /**
+   * The CPU-only features the body uses, each once, with its first span (the CPU tier draft, project/2026-11-27-cpu-tier-draft.md).
+   * A Kernel with none is Bench. Always empty today, and the verifier's Bench profile (V013) refuses any.
+   */
+  needs: Need[];
   /** The lambda's source text; every span indexes into it. */
   src: string;
   span: Span;
+}
+
+/** The five features only the CPU tier has. */
+export type NeedKind = "loop" | "recursion" | "heap" | "text" | "fnref";
+
+/** A CPU-only feature a Kernel uses: which, where, and the callee it came through when it is not the Kernel's own. */
+export interface Need {
+  need: NeedKind;
+  span: Span;
+  via?: string;
 }

@@ -29,7 +29,7 @@ function kernel(value, returns = "bool") {
   return {
     ir: "kernel", name: "row.keep", slot: "keep", space: "row",
     params: [{ name: "a", t: DATE, kind: "param" }, { name: "b", t: DATE, kind: "param" }, { name: "s", t: STAMP, kind: "param" }, { name: "n", t: "f64", kind: "param" }],
-    returns, locals: [], body: [{ k: "return", value, span: S, effects: [] }], effects: [], src: SRC, span: [0, 200],
+    returns, locals: [], body: [{ k: "return", value, span: S, effects: [] }], effects: [], needs: [], src: SRC, span: [0, 200],
   };
 }
 

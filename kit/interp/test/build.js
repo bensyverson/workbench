@@ -146,7 +146,7 @@ export function kernel({ name = "t#0", params = [], returns = "void", body }) {
   const k = /** @type {Kernel} */ ({
     ir: "kernel", name, slot: "test", space: "test",
     params: params.map(([n, t]) => ({ name: n, t, kind: "param" })),
-    returns, locals: localsOf(body), body, effects: fillEffects(body), src: SRC, span: SPAN,
+    returns, locals: localsOf(body), body, effects: fillEffects(body), needs: [], src: SRC, span: SPAN,
   });
   assert.deepEqual(verify(k).map((d) => `${d.code} ${d.path} ${d.message}`), [], `${name} must be a valid kernel`);
   return k;

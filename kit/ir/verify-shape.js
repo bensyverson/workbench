@@ -6,7 +6,7 @@
  * What a field holds: an expression, an optional one (`expr?`), one or null (`expr|null`),
  * a list of expressions or statements, a record of expressions, a place, a type, strings
  * (effects), or a JavaScript primitive.
- * @typedef {"expr" | "expr?" | "expr|null" | "exprs" | "stmts" | "record" | "place" | "type" | "strings" | "string" | "number" | "boolean"} Field
+ * @typedef {"expr" | "expr?" | "expr|null" | "exprs" | "stmts" | "record" | "place" | "type" | "strings" | "needs" | "string" | "number" | "boolean"} Field
  */
 
 /** @type {Record<string, Record<string, Field>>} */
@@ -44,7 +44,7 @@ const STMT = {
 };
 
 /** @type {Record<string, Field>} */
-const KERNEL = { name: "string", slot: "string", space: "string", returns: "type", body: "stmts", effects: "strings", src: "string" };
+const KERNEL = { name: "string", slot: "string", space: "string", returns: "type", body: "stmts", effects: "strings", needs: "needs", src: "string" };
 
 /** @type {Record<string, Field>} */
 const PLACE = { recv: "expr", owner: "string", name: "string", t: "type" };
@@ -117,6 +117,9 @@ function field(v, f, path, out) {
       if (v.store !== undefined && !(isObject(v.store) && typeof v.store.type === "string")) out.push({ message: "A place's store rule names its type.", path: `${path}.store` });
       return;
     case "type": if (!isType(v)) bad("a type"); return;
+    case "needs":
+      if (!Array.isArray(v) || !v.every((n) => isObject(n) && typeof n.need === "string" && Array.isArray(n.span) && (n.via === undefined || typeof n.via === "string"))) bad("a list of needs, each { need, span, via? }");
+      return;
     case "strings": if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) bad("a list of effects"); return;
     default: if (typeof v !== f) bad(`a ${f}`);
   }

@@ -34,7 +34,7 @@ function kernel(body, effects) {
     ir: "kernel", name: "update#0", slot: "update", space: "particle",
     params: [{ name: "p", t: P, kind: "param" }, { name: "c", t: C, kind: "param" }],
     returns: "void", locals: [], body,
-    effects: effects ?? [...new Set(body.flatMap((s) => s.effects))], src: SRC, span: [0, 100],
+    effects: effects ?? [...new Set(body.flatMap((s) => s.effects))], needs: [], src: SRC, span: [0, 100],
   };
 }
 

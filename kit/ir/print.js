@@ -18,6 +18,7 @@ export function printKernel(k) {
   const lines = [];
   lines.push(withComment(`kernel ${k.name}(${params}) -> ${showType(k.returns)}`, [k.space]));
   lines.push(`  ; effects: ${k.effects.join(", ") || "none"}`);
+  if (k.needs.length) lines.push(`  ; needs: ${k.needs.map((n) => `${n.need} (${n.span[0]}..${n.span[1]}${n.via ? `, via ${n.via}` : ""})`).join(", ")}`);
   block(k.body, 1, lines);
   return lines.join("\n") + "\n";
 }

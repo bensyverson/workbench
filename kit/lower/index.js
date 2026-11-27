@@ -90,7 +90,7 @@ export function lowerLambda(environment, src, slot, sigs = noSignatures()) {
   /** @type {Kernel | null} */
   const made = L.failed || untyped ? null : {
     ir: "kernel", name: slot.id, slot: slot.kind, space: decl.space,
-    params, returns, locals: L.locals.filter((l) => l.kind !== "param"), body, effects, src, span: [ast.range[0], ast.range[1]],
+    params, returns, locals: L.locals.filter((l) => l.kind !== "param"), body, effects, needs: [], src, span: [ast.range[0], ast.range[1]],
   };
   if (made && switches.verify) {
     // Partial: a lambda lowered alone, or before the program's inference settles, may hold `unknown`.

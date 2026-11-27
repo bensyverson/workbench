@@ -7,7 +7,7 @@
 import { assignable, join, sameType, strictJoin, itemAt, optional, showType } from "./types.js";
 import { formatJSON, jsonDifference } from "./json.js";
 import { shapeProblems } from "./verify-shape.js";
-import { typeProblem, OPS, EFFECT_VERBS, ownerOf, storeFits, unbounded, isSampler } from "./verify-rules.js";
+import { typeProblem, OPS, EFFECT_VERBS, ownerOf, storeFits, unbounded, countsTo, isSampler } from "./verify-rules.js";
 
 /** @import { Kernel, Expr, Stmt, Type, Span, Place, Local, Effect, EffectVerb, Op } from "./ir.js" */
 
@@ -25,6 +25,7 @@ export const VERIFY_CODES = Object.freeze({
   V010: "A break or continue outside a loop",
   V011: "A node without a span inside the kernel's source",
   V012: "A kernel whose JSON form does not read back the same",
+  V013: "A kernel that records a need the verifier's tier does not allow (the Bench tier allows none)",
 });
 
 /** @typedef {keyof typeof VERIFY_CODES} VerifyCode */
@@ -98,6 +99,8 @@ class Checker {
     /** Names visible here, innermost last. @type {Set<string>[]} */
     this.scopes = [new Set()];
     this.loops = 0;
+    /** Counters of the enclosing loops that run to the end of a list, each with that list's local: `xs[i]` there is not past the end. @type {Map<string, string>} */
+    this.inRange = new Map();
   }
 
   /**
@@ -147,6 +150,7 @@ class Checker {
       else this.declared.set(l.name, l);
     });
     for (const p of k.params) { this.bound.add(p.name); this.scopes[0].add(p.name); }
+    k.needs.forEach((n, i) => this.report("V013", `This kernel needs '${n.need}', which the Bench tier does not have.`, `needs[${i}]`, n.span));
     this.block(k.body, "body");
     this.kernelEffects();
   }
@@ -372,20 +376,23 @@ const EXPR = /** @type {{ [K in Expr["k"]]: (x: { c: Checker, e: Extract<Expr, {
       const want = (of.optional ?? []).includes(e.name) ? optional(ft) : ft;
       if (!sameType(e.t, want)) bad(`Field '${e.name}' is ${showSafe(want)}, not ${showSafe(e.t)}.`);
     } else if (typeof of === "object" && "list" in of) {
-      if (e.name !== "length" || e.t !== "f64") bad(`A list's only field is length, an f64; not '${e.name}': ${showSafe(e.t)}.`);
+      if (e.name !== "length" || (e.t !== "f64" && e.t !== "f32") || (e.t === "f32" && of.max > 2 ** 24)) bad(`A list's only field is length, an f64 (an f32 where the list's max is at most 2^24); not '${e.name}': ${showSafe(e.t)}.`);
     } else if (typeof of === "object" && "vec" in of) {
       const names = COMPONENTS.slice(0, of.vec);
       if (!names.includes(e.name)) bad(`A ${showSafe(of)} has components ${names.join(", ")}, not '${e.name}'.`);
       else if (e.t !== of.of) bad(`A component of ${showSafe(of)} is ${of.of}, not ${showSafe(e.t)}.`);
     } else bad(`A field is read from a struct, a list or a vector, not ${showSafe(of)}.`);
   },
-  index: ({ e, sub, bad }) => {
+  index: ({ c, e, sub, bad }) => {
     sub(e.of, "of"); sub(e.index, "index");
     const of = e.of.t;
     if (!(typeof of === "object" && "list" in of)) { bad(`Only a list is indexed, not ${showSafe(of)}.`); return; }
-    if (!assignable(e.index.t, "f64")) bad(`A list index is f64, not ${showSafe(e.index.t)}.`);
+    if (!assignable(e.index.t, "f64") && e.index.t !== "f32") bad(`A list index is f64 or f32, not ${showSafe(e.index.t)}.`);
+    // Inside a loop to the end of the list, the loop's counter reads an item that is there.
+    const inRange = e.of.k === "local" && e.index.k === "local" && c.inRange.get(e.index.name) === e.of.name;
+    // (A read there may keep the possibly-empty type too: it is a weaker claim.)
     const want = itemAt(of, e.index.k === "num" ? e.index.v : null);
-    if (!sameType(e.t, want)) bad(`This index is ${showSafe(want)}, not ${showSafe(e.t)}.`);
+    if (!sameType(e.t, want) && !(inRange && sameType(e.t, of.list))) bad(`This index is ${showSafe(want)}, not ${showSafe(e.t)}.`);
   },
   array: ({ e, sub, bad }) => {
     e.items.forEach((a, i) => sub(a, `items[${i}]`));
@@ -485,8 +492,11 @@ const STMT = /** @type {{ [K in Stmt["k"]]: (x: { c: Checker, s: Extract<Stmt, {
     ex(s.test, "test");
     if (!assignable(s.test.t, "bool")) c.report("V002", `A for tests a bool, not ${showSafe(s.test.t)}.`, path, s.span);
     c.loops++;
+    const to = countsTo(s);
+    if (to !== null) c.inRange.set(s.name, to);
     c.block(s.update, `${path}.update`);
     c.block(s.body, `${path}.body`);
+    c.inRange.delete(s.name);
     c.loops--;
     c.scopes.pop();
     const why = unbounded(s);

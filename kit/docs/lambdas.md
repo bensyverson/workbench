@@ -17,7 +17,7 @@ Nothing else is free, not even `Math` or `NaN` unless the Dialect declares it (B
 
 ## The Runtime Subset
 
-Allowed: `const`/`let` (destructuring too), numbers, strings, booleans, `null`, array and object literals (an array may spread lists: `[x, ...a, ...b]` is a list whose max is the sum of the parts' maxes), arithmetic (`**` too), comparisons, `&& || !`, bitwise operators, `if`, ternaries, `for…of` over a list, counted loops `for (let i = 0; i < n; i++)`, and calls to the free names above. A counted loop starts at an integer (`0.5` is L007), and `n` is a constant, a list's length or a size (a member `{ value: "f64", size: true }`).
+Allowed: `const`/`let` (destructuring too), numbers, strings, booleans, `null`, array and object literals (an array may spread lists: `[x, ...a, ...b]` is a list whose max is the sum of the parts' maxes), arithmetic (`**` too), comparisons, `&& || !`, `??` (`<a> ?? <b>`: `<a>` must be possibly empty, an item of a list or an optional; a present 0 stays 0), bitwise operators, `if`, ternaries, `for…of` over a list, counted loops `for (let i = 0; i < n; i++)`, and calls to the free names above. A counted loop starts at an integer (`0.5` is L007), and `n` is a constant, a list's length (`<list>.length`, on every list in every Dialect) or a size (a member `{ value: "f64", size: true }`). Inside `for (let i = 0; i < <list>.length; i++)`, on a list that is a parameter or a local the body never assigns, `<list>[i]` is not empty and needs no check; any other index of it still may be.
 
 Not allowed: `while`, `new`, `this`, `async`, template literals, `?.`, spread outside an array literal (inside one, `[...a, ...b]` concatenates lists), and closures that escape.
 

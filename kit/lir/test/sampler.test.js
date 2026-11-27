@@ -34,7 +34,7 @@ const pixel = (body) => c.kernel({ name: "p#0", params: [["uv", VEC2], ["u", U]]
  */
 const unverified = ({ name = "p#0", params = [["uv", VEC2], ["u", U]], returns = VEC4, locals = [], body }) => ({
   ir: "kernel", name, slot: "test", space: "test", params: params.map(([n, t]) => ({ name: n, t, kind: /** @type {const} */ ("param") })), returns,
-  locals: locals.map(([n, t]) => ({ name: n, t, kind: /** @type {const} */ ("const") })), body, effects: [], src: " ".repeat(100), span: [0, 1],
+  locals: locals.map(([n, t]) => ({ name: n, t, kind: /** @type {const} */ ("const") })), body, effects: [], needs: [], src: " ".repeat(100), span: [0, 1],
 });
 
 /** @param {Kernel} main @param {Kernel[]} [helpers] */

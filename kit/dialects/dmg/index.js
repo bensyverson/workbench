@@ -230,7 +230,6 @@ export function dmgEnvironment(d) {
   return {
     name: "dmg",
     objects,
-    list: { length: value(F64) },
     queries: ["filter", "find", "some", "every", "reduce"],
     globals: { Math: { obj: "Math" } },
     tips: DMG_TIPS,

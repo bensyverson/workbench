@@ -294,6 +294,14 @@ export function resolveMember(L, node) {
 }
 
 /**
+ * Every list's one built-in member, whatever the Dialect: its length, a whole number never above the list's max, typed
+ * as the Dialect's numbers are (its `numberType`), so `i < xs.length` does not mix f32 and f64 in an f32 Dialect.
+ * @param {Lowerer} L
+ * @returns {Member}
+ */
+const listLength = (L) => ({ kind: "value", t: L.environment.numberType ?? "f64" });
+
+/**
  * `list[i]`: the item, or nothing when `i` is out of range, so it is typed possibly empty and
  * must be checked before use, as a `find` result must. Any other computed name cannot be checked (L009).
  * @param {Lowerer} L
@@ -302,6 +310,7 @@ export function resolveMember(L, node) {
  */
 function index(L, node) {
   const [recv, at] = seq(L, [() => expr(L, node.object), () => expr(L, /** @type {AST.Expression} */ (node.property))]);
+  const keep = L.keepEmpty === node;
   let t = recv.t;
   if (typeof t === "object" && "opt" in t) {
     const what = L.src.slice(node.object.range[0], node.object.range[1]);
@@ -309,8 +318,13 @@ function index(L, node) {
     t = t.opt;
   }
   if (typeof t === "object" && "list" in t) {
-    if (!assignable(at.t, "f64")) mismatch(L, node.property, at.t, "f64", "a list index");
-    return L.ex({ k: "index", of: recv, index: at, t: itemAt(t, at.k === "num" ? at.v : null), span: spanOf(node) });
+    if (!assignable(at.t, "f64") && at.t !== "f32") mismatch(L, node.property, at.t, "f64", "a list index");
+    // Inside `for (let i = 0; i < xs.length; i++)` the list is not rewritten, so `xs[i]` is there.
+    // A read that is checked (`xs[i] != null`, `xs[i] ?? b`) or bound to a name keeps the type it had before the
+    // narrowing, so no program that lowered before stops lowering; `keptEmpty` lets a binding narrow it again.
+    const inRange = recv.k === "local" && at.k === "local" && L.countsTo.get(at.name) === recv.name;
+    if (inRange && keep) keptEmpty.add(node);
+    return L.ex({ k: "index", of: recv, index: at, t: inRange && !keep ? t.list : itemAt(t, at.k === "num" ? at.v : null), span: spanOf(node) });
   }
   computed(L, recv, node);
   return bad(node);
@@ -359,7 +373,7 @@ export function resolveOn(L, recv, name, node) {
   } else if (typeof t === "object" && "list" in t) {
     const own = t.with ? L.environment.objects[t.with]?.members ?? {} : {};
     owner = t.with ?? "list";
-    members = { ...L.environment.list, ...own };
+    members = { length: listLength(L), ...L.environment.list, ...own };
     label = t.with ? L.environment.objects[t.with]?.label ?? t.with : "a list";
   } else if (typeof t === "object" && "struct" in t) {
     owner = "struct";
@@ -585,10 +599,7 @@ const refusedChains = new WeakSet();
  */
 function logical(L, node, mode) {
   const span = spanOf(node);
-  if (node.operator === "??") {
-    L.error("L012", node, "'??' is not lowered yet.", "Write the check out: x !== null ? x : fallback.");
-    return bad(node);
-  }
+  if (node.operator === "??") return nullish(L, node);
   /** @type {{ node: AST.Expression, e: Expr } | null} */
   let refused = null;
   let covered = false; // an operand that is itself a refused chain link has already said it
@@ -620,6 +631,50 @@ function logical(L, node, mode) {
   return L.ex({ k: "local", name, t: "bool", span });
 }
 
+/** The loop-index reads lowered with their pre-narrowing type: see `index`. @type {WeakSet<AST.Node>} */
+export const keptEmpty = new WeakSet();
+
+/**
+ * Lowers `node` as a read that may be empty, whatever a loop's narrowing proved of it.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ * @returns {Expr}
+ */
+export function exprMaybeEmpty(L, node) {
+  const saved = L.keepEmpty;
+  L.keepEmpty = node;
+  // A name bound to such a read is present only by that proof; as the subject of a check it is the optional it was.
+  const bound = node.type === "Identifier" ? L.lookup(node.name)?.name : undefined;
+  const lift = bound !== undefined && L.presumed.has(bound) && L.narrowed.delete(bound);
+  try { return expr(L, node); } finally { L.keepEmpty = saved; if (lift) L.narrowed.add(/** @type {string} */ (bound)); }
+}
+
+/**
+ * `a ?? b`: `a` when it is present, else `b`, which is evaluated only then. `a` is read once, into a temporary,
+ * and is `?? b`'s own check: present means not null and not undefined, as `a != null` does, so a present 0 stays 0.
+ * A left side that is never empty is L003, as a null check of one is.
+ * @param {Lowerer} L
+ * @param {AST.LogicalExpression} node
+ * @returns {Expr}
+ */
+function nullish(L, node) {
+  const left = exprMaybeEmpty(L, node.left);
+  if (left.t === "unknown") { L.capture(() => expr(L, node.right)); return bad(node); }
+  if (!(typeof left.t === "object" && "opt" in left.t)) {
+    const x = L.src.slice(node.left.range[0], node.left.range[1]);
+    L.error("L003", node.left, `'??' needs a possibly-empty value on its left, and ${describe(left.t)} is never empty.`, `Drop the '?? …': ${x} is always there.`);
+    return bad(node);
+  }
+  const optional = left.t;
+  const name = L.temp(optional);
+  L.emit({ k: "let", name, t: optional, value: left, span: left.span });
+  const t0 = L.ex({ k: "local", name, t: optional.opt, span: left.span });
+  const c = L.ex({ k: "op", op: "present", args: [L.ex({ k: "local", name, t: optional, span: left.span })], t: "bool", span: left.span });
+  const a = { stmts: /** @type {import("../ir/ir.js").Stmt[]} */ ([]), value: t0 };
+  const b = L.capture(() => expr(L, node.right));
+  return choose(L, node, c, a, b, "The two sides of this '??' are");
+}
+
 /**
  * A lazy ternary; `branch` lowers each arm.
  * @param {Lowerer} L
@@ -628,16 +683,31 @@ function logical(L, node, mode) {
  * @returns {Expr}
  */
 export function cond(L, node, branch) {
-  const span = spanOf(node);
   const f = facts(L, node.test);
   const c = test(L, node.test);
   const a = L.capture(() => branch(node.consequent), f.yes);
   const b = L.capture(() => branch(node.alternate), f.no);
+  return choose(L, node, c, a, b, "The arms of this ternary are");
+}
+
+/**
+ * The value of `c ? a : b` once both arms are lowered: a `cond` when neither arm needs statements, else a temporary
+ * set in an `if`. The arms' types must join; `who` opens the message when they do not.
+ * @param {Lowerer} L
+ * @param {AST.Expression} node
+ * @param {Expr} c
+ * @param {{ stmts: import("../ir/ir.js").Stmt[], value: Expr }} a
+ * @param {{ stmts: import("../ir/ir.js").Stmt[], value: Expr }} b
+ * @param {string} who
+ * @returns {Expr}
+ */
+function choose(L, node, c, a, b, who) {
+  const span = spanOf(node);
   // Two untyped arms have no type yet: the default gives it. A literal beside a typed arm takes that arm's type.
   if (isUntyped(a.value) && isUntyped(b.value)) { a.value = settle(L, a.value); b.value = settle(L, b.value); }
   else { a.value = asScalar(L, a.value, scalarOf(b.value.t)); b.value = asScalar(L, b.value, scalarOf(a.value.t)); }
   const [x, y] = [a.value, b.value].map((v) => L.src.slice(v.span[0], v.span[1]));
-  if (clash(L, node, a.value.t, b.value.t, "The arms of this ternary are", x, y)) return bad(node);
+  if (clash(L, node, a.value.t, b.value.t, who, x, y)) return bad(node);
   const t = join(a.value.t, b.value.t);
   if (!a.stmts.length && !b.stmts.length) return L.ex({ k: "cond", test: c, then: a.value, else: b.value, t, span });
   const name = L.temp(t);

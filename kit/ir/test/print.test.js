@@ -39,3 +39,11 @@ test("types print compactly", () => {
   assert.equal(showType({ union: ["str", "null"] }), "str | null");
   assert.equal(showType({ obj: "World" }), "World");
 });
+
+test("a kernel with needs lists them after its effects, and one without prints no needs line", () => {
+  const r = lower("(self) => { self.ttl = 1; }");
+  assert.ok(r.kernel);
+  assert.doesNotMatch(printKernel(r.kernel), /needs/);
+  const needy = { ...r.kernel, needs: [{ need: /** @type {const} */ ("loop"), span: /** @type {[number, number]} */ ([0, 4]) }, { need: /** @type {const} */ ("heap"), span: /** @type {[number, number]} */ ([5, 9]), via: "rank" }] };
+  assert.match(printKernel(needy), /^  ; needs: loop \(0\.\.4\), heap \(5\.\.9, via rank\)$/m);
+});

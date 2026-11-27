@@ -51,7 +51,7 @@ function vrich() {
       { k: "if", test: op("lt", "bool", local("s", "f32"), local("e", "f32")), then: [{ k: "return", value: c, span: S, effects: [] }], else: [], span: S, effects: [] },
       { k: "return", value: local("h", COLOR), span: S, effects: [] },
     ],
-    effects: [],
+    effects: [], needs: [],
     src: SRC,
     span: [0, 200],
   };

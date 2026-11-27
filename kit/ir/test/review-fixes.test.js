@@ -13,7 +13,7 @@ const COLOR = dialectVector("color", 3, "f32");
 const S = [0, 1];
 /** @returns {Kernel} */
 const base = (/** @type {import("../ir.js").Stmt[]} */ body, /** @type {Type} */ returns, /** @type {import("../ir.js").Local[]} */ params = [{ name: "k", t: "f32", kind: "param" }], locals = /** @type {import("../ir.js").Local[]} */ ([])) =>
-  ({ ir: "kernel", name: "t", slot: "pixel", space: "pixel", params, returns, locals, body, effects: [], src: "x".repeat(50), span: [0, 50] });
+  ({ ir: "kernel", name: "t", slot: "pixel", space: "pixel", params, returns, locals, body, effects: [], needs: [], src: "x".repeat(50), span: [0, 50] });
 const withEffects = (/** @type {Kernel} */ k) => ({ ...k, effects: /** @type {import("../ir.js").Effect[]} */ (["write W.t"]) });
 const ret = (/** @type {Expr} */ value) => /** @type {import("../ir.js").Stmt} */ ({ k: "return", value, span: S, effects: [] });
 const num = (/** @type {number} */ v, t = /** @type {Type} */ ("f64")) => /** @type {Expr} */ ({ k: "num", v, t, span: S });

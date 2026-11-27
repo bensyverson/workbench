@@ -352,6 +352,7 @@
     "read param sound",
     "sfx pop"
   ],
+  "needs": [],
   "src": "(w) => {\n    const m = w.param(\"order\") === \"sweep\" ? w.board.at(w.next) : w.rng.pick(w.board.filter((m) => !m.up));\n    w.next = (w.next + 1) % 9;\n    if (m == null) return;\n    m.up = true;\n    m.ttl = w.param(\"linger\") * 60;\n    if (w.param(\"sound\")) w.sfx(\"pop\");\n  }",
   "span": [0, 271]
 }

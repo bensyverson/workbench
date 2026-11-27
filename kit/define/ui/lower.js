@@ -10,7 +10,7 @@ import { TONES } from "./validate.js";
 
 /** @import * as T from "../define.js" */
 /** @import { Type, Kernel } from "../../ir/ir.js" */
-/** @import { Environment, SlotDecl, SlotRef, Member } from "../../lower/environment.js" */
+/** @import { Environment, SlotDecl, SlotRef } from "../../lower/environment.js" */
 /** @import { LowerResult, HelperResult } from "../../lower/index.js" */
 
 /**
@@ -164,11 +164,6 @@ export function lowerUI(ui, record) {
   const paramsObject = typeof def.params?.object === "string" && Object.hasOwn(base.objects, def.params.object) ? def.params.object : NO_PARAMS;
   /** @type {Type} */
   const params = { obj: paramsObject };
-  /** @type {Record<string, Member>} */
-  const listMembers = { ...base.list };
-  // The packet promises `s.bodies.length`; a Dialect whose Programs read no list length declares no list members.
-  // An f64 whatever the Dialect's numberType: the IR verifier types a list's length f64 (V002 otherwise), as defineUI's shapes do.
-  if (!Object.hasOwn(listMembers, "length")) listMembers.length = { kind: "value", t: "f64" };
 
   /** Each lambda's convention by id, filled before each pass. @type {Map<string, SlotDecl>} */
   const decls = new Map();
@@ -176,7 +171,6 @@ export function lowerUI(ui, record) {
   const env = {
     ...base,
     objects: paramsObject === NO_PARAMS ? { ...base.objects, [NO_PARAMS]: { label: "the params ($)", members: {} } } : base.objects,
-    list: listMembers,
     slot(ref) { return decls.get(ref.id) ?? base.slot(ref); },
   };
   /** @param {Site} s @param {Type | "infer"} returns @returns {SlotDecl} */
