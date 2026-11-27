@@ -97,7 +97,7 @@ An import cycle is K009 (no order of blobs can resolve it; it names the cycle), 
 
 ## Tests (draft, 2026-11-27, leaf 74YzpH)
 
-> **Draft, not built.** Nothing in this section exists yet: `checkManifest` refuses a `tests` key (K002), and `checkTests`, kit/page's `runTests` and kit/run's `in` input are not written. It is the design for the leaves after it (dogfood, then build). The ruling it follows is Ben's, 2026-11-27 ([the plan](../../project/2026-11-27-layer-and-package-tests-plan.md), "Rulings" 2): faking an Event and scripting an input are one mechanism, a list of timed records on named inputs; a manifest `tests` entry names an example, gives those inputs and says what to expect; the kit runs it, so a package imports no test code; the same form can later cover value inputs and param edits. Why: every M4 author tested its Event input outside the kit, with a stubbed `defineRuntime` ([the M4 findings](../../project/2026-11-26-m4-trial-findings.md), "Testing a package alone").
+> **Draft, not built.** Nothing in this section exists yet: `checkManifest` refuses a `tests` key (K002), and `checkTests`, kit/page's `runTests` and kit/run's `in` input are not written. It is the design for the leaves after it (dogfood, then build). The ruling it follows is Ben's, 2026-11-27 ([the plan](../../project/2026-11-27-layer-and-package-tests-plan.md), "Rulings" 2): faking an Event and scripting an input are one mechanism, a list of timed records on named inputs; a manifest `tests` entry names an example, gives those inputs and says what to expect; the kit runs it, so a package imports no test code; the same form can later cover value inputs and param edits. Why: every M4 author tested its Event input outside the kit, with a stubbed `defineRuntime` ([the M4 findings](../../project/2026-11-26-m4-trial-findings.md), "Testing a package alone"). **Dogfooded 2026-11-27** (leaf `mxxKTa`, [the tests dogfood findings](../../project/2026-11-27-tests-dogfood-findings.md)): three blind authors wrote passing tests with no harness outside the manifest, and their tests caught every broken runtime tried against them; this section was revised for what they showed (the worked M4 tests became placeholders, a fourth expectation kind `output`, the first instant stated, `until` made plain) and for Ben's two rulings at its end.
 
 A test runs one of the package's `examples` alone, as kit/page's `examplePreset` composes it (one part, nothing wired to it), for a headless run (kit/run, nominal frames, a development run). Its `inputs` become that run's input log, and its `expect` entries are checked against the run.
 
@@ -111,6 +111,7 @@ A test runs one of the package's `examples` alone, as kit/page's `examplePreset`
     ],
     "expect": [
       { "at": <seconds>, "state": { "<path>": <value> } },
+      { "at": <seconds>, "output": "<value output>", "value": <value> },
       { "events": "<output>", "from": <seconds>, "to": <seconds>, "records": [ { "<field>": <value> } ] },
       { "events": "<output>", "from": <seconds>, "to": <seconds>, "count": <n> },
       { "diagnostic": "<code>", "at": <seconds> }
@@ -129,10 +130,12 @@ A test runs one of the package's `examples` alone, as kit/page's `examplePreset`
 | `example` | required; a path listed in `examples` (a refusal or another module is K002). The example is built at its params' declared values, as `checkExamples` builds it |
 | `inputs` | required array, possibly empty, in log order: each `{ T, in, value }`. `T` is the stamp, in seconds as kit/run takes one: a number (a fraction with a denominator up to a million) or rational text (`"<n>/<d>"`), at least 0, and never less than the entry before it (K002: a log is in order, and two entries at one stamp apply in the order written). `in` names an Event input of the Dialect (`ports.in`). `value` is one record in **that input's own seam**: its fields, in its own frame, as the runtime reads it in `ctx.inputs.<input>`; a field with a default (`<field>: f64 = <n>`) may be left out and is filled as a wire fills it; any other field missing, an unknown field or a value of the wrong type is K021 |
 | `expect` | required, at least one entry (a test that expects nothing is K002). The kinds are below |
-| `until` | optional; the run goes to the largest of this, every input's `T` and every `at` and `to` in `expect`. Give it to show that nothing unexpected happens after the last expectation (H007 covers the whole run) |
+| `until` | optional; the run goes to the largest of this, every input's `T` and every `at` and `to` in `expect`. Give it to show that nothing unexpected happens after the last expectation (H007 covers the whole run). It checks no state by itself: to pin a value at the end, add a `state` or `output` expectation at it |
 | `seed` | optional whole number; the run's seed (kit/run's default, 0, otherwise) |
 
 A package with `tests` and no `entry.runtime` is K002: only a runtime runs. Inputs and expectations take no part name: the example runs as one part, so `"in": "<input>"` is `<part>.in.<input>` of that part.
+
+**When the part steps**, which every `T` and `at` depends on: the run starts at T = 0, and the part's first step is its first instant at or after 0 (kit/run, Invariants): a tick part's at 0 and every multiple of its period, a frame part's at every multiple of 1/60 s (a test is a nominal run), a demand part's when a record is ready. `init` gets no `T`, so a state that needs its start time takes it from the first step, which in a test is T = 0. (Dogfood: a score author had to guess this from the draft's worked example, which said it only in passing.)
 
 ### How a record reaches an Event input nothing is wired to
 
@@ -153,20 +156,21 @@ Each `expect` entry is one of these, told apart by its key (an entry with none, 
 | Kind | Passes when |
 |---|---|
 | `{ at, state: { <path>: <value>, … }, within? }` | after the run has run every instant at or before `at` and applied every input stamped by then (kit/run's `runUntil(at)`), the part's state (`run.state`: the state its last step at or before `at` committed, its init's if it has not stepped) has `<value>` at each `<path>`. Values compare as JSON data, deeply and exactly: a vector is the array of its components, a struct an object with exactly its fields, an `opt` with nothing `null`. `within` (a number, default 0) lets each number in this entry differ by at most that much. A part that has stopped keeps its last state, so `at` past the stop reads that |
+| `{ at, output: <value output>, value, within? }` | after `runUntil(at)`, as for `state`, the part's value output `<output>` (`ports.out.<output>` with `from`, not Draw or Event) reads `<value>`: the value a wire would read from it then, in the part's own frame, before any conversion, compared as `state` values are. This is the port a composer wires, so a wrong `from` path or lambda fails here, where a `state` expectation on the field behind it would pass. kit/run reads it through its draft `run.output(part, port)` ([kit/run](../run/README.md), "Draft: the `in` input and taps") |
 | `{ events: <output>, from?, to?, records }` | the records the part pushed on its Event output `<output>` at instants from `from` to `to` (both included; default 0 and the run's end) are exactly `records`, in push order: the same number, each with exactly its fields, compared as `state` values are (`within` too). A record's `$T` is not a field; to pin an instant, narrow the window. A part run alone has no wire out, so its pushed records go nowhere today: the runner reads them through kit/run's draft `taps` option ([kit/run](../run/README.md), "Draft: the `in` input and taps") |
 | `{ events: <output>, from?, to?, count }` | the same window holds exactly `count` records |
 | `{ diagnostic: <code>, at? }` | the run reported a diagnostic with that code (any N code, or a J code from a Draw build), stamped at `at` when it is given. A run diagnostic of severity error that no `diagnostic` entry names fails the test (H007); a warning (N001) never does, and is listed with the result |
 
 **A state path** names one value in the Dialect's `state` the way kit/define's `checkState` names a mismatch: field names joined by `.`, a list item as `[<i>]`, and a vector component by its name or alias (`<field>.x`) or the whole vector as an array (`<field>`). One addition: `<list>.length`, the number of items in a list, which a UI lambda may read too. A path whose fields the Dialect's `state` does not have is K020 before anything runs; a field of an extensible struct the Program itself declares is known only once the example is built, and one it does not declare is H008 then. A path that names a list item past the list's end reads as `null` (and fails unless `null` is expected).
 
-**Why these kinds and no others:** they are the three the M4 authors asked for (state at an instant, Events out, and a run refusal they could not reach), and each reads something the run already keeps. A value output (`ports.out.<output>` with `from`) is not expected directly in this draft: it is a function of the state, and kit/run has no public read of one by name (adding `run.output(part, port)` would make it a fourth kind; parked in "Not in this draft").
+**Why these kinds and no others:** the first three are the ones the M4 authors asked for (state at an instant, Events out, and a run refusal they could not reach), and each reads something the run already keeps. **`output` was added after the dogfood** (2026-11-27): all three blind authors asked for it unprompted, each having tested the state field behind a value output instead, which leaves the output's own `from` untested. It costs kit/run one read, `run.output(part, port)`, the function a wire already calls. A Draw output's list is not expected in this draft, though all three authors asked for that too ("Not in this draft").
 
 ### Who runs them
 
 | What | Where | Why there |
 |---|---|---|
 | The manifest's shape: keys, names, `example` in `examples`, stamps in order, a runtime named | kit/package's `checkManifest`, **K002** | what can be judged from the manifest text alone is judged where every other field is |
-| What needs the Dialect but no run: `in` names an Event input, `events` an Event output, a path's fields exist in `state`, each record fits its input's seam | kit/package's new `checkTests(loaded)` → diagnostics, **K020**, **K021** | it needs only the loaded Dialect, which kit/package imports already, so it stays inside kit/package. It is a separate call, as `checkExamples` is, so loading a package does not refuse it for a stale test, and a host that runs no tests pays nothing |
+| What needs the Dialect but no run: `in` names an Event input, `events` an Event output, `output` a value output, a path's fields exist in `state`, each record fits its input's seam | kit/package's new `checkTests(loaded)` → diagnostics, **K020**, **K021** | it needs only the loaded Dialect, which kit/package imports already, so it stays inside kit/package. It is a separate call, as `checkExamples` is, so loading a package does not refuse it for a stale test, and a host that runs no tests pays nothing |
 | The runs | kit/page's new `runTests(loaded, options)` ([kit/page](../page/README.md), "Draft: runTests"), **H006–H008** | kit/package may not depend on kit/run (its imports today: kit/define and kit/parse only), and kit/page already holds both pieces a test needs: `examplePreset` (one example alone, the way the page plays a preset) and `sweepRuns` (fresh headless runs, sliced so the page stays live). A new module would repeat both for one file |
 
 `runTests` runs `checkTests` first and runs nothing when it reports anything: a test naming a missing input, output, example or path is refused, never skipped.
@@ -176,7 +180,7 @@ Each `expect` entry is one of these, told apart by its key (an entry with none, 
 | Code | Module | When |
 |---|---|---|
 | K002 | kit/package (`checkManifest`) | as today, and also: a `tests` entry with a missing, unknown or misshapen key, a duplicate name, an `example` not in `examples`, stamps out of order, an `expect` entry with no kind or two, no expectation at all, or `tests` in a package with no `entry.runtime` |
-| K020 | kit/package (`checkTests`) | a test names something the Dialect does not have, or of the wrong kind: an `in` that is not an Event input (a value or Draw input is refused in this draft), an `events` that is not an Event output, a state path whose fields `state` lacks |
+| K020 | kit/package (`checkTests`) | a test names something the Dialect does not have, or of the wrong kind: an `in` that is not an Event input (a value or Draw input is refused in this draft), an `events` that is not an Event output, an `output` that is not a value output, a state path whose fields `state` lacks |
 | K021 | kit/package (`checkTests`) | a test input's `value` does not fit its input's seam: a field missing that has no default, an unknown field, a value of the wrong type, a point not of its frame's dims |
 | H006 | kit/page (`runTests`) | an expectation was not met. The message names the test, the kind, the instant (`at`, or the window), the path or output, and the expected and actual values; for `events`, the first record that differs and both counts; for `diagnostic`, the codes the run did report |
 | H007 | kit/page (`runTests`) | the run reported an error diagnostic the test did not expect (N002, N003, N004, a J code; named with its part, T and message), or its replay diverged (N005: the test's run is replayed from its own record, so a test is deterministic or fails) |
@@ -191,92 +195,60 @@ H is kit/page's letter and N kit/run's, both reserved (kit/define's `RESERVED_LE
 `runTests` resolves to `{ results: [{ name, ok, diagnostics, log, T }], diagnostics }`: one result per test, in manifest order, with its own diagnostics (each carrying `test: "<test>"`), the input log it ran (`run.log`) and the T it reached; `diagnostics` is every result's, flattened, after any K020/K021, so a caller that wants one list (a checker) takes that.
 
 - **The page host** (kit/page/host). Each package with tests gets a **Tests** row under Presets: a Run button that calls `runTests` (in slices, with progress and cancel, as a `runs` tile's sweep does), then each test's name with pass or fail and its H diagnostics listed in the right column under a **tests** group, with the kit's own text. A failed test has **Open**: it loads the test's example as a preset with the test's `log` as the run's inputs, paused at the failing instant (`at`, or the window's end), so the person sees the state the test read and can step, scrub and read the Why panel from there.
-- **The trial checkers.** `scripts/pkg-trial`'s folder checker and `scripts/m4-trial`'s author legs call `runTests` after `checkExamples`, with the same `importModule` and `buildOptions`, and print each diagnostic in their usual line form (code, message, test). Their record gains the counts: tests run, passed. A package with no `tests` is not a failure in this draft; a trial task that requires them says so and the trial's checker counts them.
+- **The trial checkers.** `scripts/pkg-trial`'s folder checker and `scripts/m4-trial`'s author legs call `runTests` after `checkExamples`, with the same `importModule` and `buildOptions`, and print each diagnostic in their usual line form (code, message, test). Their record gains the counts: tests run, passed. **A package with no `tests` is clean everywhere** (Ben's ruling 2, below): kit/package, the page and the checkers never report its absence. A dogfood trial of the tests design itself may make tests a rule of its task, as leaf `mxxKTa`'s did (its trial-only T030 and T031); that is the trial's rule, not the kit's.
 
-### The M4 authors' tests, in this form
+### Two common tests, in placeholders
 
-The tests the M4 trial's authors asked for and could not write (scripts/m4-trial/runs/2026-11-26/), against their packages' real names. They are theirs, written here in this draft's form; none of them is in a manifest.
-
-The game author (`gemgrid`, example `examples/garden.js`: the player starts at cell [1, 1], a gem at [4, 1]; a 1/30 s tick; a new direction moves one cell at once):
+A test of an Event input: one record, then what it did, before and after.
 
 ```json
-"tests": [
-  {
-    "name": "pad-moves-player",
-    "example": "examples/garden.js",
-    "inputs": [
-      { "T": 0.5, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": true } },
-      { "T": 0.6, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": false } }
-    ],
-    "expect": [
-      { "at": 0.4, "state": { "player": [1, 1] } },
-      { "at": 1, "state": { "player": [2, 1], "collected": 0, "held.right": false } },
-      { "events": "picked", "count": 0 }
-    ]
-  },
-  {
-    "name": "taps-pick-a-gem",
-    "example": "examples/garden.js",
-    "inputs": [
-      { "T": 0.5, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": true } },
-      { "T": 0.6, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": false } },
-      { "T": 0.7, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": true } },
-      { "T": 0.8, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": false } },
-      { "T": 0.9, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": true } },
-      { "T": 1.0, "in": "pad", "value": { "up": false, "down": false, "left": false, "right": false } }
-    ],
-    "expect": [
-      { "at": 1.5, "state": { "player": [4, 1], "collected": 1, "gems.length": 4 } },
-      { "events": "picked", "from": 0.9, "to": 0.9, "records": [{ "at": [4.5, 1.5], "collected": 1 }] }
-    ]
-  }
-]
+{ "name": "<input>-<does what>", "example": "<example>.js",
+  "inputs": [ { "T": <t1>, "in": "<input>", "value": { "<field>": <value> } } ],
+  "expect": [
+    { "at": <before t1>, "state": { "<path>": <value before> } },
+    { "at": <after t1>, "state": { "<path>": <value after> } },
+    { "events": "<event output>", "from": <t1>, "to": <t1>, "records": [ { "<field>": <value> } ] }
+  ] }
 ```
 
-The score author (`scoretimer`, example `examples/sprint.js`: a 30 s round from its first step at T = 0, `worth` 10; a 0.1 s tick; a record counts when its `$T` is before the end):
+A test that something stops: records just before, at and after the instant `<end>`, and the state held well after it.
 
 ```json
-"tests": [
-  {
-    "name": "event-scores",
-    "example": "examples/sprint.js",
-    "inputs": [
-      { "T": 1, "in": "scored", "value": {} },
-      { "T": 2, "in": "scored", "value": { "points": 2 } }
-    ],
-    "expect": [
-      { "at": 1.5, "state": { "score": 10 } },
-      { "at": 2.5, "state": { "score": 30, "over": false } }
-    ]
-  },
-  {
-    "name": "end-freezes-score",
-    "example": "examples/sprint.js",
-    "inputs": [
-      { "T": 29.5, "in": "scored", "value": {} },
-      { "T": 30, "in": "scored", "value": {} },
-      { "T": 31, "in": "scored", "value": { "points": 5 } }
-    ],
-    "expect": [
-      { "at": 30, "state": { "score": 10, "over": true, "left": 0 } },
-      { "at": 32, "state": { "score": 10, "over": true } }
-    ]
-  }
-]
+{ "name": "<what>-stops-at-<end>", "example": "<example>.js",
+  "inputs": [
+    { "T": <just before end>, "in": "<input>", "value": {} },
+    { "T": <end>, "in": "<input>", "value": {} },
+    { "T": <after end>, "in": "<input>", "value": {} }
+  ],
+  "expect": [
+    { "at": <end>, "state": { "<path>": <value> } },
+    { "at": <well after end>, "output": "<value output>", "value": <the same value> }
+  ] }
 ```
 
-(`{}` is a whole `scored` record: its one field, `points`, has a default of 1. The record stamped 30 is taken at the step at 30 and ignored, since its `$T` is not before the end; the one at 31 reaches a round already over.)
+A test that shows nothing happened (a move into a wall, a record after the end) also passes when the input is ignored altogether; pair it with a record that must change something. (`{}` is a whole record when every field of the input has a default.)
 
-### Questions for Ben
+**Changed after the dogfood** (2026-11-27, leaf `mxxKTa`): until then this section wrote out the tests the M4 trial's authors asked for, against their real packages (`gemgrid`'s `examples/garden.js`, `scoretimer`'s `examples/sprint.js`). All three blind authors given it copied it: both score authors named their package `tally`, with a 30 s `sprint.js` round worth 10 and an Event input `scored` with `points` defaulting to 1; the game author's level put the player at [1, 1] and a gem at [4, 1] in `examples/garden.js`, and its first test is the worked pad test almost word for word. One author said its run "is not independent evidence that a newcomer can design this package". Worked examples are copied ([the findings](../../project/2026-11-27-tests-dogfood-findings.md)); the M4 tests are in that doc, and they pass in its simulator.
 
-None of the decisions above changes the ruling. Two touch more than this draft and are left to Ben:
+### Rulings (Ben, 2026-11-27)
 
-1. **Does `in` retire `ctx.controls`?** A `control` input addressed to a part by name lands in `ctx.controls`, a channel kept (kit/run, "The page part") for packages run without a glue. An `in` input to an unwired Event input does what those packages wanted from it, through the Event input the composition would wire. This draft keeps `control` as it is.
-2. **Should a trial task, or the page, require tests?** This draft makes `tests` optional and a package without them clean.
+The draft's two open questions, ruled the day it was written.
+
+1. **`in` retires `ctx.controls`.** "A smaller and simpler API surface is always better if possible." A `control` input addressed to a part by name, and the `ctx.controls` it lands in, go wherever `in` covers them. The `control` input addressed to the built-in `page` part stays: it is how the page's controls enter a composition (kit/run, "The page part"). What has to hold for a part run without a glue to get the page's controls through Event inputs instead:
+   - **The part takes each control as an Event input with that control's seam** (`Event<{ up: bool, down: bool, left: bool, right: bool }>` for the pad, `Event<{ held: bool }>` for a button), as the M4 game authors already did. A package that reads `ctx.controls` moves to such an input; the readers today are trial fixtures and checkers (`scripts/seams-trial`'s maze fixtures and checker, `scripts/why-trial`'s scenario) and kit/run's own tests.
+   - **On the page, a preset wires the page to it.** kit/page's `examplePreset` adds `.wire(page.out.<control>, <part>.in.<input>)` for each control whose seam exactly one of the part's Event inputs takes (kit/seam's `compareSeams`, as `scripts/m4-trial`'s checker already does by hand), so a person's keys arrive as page records, with the page wire's fold (a person is the one sender no party controls), not as `in` records. Two inputs that both take one control's seam are ambiguous: the preset wires neither and says so (a new H code at build), and a glue chooses.
+   - **Headless runs and tests use `in`.** A scripted run or a test sends the control's records to that input as `{ kind: "in", … }`, with the input's own delivery (a reliable input past its max is N002, as on a wire; a test that wants the page's fold expects N002 or declares `{ keepLast: n }`).
+   - Nothing the dogfood showed makes this impossible: no leg read `ctx.controls`, and the game leg took the pad as an Event input and tested it through `in`.
+2. **Tests are optional everywhere.** "Tests should always be optional; some authors will not want to produce them." A package with no `tests` is clean in kit/package, on the page and in every checker; nothing counts their absence against it. The dogfood trial's task required tests only because it was testing the tests design.
 
 ### Not in this draft
 
-Value inputs and param edits in `inputs` (the ruling's "later"; the forms are named above), expecting a value output by name (needs `run.output`), a test over a glue's composition rather than one example, tests in a display run (the frames are the nominal 60 Hz grid), a test's own params (the example runs at its declared values), and approximate stamps (an `at` is exact).
+Value inputs and param edits in `inputs` (the ruling's "later"; the forms are named above), a test over a glue's composition rather than one example, tests in a display run (the frames are the nominal 60 Hz grid), and approximate stamps (an `at` is exact). Asked for in the dogfood and parked, each with what would un-park it:
+
+- **A Draw output's list at an instant** (all three authors: "TIME UP" shown, a picked gem gone from the picture, a goal color). Un-park when a form for "contains this op" exists that does not pin every coordinate of a picture; until then the state behind a picture is what a test reads.
+- **A test's own Program or params** (two authors: a level laid out for one case, a shorter round). Today each needs its own entry in `examples`. Un-park with the param edits in `inputs` that the ruling names, which cover params; a test's own Program stays out (a test runs a shipped example).
+- **A relation between instants** ("unchanged since the end"; one author). Repeating the literal value at a later instant says it; parked as sugar.
+- **Defaults for the page's control seams** (the game author: every pad record spells all four fields, a tap is two records). The seam must equal the page's exactly; parked with the controls themselves.
 
 ## Codes
 

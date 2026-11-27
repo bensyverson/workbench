@@ -1,0 +1,185 @@
+{
+  "name": "tally",
+  "version": "0.1.0",
+  "kit": "0.4",
+  "description": "One timed round that keeps a score from the events it is told of",
+  "entry": {
+    "dialect": "tally.dialect.js",
+    "grammar": "tally.grammar.js",
+    "ui": "tally.ui.js",
+    "runtime": "tally.runtime.js"
+  },
+  "examples": [
+    "examples/sprint.js",
+    "examples/blitz.js"
+  ],
+  "refusals": [
+    {
+      "module": "refusals/long-label.js",
+      "code": "Q001"
+    }
+  ],
+  "tests": [
+    {
+      "name": "events-score",
+      "example": "examples/sprint.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 2,
+          "in": "scored",
+          "value": {
+            "points": 2
+          }
+        },
+        {
+          "T": 3,
+          "in": "scored",
+          "value": {
+            "points": -1
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 0.5,
+          "state": {
+            "score": 0,
+            "over": false
+          }
+        },
+        {
+          "at": 1.5,
+          "state": {
+            "score": 10
+          }
+        },
+        {
+          "at": 2.5,
+          "state": {
+            "score": 30,
+            "left": 27.5
+          }
+        },
+        {
+          "at": 3.5,
+          "state": {
+            "score": 20,
+            "over": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "several-in-one-step",
+      "example": "examples/blitz.js",
+      "inputs": [
+        {
+          "T": 1.01,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 1.02,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 1.02,
+          "in": "scored",
+          "value": {
+            "points": 3
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 1.1,
+          "state": {
+            "score": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "end-freezes-score",
+      "example": "examples/blitz.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 4.95,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 5,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 5.05,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 7,
+          "in": "scored",
+          "value": {
+            "points": 5
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 4.9,
+          "state": {
+            "score": 1,
+            "over": false
+          }
+        },
+        {
+          "at": 5,
+          "state": {
+            "score": 2,
+            "over": true,
+            "left": 0
+          }
+        },
+        {
+          "at": 6,
+          "state": {
+            "score": 2,
+            "over": true,
+            "left": 0
+          }
+        },
+        {
+          "at": 8,
+          "state": {
+            "score": 2,
+            "over": true,
+            "left": 0
+          }
+        }
+      ],
+      "until": 10
+    }
+  ],
+  "files": {
+    "examples/blitz.js": "sha256-nqJVtdEhZ5/OX9csHMiYdzS/4baRqYC/JYgMINr6vKE=",
+    "examples/sprint.js": "sha256-ttYTL5YpTuEM6hZCe/He7V3r43EloSb5idfsPGqLbNc=",
+    "refusals/long-label.js": "sha256-piaJrgKM3ypcJND9JjWznIDkpcN9y2w3t3DDw87k6Aw=",
+    "tally.dialect.js": "sha256-sVkWaFirbkgRh0Gg78uVBVim1dXzCvHRG0vxAjXd3Zw=",
+    "tally.grammar.js": "sha256-owc2InseWq9yGg/oMw06QbGfC+hoMrUQWaEeX0XErPY=",
+    "tally.runtime.js": "sha256-SSyY+QcoadxFF0EyN7dWDumqrCEdZiNFnYQCuoF1M8U=",
+    "tally.ui.js": "sha256-/TBuSf0ozr7L2mUxARr4xMYAUJSzkynJ2HpbTfnfKao="
+  }
+}

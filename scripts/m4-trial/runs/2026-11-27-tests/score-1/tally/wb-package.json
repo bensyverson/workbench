@@ -1,0 +1,224 @@
+{
+  "name": "tally",
+  "version": "1.0.0",
+  "kit": "0.4",
+  "description": "one timed round and its score",
+  "entry": {
+    "dialect": "tally.dialect.js",
+    "grammar": "tally.grammar.js",
+    "runtime": "tally.runtime.js"
+  },
+  "examples": [
+    "examples/sprint.js",
+    "examples/blitz.js"
+  ],
+  "tests": [
+    {
+      "name": "event-scores",
+      "example": "examples/sprint.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 2,
+          "in": "scored",
+          "value": {
+            "points": 2
+          }
+        },
+        {
+          "T": 3,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 3,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 4,
+          "in": "scored",
+          "value": {
+            "points": 0
+          }
+        },
+        {
+          "T": 4,
+          "in": "scored",
+          "value": {
+            "points": -3
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 0.5,
+          "state": {
+            "score": 0,
+            "over": false
+          }
+        },
+        {
+          "at": 1.5,
+          "state": {
+            "score": 10
+          }
+        },
+        {
+          "at": 2.5,
+          "state": {
+            "score": 30
+          }
+        },
+        {
+          "at": 3.5,
+          "state": {
+            "score": 50
+          }
+        },
+        {
+          "at": 5,
+          "state": {
+            "score": 50,
+            "over": false,
+            "shown": 25
+          }
+        }
+      ]
+    },
+    {
+      "name": "end-freezes-score",
+      "example": "examples/sprint.js",
+      "inputs": [
+        {
+          "T": 29.5,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 29.99,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 30,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 31,
+          "in": "scored",
+          "value": {
+            "points": 5
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 29.9,
+          "state": {
+            "score": 10,
+            "over": false
+          }
+        },
+        {
+          "at": 30,
+          "state": {
+            "score": 20,
+            "over": true,
+            "left": 0,
+            "shown": 0
+          }
+        },
+        {
+          "at": 35,
+          "state": {
+            "score": 20,
+            "over": true,
+            "left": 0
+          }
+        }
+      ],
+      "until": 36
+    },
+    {
+      "name": "fractional-points",
+      "example": "examples/blitz.js",
+      "inputs": [
+        {
+          "T": 1,
+          "in": "scored",
+          "value": {
+            "points": 0.1
+          }
+        },
+        {
+          "T": 2,
+          "in": "scored",
+          "value": {
+            "points": 0.2
+          }
+        }
+      ],
+      "expect": [
+        {
+          "at": 3,
+          "state": {
+            "score": 0.3
+          }
+        }
+      ]
+    },
+    {
+      "name": "default-worth-and-end",
+      "example": "examples/blitz.js",
+      "inputs": [
+        {
+          "T": 0,
+          "in": "scored",
+          "value": {}
+        },
+        {
+          "T": 7.5,
+          "in": "scored",
+          "value": {
+            "points": 3
+          }
+        },
+        {
+          "T": 8.01,
+          "in": "scored",
+          "value": {}
+        }
+      ],
+      "expect": [
+        {
+          "at": 6,
+          "state": {
+            "score": 1,
+            "left": 2,
+            "over": false
+          }
+        },
+        {
+          "at": 10,
+          "state": {
+            "score": 4,
+            "over": true
+          }
+        }
+      ]
+    }
+  ],
+  "files": {
+    "examples/blitz.js": "sha256-fZ61BKA4VTOWTeIwg37fn7pgwmhM1ZJbtLRvj88AH+I=",
+    "examples/sprint.js": "sha256-xmjvEMMEdQH3Cqtzd3VJsS4lkSf+DnDpORP7xK8g0Z0=",
+    "tally.dialect.js": "sha256-ty3fEG3RIORcFL+4ojVJpIshWrPHndxiy+K7O8TQwoc=",
+    "tally.grammar.js": "sha256-yGidDDRVO+LavQJVBMsNvT4k8ZJgZTSrt5zXqLe39yk=",
+    "tally.runtime.js": "sha256-xFezmN4EHWqFTESf9EJfFt3+Ty6fQBP/i45RBmgwYuA="
+  }
+}
