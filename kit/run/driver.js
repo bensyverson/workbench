@@ -27,12 +27,14 @@ export function createDriver(run, o = {}) {
   let ideal = toNumber(run.T);
   let pendingWall = 0;
   let pendingCapped = false;
-  /** The run's T after the driver last moved it: anything else moving it (a rewind, runUntil) resets the display. */
-  let mark = run.T;
-  const sync = () => {
-    if (cmp(run.T, mark) === 0) return;
-    ideal = toNumber(run.T); pendingWall = 0; pendingCapped = false; mark = run.T;
-  };
+  /**
+   * The run's jump count (run.jumps) after the driver last moved it. A jump by anything else (a rewind, runUntil,
+   * advance) resets the display to the run's T; a move by an input alone (inputNow's stamp, a millisecond past a
+   * frame) does not, so a host's preview each frame leaves the frame cadence as it was.
+   */
+  let mark = run.jumps;
+  const reset = () => { ideal = toNumber(run.T); pendingWall = 0; pendingCapped = false; mark = run.jumps; };
+  const sync = () => { if (run.jumps !== mark) reset(); };
   /** Whether the window from the last frame still reaches past the run's T (T moved without frames when not). */
   const open = () => cmp(add(run.lastFrame, run.catchUp), run.T) > 0;
   /**
@@ -43,7 +45,7 @@ export function createDriver(run, o = {}) {
   return {
     get paused() { return paused; },
     pause() { paused = true; },
-    resume() { paused = false; ideal = toNumber(run.T); pendingWall = 0; pendingCapped = false; mark = run.T; },
+    resume() { paused = false; reset(); },
     /**
      * Runs the next instant, paused or not. Frame parts step on frames, so when the run has any, a step is at most
      * one nominal frame (1/60 s) after the last frame (or, when T already stands that far past it, the cap after it),
@@ -58,7 +60,7 @@ export function createDriver(run, o = {}) {
         if (!next || cmp(next, frame) >= 0) run.input({ kind: "frame", T: frame });
       }
       const i = run.step();
-      ideal = toNumber(run.T); mark = run.T;
+      ideal = toNumber(run.T); mark = run.jumps;
       return i;
     },
     /**
@@ -77,7 +79,7 @@ export function createDriver(run, o = {}) {
       if (cmp(target, run.T) <= 0 || cmp(sub(target, run.lastFrame), MIN_FRAME) < 0) return null;
       run.input({ kind: "frame", T: target, ...(pendingCapped ? { capped: { wall: Math.round(pendingWall * 1000) / 1000, kept: toNumber(run.catchUp) } } : {}) });
       run.runUntil(target);
-      mark = run.T;
+      mark = run.jumps;
       pendingWall = 0;
       pendingCapped = false;
       return `${target.n}/${target.d}`;

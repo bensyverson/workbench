@@ -144,6 +144,8 @@ export function createRun(composed, options) {
   let revision = 1;
   /** @type {Q} */
   let now = q(0);
+  /** How many times a run call other than an input moved the run's place (see run.jumps). */
+  let jumps = 0;
   let cursor = 0;
   /** The parts' snapshots as the instant began, which a delayed wire reads. @type {Map<string, View>} */
   let startView = new Map();
@@ -541,6 +543,12 @@ export function createRun(composed, options) {
     get T() { return now; },
     /** The time the run has reached, in seconds. */
     get seconds() { return toNumber(now); },
+    /**
+     * A count that grows at each runUntil, advance, step and rewind, and never at an input: a move of run.T with the
+     * count unchanged is an input's (inputNow's stamp), not a jump. The real-time driver reads it, so the display
+     * keeps its frame cadence across a host's previews and resets its place only after a jump.
+     */
+    get jumps() { return jumps; },
     /** The most workbench time one display frame may cover (the real-time driver reads it), as a rational. */
     get catchUp() { return catchUp; },
     /** The last frame at or before the time the run has reached: a display run starts at one at T = 0. */
@@ -574,6 +582,7 @@ export function createRun(composed, options) {
     nextInstant() { return nextInstant(); },
     /** The next instant, run; null when no part has a clock. */
     step() {
+      jumps++;
       const T = upcoming(null);
       if (!T) return null;
       return instant(T);
@@ -584,12 +593,14 @@ export function createRun(composed, options) {
      */
     runUntil(t) {
       const target = toQ(t);
+      jumps++;
       logFrames(target);
       advance(target);
       return run;
     },
     /** runUntil from the log alone, logging no frames: what a replay runs. @param {number | Q} t */
     advance(t) {
+      jumps++;
       advance(toQ(t));
       return run;
     },
@@ -668,6 +679,7 @@ export function createRun(composed, options) {
      */
     rewind(t) {
       const target = toQ(t);
+      jumps++;
       let i = checkpoints.length - 1;
       while (i > 0 && checkpoints[i].T && cmp(checkpoints[i].T, target) > 0) i--;
       const cp = checkpoints[i];
